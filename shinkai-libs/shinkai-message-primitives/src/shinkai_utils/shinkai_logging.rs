@@ -34,7 +34,6 @@ impl SyslogWriter {
 
 impl Write for SyslogWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        eprintln!("buf: {:?}", buf);
         let message_with_codes = String::from_utf8_lossy(buf);
         let message = strip_ansi_escapes::strip(message_with_codes.clone().into_owned().as_bytes())
             .unwrap_or_else(|_| message_with_codes.into_owned().into_bytes());
@@ -64,7 +63,6 @@ impl Write for SyslogWriter {
                 eprintln!("Failed to send log: {}", e);
             }, // Default to INFO if no level is found
         }
-
 
         Ok(buf.len())
     }
