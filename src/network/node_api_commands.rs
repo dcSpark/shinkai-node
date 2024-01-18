@@ -2028,7 +2028,7 @@ impl Node {
         // Validate the message
 
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::ChangeNodesName))
             .await;
         let msg = match validation_result {
             Ok((msg, _)) => msg,
@@ -2059,10 +2059,45 @@ impl Node {
             }
         };
 
+        {
+            // Check if the new node name exists in the blockchain and the keys match
+            let identity_manager = self.identity_manager.lock().await;
+            match identity_manager
+                .external_profile_to_global_identity(new_node_name.get_node_name().as_str())
+                .await
+            {
+                Ok(standard_identity) => {
+                    if standard_identity.node_encryption_public_key != self.encryption_public_key
+                        || standard_identity.node_signature_public_key != self.identity_public_key
+                    {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Forbidden".to_string(),
+                                message: "The keys do not match with the current node".to_string(),
+                            }))
+                            .await;
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "The new node name does not exist in the blockchain".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        }
+
         // Write to .secret file
         match update_global_identity_name(new_node_name.get_node_name().as_str()) {
             Ok(_) => {
                 let _ = res.send(Ok(())).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 panic!("Node name changed successfully. Restarting server...");
             }
             Err(err) => {
@@ -2084,7 +2119,6 @@ impl Node {
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
         if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
             let _ = res
                 .send(Err(APIError {
@@ -2140,14 +2174,19 @@ impl Node {
                                 .unsafe_insert_inbox_message(&msg.clone(), None)
                                 .await
                                 .map_err(|e| {
-                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                    shinkai_log(
+                                        ShinkaiLogOption::DetailedAPI,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error inserting message into db: {}", e).as_str(),
+                                    );
                                     std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
                                 })?;
                         }
                         Err(e) => {
-                            eprintln!(
-                                "handle_onionized_message > Error checking if sender has access to inbox: {}",
-                                e
+                            shinkai_log(
+                                ShinkaiLogOption::DetailedAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Error checking if sender has access to inbox: {}", e).as_str(),
                             );
                             let _ = res
                                 .send(Err(APIError {
