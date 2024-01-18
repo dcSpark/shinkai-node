@@ -41,3 +41,4 @@ db/.secret
 ./storage/*
 vector_fs_db
 storage
+.vscode/*

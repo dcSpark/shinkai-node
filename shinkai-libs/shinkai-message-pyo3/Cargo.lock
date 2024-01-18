@@ -2930,7 +2930,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_pyo3"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "ed25519-dalek",
  "hex",
