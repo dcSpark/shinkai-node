@@ -106,7 +106,7 @@ impl ShinkaiDB {
             let (key, _) = item.map_err(ShinkaiDBError::from)?;
             if key.starts_with(&profile_prefix) {
                 let key_str =
-                    String::from_utf8(key[profile_prefix.len()..].to_vec()).map_err(|_| ShinkaiDBError::InvalidData)?;
+                    String::from_utf8(key[profile_prefix.len() + 1..].to_vec()).map_err(|_| ShinkaiDBError::InvalidData)?;
                 keys.push(key_str);
             }
         }
@@ -214,5 +214,4 @@ impl ShinkaiDB {
         prof_name.push_str(key);
         prof_name
     }
-
 }
