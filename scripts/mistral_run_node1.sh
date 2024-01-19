@@ -14,7 +14,7 @@ export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
-export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/embed"
+export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com"
 
 export INITIAL_AGENT_NAMES="mistral"
