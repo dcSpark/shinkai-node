@@ -88,16 +88,24 @@ impl From<String> for APIError {
 impl warp::reject::Reject for APIError {}
 
 pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_name: String) {
-    println!("Starting Node API server at: {}", &address);
+    shinkai_log(
+        ShinkaiLogOption::API,
+        ShinkaiLogLevel::Info,
+        &format!("Starting Node API server at: {}", &address),
+    );
 
     let log = warp::log::custom(|info| {
-        eprintln!(
-            "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",
-            info.remote_addr(),
-            info.method(),
-            info.path(),
-            info.status(),
-            info.elapsed(),
+        shinkai_log(
+            ShinkaiLogOption::API,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",
+                info.remote_addr(),
+                info.method(),
+                info.path(),
+                info.status(),
+                info.elapsed(),
+            ),
         );
     });
 
@@ -406,12 +414,6 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .with(cors);
 
     warp::serve(routes).run(address).await;
-
-    shinkai_log(
-        ShinkaiLogOption::API,
-        ShinkaiLogLevel::Info,
-        &format!("Server successfully started at: {}", &address),
-    );
 }
 
 async fn handle_node_command<T, U>(
@@ -526,7 +528,10 @@ async fn send_msg_handler(
         })
         .await
         .map_err(|e| warp::reject::custom(APIError::from(e)))?;
-    let send_result = res_send_msg_receiver.recv().await.map_err(|e| warp::reject::custom(APIError::from(format!("{}", e))))?;
+    let send_result = res_send_msg_receiver
+        .recv()
+        .await
+        .map_err(|e| warp::reject::custom(APIError::from(format!("{}", e))))?;
     match send_result {
         Ok(_) => {
             let resp = warp::reply::json(&"Message sent successfully");
@@ -947,7 +952,10 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
     eprintln!("rejection: {:?}", err);
     if let Some(api_error) = err.find::<APIError>() {
         let json = warp::reply::json(api_error);
-        return Ok(warp::reply::with_status(json, StatusCode::from_u16(api_error.code).unwrap()));
+        return Ok(warp::reply::with_status(
+            json,
+            StatusCode::from_u16(api_error.code).unwrap(),
+        ));
     } else if err.is_not_found() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::NOT_FOUND,
