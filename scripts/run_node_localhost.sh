@@ -15,7 +15,7 @@ export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
-export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com"
+export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
 export INITIAL_AGENT_NAMES="o_mixtral,o_llava"
 export INITIAL_AGENT_URLS="http://localhost:11434,http://localhost:11435"
