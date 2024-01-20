@@ -10,7 +10,7 @@ export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node2.shinkai"
 export RUST_LOG=warn,error,info,debug
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
-export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com"
+export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
 if [ -z "$1" ]
 then
