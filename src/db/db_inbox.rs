@@ -1,4 +1,5 @@
 use chrono::DateTime;
+use chrono::Utc;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
@@ -79,9 +80,6 @@ impl ShinkaiDB {
             return Err(ShinkaiDBError::SomeError("Inbox name is empty".to_string()));
         }
 
-        // Insert the message
-        let _ = self.insert_message_to_all(&message.clone())?;
-
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
             self.create_empty_inbox(inbox_name.clone()).await?;
@@ -100,19 +98,6 @@ impl ShinkaiDB {
             false => ext_metadata.scheduled_time.clone(),
         };
 
-        // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:::{}", time_key, hash_key);
-        // println!("Composite key: {}", composite_key);
-
-        let mut batch = rocksdb::WriteBatch::default();
-
-        // Add the message to the inbox
-        let cf_inbox = self
-            .db
-            .cf_handle(&inbox_name)
-            .expect("Failed to get cf handle for inbox");
-        batch.put_cf(cf_inbox, &composite_key, &hash_key);
-
         // If this message has a parent, add this message as a child of the parent
         let parent_key = match maybe_parent_message_key {
             Some(key) => Some(key),
@@ -130,6 +115,41 @@ impl ShinkaiDB {
                 }
             }
         };
+
+        // Note(Nico): We are not going to let add messages older than its parent if it's a JobInbox
+        // If the inbox is of type JobInbox, fetch the parent message and compare its scheduled_time
+        if let InboxName::JobInbox { .. } = inbox_name_manager {
+            if let Some(parent_key) = &parent_key.clone() {
+                // Fetch the column family for all messages
+                let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
+
+                let (parent_message, _) = self.fetch_message_and_hash(&messages_cf, parent_key)?;
+                let parent_time = parent_message.external_metadata.scheduled_time;
+                let time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
+                let parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
+                if time_key < parent_time {
+                    return Err(ShinkaiDBError::SomeError(
+                        "Scheduled time of the message is older than its parent".to_string(),
+                    ));
+                }
+            }
+        }
+
+        // Create the composite key by concatenating the time_key and the hash_key, with a separator
+        let composite_key = format!("{}:::{}", time_key, hash_key);
+        // println!("Composite key: {}", composite_key);
+
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Add the message to the inbox
+        let cf_inbox = self
+            .db
+            .cf_handle(&inbox_name)
+            .expect("Failed to get cf handle for inbox");
+        batch.put_cf(cf_inbox, &composite_key, &hash_key);
+
+        // Insert the message
+        let _ = self.insert_message_to_all(&message.clone())?;
 
         // If this message has a parent, add this message as a child of the parent
         if let Some(parent_key) = parent_key {

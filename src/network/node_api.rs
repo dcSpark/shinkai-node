@@ -949,7 +949,6 @@ async fn get_all_subidentities_handler(
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
-    eprintln!("rejection: {:?}", err);
     if let Some(api_error) = err.find::<APIError>() {
         let json = warp::reply::json(api_error);
         return Ok(warp::reply::with_status(
