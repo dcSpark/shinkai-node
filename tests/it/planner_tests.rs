@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_ai_news_summary_pddl() {
-        init_tracing(); 
+        init_default_tracing(); 
         let res = parse_domain(DOMAIN_PDDL);
         match res {
             Ok((_, domain)) => {
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_execute_actions() {
-        init_tracing(); 
+        init_default_tracing(); 
         let res = parse_domain(DOMAIN_PDDL);
         let mut state = SharedState::default();
         match res {

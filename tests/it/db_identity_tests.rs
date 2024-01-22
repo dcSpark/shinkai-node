@@ -39,7 +39,7 @@ async fn create_local_node_profile(
 
 #[test]
 fn test_generate_and_use_registration_code_for_specific_profile() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (_, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -86,7 +86,7 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
 
 #[test]
 fn test_generate_and_use_registration_code_for_device() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -167,7 +167,7 @@ fn test_generate_and_use_registration_code_for_device() {
 
 #[test]
 fn test_generate_and_use_registration_code_for_device_with_main_profile() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -244,7 +244,7 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
 
 #[test]
 fn test_generate_and_use_registration_code_no_associated_profile() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -296,7 +296,7 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 
 #[test]
 fn test_new_load_all_sub_identities() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -366,7 +366,7 @@ fn test_new_load_all_sub_identities() {
 
 #[test]
 fn test_update_local_node_keys() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -411,7 +411,7 @@ fn test_update_local_node_keys() {
 
 #[test]
 fn test_new_insert_profile() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -472,7 +472,7 @@ fn test_new_insert_profile() {
 
 #[test]
 fn test_remove_profile() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);

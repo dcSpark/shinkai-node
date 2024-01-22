@@ -21,7 +21,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_has_capability() {
-        init_tracing(); 
+        init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
 
@@ -62,7 +62,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_gpt_4_vision_preview_capabilities() {
-        init_tracing(); 
+        init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
 
@@ -99,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fake_gpt_model_capabilities() {
-        init_tracing(); 
+        init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
 

@@ -150,7 +150,7 @@ fn setup() {
 
 #[tokio::test]
 async fn test_websocket() {
-    init_tracing();
+    init_default_tracing();
     // Setup
     setup();
     let job_id1 = "test_job".to_string();
@@ -452,7 +452,7 @@ async fn test_websocket() {
 // TODO(Nico): if you subscribe to smart_inbox you will receive messages of all the inboxes that you have access to
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
-    init_tracing();
+    init_default_tracing();
     // Setup
     setup();
 

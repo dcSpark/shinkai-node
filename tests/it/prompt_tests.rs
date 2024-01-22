@@ -45,7 +45,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_a() {
-        init_tracing(); 
+        init_default_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<Vec<String>> =
@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_b() {
-        init_tracing(); 
+        init_default_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![get_zeko_description() /* add more elements here */];
@@ -88,7 +88,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_simple_prompt() {
-        init_tracing(); 
+        init_default_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![

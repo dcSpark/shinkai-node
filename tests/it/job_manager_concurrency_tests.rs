@@ -72,7 +72,7 @@ fn generate_message_with_text(
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    init_tracing(); 
+    init_default_tracing(); 
     utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
@@ -176,7 +176,7 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequnetial_process_for_same_job_id() {
-    init_tracing(); 
+    init_default_tracing(); 
     super::utils::db_handlers::setup();
 
     let NUM_THREADS = 8;

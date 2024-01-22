@@ -30,7 +30,7 @@ use super::utils::node_test_local::local_registration_profile_node;
 
 #[test]
 fn node_retrying_test() {
-    init_tracing(); 
+    init_default_tracing(); 
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 

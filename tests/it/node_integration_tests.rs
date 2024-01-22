@@ -42,7 +42,7 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
     let rt = Runtime::new().unwrap();
 

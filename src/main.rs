@@ -50,7 +50,7 @@ mod utils;
 mod vector_fs;
 
 fn main() {
-    init_tracing();
+    init_default_tracing();
 
     let main_db: &str = "main_db";
     let vector_fs_db: &str = "vector_fs_db";

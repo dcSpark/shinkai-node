@@ -83,7 +83,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
 #[test]
 #[ignore]
 fn planner_integration_test() {
-    init_tracing(); 
+    init_default_tracing(); 
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

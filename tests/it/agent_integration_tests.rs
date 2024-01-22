@@ -40,7 +40,7 @@ fn setup() {
 
 #[test]
 fn node_agent_registration() {
-    init_tracing();
+    init_default_tracing();
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();

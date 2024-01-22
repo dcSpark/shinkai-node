@@ -99,7 +99,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn test_payment_manager() {
-        init_tracing(); 
+        init_default_tracing(); 
         let sepolia_rpc = "https://ethereum-sepolia.publicnode.com";
         let execute_transaction_evm: fn(
             CryptoWallet,

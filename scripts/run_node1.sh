@@ -16,6 +16,7 @@ export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
+# export TELEMETRY_ENDPOINT="https://apm-node-b1.shinkai.com/api/default/v1/traces"
 
 export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"
 export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com"
