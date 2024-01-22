@@ -974,7 +974,6 @@ impl Node {
             }
         };
 
-        eprintln!("api_get_all_inboxes_for_profile> msg: {:?}", msg);
         let profile_requested: String = msg.get_message_content()?;
 
         // Check that the message is coming from someone with the right permissions to do this action

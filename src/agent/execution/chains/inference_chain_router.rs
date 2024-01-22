@@ -11,6 +11,7 @@ use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
 use super::cron_execution_chain::CronExecutionChainResponse;
@@ -28,6 +29,7 @@ impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
     /// Returns the final String result from the inferencing, and a new execution context.
+    #[instrument(skip(generator, db))]
     pub async fn inference_chain_router(
         db: Arc<Mutex<ShinkaiDB>>,
         agent_found: Option<SerializedAgent>,
@@ -76,6 +78,7 @@ impl JobManager {
     // TODO: Delete this
     // TODO: Merge this with the above function. We are not doing that right now bc we need to decide how to select Chains.
     // Could it be based on the first message of the Job?
+    #[instrument(skip(db))]
     pub async fn alt_inference_chain_router(
         db: Arc<Mutex<ShinkaiDB>>,
         agent_found: Option<SerializedAgent>,
@@ -132,6 +135,7 @@ impl JobManager {
         Ok((inference_response_content, new_execution_context))
     }
 
+    #[instrument(skip(db, chosen_chain))]
     pub async fn cron_inference_chain_router_summary(
         db: Arc<Mutex<ShinkaiDB>>,
         agent_found: Option<SerializedAgent>,

@@ -1,9 +1,10 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
+use tracing::instrument;
 
 impl ShinkaiDB {
-    fn fetch_message_and_hash(
+    pub fn fetch_message_and_hash(
         &self,
         messages_cf: &rocksdb::ColumnFamily,
         hash_key: &str,
@@ -102,6 +103,7 @@ impl ShinkaiDB {
     Get the last messages from an inbox
     Note: This code is messy because the messages could be in a tree, sequential or a mix of both
      */
+    #[instrument]
     pub fn get_last_messages_from_inbox(
         &self,
         inbox_name: String,
