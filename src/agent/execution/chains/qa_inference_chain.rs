@@ -1,4 +1,3 @@
-use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
 use crate::agent::file_parsing::ParsingHelper;
@@ -13,11 +12,13 @@ use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 impl JobManager {
     /// An inference chain for question-answer job tasks which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
+    #[instrument(skip(generator, db))]
     pub async fn start_qa_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
         full_job: Job,

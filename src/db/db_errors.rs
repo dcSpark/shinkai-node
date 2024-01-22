@@ -177,6 +177,12 @@ impl From<ToolError> for ShinkaiDBError {
     }
 }
 
+impl From<chrono::ParseError> for ShinkaiDBError {
+    fn from(error: chrono::ParseError) -> Self {
+        ShinkaiDBError::SomeError(error.to_string())
+    }
+}
+
 impl From<VRError> for ShinkaiDBError {
     fn from(err: VRError) -> ShinkaiDBError {
         ShinkaiDBError::VRError(err)

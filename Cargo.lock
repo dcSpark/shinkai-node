@@ -4555,6 +4555,7 @@ dependencies = [
  "tiny-bip39",
  "tokio",
  "tokio-tungstenite 0.15.0",
+ "tracing",
  "urlencoding",
  "uuid",
  "warp",

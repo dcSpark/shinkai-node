@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_node::agent::execution::job_prompts::SubPromptType::{Assistant, User};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
+use tokio::time::{sleep, Duration};
 
 use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -748,5 +749,86 @@ mod tests {
             ),
             "User message 4 Agent response 4".to_string()
         );
+    }
+
+    #[tokio::test]
+    async fn test_job_inbox_tree_structure_with_invalid_date() {
+        init_tracing(); 
+        setup();
+        let job_id = "job_test".to_string();
+        let agent_id = "agent_test".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create a new job
+        create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
+
+        let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
+
+        // Create the messages
+        let mut messages = Vec::new();
+        for i in [1, 3, 2].iter() {
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                job_id.clone(),
+                format!("Hello World {}", i),
+                "".to_string(),
+                placeholder_signature_sk.clone(),
+                "@@node1.shinkai".to_string(),
+                "@@node1.shinkai".to_string(),
+            )
+            .unwrap();
+            messages.push(shinkai_message);
+
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        /*
+        The tree that we are creating looks like:
+            1
+            ├── 2
+                └── 3 (older date than 2. it should fail)
+         */
+
+        // Add the messages to the job in a specific order to simulate an invalid date scenario
+        for i in [0, 2, 1].iter() {
+            let parent_hash = if *i > 0 { Some(messages[*i - 1].calculate_message_hash()) } else { None };
+            let result = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &messages[*i], None).await;
+
+            // If we are at the third iteration (i.e., adding the third message), check that the result is an error
+            if *i == 1 {
+                assert!(result.is_err());
+                continue;
+            }
+        }
+
+        // Check if the job inbox is not empty after adding a message
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
+
+        // Get the inbox name
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+        let inbox_name_value = match inbox_name {
+            InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+        };
+
+        // Get the messages from the job inbox
+        let last_messages_inbox = shinkai_db
+            .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
+            .unwrap();
+
+        // Check the content of the messages
+        assert_eq!(last_messages_inbox.len(), 2);
+
+        // Check the content of the first message array
+        assert_eq!(last_messages_inbox[0].len(), 1);
+        let message_content_1 = last_messages_inbox[0][0].clone().get_message_content().unwrap();
+        let job_message_1: JobMessage = serde_json::from_str(&message_content_1).unwrap();
+        assert_eq!(job_message_1.content, "Hello World 1".to_string());
+
+        // Check the content of the second message array
+        assert_eq!(last_messages_inbox[1].len(), 1);
+        let message_content_2 = last_messages_inbox[1][0].clone().get_message_content().unwrap();
+        let job_message_2: JobMessage = serde_json::from_str(&message_content_2).unwrap();
+        assert_eq!(job_message_2.content, "Hello World 2".to_string());
     }
 }
