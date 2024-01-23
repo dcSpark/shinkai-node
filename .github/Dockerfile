@@ -1,6 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
-RUN apt-get update && apt-get install -y libclang-dev cmake 
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev
 
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -16,7 +16,7 @@ RUN source $NVM_DIR/nvm.sh \
 
 ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/$NODE_VERSION/bin:$PATH
-RUN node -v 
+RUN node -v
 
 # Create a new directory for your app
 WORKDIR /app
@@ -27,7 +27,7 @@ COPY . .
 
 # Build the dependencies (cached)
 
-RUN cargo clean 
+RUN cargo clean
 RUN rustup component add rustfmt
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build
 
