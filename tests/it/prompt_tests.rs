@@ -5,7 +5,7 @@ mod tests {
     use super::*;
     use reqwest::Client;
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::agent::execution::job_prompts::Prompt;
     use shinkai_node::agent::providers::LLMProvider;
     use shinkai_node::agent::{

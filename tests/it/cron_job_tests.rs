@@ -10,7 +10,7 @@ mod tests {
         },
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair,
-            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_tracing,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_default_tracing,
         },
     };
     use shinkai_node::{

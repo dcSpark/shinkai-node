@@ -18,7 +18,7 @@ mod tests {
             agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             shinkai_name::ShinkaiName,
         },
-        shinkai_utils::{utils::hash_string, shinkai_logging::init_tracing},
+        shinkai_utils::{utils::hash_string, shinkai_logging::init_default_tracing},
     };
     use shinkai_node::agent::{agent::Agent, error::AgentError, execution::job_prompts::JobPromptGenerator};
 

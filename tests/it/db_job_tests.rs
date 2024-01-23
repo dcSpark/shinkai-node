@@ -68,7 +68,7 @@ mod tests {
         shinkai_message::shinkai_message_schemas::JobMessage,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope,
-            shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair, shinkai_logging::init_tracing,
+            shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair, shinkai_logging::init_default_tracing,
         },
         shinkai_utils::{signatures::clone_signature_secret_key, utils::hash_string},
     };

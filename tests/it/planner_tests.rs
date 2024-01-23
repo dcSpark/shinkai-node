@@ -6,7 +6,7 @@ mod tests {
     use pddl_ish_parser::parser::action::Action;
     use pddl_ish_parser::parser::parameter::Parameter;
     use pddl_ish_parser::parser::{domain_parser::parse_domain, problem_parser::parse_problem};
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use std::{io::Cursor, path::PathBuf};
     use std::{pin::Pin, sync::Arc};
     use tokio::sync::Mutex;

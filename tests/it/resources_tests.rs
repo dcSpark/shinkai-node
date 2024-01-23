@@ -1,5 +1,5 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::data_tags::DataTag;

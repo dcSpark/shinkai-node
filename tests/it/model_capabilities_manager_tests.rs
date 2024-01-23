@@ -2,7 +2,7 @@
 mod tests {
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::db::ShinkaiDB;
     use shinkai_node::managers::model_capabilities_manager::{
         ModelCapability, ModelCost, ModelPrivacy, ModelCapabilitiesManager,

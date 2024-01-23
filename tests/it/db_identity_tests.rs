@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{Ident
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, unsafe_deterministic_signature_keypair,
 };

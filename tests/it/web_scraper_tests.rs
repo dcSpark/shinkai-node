@@ -7,7 +7,7 @@ mod tests {
     use mockito::Server;
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
-        shinkai_utils::{signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_tracing},
+        shinkai_utils::{signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_default_tracing},
     };
     use shinkai_node::{
         agent::job_manager::JobManager,

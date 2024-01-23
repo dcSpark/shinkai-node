@@ -4,7 +4,7 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use ethers::types::U256;
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
