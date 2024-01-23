@@ -85,6 +85,7 @@ fn init_tracer(telemetry_endpoint: &str) -> Tracer {
             }
             Err(e) => {
                 eprintln!("Failed to install OpenTelemetry tracer: {}", e);
+                panic!("Failed to install OpenTelemetry tracer");
             }
         }
 }
