@@ -154,8 +154,10 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
 
             span.in_scope(|| {
                 let telemetry_option = TELEMETRY.lock().unwrap();
+                eprintln!("span in scope: {}", message_with_header);
                 match telemetry_option.as_ref() {
                     Some(telemetry) => {
+                        eprintln!("span in scope (inside Some): {}", message_with_header);
                         telemetry.log(option, level, &message_with_header);
                     }
                     None => match level {

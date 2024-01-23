@@ -42,7 +42,7 @@ pub fn init_telemetry_tracing(telemetry_endpoint: &str) {
     let tracer = init_tracer(telemetry_endpoint);
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer.clone());
     let subscriber = Registry::default().with(telemetry);
-
+    
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set global default subscriber");
 
     // Set the OpenTelemetryLogger as the ShinkaiTelemetry implementation
@@ -61,14 +61,12 @@ fn resource() -> Resource {
 }
 
 fn init_tracer(telemetry_endpoint: &str) -> Tracer {
-    let auth_header = format!("Basic YXBtQHNoaW5rYWkuY29tOjBjSWpCWWVHdGFyTHdaRHE");
+    let mut headers = HashMap::new();
+    let auth_header = format!("Basic cmlub3JAZGNzcGFyay5pbzpXNkg5QTIwaDIyVFFidm1u");
+    headers.insert("Authorization".to_string(), auth_header);
+    headers.insert("stream-name".to_string(), "default".to_string());
 
-    let mut map = tonic::metadata::MetadataMap::with_capacity(3);
-    map.insert("authorization", auth_header.parse().unwrap());
-    map.insert("organization", "default".parse().unwrap());
-    map.insert("stream-name", "default".parse().unwrap());
-
-    opentelemetry_otlp::new_pipeline()
+    let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_trace_config(
             Config::default()
@@ -78,11 +76,24 @@ fn init_tracer(telemetry_endpoint: &str) -> Tracer {
         .with_batch_config(BatchConfig::default())
         .with_exporter(
             opentelemetry_otlp::new_exporter()
-                .tonic() // Use gRPC instead of HTTP
+                .http()
                 .with_endpoint(telemetry_endpoint)
-                .with_metadata(map)
-                .with_timeout(Duration::from_secs(3)),
+                .with_headers(headers)
+                .with_timeout(Duration::from_secs(3))
+                // .with_tls_config(None), // Disable TLS
         )
-        .install_batch(runtime::Tokio)
-        .expect("Failed to install OpenTelemetry tracer.")
+        .install_batch(runtime::Tokio);
+
+        match tracer {
+            Ok(t) => {
+                eprintln!("Tracer initialized successfully.");
+                tracing::info!("Tracer initialized successfully.");
+                t
+            }
+            Err(e) => {
+                eprintln!("Failed to install OpenTelemetry tracer: {}", e);
+                tracing::error!("Failed to install OpenTelemetry tracer: {}", e);
+                panic!("Failed to install OpenTelemetry tracer: {}", e);
+            }
+        }
 }
