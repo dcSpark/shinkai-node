@@ -16,9 +16,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiTelemetry
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tonic::metadata::MetadataMap;
-use tracing::Level;
-use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
@@ -48,8 +45,6 @@ pub fn init_telemetry_tracing(telemetry_endpoint: &str) {
     // Set the OpenTelemetryLogger as the ShinkaiTelemetry implementation
     let logger = Arc::new(OpenTelemetryLogger { tracer });
     shinkai_message_primitives::shinkai_utils::shinkai_logging::set_telemetry(logger);
-
-    println!("Telemetry data sent to the OpenTelemetry backend successfully.");
 }
 
 fn resource() -> Resource {
@@ -62,7 +57,7 @@ fn resource() -> Resource {
 
 fn init_tracer(telemetry_endpoint: &str) -> Tracer {
     let mut headers = HashMap::new();
-    let auth_header = format!("Basic cmlub3JAZGNzcGFyay5pbzpXNkg5QTIwaDIyVFFidm1u");
+    let auth_header = std::env::var("TELEMETRY_AUTH_HEADER").unwrap_or_else(|_| panic!("TELEMETRY_AUTH_HEADER not set"));
     headers.insert("Authorization".to_string(), auth_header);
     headers.insert("stream-name".to_string(), "default".to_string());
 
@@ -86,14 +81,10 @@ fn init_tracer(telemetry_endpoint: &str) -> Tracer {
 
         match tracer {
             Ok(t) => {
-                eprintln!("Tracer initialized successfully.");
-                tracing::info!("Tracer initialized successfully.");
                 t
             }
             Err(e) => {
                 eprintln!("Failed to install OpenTelemetry tracer: {}", e);
-                tracing::error!("Failed to install OpenTelemetry tracer: {}", e);
-                panic!("Failed to install OpenTelemetry tracer: {}", e);
             }
         }
 }
