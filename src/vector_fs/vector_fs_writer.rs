@@ -1,7 +1,7 @@
 use super::vector_fs_types::{DistributionOrigin, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db::ProfileBoundWriteBatch;
-use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
+use crate::vector_fs::vector_fs_permissions::{ReadPermission, WhitelistPermission, WritePermission};
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
