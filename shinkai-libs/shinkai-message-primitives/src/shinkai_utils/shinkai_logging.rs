@@ -172,11 +172,12 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
 pub fn init_default_tracing() {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .finish();
+        INIT.call_once(|| {
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(Level::DEBUG)
+                .finish();
 
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
     }
 }
