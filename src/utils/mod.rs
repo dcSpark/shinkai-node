@@ -6,3 +6,5 @@ pub mod logging_helpers;
 pub mod printer;
 pub mod qr_code_setup;
 pub mod update_global_identity;
+#[cfg(feature = "telemetry")]
+pub mod open_telemetry;

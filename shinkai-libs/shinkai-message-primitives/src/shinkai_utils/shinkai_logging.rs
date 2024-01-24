@@ -1,11 +1,25 @@
 use chrono::Local;
 use colored::*;
-use tracing::{span, Level, error, info, debug, instrument};
+use std::sync::{Arc, Mutex, Once};
+
+// Conditional compilation: Only include tracing imports for non-WASM targets
+#[cfg(not(target_arch = "wasm32"))]
+use tracing::{debug, error, info, span, Level, Span};
+
+#[cfg(not(target_arch = "wasm32"))]
 use tracing_subscriber::FmtSubscriber;
 
-// Note(Nico): Added this to avoid issues when running tests
-use std::sync::Once;
 static INIT: Once = Once::new();
+static TELEMETRY: Mutex<Option<Arc<dyn ShinkaiTelemetry + Send + Sync>>> = Mutex::new(None);
+
+pub fn set_telemetry(telemetry: Arc<dyn ShinkaiTelemetry + Send + Sync>) {
+    let mut telemetry_option = TELEMETRY.lock().unwrap();
+    *telemetry_option = Some(telemetry);
+}
+
+pub trait ShinkaiTelemetry {
+    fn log(&self, option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &str);
+}
 
 #[derive(PartialEq, Debug)]
 pub enum ShinkaiLogOption {
@@ -32,6 +46,8 @@ pub enum ShinkaiLogLevel {
 }
 
 impl ShinkaiLogLevel {
+    // Conditional compilation: Only include function for non-WASM targets
+    #[cfg(not(target_arch = "wasm32"))]
     fn to_log_level(&self) -> Level {
         match self {
             ShinkaiLogLevel::Error => Level::ERROR,
@@ -107,7 +123,7 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
     let active_options = active_log_options();
     if active_options.contains(&option) {
         let is_simple_log = std::env::var("LOG_SIMPLE").is_ok();
-        let time = Local::now().format("%Y-%m-%d %H:%M:%S"); // Simplified timestamp
+        let time = Local::now().format("%Y-%m-%d %H:%M:%S");
 
         let option_str = format!("{:?}", option);
         let level_str = match level {
@@ -127,28 +143,41 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
             format!("{} - {} - {} - {}", header, level_str, option_str, message)
         };
 
-        let span = match level {
-            ShinkaiLogLevel::Error => span!(Level::ERROR, "{}", option_str),
-            ShinkaiLogLevel::Info => span!(Level::INFO, "{}", option_str),
-            ShinkaiLogLevel::Debug => span!(Level::DEBUG, "{}", option_str),
-        };
-        let _enter = span.enter();
+        // Conditional compilation: Only include tracing-related code for non-WASM targets
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let span = match level {
+                ShinkaiLogLevel::Error => span!(Level::ERROR, "{}", option_str),
+                ShinkaiLogLevel::Info => span!(Level::INFO, "{}", option_str),
+                ShinkaiLogLevel::Debug => span!(Level::DEBUG, "{}", option_str),
+            };
 
-        match level {
-            ShinkaiLogLevel::Error => error!("{}", message_with_header),
-            ShinkaiLogLevel::Info => info!("{}", message_with_header),
-            ShinkaiLogLevel::Debug => debug!("{}", message_with_header),
+            span.in_scope(|| {
+                let telemetry_option = TELEMETRY.lock().unwrap();
+                match telemetry_option.as_ref() {
+                    Some(telemetry) => {
+                        telemetry.log(option, level, &message_with_header);
+                    }
+                    None => match level {
+                        ShinkaiLogLevel::Error => error!("{}", message_with_header),
+                        ShinkaiLogLevel::Info => info!("{}", message_with_header),
+                        ShinkaiLogLevel::Debug => debug!("{}", message_with_header),
+                    },
+                }
+            });
         }
     }
 }
 
-pub fn init_tracing() {
-    INIT.call_once(|| {
-        let subscriber = FmtSubscriber::builder()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .finish();
+pub fn init_default_tracing() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        INIT.call_once(|| {
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(Level::DEBUG)
+                .finish();
 
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
-    });
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+    }
 }

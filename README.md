@@ -1,5 +1,20 @@
 # Shinkai Node
 
+## Build
+
+### Build Shinkai Rust Node
+
+```
+cargo build
+```
+Note: You must run this command from the root directory of this repo and make sure that you have set the required ENV variables.
+
+### Add Telemetry support
+
+```
+cargo build --features telemetry
+```
+
 ## Dependencies
 
 ### GCC Compiler Setup

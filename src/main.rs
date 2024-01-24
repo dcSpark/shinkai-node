@@ -19,7 +19,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    init_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
+    self, init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
@@ -34,6 +34,7 @@ use std::{env, fs};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use utils::environment::NodeEnvironment;
+use utils::open_telemetry::init_telemetry_tracing;
 
 mod agent;
 mod cron_tasks;
@@ -49,8 +50,19 @@ mod tools;
 mod utils;
 mod vector_fs;
 
-fn main() {
-    init_tracing();
+#[tokio::main]
+async fn main() {
+    // Check if TELEMETRY_ENDPOINT is defined
+    if let Ok(telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
+        // If TELEMETRY_ENDPOINT is defined, initialize telemetry tracing
+        #[cfg(feature = "telemetry")]
+        {
+            init_telemetry_tracing(&telemetry_endpoint);
+        }
+    } else {
+        // If TELEMETRY_ENDPOINT is not defined, initialize default tracing
+        init_default_tracing();
+    }
 
     let main_db: &str = "main_db";
     let vector_fs_db: &str = "vector_fs_db";
@@ -78,7 +90,7 @@ fn main() {
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string()));
 
     // Initialization, creating Tokio runtime and fetching needed startup data
-    let mut _rt = initialize_runtime();
+    // let mut _rt = initialize_runtime();
     let initial_agents = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
@@ -140,70 +152,79 @@ fn main() {
     // Now that all core init data acquired, start running the node itself
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            Node::new(
-                global_identity_name.clone().to_string(),
-                node_env.listen_address,
-                clone_signature_secret_key(&node_keys.identity_secret_key),
-                node_keys.encryption_secret_key.clone(),
-                node_env.ping_interval,
-                node_commands_receiver,
-                main_db_path.clone(),
-                node_env.first_device_needs_registration_code,
-                initial_agents,
-                node_env.js_toolkit_executor_remote.clone(),
-                vector_fs_db_path.clone(),
-                Some(embedding_generator),
-                Some(unstructured_api),
-            )
-            .await
-        }),
+        Node::new(
+            global_identity_name.clone().to_string(),
+            node_env.listen_address,
+            clone_signature_secret_key(&node_keys.identity_secret_key),
+            node_keys.encryption_secret_key.clone(),
+            node_env.ping_interval,
+            node_commands_receiver,
+            main_db_path.clone(),
+            node_env.first_device_needs_registration_code,
+            initial_agents,
+            node_env.js_toolkit_executor_remote.clone(),
+            vector_fs_db_path.clone(),
+            Some(embedding_generator),
+            Some(unstructured_api),
+        )
+        .await,
     ));
 
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(3)
-        .enable_all()
-        .build()
-        .unwrap();
 
     // Run the API server and node in separate tasks
-    rt.block_on(async {
-        // Get identity_manager before starting the node
-        let identity_manager = {
-            let node = start_node.lock().await;
-            node.identity_manager.clone()
-        };
+    // Get identity_manager before starting the node
+    let identity_manager = {
+        let node = start_node.lock().await;
+        node.identity_manager.clone()
+    };
 
-        let shinkai_db = {
-            let node = start_node.lock().await;
-            node.db.clone()
-        };
+    let shinkai_db = {
+        let node = start_node.lock().await;
+        node.db.clone()
+    };
 
-        // Node task
-        let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
+    // Node task
+    let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
 
-        // Check if the node is ready
-        if !node.lock().await.is_node_ready().await {
-            println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-            let _ = generate_qr_codes(&node_commands_sender, &node_env.clone(), &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
-        } else {
-            print_node_info(&node_env, &encryption_public_key_string, &identity_public_key_string, &main_db_path, &vector_fs_db_path);
-        }
+    // Check if the node is ready
+    if !node.lock().await.is_node_ready().await {
+        println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
+        let _ = generate_qr_codes(
+            &node_commands_sender,
+            &node_env.clone(),
+            &node_keys,
+            global_identity_name.as_str(),
+            identity_public_key_string.as_str(),
+        )
+        .await;
+    } else {
+        print_node_info(
+            &node_env,
+            &encryption_public_key_string,
+            &identity_public_key_string,
+            &main_db_path,
+            &vector_fs_db_path,
+        );
+    }
 
-        // Setup API Server task
-        let api_listen_address = node_env.clone().api_listen_address;
-        let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, api_listen_address, global_identity_name.clone().to_string()).await;
-        });
-
-        let ws_server = tokio::spawn(async move {
-            init_ws_server(&node_env, identity_manager, shinkai_db).await;
-        });
-
-        let _ = tokio::try_join!(api_server, node_task, ws_server);
+    // Setup API Server task
+    let api_listen_address = node_env.clone().api_listen_address;
+    let api_server = tokio::spawn(async move {
+        node_api::run_api(
+            node_commands_sender,
+            api_listen_address,
+            global_identity_name.clone().to_string(),
+        )
+        .await;
     });
+
+    let ws_server = tokio::spawn(async move {
+        init_ws_server(&node_env, identity_manager, shinkai_db).await;
+    });
+
+    let _ = tokio::try_join!(api_server, node_task, ws_server);
 }
 
 /// Initialized Tokio runtime
@@ -327,7 +348,13 @@ async fn init_ws_server(
 }
 
 /// Prints Useful Node information at startup
-pub fn print_node_info(node_env: &NodeEnvironment, encryption_pk: &str, signature_pk: &str, main_db_path: &str, vector_fs_db_path: &str) {
+pub fn print_node_info(
+    node_env: &NodeEnvironment,
+    encryption_pk: &str,
+    signature_pk: &str,
+    main_db_path: &str,
+    vector_fs_db_path: &str,
+) {
     println!("---------------------------------------------------------------");
     println!("Node API address: {}", node_env.api_listen_address);
     println!("Node TCP address: {}", node_env.listen_address);

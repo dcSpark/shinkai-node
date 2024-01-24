@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_message_primitives"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
@@ -11,8 +11,7 @@ serde_json = "1.0.105"
 chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
-rand_os = "0.2.2"
-rand = "0.8.4"
+rand = "0.8.5"
 chrono = "0.4"
 chrono-tz = "0.5"
 regex = "1"
@@ -25,8 +24,14 @@ hex = "=0.4.3"
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
-tracing = "0.1.40"
-tracing-subscriber = "0.2.0"
+
+[dependencies.tracing]
+version = "0.1.40"
+optional = true
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+optional = true
 
 [dependencies.serde]
 version = "1.0.188"
@@ -34,6 +39,10 @@ features = ["derive"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing = "0.1.40"
+tracing-subscriber = "0.3"
 
 [[test]]
 name = "shinkai_message_tests"

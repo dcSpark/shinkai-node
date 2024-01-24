@@ -1,5 +1,5 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::data_tags::DataTag;
@@ -65,7 +65,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 
 #[test]
 fn test_pdf_parsed_document_resource_vector_search() {
-    init_tracing(); 
+    init_default_tracing(); 
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let doc = get_shinkai_intro_doc(&generator, &vec![]);
@@ -103,7 +103,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
 
 #[test]
 fn test_pdf_resource_save_to_db() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -131,7 +131,7 @@ fn test_pdf_resource_save_to_db() {
 
 #[test]
 fn test_multi_resource_db_vector_search() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -232,7 +232,7 @@ fn test_multi_resource_db_vector_search() {
 
 #[test]
 fn test_db_syntactic_vector_search() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();
