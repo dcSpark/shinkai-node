@@ -40,7 +40,7 @@ impl Agent {
         allowed_message_senders: Vec<String>,
     ) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(50))
+            .timeout(std::time::Duration::from_secs(120))
             .build()
             .unwrap();
         Self {
