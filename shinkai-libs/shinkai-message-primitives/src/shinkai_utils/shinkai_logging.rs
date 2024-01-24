@@ -173,8 +173,15 @@ pub fn init_default_tracing() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         INIT.call_once(|| {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
+            let filter = match std::env::var("RUST_LOG") {
+                Ok(var) => tracing_subscriber::EnvFilter::new(var),
+                Err(_) => tracing_subscriber::EnvFilter::new("info"),
+            };
+
+            let subscriber = tracing_subscriber::fmt::Subscriber::builder()
+                .with_env_filter(filter)
+                .with_timer(tracing_subscriber::fmt::time::time())
+                .with_target(true) // disables printing of the target
                 .finish();
 
             let _ = tracing::subscriber::set_global_default(subscriber);

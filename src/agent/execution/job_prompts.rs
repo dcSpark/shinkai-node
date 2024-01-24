@@ -1110,9 +1110,16 @@ impl Prompt {
 
         if !user_content_added && first_user_content.is_some() {
             let remaining_tokens = limit - current_length;
-            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
-            if let Some(position) = first_user_content_position {
-                messages.insert(position, truncated_content.to_string());
+            if remaining_tokens >= 3 {
+                let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
+                if let Some(position) = first_user_content_position {
+                    if position < messages.len() {
+                        messages.insert(position, truncated_content.to_string());
+                    } else {
+                        // If the position is out of bounds, append the content at the end of the vector
+                        messages.push(truncated_content.to_string());
+                    }
+                }
             }
         } else if !user_content_added {
             shinkai_log(
