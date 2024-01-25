@@ -46,11 +46,7 @@ impl LLMProvider for ShinkaiBackend {
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
-            eprintln!("URL: {:?}", url);
-
             if let Some(key) = api_key {
-                eprintln!("Model Type: {:?}", self.model_type);
-
                 let messages_json = match self.model_type.as_str() {
                     "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                         eprintln!("openai type");
@@ -71,8 +67,7 @@ impl LLMProvider for ShinkaiBackend {
                     }
                     _ => return Err(AgentError::InvalidModelType("Unsupported model type".to_string())),
                 };
-
-                eprintln!("Messages JSON: {:?}", messages_json);
+                // eprintln!("Messages JSON: {:?}", messages_json);
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -98,12 +93,12 @@ impl LLMProvider for ShinkaiBackend {
                 let payload_string =
                     serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
 
-                eprintln!("Curl command:");
-                eprintln!("curl -X POST \\");
-                eprintln!("  -H 'Content-Type: application/json' \\");
-                eprintln!("  -H 'Authorization: Bearer {}' \\", key);
-                eprintln!("  -d '{}' \\", payload_string);
-                eprintln!("  '{}'", url);
+                // eprintln!("Curl command:");
+                // eprintln!("curl -X POST \\");
+                // eprintln!("  -H 'Content-Type: application/json' \\");
+                // eprintln!("  -H 'Authorization: Bearer {}' \\", key);
+                // eprintln!("  -d '{}' \\", payload_string);
+                // eprintln!("  '{}'", url);
 
                 let request = client
                     .post(url)
@@ -132,7 +127,7 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-                eprintln!("Call API Response Text: {:?}", response_text);
+                // eprintln!("Call API Response Text: {:?}", response_text);
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
