@@ -26,7 +26,7 @@ impl JobManager {
 
         // Fetch DB resources and add them to the list
         let db = db.lock().await;
-        for db_entry in &job_scope.database {
+        for db_entry in &job_scope.vec_fs {
             let resource = db.get_resource_by_header(&db_entry.resource_header, profile)?;
             resources.push(resource);
         }

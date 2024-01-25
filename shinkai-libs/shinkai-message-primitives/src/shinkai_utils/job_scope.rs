@@ -8,22 +8,22 @@ use shinkai_vector_resources::{
 use std::fmt;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
-/// Job's scope which includes both local entries (source/vector resource stored locally only in job)
-/// and DB entries (source/vector resource stored in the DB, accessible to all jobs)
+/// Job's scope which includes both Local entries (source/vector resource stored locally only in job)
+/// and VecFS entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
     pub local: Vec<LocalScopeEntry>,
-    pub database: Vec<DBScopeEntry>,
+    pub vec_fs: Vec<VectorFSScopeEntry>,
 }
 
 impl JobScope {
-    pub fn new(local: Vec<LocalScopeEntry>, database: Vec<DBScopeEntry>) -> Self {
-        Self { local, database }
+    pub fn new(local: Vec<LocalScopeEntry>, vec_fs: Vec<VectorFSScopeEntry>) -> Self {
+        Self { local, vec_fs }
     }
 
     pub fn new_default() -> Self {
         Self {
             local: Vec::new(),
-            database: Vec::new(),
+            vec_fs: Vec::new(),
         }
     }
 
@@ -58,24 +58,24 @@ impl fmt::Debug for JobScope {
             })
             .collect();
 
-        let db_ids: Vec<String> = self
-            .database
+        let vec_fs_ids: Vec<String> = self
+            .vec_fs
             .iter()
             .map(|entry| entry.resource_header.reference_string())
             .collect();
 
         f.debug_struct("JobScope")
             .field("local", &format_args!("{:?}", local_ids))
-            .field("database", &format_args!("{:?}", db_ids))
+            .field("vector_fs", &format_args!("{:?}", vec_fs_ids))
             .finish()
     }
 }
 
-/// Enum holding both Local and DB scope entries
+/// Enum holding both Local and VectorFS scope entries
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ScopeEntry {
     Local(LocalScopeEntry),
-    Database(DBScopeEntry),
+    VectorFS(VectorFSScopeEntry),
 }
 
 /// A Scope Entry for a local file/vector resource that only lives in the
@@ -86,9 +86,9 @@ pub struct LocalScopeEntry {
     pub source: SourceFile,
 }
 
-/// A Scope Entry for a file/vector resource that is saved in the DB
+/// A Scope Entry for a file/vector resource that is saved in the VectorFS
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct DBScopeEntry {
+pub struct VectorFSScopeEntry {
     pub resource_header: VRHeader,
     pub source: VRSource,
 }

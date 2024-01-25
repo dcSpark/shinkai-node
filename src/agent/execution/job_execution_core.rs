@@ -7,7 +7,7 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Mode
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -414,14 +414,14 @@ impl JobManager {
                                     );
                                 }
                             }
-                            ScopeEntry::Database(db_entry) => {
-                                if !full_job.scope.database.contains(&db_entry) {
-                                    full_job.scope.database.push(db_entry);
+                            ScopeEntry::VectorFS(fs_entry) => {
+                                if !full_job.scope.vec_fs.contains(&fs_entry) {
+                                    full_job.scope.vec_fs.push(fs_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
                                         ShinkaiLogLevel::Error,
-                                        "Duplicate DBScopeEntry detected",
+                                        "Duplicate VectorFSScopeEntry detected",
                                     );
                                 }
                             }
@@ -459,7 +459,7 @@ impl JobManager {
     }
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
-    /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
+    /// If save_to_db_directly == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
@@ -508,7 +508,7 @@ impl JobManager {
             )
             .await?;
 
-            // Now create Local/DBScopeEntry depending on setting
+            // Now create Local/VectorFSScopeEntry depending on setting
             let text_chunking_strategy = TextChunkingStrategy::V1;
             if save_to_db_directly {
                 let resource_header = resource.as_trait_object().generate_resource_header();
@@ -516,11 +516,11 @@ impl JobManager {
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 
-                let db_scope_entry = DBScopeEntry {
+                let fs_scope_entry = VectorFSScopeEntry {
                     resource_header: resource_header,
                     source: VRSource::from_file(&filename, None, text_chunking_strategy)?,
                 };
-                files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
+                files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
             } else {
                 let local_scope_entry = LocalScopeEntry {
                     resource: resource,
