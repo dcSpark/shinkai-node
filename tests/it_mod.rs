@@ -23,7 +23,6 @@ mod it {
     mod planner_integration_tests;
     mod planner_tests;
     mod prompt_tests;
-    mod resources_tests;
     mod toolkit_tests;
     mod utils;
     mod vec_fs_tests;

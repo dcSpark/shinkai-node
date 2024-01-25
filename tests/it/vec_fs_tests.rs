@@ -1,14 +1,20 @@
-use super::resources_tests::get_shinkai_intro_doc_async;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_node::agent::file_parsing::ParsingHelper;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_node::vector_fs::vector_fs_reader::VFSReader;
 use shinkai_node::vector_fs::vector_fs_types::DistributionOrigin;
 use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
+use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::source::{SourceFile, SourceFileMap, SourceFileType, SourceReference};
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
@@ -16,6 +22,7 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use tokio::runtime::Runtime;
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -46,6 +53,45 @@ fn setup_default_vec_fs() -> VectorFS {
         node_name(),
     )
     .unwrap()
+}
+
+pub async fn get_shinkai_intro_doc_async(
+    generator: &RemoteEmbeddingGenerator,
+    data_tags: &Vec<DataTag>,
+) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
+    // Read the pdf from file into a buffer
+    let source_file_name = "shinkai_intro.pdf";
+    let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
+
+    let desc = "An initial introduction to the Shinkai Network.";
+    let resource = ParsingHelper::parse_file_into_resource(
+        buffer.clone(),
+        generator,
+        "shinkai_intro.pdf".to_string(),
+        Some(desc.to_string()),
+        data_tags,
+        500,
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
+    let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
+    let mut map = HashMap::new();
+    map.insert(VRPath::root(), source_file);
+
+    Ok((resource.as_document_resource_cloned().unwrap(), SourceFileMap::new(map)))
+}
+
+pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
+    // Create a new Tokio runtime
+    let rt = Runtime::new().unwrap();
+
+    // Use block_on to run the async-based get_shinkai_intro_doc_async function
+    let (resource, _) = rt.block_on(get_shinkai_intro_doc_async(generator, data_tags)).unwrap();
+
+    resource
 }
 
 #[tokio::test]

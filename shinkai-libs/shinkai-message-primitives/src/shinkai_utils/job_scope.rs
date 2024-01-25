@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
 use shinkai_vector_resources::{
     source::{SourceFile, VRSource},
@@ -90,5 +91,5 @@ pub struct LocalScopeEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VectorFSScopeEntry {
     pub resource_header: VRHeader,
-    pub source: VRSource,
+    pub vector_fs_path: VRPath,
 }
