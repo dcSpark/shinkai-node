@@ -86,8 +86,4 @@ pub trait LLMProvider {
 
         Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))
     }
-
-    fn get_max_tokens(s: &str) -> usize;
-    fn get_max_output_tokens(s: &str) -> usize;
-    fn normalize_model(s: &str) -> String;
 }

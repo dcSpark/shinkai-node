@@ -151,22 +151,4 @@ impl LLMProvider for Ollama {
             Err(AgentError::UrlNotSet)
         }
     }
-
-    fn normalize_model(s: &str) -> String {
-        s.to_string()
-    }
-
-    fn get_max_tokens(s: &str) -> usize {
-        if s.to_string().starts_with("Open-Orca/Mistral-7B-OpenOrca") {
-            8000
-        } else if s.to_string().starts_with("ollama:mixtral") {
-            32000
-        } else {
-            4096
-        }
-    }
-
-    fn get_max_output_tokens(s: &str) -> usize {
-        Self::get_max_tokens(s)
-    }
 }

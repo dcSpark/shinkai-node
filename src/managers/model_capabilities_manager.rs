@@ -135,8 +135,8 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
-                "gpt-vision" | "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis],
+                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => vec![ModelCapability::TextInference],
+                "gpt-vision" | "gpt-4-vision-preview" | "PREMIUM_VISION_INFERENCE" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
@@ -189,8 +189,8 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => ModelCost::Expensive,
-                "gpt-vision" | "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
+                "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => ModelCost::GoodValue,
                 "dall-e" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -215,9 +215,9 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => ModelPrivacy::RemoteGreedy,
-                "gpt-vision" | "gpt-4-vision-preview" => ModelPrivacy::RemoteGreedy,
-                "dall-e" => ModelPrivacy::RemoteGreedy,
+                "PREMIUM_TEXT_INFERENCE"  => ModelPrivacy::RemoteGreedy,
+                "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
+                "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 _ => ModelPrivacy::Unknown,
             },
             AgentLLMInterface::Ollama(_) => ModelPrivacy::Local,
@@ -328,8 +328,10 @@ impl ModelCapabilitiesManager {
                 0
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type == "gpt" {
+                if shinkai_backend.model_type == "PREMIUM_TEXT_INFERENCE" || shinkai_backend.model_type == "PREMIUM_VISION_INFERENCE" {
                     128_000
+                } else if shinkai_backend.model_type == "STANDARD_TEXT_INFERENCE" {
+                    32_000
                 } else {
                     let normalized_model = Self::normalize_model(&model.clone());
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())

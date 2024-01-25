@@ -17,9 +17,9 @@ export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
-export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"
-export INITIAL_AGENT_URLS="https://backend-node-b1.shinkai.com,https://backend-node-b1.shinkai.com"
-export INITIAL_AGENT_MODELS="shinkai-backend:gpt-4-1106-preview,shinkai-backend:gpt-4-vision-preview"
+export INITIAL_AGENT_NAMES="premium_gpt,standard_mixtral,gpt_vision"
+export INITIAL_AGENT_URLS="https://dev-backend-hosting.shinkai.com,https://dev-backend-hosting.shinkai.com,https://dev-backend-hosting.shinkai.com"
+export INITIAL_AGENT_MODELS="shinkai-backend:PREMIUM_TEXT_INFERENCE,shinkai-backend:STANDARD_TEXT_INFERENCE,shinkai-backend:PREMIUM_VISION_INFERENCE"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

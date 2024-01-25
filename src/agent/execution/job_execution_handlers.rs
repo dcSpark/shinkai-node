@@ -267,6 +267,9 @@ impl JobManager {
                 AgentLLMInterface::OpenAI(_) => {
                     format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
                 }
+                AgentLLMInterface::ShinkaiBackend(_) => {
+                    format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
+                }
                 _ => base64::encode(&content),
             },
             None => base64::encode(&content),
