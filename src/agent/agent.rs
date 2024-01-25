@@ -107,7 +107,7 @@ impl Agent {
             }
         }?;
 
-        Ok(cleaned_response)
+        Ok(clean_inference_response_json(response))
     }
 }
 
@@ -129,7 +129,7 @@ impl Agent {
 
 /// Converts the values of the inference response json, into strings to work nicely with
 /// rest of the stack
-fn clean_inference_response_json(value: &JsonValue) -> JsonValue {
+fn clean_inference_response_json(value: JsonValue) -> JsonValue {
     match value {
         JsonValue::String(s) => JsonValue::String(s.clone()),
         JsonValue::Array(arr) => JsonValue::String(
