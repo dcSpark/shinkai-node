@@ -47,10 +47,13 @@ impl LLMProvider for ShinkaiBackend {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             eprintln!("URL: {:?}", url);
-            
+
             if let Some(key) = api_key {
+                eprintln!("Model Type: {:?}", self.model_type);
+
                 let messages_json = match self.model_type.as_str() {
-                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
+                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
+                        eprintln!("openai type");
                         let open_ai = OpenAI {
                             model_type: self.model_type.clone(),
                         };
@@ -66,39 +69,10 @@ impl LLMProvider for ShinkaiBackend {
                             }
                         }
                     }
-                    "STANDARD_TEXT_INFERENCE" => {
-                        let mut messages_string = prompt.generate_genericapi_messages(None)?;
-                        if !messages_string.ends_with(" ```") {
-                            messages_string.push_str(" ```json");
-                        }
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Info,
-                            format!("Messages JSON: {:?}", messages_string).as_str(),
-                        );
-                        // Convert messages_string to JSON format if necessary
-                        // Placeholder for actual conversion logic
-                        json!(messages_string)
-                    }
                     _ => return Err(AgentError::InvalidModelType("Unsupported model type".to_string())),
                 };
 
-                //         
-                //         let open_ai = OpenAI {
-                //             model_type: self.model_type.clone(),
-                //         };
-                //         let model = AgentLLMInterface::OpenAI(open_ai);
-                //         let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                //         // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                //         let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
-                //         let messages_json = match result.value {
-                //             PromptResultEnum::Value(v) => v,
-                //             _ => {
-                //                 return Err(AgentError::UnexpectedPromptResultVariant(
-                //                     "Expected Value variant in PromptResultEnum".to_string(),
-                //                 ))
-                //             }
-                //         };
+                eprintln!("Messages JSON: {:?}", messages_json);
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -108,7 +82,8 @@ impl LLMProvider for ShinkaiBackend {
                 });
 
                 // Openai doesn't support json_object response format for vision models. wut?
-                if !self.model_type.contains("vision") {
+                // Add json_object only for PREMIUM_TEXT_INFERENCE
+                if self.model_type == "PREMIUM_TEXT_INFERENCE" {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
@@ -119,6 +94,16 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
+
+                let payload_string =
+                    serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
+
+                eprintln!("Curl command:");
+                eprintln!("curl -X POST \\");
+                eprintln!("  -H 'Content-Type: application/json' \\");
+                eprintln!("  -H 'Authorization: Bearer {}' \\", key);
+                eprintln!("  -d '{}' \\", payload_string);
+                eprintln!("  '{}'", url);
 
                 let request = client
                     .post(url)
@@ -131,6 +116,7 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Request Details: {:?}", request).as_str(),
                 );
+                eprintln!("Request Details: {:?}", request);
 
                 let res = request.send().await?;
 
