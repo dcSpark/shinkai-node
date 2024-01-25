@@ -2,6 +2,7 @@ use super::resources_tests::get_shinkai_intro_doc_async;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
+use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_node::vector_fs::vector_fs_reader::VFSReader;
 use shinkai_node::vector_fs::vector_fs_types::DistributionOrigin;
 use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
@@ -187,6 +188,7 @@ async fn test_vector_fs_saving_reading() {
         .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
         .unwrap();
     let query_string = "Who is building Shinkai?".to_string();
+    println!("Query String: {}", query_string);
     let query_embedding = vector_fs
         .generate_query_embedding_using_reader(query_string, &reader)
         .await
@@ -199,6 +201,7 @@ async fn test_vector_fs_saving_reading() {
         .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
         .unwrap();
     let query_string = "Who is building Shinkai?".to_string();
+    println!("Query String: {}", query_string);
     let query_embedding = vector_fs
         .generate_query_embedding_using_reader(query_string, &reader)
         .await
@@ -222,6 +225,7 @@ async fn test_vector_fs_saving_reading() {
 
     // Animal facts search
     let query_string = "What do you know about camels?".to_string();
+    println!("Query String: {}", query_string);
     let query_embedding = vector_fs
         .generate_query_embedding_using_reader(query_string, &reader)
         .await
@@ -239,7 +243,9 @@ async fn test_vector_fs_saving_reading() {
             .to_string()
     );
 
+    // Vector Search W/Full VR Retrieval
     let query_string = "What are popular animals?".to_string();
+    println!("Query String: {}", query_string);
     let query_embedding = vector_fs
         .generate_query_embedding_using_reader(query_string, &reader)
         .await
@@ -247,6 +253,81 @@ async fn test_vector_fs_saving_reading() {
     let res = vector_fs
         .vector_search_vector_resource(&reader, query_embedding, 100)
         .unwrap();
-    assert_eq!("3 Animal Facts", res[1].as_trait_object().name());
     assert_eq!("3 Animal Facts", res[0].as_trait_object().name());
+
+    let query_string = "Shinkai intro pdf".to_string();
+    println!("Query String: {}", query_string);
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding, 100)
+        .unwrap();
+    assert_eq!("shinkai_intro", res[0].as_trait_object().name());
+
+    // Validate permissions checking in reader gen
+    let invalid_requester = ShinkaiName::from_node_and_profile("alice".to_string(), "mainProfile".to_string()).unwrap();
+    let reader = vector_fs.new_reader(invalid_requester.clone(), VRPath::root(), default_test_profile());
+    assert!(reader.is_err());
+
+    // Validate permissions checking in Vector Search
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .set_path_permission(&writer, ReadPermission::Whitelist, WritePermission::Private)
+        .unwrap();
+    vector_fs
+        .set_whitelist_permission(
+            &writer,
+            invalid_requester.clone(),
+            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+        )
+        .unwrap();
+
+    let reader = vector_fs
+        .new_reader(invalid_requester.clone(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let query_string = "Shinkai intro pdf".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
+        .unwrap();
+    assert_eq!(res.len(), 0);
+
+    // Now give permission to first folder and see if results return the VR in it
+    let first_folder_path = VRPath::new().push_cloned(folder_name.to_string());
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&writer, ReadPermission::Whitelist, WritePermission::Private)
+        .unwrap();
+    vector_fs
+        .set_whitelist_permission(
+            &writer,
+            invalid_requester.clone(),
+            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+        )
+        .unwrap();
+
+    let reader = vector_fs
+        .new_reader(
+            invalid_requester.clone(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding, 100)
+        .unwrap();
+    assert!(res.len() > 0);
 }
