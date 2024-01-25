@@ -81,7 +81,7 @@ impl Agent {
     /// meaning that they tell/force the LLM to always respond in JSON. We automatically
     /// parse the JSON object out of the response into a JsonValue, or error if no object is found.
     pub async fn inference(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
-        match &self.model {
+        let response = match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
                 openai
                     .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
@@ -105,7 +105,9 @@ impl Agent {
             AgentLLMInterface::LocalLLM(local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
-        }
+        }?;
+
+        Ok(clean_inference_response_json(response))
     }
 }
 
@@ -122,5 +124,30 @@ impl Agent {
             serialized_agent.storage_bucket_permissions,
             serialized_agent.allowed_message_senders,
         )
+    }
+}
+
+/// Converts the values of the inference response json, into strings to work nicely with
+/// rest of the stack
+fn clean_inference_response_json(value: JsonValue) -> JsonValue {
+    match value {
+        JsonValue::String(s) => JsonValue::String(s.clone()),
+        JsonValue::Array(arr) => JsonValue::String(
+            arr.iter()
+                .map(|v| match v {
+                    JsonValue::String(s) => format!("- {}", s),
+                    _ => format!("- {}", v.to_string()),
+                })
+                .collect::<Vec<String>>()
+                .join("\n"),
+        ),
+        JsonValue::Object(obj) => {
+            let mut res = Map::new();
+            for (k, v) in obj {
+                res.insert(k.clone(), clean_inference_response_json(v));
+            }
+            JsonValue::Object(res)
+        }
+        _ => JsonValue::String(value.to_string()),
     }
 }

@@ -43,7 +43,7 @@ impl JobManager {
             JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile, true).await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_prompt = if iteration_count < max_iterations {
+        let filled_prompt = if iteration_count < max_iterations && !full_job.scope.is_empty() {
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
                 ret_nodes,
@@ -65,7 +65,7 @@ impl JobManager {
         let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
-            println!("QA Chain Final Answer: {:?}", cleaned_answer);
+            // println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
         }
         // If iteration_count is > max_iterations and we still don't have an answer, return an error
@@ -88,7 +88,7 @@ impl JobManager {
             };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
-        if Some(new_search_text.clone()) == search_text {
+        if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt = JobPromptGenerator::retry_new_search_term_prompt(
                 new_search_text.clone(),
                 summary.clone().unwrap_or_default(),
