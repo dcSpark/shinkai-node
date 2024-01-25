@@ -3,10 +3,10 @@ use crate::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub struct ShinkaiName {
     pub full_name: String,
     pub node_name: String,
@@ -491,5 +491,37 @@ impl fmt::Display for ShinkaiName {
 impl AsRef<str> for ShinkaiName {
     fn as_ref(&self) -> &str {
         &self.full_name
+    }
+}
+
+impl Serialize for ShinkaiName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = self.full_name.clone();
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for ShinkaiName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        ShinkaiName::new(s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl PartialEq for ShinkaiName {
+    fn eq(&self, other: &Self) -> bool {
+        self.full_name.to_lowercase() == other.full_name.to_lowercase()
+            && self.node_name.to_lowercase() == other.node_name.to_lowercase()
+            && self.profile_name.as_ref().map(|s| s.to_lowercase())
+                == other.profile_name.as_ref().map(|s| s.to_lowercase())
+            && self.subidentity_type == other.subidentity_type
+            && self.subidentity_name.as_ref().map(|s| s.to_lowercase())
+                == other.subidentity_name.as_ref().map(|s| s.to_lowercase())
     }
 }
