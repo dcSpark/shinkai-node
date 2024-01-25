@@ -107,10 +107,6 @@ impl Agent {
             }
         }?;
 
-        println!("\n\nResponse: {}\n\n", response);
-
-        let cleaned_response = clean_inference_response_json(&response);
-        println!("\n\nCleaned response: {}\n\n", cleaned_response);
         Ok(cleaned_response)
     }
 }
