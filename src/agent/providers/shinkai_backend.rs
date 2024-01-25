@@ -185,32 +185,4 @@ impl LLMProvider for ShinkaiBackend {
             Err(AgentError::UrlNotSet)
         }
     }
-
-    /// Returns the maximum number of tokens supported based on
-    /// the provided model string
-    fn get_max_tokens(s: &str) -> usize {
-        // Custom added, since not supported by Tiktoken atm
-        if s == "gpt-4-1106-preview" {
-            128_000
-        } else {
-            let normalized_model = Self::normalize_model(s);
-            get_context_size(normalized_model.as_str())
-        }
-    }
-
-    /// Returns a maximum number of output tokens
-    fn get_max_output_tokens(s: &str) -> usize {
-        4096
-    }
-
-    /// Normalizes the model string to one that is supported by Tiktoken crate
-    fn normalize_model(s: &str) -> String {
-        if s.to_string().starts_with("gpt-4") {
-            "gpt-4-32k".to_string()
-        } else if s.to_string().starts_with("gpt-3.5") {
-            "gpt-3.5-turbo-16k".to_string()
-        } else {
-            "gpt-4".to_string()
-        }
-    }
 }
