@@ -3,7 +3,7 @@
 # Create a virtual environment if it doesn't exist
 if [ ! -d "./venv" ]
 then
-    python -m venv venv
+    python3 -m venv venv
 fi
 
 # Activate your virtual environment
@@ -13,7 +13,7 @@ source ./venv/bin/activate
 rm ./target/wheels/shinkai_message_pyo3*.whl
 
 # Run maturin develop and capture its output
-output=$(maturin build -i python)
+output=$(maturin build -i python3)
 
 # If maturin develop is successful, extract the path of the built wheel file
 if [ $? -eq 0 ]; then
