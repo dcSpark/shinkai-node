@@ -365,6 +365,14 @@ impl Node {
         }
     }
 
+    /// Attempts to return a reference to the VRHeader from the Node. Errors if content is not VRHeader
+    pub fn get_vr_header_content(&self) -> Result<&VRHeader, VRError> {
+        match &self.content {
+            NodeContent::VRHeader(vr_header) => Ok(vr_header),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
     /// Attempts to return a mutable reference to the text content from the Node. Errors if is different type
     pub fn get_text_content_mut(&mut self) -> Result<&mut String, VRError> {
         match &mut self.content {
@@ -385,6 +393,14 @@ impl Node {
     pub fn get_external_content_mut(&mut self) -> Result<&mut SourceReference, VRError> {
         match &mut self.content {
             NodeContent::ExternalContent(external_content) => Ok(external_content),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return a mutable reference to the VRHeader from the Node. Errors if content is not VRHeader
+    pub fn get_vr_header_content_mut(&mut self) -> Result<&mut VRHeader, VRError> {
+        match &mut self.content {
+            NodeContent::VRHeader(vr_header) => Ok(vr_header),
             _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
@@ -685,11 +701,17 @@ impl VRPath {
         new_path
     }
 
-    /// Creates a cloned VRPath and removes an element from the end
+    /// Returns a cloned VRPath with the last id removed from the end
     pub fn pop_cloned(&self) -> Self {
         let mut new_path = self.clone();
         new_path.pop();
         new_path
+    }
+
+    /// Returns a VRPath which is the path prior to self (the "parent path").
+    /// Ie. For path "/a/b/c", this will return "/a/b".
+    pub fn parent_path(&self) -> Self {
+        self.pop_cloned()
     }
 
     /// Create a VRPath from a path string

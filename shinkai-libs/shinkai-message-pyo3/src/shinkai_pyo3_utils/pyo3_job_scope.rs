@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
 use pyo3::types::PyString;
-use shinkai_message_primitives::shinkai_utils::job_scope::DBScopeEntry;
+use pyo3::wrap_pyfunction;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
+use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSScopeEntry;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -14,26 +14,34 @@ pub struct PyJobScope {
 #[pymethods]
 impl PyJobScope {
     #[new]
-    pub fn new() -> Self { // TODO: Someday add args
-        Self { inner: JobScope::new(Vec::new(), Vec::new()) }
+    pub fn new() -> Self {
+        // TODO: Someday add args
+        Self {
+            inner: JobScope::new(Vec::new(), Vec::new()),
+        }
     }
 
     #[staticmethod]
     pub fn new_empty() -> Self {
-        Self { inner: JobScope::new(Vec::new(), Vec::new()) }
+        Self {
+            inner: JobScope::new(Vec::new(), Vec::new()),
+        }
     }
 
     #[staticmethod]
     pub fn from_json_str(s: &str) -> PyResult<Self> {
-        let inner = JobScope::from_json_str(s).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        let inner =
+            JobScope::from_json_str(s).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         Ok(Self { inner })
     }
-    
+
     pub fn to_json_str(&self) -> PyResult<String> {
-        self.inner.to_json_str().map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+        self.inner
+            .to_json_str()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.local.is_empty() && self.inner.database.is_empty()
+        self.inner.local.is_empty() && self.inner.vector_fs.is_empty()
     }
 }

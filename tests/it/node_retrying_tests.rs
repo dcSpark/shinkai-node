@@ -30,7 +30,7 @@ use super::utils::node_test_local::local_registration_profile_node;
 
 #[test]
 fn node_retrying_test() {
-    init_default_tracing(); 
+    init_default_tracing();
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 
@@ -80,9 +80,9 @@ fn node_retrying_test() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name.clone()));
-        let node2_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node2_identity_name.clone()));
+        let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);

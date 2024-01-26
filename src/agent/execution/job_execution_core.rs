@@ -7,7 +7,7 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Mode
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -17,6 +17,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::VRPath;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
@@ -66,7 +67,7 @@ impl JobManager {
             agent_found.clone(),
             &mut full_job,
             job_message.profile,
-            false,
+            None,
             generator.clone(),
             unstructured_api.clone(),
         )
@@ -379,7 +380,7 @@ impl JobManager {
         agent_found: Option<SerializedAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
-        save_to_db_directly: bool,
+        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<(), AgentError> {
@@ -395,7 +396,7 @@ impl JobManager {
                 agent_found,
                 job_message.files_inbox.clone(),
                 profile,
-                save_to_db_directly,
+                save_to_vector_fs_folder,
                 generator,
                 unstructured_api,
             )
@@ -416,14 +417,14 @@ impl JobManager {
                                     );
                                 }
                             }
-                            ScopeEntry::Database(db_entry) => {
-                                if !full_job.scope.database.contains(&db_entry) {
-                                    full_job.scope.database.push(db_entry);
+                            ScopeEntry::VectorFS(fs_entry) => {
+                                if !full_job.scope.vector_fs.contains(&fs_entry) {
+                                    full_job.scope.vector_fs.push(fs_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
                                         ShinkaiLogLevel::Error,
-                                        "Duplicate DBScopeEntry detected",
+                                        "Duplicate VectorFSScopeEntry detected",
                                     );
                                 }
                             }
@@ -441,34 +442,20 @@ impl JobManager {
                     return Err(e);
                 }
             }
-        } else {
-            // TODO: move this somewhere else
-            let shinkai_db = db.lock().await;
-            match shinkai_db.init_profile_resource_router(&profile) {
-                Ok(_) => std::mem::drop(shinkai_db), // required to avoid deadlock
-                Err(e) => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        format!("Error initializing profile resource router: {}", e).as_str(),
-                    );
-                    return Err(AgentError::ShinkaiDB(e));
-                }
-            }
         }
 
         Ok(())
     }
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
-    /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
+    /// If save_to_db_directly == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
         agent: Option<SerializedAgent>,
         files_inbox: String,
         profile: ShinkaiName,
-        save_to_db_directly: bool,
+        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
@@ -510,19 +497,16 @@ impl JobManager {
             )
             .await?;
 
-            // Now create Local/DBScopeEntry depending on setting
+            // Now create Local/VectorFSScopeEntry depending on setting
             let text_chunking_strategy = TextChunkingStrategy::V1;
-            if save_to_db_directly {
+            if let Some(folder_path) = &save_to_vector_fs_folder {
+                // TODO: Save to VectorFS
                 let resource_header = resource.as_trait_object().generate_resource_header();
-                let shinkai_db = db.lock().await;
-                shinkai_db.init_profile_resource_router(&profile)?;
-                shinkai_db.save_resource(resource, &profile).unwrap();
-
-                let db_scope_entry = DBScopeEntry {
+                let fs_scope_entry = VectorFSScopeEntry {
                     resource_header: resource_header,
-                    source: VRSource::from_file(&filename, None, text_chunking_strategy)?,
+                    vector_fs_path: folder_path.clone(),
                 };
-                files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
+                files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
             } else {
                 let local_scope_entry = LocalScopeEntry {
                     resource: resource,

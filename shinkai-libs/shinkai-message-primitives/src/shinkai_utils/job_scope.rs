@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
 use shinkai_vector_resources::{
     source::{SourceFile, VRSource},
@@ -8,29 +9,29 @@ use shinkai_vector_resources::{
 use std::fmt;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
-/// Job's scope which includes both local entries (source/vector resource stored locally only in job)
-/// and DB entries (source/vector resource stored in the DB, accessible to all jobs)
+/// Job's scope which includes both Local entries (source/vector resource stored locally only in job)
+/// and VecFS entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
     pub local: Vec<LocalScopeEntry>,
-    pub database: Vec<DBScopeEntry>,
+    pub vector_fs: Vec<VectorFSScopeEntry>,
 }
 
 impl JobScope {}
 impl JobScope {
-    pub fn new(local: Vec<LocalScopeEntry>, database: Vec<DBScopeEntry>) -> Self {
-        Self { local, database }
+    pub fn new(local: Vec<LocalScopeEntry>, vector_fs: Vec<VectorFSScopeEntry>) -> Self {
+        Self { local, vector_fs }
     }
 
     pub fn new_default() -> Self {
         Self {
             local: Vec::new(),
-            database: Vec::new(),
+            vector_fs: Vec::new(),
         }
     }
 
     /// Checks if the Job Scope is empty (has no entries pointing to VRs)
     pub fn is_empty(&self) -> bool {
-        self.local.is_empty() && self.database.is_empty()
+        self.local.is_empty() && self.vector_fs.is_empty()
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
@@ -64,24 +65,24 @@ impl fmt::Debug for JobScope {
             })
             .collect();
 
-        let db_ids: Vec<String> = self
-            .database
+        let vector_fs_ids: Vec<String> = self
+            .vector_fs
             .iter()
             .map(|entry| entry.resource_header.reference_string())
             .collect();
 
         f.debug_struct("JobScope")
             .field("local", &format_args!("{:?}", local_ids))
-            .field("database", &format_args!("{:?}", db_ids))
+            .field("vector_fs", &format_args!("{:?}", vector_fs_ids))
             .finish()
     }
 }
 
-/// Enum holding both Local and DB scope entries
+/// Enum holding both Local and VectorFS scope entries
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ScopeEntry {
     Local(LocalScopeEntry),
-    Database(DBScopeEntry),
+    VectorFS(VectorFSScopeEntry),
 }
 
 /// A Scope Entry for a local file/vector resource that only lives in the
@@ -92,9 +93,9 @@ pub struct LocalScopeEntry {
     pub source: SourceFile,
 }
 
-/// A Scope Entry for a file/vector resource that is saved in the DB
+/// A Scope Entry for a file/vector resource that is saved in the VectorFS
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct DBScopeEntry {
+pub struct VectorFSScopeEntry {
     pub resource_header: VRHeader,
-    pub source: VRSource,
+    pub vector_fs_path: VRPath,
 }

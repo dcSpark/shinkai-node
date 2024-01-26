@@ -24,14 +24,14 @@ impl JobManager {
             resources.push(local_entry.resource.clone());
         }
 
-        // Fetch DB resources and add them to the list
-        let db = db.lock().await;
-        for db_entry in &job_scope.database {
-            let resource = db.get_resource_by_header(&db_entry.resource_header, profile)?;
-            resources.push(resource);
-        }
+        // TODO: Fetch resources from VectorFS
 
-        std::mem::drop(db);
+        // Fetch DB resources and add them to the list
+        // let db = db.lock().await;
+        // for fs_entry in &job_scope.vector_fs {
+        //     resources.push(resource);
+        // }
+        // std::mem::drop(db);
 
         Ok(resources)
     }

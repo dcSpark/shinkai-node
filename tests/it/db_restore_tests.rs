@@ -41,7 +41,7 @@ mod tests {
             let (node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
 
             let node1_db_path = "tests/db_for_testing/test".to_string();
-            let node1_vec_fs_path = "tests/vec_fs_db_for_testing/test".to_string();
+            let node1_vector_fs_path = "tests/vector_fs_db_for_testing/test".to_string();
 
             // Create node1 
             let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -56,7 +56,7 @@ mod tests {
                 true,
                 vec![],
                 None,
-                node1_vec_fs_path,
+                node1_vector_fs_path,
                 None,
                 None,
             );

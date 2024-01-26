@@ -9,7 +9,9 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMe
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_default_tracing};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
+    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -64,7 +66,7 @@ fn node_agent_registration() {
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
 
         // Agent pre-creation
 
