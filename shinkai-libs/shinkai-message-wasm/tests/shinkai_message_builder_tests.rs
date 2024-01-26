@@ -209,6 +209,7 @@ mod tests {
             job_id.clone(),
             content.clone(),
             String::new(),
+            String::new(),
             my_encryption_sk_string.clone(),
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),

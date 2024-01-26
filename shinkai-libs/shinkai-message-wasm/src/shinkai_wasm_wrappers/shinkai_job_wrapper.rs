@@ -96,11 +96,12 @@ pub struct JobMessageWrapper {
 #[wasm_bindgen]
 impl JobMessageWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(job_id_js: &JsValue, content_js: &JsValue, files_inbox: &JsValue) -> Result<JobMessageWrapper, JsValue> {
+    pub fn new(job_id_js: &JsValue, content_js: &JsValue, files_inbox: &JsValue, parent: &JsValue) -> Result<JobMessageWrapper, JsValue> {
         let job_id: String = serde_wasm_bindgen::from_value(job_id_js.clone())?;
         let content: String = serde_wasm_bindgen::from_value(content_js.clone())?;
         let files_inbox: String = serde_wasm_bindgen::from_value(files_inbox.clone())?;
-        let job_message = JobMessage { job_id, content, files_inbox };
+        let parent: String = serde_wasm_bindgen::from_value(parent.clone())?;
+        let job_message = JobMessage { job_id, content, files_inbox, parent: Some(parent) };
         Ok(JobMessageWrapper { inner: job_message })
     }
 
@@ -128,11 +129,12 @@ impl JobMessageWrapper {
     }
 
     #[wasm_bindgen(js_name = fromStrings)]
-    pub fn from_strings(job_id: &str, content: &str, files_inbox: &str) -> JobMessageWrapper {
+    pub fn from_strings(job_id: &str, content: &str, files_inbox: &str, parent: &str) -> JobMessageWrapper {
         let job_message = JobMessage {
             job_id: job_id.to_string(),
             content: content.to_string(),
             files_inbox: files_inbox.to_string(),
+            parent: Some(parent.to_string()),
         };
         JobMessageWrapper { inner: job_message }
     }
