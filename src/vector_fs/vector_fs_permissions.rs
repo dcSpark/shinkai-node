@@ -129,8 +129,8 @@ impl PermissionsIndex {
         path
     }
 
-    /// Inserts a new path permission into the fs_permissions map. Note, this will overwrite
-    /// the old permission. Whitelists of existing path permissions are preserved always in this method,
+    /// Inserts a path permission into the fs_permissions map. Note, this will overwrite the old read/write permissions
+    /// for the path if they exist. The Whitelist for the path are preserved always in this method,
     /// even when neither read/write are still set as Whitelist.
     pub fn insert_path_permission(
         &mut self,
@@ -138,13 +138,36 @@ impl PermissionsIndex {
         read_permission: ReadPermission,
         write_permission: WritePermission,
     ) -> Result<(), VectorFSError> {
+        let whitelist = self
+            .fs_permissions
+            .get(&path)
+            .and_then(|json| PathPermission::from_json(json).ok())
+            .map_or_else(HashMap::new, |perm| perm.whitelist);
+
         let path_perm = PathPermission {
             read_permission,
             write_permission,
-            whitelist: HashMap::new(),
+            whitelist,
         };
         self.fs_permissions.insert(path.clone(), path_perm.to_json()?);
         Ok(())
+    }
+
+    /// Copies the path permissions from the origin_path to the destination_path.
+    /// Note, this will overwrite any old permission at the destination_path.
+    pub fn copy_path_permissions(
+        &mut self,
+        origin_path: VRPath,
+        destination_path: VRPath,
+    ) -> Result<(), VectorFSError> {
+        if let Some(origin_permission_json) = self.fs_permissions.get(&origin_path) {
+            let origin_permission = PathPermission::from_json(&origin_permission_json.clone())?;
+            self.fs_permissions
+                .insert(destination_path, origin_permission.to_json()?);
+            Ok(())
+        } else {
+            Err(VectorFSError::NoEntryAtPath(origin_path))
+        }
     }
 
     /// Internal method which removes a permission from the fs_permissions map.
