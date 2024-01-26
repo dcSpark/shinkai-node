@@ -17,6 +17,10 @@ export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
+export STATIC_SERVER_PORT="9554"
+export STATIC_SERVER_IP="0.0.0.0"
+export STATIC_SERVER_FOLDER="./static_server_example"
+
 export INITIAL_AGENT_NAMES="premium_gpt,standard_mixtral,gpt_vision"
 export INITIAL_AGENT_URLS="https://dev-backend-hosting.shinkai.com,https://dev-backend-hosting.shinkai.com,https://dev-backend-hosting.shinkai.com"
 export INITIAL_AGENT_MODELS="shinkai-backend:PREMIUM_TEXT_INFERENCE,shinkai-backend:STANDARD_TEXT_INFERENCE,shinkai-backend:PREMIUM_VISION_INFERENCE"

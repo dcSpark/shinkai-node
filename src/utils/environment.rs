@@ -24,6 +24,13 @@ pub struct NodeEnvironment {
     pub embeddings_server_api_key: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StaticServerEnvironment {
+    pub ip: IpAddr,
+    pub port: u16,
+    pub folder_path: String,
+}
+
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
     let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
         .unwrap_or_else(|_| "".to_string())
@@ -166,5 +173,28 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         unstructured_server_api_key,
         embeddings_server_url,
         embeddings_server_api_key,
+    }
+}
+
+pub fn fetch_static_server_env() -> Option<StaticServerEnvironment> {
+    let port = env::var("STATIC_SERVER_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok());
+    let ip = env::var("STATIC_SERVER_IP")
+        .ok()
+        .and_then(|ip| ip.parse::<IpAddr>().ok());
+    let folder_path = env::var("STATIC_SERVER_FOLDER").ok();
+
+    eprintln!("Static server env: {:?} {:?} {:?}", ip, port, folder_path);
+
+    match (ip, port, folder_path) {
+        (Some(ip), Some(port), Some(folder_path)) => {
+            Some(StaticServerEnvironment {
+                ip,
+                port,
+                folder_path,
+            })
+        },
+        _ => None,
     }
 }

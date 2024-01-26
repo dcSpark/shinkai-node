@@ -27,13 +27,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use utils::static_server::start_static_server;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::{env, fs};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-use utils::environment::NodeEnvironment;
+use utils::environment::{fetch_static_server_env, NodeEnvironment};
 use utils::open_telemetry::init_telemetry_tracing;
 
 mod agent;
@@ -207,6 +208,17 @@ async fn main() {
             &main_db_path,
             &vector_fs_db_path,
         );
+    }
+
+    // Fetch static server environment variables
+    if let Some(static_server_env) = fetch_static_server_env() {
+        // Start the static server if the environment variables are set
+        let _static_server = start_static_server(
+            static_server_env.ip,
+            static_server_env.port,
+            static_server_env.folder_path,
+        )
+        .await;
     }
 
     // Setup API Server task
