@@ -454,15 +454,14 @@ pub async fn api_message_job(
     job_id: &str,
     content: &str,
     files_inbox: &str,
+    parent: &str,
 ) {
     {
-        let full_sender = format!("{}/{}", sender, sender_subidentity);
-        eprintln!("@@ full_sender: {}", full_sender);
-
         let job_message = ShinkaiMessageBuilder::job_message(
             job_id.to_string(),
             content.to_string(),
             files_inbox.to_string(),
+            parent.to_string(),
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,

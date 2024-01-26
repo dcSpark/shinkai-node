@@ -494,6 +494,7 @@ impl ShinkaiMessageBuilder {
         job_id: String,
         content: String,
         files_inbox: String,
+        parent_hash: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -507,6 +508,7 @@ impl ShinkaiMessageBuilder {
             job_id,
             content,
             files_inbox,
+            parent: Some(parent_hash),
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -541,6 +543,7 @@ impl ShinkaiMessageBuilder {
             job_id,
             content,
             files_inbox,
+            parent: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

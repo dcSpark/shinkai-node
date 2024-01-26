@@ -227,6 +227,7 @@ fn job_image_analysis() {
                     &job_id.clone().to_string(),
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    "",
                 )
                 .await;
 

@@ -296,6 +296,7 @@ mod tests {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -320,6 +321,7 @@ mod tests {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -328,6 +330,7 @@ mod tests {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content 2".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -421,6 +424,7 @@ mod tests {
                 job_id: "job_id::a1::false".to_string(),
                 content: "content a1".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -429,6 +433,7 @@ mod tests {
                 job_id: "job_id::a2::false".to_string(),
                 content: "content a2".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -437,6 +442,7 @@ mod tests {
                 job_id: "job_id::a3::false".to_string(),
                 content: "content a3".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -446,6 +452,7 @@ mod tests {
                 job_id: "job_id::b1::false".to_string(),
                 content: "content b1".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -455,6 +462,7 @@ mod tests {
                 job_id: "job_id::c1::false".to_string(),
                 content: "content c1".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -464,6 +472,7 @@ mod tests {
                 job_id: "job_id::c2::false".to_string(),
                 content: "content c2".to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
