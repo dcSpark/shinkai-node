@@ -134,6 +134,28 @@ impl VectorFS {
         Ok(())
     }
 
+    /// Reverts the internals of a profile to the last saved state in the database.
+    pub fn revert_internals_to_last_db_save(
+        &mut self,
+        requester_name: &ShinkaiName,
+        profile: &ShinkaiName,
+    ) -> Result<(), VectorFSError> {
+        // Validate the requester's permission to perform this action
+        self._validate_profile_action_permission(
+            requester_name,
+            profile,
+            &format!("Failed reverting fs internals to last DB save for profile: {}", profile),
+        )?;
+
+        // Fetch the last saved state of the profile fs internals from the database
+        let internals = self.db.get_profile_fs_internals(profile)?;
+
+        // Overwrite the current state of the profile internals in the map with the fetched state
+        self.internals_map.insert(profile.clone(), internals);
+
+        Ok(())
+    }
+
     /// Sets the supported embedding models for a specific profile
     pub fn set_profile_supported_models(
         &mut self,

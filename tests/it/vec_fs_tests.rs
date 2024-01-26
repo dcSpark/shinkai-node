@@ -144,7 +144,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(
+        .save_item_in_folder(
             &writer,
             resource.clone(),
             Some(source_file_map.clone()),
@@ -220,7 +220,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(
+        .save_item_in_folder(
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
