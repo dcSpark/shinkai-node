@@ -127,7 +127,7 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-                // eprintln!("Call API Response Text: {:?}", response_text);
+                eprintln!("Call API Response Text: {:?}", response_text);
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 

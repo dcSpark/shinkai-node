@@ -100,8 +100,8 @@ impl ShinkaiDB {
 
         // If this message has a parent, add this message as a child of the parent
         let parent_key = match maybe_parent_message_key {
-            Some(key) => Some(key),
-            None => {
+            Some(key) if !key.is_empty() => Some(key),
+            _ => {
                 // Fetch the most recent message from the inbox
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 1, None)?;
                 if let Some(first_batch) = last_messages.first() {

@@ -228,6 +228,7 @@ fn node_agent_registration() {
                     &job_id.clone().to_string(),
                     &message,
                     "",
+                    "",
                 )
                 .await;
             }
@@ -317,6 +318,7 @@ fn node_agent_registration() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &message,
+                    "",
                     "",
                 )
                 .await;

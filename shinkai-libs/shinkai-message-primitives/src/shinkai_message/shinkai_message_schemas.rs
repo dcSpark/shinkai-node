@@ -95,6 +95,7 @@ pub struct JobMessage {
     pub job_id: String,
     pub content: String,
     pub files_inbox: String,
+    pub parent: Option<String>,
 }
 
 impl JobMessage {

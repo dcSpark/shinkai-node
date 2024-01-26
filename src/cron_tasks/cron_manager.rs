@@ -308,6 +308,7 @@ impl CronManager {
             job_id: job_id.clone(),
             content: "".to_string(),
             files_inbox: inbox_name_result.unwrap(),
+            parent: None,
         };
 
         job_manager

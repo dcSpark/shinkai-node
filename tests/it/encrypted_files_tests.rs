@@ -329,6 +329,7 @@ fn sandwich_messages_with_files_test() {
                     &job_id.clone().to_string(),
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    "",
                 )
                 .await;
 
@@ -404,6 +405,7 @@ fn sandwich_messages_with_files_test() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &new_job_message_content,
+                    "",
                     "",
                 )
                 .await;

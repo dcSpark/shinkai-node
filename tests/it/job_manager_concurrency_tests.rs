@@ -140,6 +140,7 @@ async fn test_process_job_queue_concurrency() {
                 job_id: format!("job_id::{}::false", i).to_string(),
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -243,6 +244,7 @@ async fn test_sequnetial_process_for_same_job_id() {
                 job_id: "job_id::123::false".to_string(),
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
