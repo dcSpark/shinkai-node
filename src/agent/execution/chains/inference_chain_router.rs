@@ -58,8 +58,8 @@ impl JobManager {
                         user_profile,
                         None,
                         None,
-                        0,
-                        3, // TODO: Make this configurable. Default value was 5.
+                        1,
+                        2, // TODO: Make this configurable based on model capabilities
                     )
                     .await?;
                     new_execution_context
