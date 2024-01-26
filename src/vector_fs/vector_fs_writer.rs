@@ -78,11 +78,67 @@ impl VFSWriter {
 }
 
 impl VectorFS {
-    // /// Moves the FSItem from the writer's path into being held underneath the destination_path.
-    // /// Does not support moving into VecFS root.
-    // pub fn copy_item(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError> {
-    // Remember to generate a new VR id for the newly copied item, and re-save the copies of the VR/SFM into the new reference string key as a result
-    //}
+    /// Copies the FSItem from the writer's path into being held underneath the destination_path.
+    /// Does not support copying into VecFS root.
+    pub fn copy_item(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError> {
+        let current_datetime = ShinkaiTime::generate_time_now();
+        let destination_writer = writer._new_writer_copied_data(destination_path.clone(), self)?;
+
+        // Ensure paths are valid before proceeding
+        self._validate_path_points_to_item(writer.path.clone(), &writer.profile)?;
+        self._validate_path_points_to_folder(destination_path.clone(), &writer.profile)?;
+        let destination_child_path = destination_path.push_cloned(writer.path.last_path_id()?);
+        if self
+            ._validate_path_points_to_entry(destination_child_path.clone(), &writer.profile)
+            .is_ok()
+        {
+            return Err(VectorFSError::CannotOverwriteFSEntry(destination_child_path.clone()));
+        }
+
+        // Get the existing item
+        let (item_ret_node, _) = self._get_node_from_core_resource(writer)?;
+        let item_metadata = item_ret_node.node.metadata;
+        let mut source_file_map = None;
+        let source_file_map_is_saved = item_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&FSItem::source_file_map_last_saved_metadata_key()))
+            .map_or(false, |_| true);
+
+        // Fetch the VR and SFM from the DB
+        let reader = writer._new_reader_copied_data(writer.path.clone(), self)?;
+        if source_file_map_is_saved {
+            source_file_map = Some(self.retrieve_source_file_map(&reader)?);
+        }
+        let mut vector_resource = self.retrieve_vector_resource(&reader)?;
+        // Generate a new VR id for the resource, and generate a new header
+        vector_resource.as_trait_object_mut().generate_and_update_resource_id();
+        let header = vector_resource.as_trait_object().generate_resource_header();
+        let source_db_key = header.reference_string();
+
+        // Save the copied item w/new resource id into the new destination w/permissions
+        let new_item =
+            self._add_vr_header_to_core_resource(&destination_writer, header, item_metadata, current_datetime, false)?;
+        {
+            let internals = self._get_profile_fs_internals(&writer.profile)?;
+            internals
+                .permissions_index
+                .copy_path_permissions(writer.path.clone(), new_item.path.clone())?;
+        }
+
+        // Save fs internals, new VR, and new SFM to the DB
+        let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
+        let mut write_batch = writer.new_write_batch()?;
+        if let Some(sfm) = source_file_map {
+            self.db
+                .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
+        }
+        self.db.wb_save_resource(&vector_resource, &mut write_batch)?;
+        let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
+
+        Ok(new_item)
+    }
 
     /// Moves the FSItem from the writer's path into being held underneath the destination_path.
     /// Does not support moving into VecFS root.
@@ -133,11 +189,9 @@ impl VectorFS {
             self._add_vr_header_to_core_resource(&destination_writer, header, item_metadata, current_datetime, false)?;
         {
             let internals = self._get_profile_fs_internals(&writer.profile)?;
-            internals.permissions_index.insert_path_permission(
-                new_item.path.clone(),
-                ReadPermission::Private,
-                WritePermission::Private,
-            )?;
+            internals
+                .permissions_index
+                .copy_path_permissions(writer.path.clone(), new_item.path.clone())?;
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
         Ok(new_item)
@@ -199,11 +253,9 @@ impl VectorFS {
         )?;
         {
             let internals = self._get_profile_fs_internals(&writer.profile)?;
-            internals.permissions_index.insert_path_permission(
-                new_folder.path.clone(),
-                ReadPermission::Private,
-                WritePermission::Private,
-            )?;
+            internals
+                .permissions_index
+                .copy_path_permissions(writer.path.clone(), new_folder.path.clone())?;
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
         Ok(new_folder)
@@ -586,8 +638,8 @@ impl VectorFS {
         Ok(folder)
     }
 
-    /// Internal method used to remove a child node of the current path, given its id. Applies only in memory.
-    /// This only works if path is a folder and node_id is either an item or folder underneath, and node_id points
+    /// Internal method used to remove a child node underneath the writer's path, given its id. Applies only in memory.
+    /// This only works if path is a folder/root and node_id is either an item or folder underneath, and node_id points
     /// to a valid node.
     fn _remove_child_node_from_core_resource(
         &mut self,
@@ -599,11 +651,38 @@ impl VectorFS {
         Ok(internals.fs_core_resource.remove_node_at_path(path)?)
     }
 
-    /// Internal method used to remove the node at current path. Applies only in memory.
+    /// Internal method used to remove the node at path. Applies only in memory.
     /// Errors if no node exists at path.
     fn _remove_node_from_core_resource(&mut self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self._get_profile_fs_internals(&writer.profile)?;
         let result = internals.fs_core_resource.remove_node_at_path(writer.path.clone())?;
+        Ok(result)
+    }
+
+    /// Internal method used to get a child node underneath the writer's path, given its id. Applies only in memory.
+    /// This only works if path is a folder and node_id is either an item or folder underneath, and node_id points
+    /// to a valid node.
+    fn _get_child_node_from_core_resource(
+        &mut self,
+        writer: &VFSWriter,
+        node_id: String,
+    ) -> Result<(RetrievedNode, Embedding), VectorFSError> {
+        let internals = self._get_profile_fs_internals(&writer.profile)?;
+        let path = writer.path.push_cloned(node_id);
+        let result = internals.fs_core_resource.retrieve_node_and_embedding_at_path(path)?;
+        Ok(result)
+    }
+
+    /// Internal method used to get the node at writer's path. Applies only in memory.
+    /// Errors if no node exists at path.
+    fn _get_node_from_core_resource(
+        &mut self,
+        writer: &VFSWriter,
+    ) -> Result<(RetrievedNode, Embedding), VectorFSError> {
+        let internals = self._get_profile_fs_internals(&writer.profile)?;
+        let result = internals
+            .fs_core_resource
+            .retrieve_node_and_embedding_at_path(writer.path.clone())?;
         Ok(result)
     }
 }
