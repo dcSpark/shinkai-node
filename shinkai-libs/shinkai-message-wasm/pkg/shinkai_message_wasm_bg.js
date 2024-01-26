@@ -205,6 +205,14 @@ function debugString(val) {
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
 }
+
+let stack_pointer = 128;
+
+function addBorrowedObject(obj) {
+    if (stack_pointer == 1) throw new Error('out of js stack');
+    heap[--stack_pointer] = obj;
+    return stack_pointer;
+}
 /**
 * @param {string} encryption_sk
 * @returns {string}
@@ -236,13 +244,6 @@ export function convert_encryption_sk_string_to_encryption_pk_string(encryption_
     }
 }
 
-let stack_pointer = 128;
-
-function addBorrowedObject(obj) {
-    if (stack_pointer == 1) throw new Error('out of js stack');
-    heap[--stack_pointer] = obj;
-    return stack_pointer;
-}
 /**
 * @param {string} input
 * @returns {string}
@@ -669,11 +670,12 @@ export class JobMessageWrapper {
     * @param {any} job_id_js
     * @param {any} content_js
     * @param {any} files_inbox
+    * @param {any} parent
     */
-    constructor(job_id_js, content_js, files_inbox) {
+    constructor(job_id_js, content_js, files_inbox, parent) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.jobmessagewrapper_new(retptr, addBorrowedObject(job_id_js), addBorrowedObject(content_js), addBorrowedObject(files_inbox));
+            wasm.jobmessagewrapper_new(retptr, addBorrowedObject(job_id_js), addBorrowedObject(content_js), addBorrowedObject(files_inbox), addBorrowedObject(parent));
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -683,6 +685,7 @@ export class JobMessageWrapper {
             return JobMessageWrapper.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
@@ -778,16 +781,19 @@ export class JobMessageWrapper {
     * @param {string} job_id
     * @param {string} content
     * @param {string} files_inbox
+    * @param {string} parent
     * @returns {JobMessageWrapper}
     */
-    static fromStrings(job_id, content, files_inbox) {
+    static fromStrings(job_id, content, files_inbox, parent) {
         const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
         const ptr2 = passStringToWasm0(files_inbox, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len2 = WASM_VECTOR_LEN;
-        const ret = wasm.jobmessagewrapper_fromStrings(ptr0, len0, ptr1, len1, ptr2, len2);
+        const ptr3 = passStringToWasm0(parent, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.jobmessagewrapper_fromStrings(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
         return JobMessageWrapper.__wrap(ret);
     }
 }
@@ -2167,6 +2173,7 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} job_id
     * @param {string} content
     * @param {string} files_inbox
+    * @param {string} parent
     * @param {string} my_encryption_secret_key
     * @param {string} my_signature_secret_key
     * @param {string} receiver_public_key
@@ -2176,9 +2183,9 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} receiver_subidentity
     * @returns {string}
     */
-    static job_message(job_id, content, files_inbox, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, receiver, receiver_subidentity) {
-        let deferred12_0;
-        let deferred12_1;
+    static job_message(job_id, content, files_inbox, parent, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, receiver, receiver_subidentity) {
+        let deferred13_0;
+        let deferred13_1;
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             const ptr0 = passStringToWasm0(job_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -2187,37 +2194,39 @@ export class ShinkaiMessageBuilderWrapper {
             const len1 = WASM_VECTOR_LEN;
             const ptr2 = passStringToWasm0(files_inbox, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len2 = WASM_VECTOR_LEN;
-            const ptr3 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr3 = passStringToWasm0(parent, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len3 = WASM_VECTOR_LEN;
-            const ptr4 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr4 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len4 = WASM_VECTOR_LEN;
-            const ptr5 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr5 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len5 = WASM_VECTOR_LEN;
-            const ptr6 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr6 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len6 = WASM_VECTOR_LEN;
-            const ptr7 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr7 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len7 = WASM_VECTOR_LEN;
-            const ptr8 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr8 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len8 = WASM_VECTOR_LEN;
-            const ptr9 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr9 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len9 = WASM_VECTOR_LEN;
-            wasm.shinkaimessagebuilderwrapper_job_message(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9);
+            const ptr10 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len10 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_job_message(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             var r3 = getInt32Memory0()[retptr / 4 + 3];
-            var ptr11 = r0;
-            var len11 = r1;
+            var ptr12 = r0;
+            var len12 = r1;
             if (r3) {
-                ptr11 = 0; len11 = 0;
+                ptr12 = 0; len12 = 0;
                 throw takeObject(r2);
             }
-            deferred12_0 = ptr11;
-            deferred12_1 = len11;
-            return getStringFromWasm0(ptr11, len11);
+            deferred13_0 = ptr12;
+            deferred13_1 = len12;
+            return getStringFromWasm0(ptr12, len12);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_free(deferred12_0, deferred12_1, 1);
+            wasm.__wbindgen_free(deferred13_0, deferred13_1, 1);
         }
     }
     /**
