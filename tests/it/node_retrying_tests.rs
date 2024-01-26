@@ -6,7 +6,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMe
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -30,7 +30,7 @@ use super::utils::node_test_local::local_registration_profile_node;
 
 #[test]
 fn node_retrying_test() {
-    init_tracing(); 
+    init_default_tracing(); 
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 

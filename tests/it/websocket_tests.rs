@@ -19,7 +19,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::aes_encryption_key_to_string;
 use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
@@ -150,7 +150,7 @@ fn setup() {
 
 #[tokio::test]
 async fn test_websocket() {
-    init_tracing();
+    init_default_tracing();
     // Setup
     setup();
     let job_id1 = "test_job".to_string();
@@ -452,7 +452,7 @@ async fn test_websocket() {
 // TODO(Nico): if you subscribe to smart_inbox you will receive messages of all the inboxes that you have access to
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
-    init_tracing();
+    init_default_tracing();
     // Setup
     setup();
 

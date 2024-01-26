@@ -7,7 +7,7 @@ mod tests {
     use mockito::Server;
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
-        shinkai_utils::{signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_tracing},
+        shinkai_utils::{signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_default_tracing},
     };
     use shinkai_node::{
         agent::job_manager::JobManager,
@@ -29,7 +29,7 @@ mod tests {
 
     #[test]
     fn test_extract_links() {
-        init_tracing(); 
+        init_default_tracing(); 
         let links = WebScraper::extract_links(&get_unstructured_response());
         assert_eq!(links.len(), 30);
     }
@@ -37,7 +37,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_web_scraper() {
-        init_tracing(); 
+        init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);

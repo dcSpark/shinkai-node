@@ -1,6 +1,7 @@
+use crate::db::db_profile_bound::ProfileBoundWriteBatch;
+
 use super::super::{vector_fs_error::VectorFSError, vector_fs_internals::VectorFSInternals};
 use super::fs_db::{FSTopic, VectorFSDB};
-use crate::db::db::ProfileBoundWriteBatch;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
@@ -16,7 +17,7 @@ impl VectorFSDB {
         batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_profile_fs_internals(fs_internals)?;
-        batch.put_cf_pb(cf, &VectorFSInternals::profile_fs_internals_shinkai_db_key(), bytes);
+        batch.pb_put_cf(cf, &VectorFSInternals::profile_fs_internals_shinkai_db_key(), bytes);
 
         Ok(())
     }

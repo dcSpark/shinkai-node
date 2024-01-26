@@ -6,7 +6,7 @@ mod tests {
     use pddl_ish_parser::parser::action::Action;
     use pddl_ish_parser::parser::parameter::Parameter;
     use pddl_ish_parser::parser::{domain_parser::parse_domain, problem_parser::parse_problem};
-    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use std::{io::Cursor, path::PathBuf};
     use std::{pin::Pin, sync::Arc};
     use tokio::sync::Mutex;
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_ai_news_summary_pddl() {
-        init_tracing(); 
+        init_default_tracing(); 
         let res = parse_domain(DOMAIN_PDDL);
         match res {
             Ok((_, domain)) => {
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_execute_actions() {
-        init_tracing(); 
+        init_default_tracing(); 
         let res = parse_domain(DOMAIN_PDDL);
         let mut state = SharedState::default();
         match res {

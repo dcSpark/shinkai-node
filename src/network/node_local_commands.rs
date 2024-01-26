@@ -264,8 +264,8 @@ impl Node {
         };
     }
 
-    pub async fn local_add_agent(&self, agent: SerializedAgent, res: Sender<String>) {
-        let result = self.internal_add_agent(agent).await;
+    pub async fn local_add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName, res: Sender<String>) {
+        let result = self.internal_add_agent(agent, profile).await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),

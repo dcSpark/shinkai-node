@@ -1,4 +1,3 @@
-use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
 use crate::agent::file_parsing::ParsingHelper;
@@ -13,11 +12,13 @@ use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 impl JobManager {
     /// An inference chain for question-answer job tasks which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
+    #[instrument(skip(generator, db))]
     pub async fn start_qa_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
         full_job: Job,
@@ -42,7 +43,7 @@ impl JobManager {
             JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile, true).await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_prompt = if iteration_count < max_iterations {
+        let filled_prompt = if iteration_count < max_iterations && !full_job.scope.is_empty() {
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
                 ret_nodes,
@@ -64,7 +65,7 @@ impl JobManager {
         let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
-            println!("QA Chain Final Answer: {:?}", cleaned_answer);
+            // println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
         }
         // If iteration_count is > max_iterations and we still don't have an answer, return an error
@@ -87,7 +88,7 @@ impl JobManager {
             };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
-        if Some(new_search_text.clone()) == search_text {
+        if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt = JobPromptGenerator::retry_new_search_term_prompt(
                 new_search_text.clone(),
                 summary.clone().unwrap_or_default(),

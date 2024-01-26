@@ -19,6 +19,7 @@ pub enum MessageSchemaType {
     APIAddAgentRequest,
     APIFinishJob,
     TextContent,
+    ChangeNodesName,
     WSMessage,
     FormattedMultiContent, // TODO
     SymmetricKeyExchange,
@@ -38,6 +39,7 @@ impl MessageSchemaType {
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
             "TextContent" => Some(Self::TextContent),
+            "ChangeNodesName" => Some(Self::ChangeNodesName),
             "WSMessage" => Some(Self::WSMessage),
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
@@ -59,6 +61,7 @@ impl MessageSchemaType {
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
             Self::TextContent => "TextContent",
+            Self::ChangeNodesName => "ChangeNodesName",
             Self::WSMessage => "WSMessage",
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
@@ -92,6 +95,7 @@ pub struct JobMessage {
     pub job_id: String,
     pub content: String,
     pub files_inbox: String,
+    pub parent: Option<String>,
 }
 
 impl JobMessage {

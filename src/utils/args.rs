@@ -14,7 +14,7 @@ pub struct Args {
 
 pub fn parse_args() -> Args {
     let matches = App::new("Shinkai Node")
-        .version("1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             clap::Arg::new("create_message")
                 .short('c')

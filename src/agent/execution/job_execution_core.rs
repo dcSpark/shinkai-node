@@ -22,9 +22,11 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
+    #[instrument(skip(identity_secret_key, db))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Arc<Mutex<ShinkaiDB>>,

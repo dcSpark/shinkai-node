@@ -1,3 +1,5 @@
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::LLMProvider;
 use super::shared::togetherai::TogetherAPIResponse;
@@ -7,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]
@@ -33,11 +35,12 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
-                // panic!();
-                // let max_tokens = std::cmp::max(5, 4097 - used_characters);
-
                 // TODO: implement diff tokenizers depending on the model
-                let mut max_tokens = Self::get_max_tokens(self.model_type.as_str());
+                let generic = GenericAPI {
+                    model_type: self.model_type.clone(),
+                };
+                let model = AgentLLMInterface::GenericAPI(generic);
+                let mut max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 max_tokens = std::cmp::max(5, max_tokens - (messages_string.len() / 2));
 
                 let payload = json!({
@@ -117,21 +120,5 @@ impl LLMProvider for GenericAPI {
         } else {
             Err(AgentError::UrlNotSet)
         }
-    }
-
-    fn normalize_model(s: &str) -> String {
-        s.to_string()
-    }
-
-    fn get_max_tokens(s: &str) -> usize {
-        if s.to_string().starts_with("Open-Orca/Mistral-7B-OpenOrca") {
-            8000
-        } else {
-            4096
-        }
-    }
-
-    fn get_max_output_tokens(s: &str) -> usize {
-        Self::get_max_tokens(s)
     }
 }

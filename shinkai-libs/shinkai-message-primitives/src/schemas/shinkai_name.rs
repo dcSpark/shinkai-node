@@ -430,6 +430,11 @@ impl ShinkaiName {
         }
     }
 
+    pub fn get_fullname_without_node_name(&self) -> Option<String> {
+        let parts: Vec<&str> = self.full_name.splitn(2, '/').collect();
+        parts.get(1).map(|s| s.to_string())
+    }
+
     pub fn extract_profile(&self) -> Result<Self, &'static str> {
         if self.has_no_subidentities() {
             return Err("This ShinkaiName does not include a profile.");

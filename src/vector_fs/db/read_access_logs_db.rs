@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 
-use crate::{db::db::ProfileBoundWriteBatch, vector_fs::vector_fs_error::VectorFSError};
+use crate::{vector_fs::vector_fs_error::VectorFSError, db::db_profile_bound::ProfileBoundWriteBatch};
 
 use super::fs_db::VectorFSDB;
 

@@ -19,10 +19,11 @@ impl JobManager {
     /// Errors if the key is not present.
     pub fn extract_inference_json_response(response_json: JsonValue, key: &str) -> Result<String, AgentError> {
         if let Some(value) = response_json.get(key) {
-            let value_str = value
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField(key.to_string()))?;
-            Ok(value_str.to_string())
+            let value_str = match value {
+                JsonValue::String(s) => s.clone(),
+                _ => value.to_string(),
+            };
+            Ok(value_str)
         } else {
             Err(AgentError::InferenceJSONResponseMissingField(key.to_string()))
         }

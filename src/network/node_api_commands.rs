@@ -773,7 +773,7 @@ impl Node {
                             string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
 
                         let device_identity = DeviceIdentity {
-                            full_identity_name,
+                            full_identity_name: full_identity_name.clone(),
                             node_encryption_public_key: self.encryption_public_key.clone(),
                             node_signature_public_key: self.identity_public_key.clone(),
                             profile_encryption_public_key: encryption_pk_obj,
@@ -788,8 +788,9 @@ impl Node {
                             Ok(_) => {
                                 if main_profile_exists == false && !self.initial_agents.is_empty() {
                                     std::mem::drop(identity_manager);
+                                    let profile = full_identity_name.extract_profile()?;
                                     for agent in &self.initial_agents {
-                                        self.internal_add_agent(agent.clone()).await?;
+                                        self.internal_add_agent(agent.clone(), &profile).await?;
                                     }
                                 }
 
@@ -973,7 +974,6 @@ impl Node {
             }
         };
 
-        eprintln!("api_get_all_inboxes_for_profile> msg: {:?}", msg);
         let profile_requested: String = msg.get_message_content()?;
 
         // Check that the message is coming from someone with the right permissions to do this action
@@ -1735,7 +1735,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
             .await;
-        let (msg, _) = match validation_result {
+        let (msg, sender_identity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1750,7 +1750,25 @@ impl Node {
                 message: format!("Failed to parse APIAddAgentRequest: {}", e),
             })?;
 
-        match self.internal_add_agent(serialized_agent.agent).await {
+        let profile_result = {
+            let identity_name = sender_identity.get_full_identity_name();
+            ShinkaiName::new(identity_name)
+        };
+
+        let profile = match profile_result {
+            Ok(profile) => profile,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create profile: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match self.internal_add_agent(serialized_agent.agent, &profile).await {
             Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
@@ -2009,7 +2027,7 @@ impl Node {
         // Validate the message
 
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::ChangeNodesName))
             .await;
         let msg = match validation_result {
             Ok((msg, _)) => msg,
@@ -2040,10 +2058,45 @@ impl Node {
             }
         };
 
+        {
+            // Check if the new node name exists in the blockchain and the keys match
+            let identity_manager = self.identity_manager.lock().await;
+            match identity_manager
+                .external_profile_to_global_identity(new_node_name.get_node_name().as_str())
+                .await
+            {
+                Ok(standard_identity) => {
+                    if standard_identity.node_encryption_public_key != self.encryption_public_key
+                        || standard_identity.node_signature_public_key != self.identity_public_key
+                    {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Forbidden".to_string(),
+                                message: "The keys do not match with the current node".to_string(),
+                            }))
+                            .await;
+                        return Ok(());
+                    }
+                }
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "The new node name does not exist in the blockchain".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        }
+
         // Write to .secret file
         match update_global_identity_name(new_node_name.get_node_name().as_str()) {
             Ok(_) => {
                 let _ = res.send(Ok(())).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 panic!("Node name changed successfully. Restarting server...");
             }
             Err(err) => {
@@ -2065,7 +2118,6 @@ impl Node {
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
         if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
             let _ = res
                 .send(Err(APIError {
@@ -2121,14 +2173,19 @@ impl Node {
                                 .unsafe_insert_inbox_message(&msg.clone(), None)
                                 .await
                                 .map_err(|e| {
-                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                    shinkai_log(
+                                        ShinkaiLogOption::DetailedAPI,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error inserting message into db: {}", e).as_str(),
+                                    );
                                     std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
                                 })?;
                         }
                         Err(e) => {
-                            eprintln!(
-                                "handle_onionized_message > Error checking if sender has access to inbox: {}",
-                                e
+                            shinkai_log(
+                                ShinkaiLogOption::DetailedAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Error checking if sender has access to inbox: {}", e).as_str(),
                             );
                             let _ = res
                                 .send(Err(APIError {

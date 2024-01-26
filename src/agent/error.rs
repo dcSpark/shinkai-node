@@ -51,6 +51,7 @@ pub enum AgentError {
     ImageContentNotFound(String),
     NetworkError(String),
     NoUserProfileFound,
+    InvalidModelType(String),
 }
 
 impl fmt::Display for AgentError {
@@ -110,6 +111,7 @@ impl fmt::Display for AgentError {
             AgentError::ImageContentNotFound(s) => write!(f, "Image content not found: {}", s),
             AgentError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
             AgentError::NetworkError(s) => write!(f, "Network error: {}", s),
+            AgentError::InvalidModelType(s) => write!(f, "Invalid model type: {}", s),
         }
     }
 }

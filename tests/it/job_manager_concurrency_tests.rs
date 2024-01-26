@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_tracing};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_default_tracing};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -72,7 +72,7 @@ fn generate_message_with_text(
 
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    init_tracing(); 
+    init_default_tracing(); 
     utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
@@ -140,6 +140,7 @@ async fn test_process_job_queue_concurrency() {
                 job_id: format!("job_id::{}::false", i).to_string(),
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -176,7 +177,7 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequnetial_process_for_same_job_id() {
-    init_tracing(); 
+    init_default_tracing(); 
     super::utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
@@ -243,6 +244,7 @@ async fn test_sequnetial_process_for_same_job_id() {
                 job_id: "job_id::123::false".to_string(),
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
+                parent: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );

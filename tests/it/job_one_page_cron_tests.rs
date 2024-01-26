@@ -14,7 +14,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -37,7 +37,7 @@ use mockito::Server;
 #[test]
 #[ignore]
 fn job_from_cron_one_page() {
-    init_tracing(); 
+    init_default_tracing(); 
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -253,6 +253,7 @@ fn job_from_cron_one_page() {
                     &job_id.clone().to_string(),
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    "",
                 )
                 .await;
 

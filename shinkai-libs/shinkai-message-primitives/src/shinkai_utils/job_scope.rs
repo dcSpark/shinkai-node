@@ -16,6 +16,7 @@ pub struct JobScope {
     pub vec_fs: Vec<VectorFSScopeEntry>,
 }
 
+impl JobScope {}
 impl JobScope {
     pub fn new(local: Vec<LocalScopeEntry>, vec_fs: Vec<VectorFSScopeEntry>) -> Self {
         Self { local, vec_fs }
@@ -26,6 +27,11 @@ impl JobScope {
             local: Vec::new(),
             vec_fs: Vec::new(),
         }
+    }
+
+    /// Checks if the Job Scope is empty (has no entries pointing to VRs)
+    pub fn is_empty(&self) -> bool {
+        self.local.is_empty() && self.database.is_empty()
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {

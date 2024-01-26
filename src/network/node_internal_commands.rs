@@ -287,13 +287,11 @@ impl Node {
         shinkai_message: ShinkaiMessage,
         sender: Identity,
     ) -> Result<String, NodeError> {
-        println!("Creating new job");
         let job_manager = self.job_manager.as_ref().expect("JobManager not initialized");
         match job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(job_id) => {
                 {
                     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                    println!("Adding permission for inbox: {}", inbox_name.to_string());
                     let sender_standard = match sender {
                         Identity::Standard(std_identity) => std_identity,
                         _ => {
@@ -350,8 +348,8 @@ impl Node {
         }
     }
 
-    pub async fn internal_add_agent(&self, agent: SerializedAgent) -> Result<(), NodeError> {
-        match self.db.lock().await.add_agent(agent.clone()) {
+    pub async fn internal_add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), NodeError> {
+        match self.db.lock().await.add_agent(agent.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_agent_subidentity(agent).await {

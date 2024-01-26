@@ -36,7 +36,6 @@ impl JobInfo {
     }
 }
 
-// TODO: Replace all db writes with the profile-bound interface
 impl ShinkaiDB {
     pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
@@ -406,10 +405,8 @@ impl ShinkaiDB {
                     // Get the last context (should be only one)
                     let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
                     if let Some(Ok((_, value))) = iter.next() {
-                        let context_bytes = std::str::from_utf8(&value)?.to_string();
-                        let context_bytes = context_bytes.as_bytes();
-                        let context: Result<HashMap<String, String>, ShinkaiDBError> =
-                            bincode::deserialize(context_bytes).map_err(|_| {
+                        let context: Result<HashMap<String, String>, ShinkaiDBError> = bincode::deserialize(&value)
+                            .map_err(|_| {
                                 ShinkaiDBError::SomeError(
                                     "Failed converting execution context bytes to hashmap".to_string(),
                                 )

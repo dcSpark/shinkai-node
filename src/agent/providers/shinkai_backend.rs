@@ -45,35 +45,40 @@ impl LLMProvider for ShinkaiBackend {
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
+            let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
-                // TODO: Update URL
-                let url = format!("{}/ai-proxy/{}", base_url, "https://api.openai.com/v1/chat/completions");
-                eprintln!("URL: {}", url);
-                let open_ai = OpenAI {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::OpenAI(open_ai);
-                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
-                let messages_json = match result.value {
-                    PromptResultEnum::Value(v) => v,
-                    _ => {
-                        return Err(AgentError::UnexpectedPromptResultVariant(
-                            "Expected Value variant in PromptResultEnum".to_string(),
-                        ))
+                let messages_json = match self.model_type.as_str() {
+                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
+                        eprintln!("openai type");
+                        let open_ai = OpenAI {
+                            model_type: self.model_type.clone(),
+                        };
+                        let model = AgentLLMInterface::OpenAI(open_ai);
+                        let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
+                        let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                        match result.value {
+                            PromptResultEnum::Value(v) => v,
+                            _ => {
+                                return Err(AgentError::UnexpectedPromptResultVariant(
+                                    "Expected Value variant in PromptResultEnum".to_string(),
+                                ))
+                            }
+                        }
                     }
+                    _ => return Err(AgentError::InvalidModelType("Unsupported model type".to_string())),
                 };
+                // eprintln!("Messages JSON: {:?}", messages_json);
 
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
-                    "max_tokens": result.remaining_tokens,
+                    // "max_tokens": result.remaining_tokens, // TODO: Check if this is necessary
                 });
 
                 // Openai doesn't support json_object response format for vision models. wut?
-                if !self.model_type.contains("vision") {
+                // Add json_object only for PREMIUM_TEXT_INFERENCE
+                if self.model_type == "PREMIUM_TEXT_INFERENCE" {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
@@ -84,6 +89,16 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
+
+                let payload_string =
+                    serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
+
+                // eprintln!("Curl command:");
+                // eprintln!("curl -X POST \\");
+                // eprintln!("  -H 'Content-Type: application/json' \\");
+                // eprintln!("  -H 'Authorization: Bearer {}' \\", key);
+                // eprintln!("  -d '{}' \\", payload_string);
+                // eprintln!("  '{}'", url);
 
                 let request = client
                     .post(url)
@@ -96,6 +111,7 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Request Details: {:?}", request).as_str(),
                 );
+                eprintln!("Request Details: {:?}", request);
 
                 let res = request.send().await?;
 
@@ -111,6 +127,7 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
+                eprintln!("Call API Response Text: {:?}", response_text);
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
@@ -161,34 +178,6 @@ impl LLMProvider for ShinkaiBackend {
             }
         } else {
             Err(AgentError::UrlNotSet)
-        }
-    }
-
-    /// Returns the maximum number of tokens supported based on
-    /// the provided model string
-    fn get_max_tokens(s: &str) -> usize {
-        // Custom added, since not supported by Tiktoken atm
-        if s == "gpt-4-1106-preview" {
-            128_000
-        } else {
-            let normalized_model = Self::normalize_model(s);
-            get_context_size(normalized_model.as_str())
-        }
-    }
-
-    /// Returns a maximum number of output tokens
-    fn get_max_output_tokens(s: &str) -> usize {
-        4096
-    }
-
-    /// Normalizes the model string to one that is supported by Tiktoken crate
-    fn normalize_model(s: &str) -> String {
-        if s.to_string().starts_with("gpt-4") {
-            "gpt-4-32k".to_string()
-        } else if s.to_string().starts_with("gpt-3.5") {
-            "gpt-3.5-turbo-16k".to_string()
-        } else {
-            "gpt-4".to_string()
         }
     }
 }

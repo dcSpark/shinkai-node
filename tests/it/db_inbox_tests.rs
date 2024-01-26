@@ -8,7 +8,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{Ident
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -73,7 +73,7 @@ fn generate_message_with_text(
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -193,7 +193,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure_and_root() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -359,7 +359,7 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
 #[tokio::test]
 async fn test_insert_messages_with_tree_structure() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -591,7 +591,7 @@ async fn test_insert_messages_with_tree_structure() {
 
 #[tokio::test]
 async fn db_inbox() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -940,7 +940,7 @@ async fn db_inbox() {
 
 #[test]
 fn test_permission_errors() {
-    init_tracing(); 
+    init_default_tracing(); 
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
