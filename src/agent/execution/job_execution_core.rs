@@ -380,7 +380,7 @@ impl JobManager {
         agent_found: Option<SerializedAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
-        save_to_vec_fs_folder: Option<VRPath>,
+        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<(), AgentError> {
@@ -396,7 +396,7 @@ impl JobManager {
                 agent_found,
                 job_message.files_inbox.clone(),
                 profile,
-                save_to_vec_fs_folder,
+                save_to_vector_fs_folder,
                 generator,
                 unstructured_api,
             )
@@ -418,8 +418,8 @@ impl JobManager {
                                 }
                             }
                             ScopeEntry::VectorFS(fs_entry) => {
-                                if !full_job.scope.vec_fs.contains(&fs_entry) {
-                                    full_job.scope.vec_fs.push(fs_entry);
+                                if !full_job.scope.vector_fs.contains(&fs_entry) {
+                                    full_job.scope.vector_fs.push(fs_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
@@ -455,7 +455,7 @@ impl JobManager {
         agent: Option<SerializedAgent>,
         files_inbox: String,
         profile: ShinkaiName,
-        save_to_vec_fs_folder: Option<VRPath>,
+        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
@@ -499,7 +499,7 @@ impl JobManager {
 
             // Now create Local/VectorFSScopeEntry depending on setting
             let text_chunking_strategy = TextChunkingStrategy::V1;
-            if let Some(folder_path) = &save_to_vec_fs_folder {
+            if let Some(folder_path) = &save_to_vector_fs_folder {
                 // TODO: Save to VectorFS
                 let resource_header = resource.as_trait_object().generate_resource_header();
                 let fs_scope_entry = VectorFSScopeEntry {

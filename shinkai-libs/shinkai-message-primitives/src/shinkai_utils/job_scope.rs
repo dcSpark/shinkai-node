@@ -13,25 +13,25 @@ use std::fmt;
 /// and VecFS entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
     pub local: Vec<LocalScopeEntry>,
-    pub vec_fs: Vec<VectorFSScopeEntry>,
+    pub vector_fs: Vec<VectorFSScopeEntry>,
 }
 
 impl JobScope {}
 impl JobScope {
-    pub fn new(local: Vec<LocalScopeEntry>, vec_fs: Vec<VectorFSScopeEntry>) -> Self {
-        Self { local, vec_fs }
+    pub fn new(local: Vec<LocalScopeEntry>, vector_fs: Vec<VectorFSScopeEntry>) -> Self {
+        Self { local, vector_fs }
     }
 
     pub fn new_default() -> Self {
         Self {
             local: Vec::new(),
-            vec_fs: Vec::new(),
+            vector_fs: Vec::new(),
         }
     }
 
     /// Checks if the Job Scope is empty (has no entries pointing to VRs)
     pub fn is_empty(&self) -> bool {
-        self.local.is_empty() && self.database.is_empty()
+        self.local.is_empty() && self.vector_fs.is_empty()
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
@@ -65,15 +65,15 @@ impl fmt::Debug for JobScope {
             })
             .collect();
 
-        let vec_fs_ids: Vec<String> = self
-            .vec_fs
+        let vector_fs_ids: Vec<String> = self
+            .vector_fs
             .iter()
             .map(|entry| entry.resource_header.reference_string())
             .collect();
 
         f.debug_struct("JobScope")
             .field("local", &format_args!("{:?}", local_ids))
-            .field("vector_fs", &format_args!("{:?}", vec_fs_ids))
+            .field("vector_fs", &format_args!("{:?}", vector_fs_ids))
             .finish()
     }
 }

@@ -1,6 +1,5 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
@@ -37,9 +36,9 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-fn setup_default_vec_fs() -> VectorFS {
+fn setup_default_vector_fs() -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
-    let fs_db_path = format!("db_tests/{}", "vec_fs");
+    let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::TextEmbeddingsInference(
         TextEmbeddingsInference::AllMiniLML6v2,
@@ -98,7 +97,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 async fn test_vector_fs_initializes_new_profile_automatically() {
     setup();
     let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vec_fs();
+    let mut vector_fs = setup_default_vector_fs();
 
     let fs_internals = vector_fs._get_profile_fs_internals(&default_test_profile());
     assert!(fs_internals.is_ok())
@@ -108,7 +107,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
 async fn test_vector_fs_saving_reading() {
     setup();
     let generator = RemoteEmbeddingGenerator::new_default();
-    let mut vector_fs = setup_default_vec_fs();
+    let mut vector_fs = setup_default_vector_fs();
 
     let path = VRPath::new();
     let writer = vector_fs

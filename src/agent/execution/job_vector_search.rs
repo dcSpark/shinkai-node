@@ -28,7 +28,7 @@ impl JobManager {
 
         // Fetch DB resources and add them to the list
         // let db = db.lock().await;
-        // for fs_entry in &job_scope.vec_fs {
+        // for fs_entry in &job_scope.vector_fs {
         //     resources.push(resource);
         // }
         // std::mem::drop(db);

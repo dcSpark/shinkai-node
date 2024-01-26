@@ -9,7 +9,6 @@ pub mod db_identity;
 pub mod db_identity_registration;
 pub mod db_inbox;
 pub mod db_inbox_get_messages;
-pub mod db_inbox_get_messages;
 pub mod db_job_queue;
 pub mod db_jobs;
 pub mod db_profile_bound;

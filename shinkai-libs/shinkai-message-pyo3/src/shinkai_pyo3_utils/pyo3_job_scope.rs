@@ -42,6 +42,6 @@ impl PyJobScope {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.local.is_empty() && self.inner.vec_fs.is_empty()
+        self.inner.local.is_empty() && self.inner.vector_fs.is_empty()
     }
 }
