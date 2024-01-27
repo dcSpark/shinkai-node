@@ -4,11 +4,10 @@ mod tests {
 
     use super::*;
     use shinkai_message_primitives::{
-        shinkai_message::shinkai_message::{EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData},
-        shinkai_utils::encryption::{
-            encryption_public_key_to_string, ephemeral_encryption_keys, string_to_encryption_public_key,
-            unsafe_deterministic_encryption_keypair,
-        },
+        shinkai_message::{shinkai_message::{EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData}, shinkai_message_schemas::MessageSchemaType},
+        shinkai_utils::{encryption::{
+            encryption_public_key_to_string, ephemeral_encryption_keys, string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod
+        }, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair},
     };
     use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -47,4 +46,52 @@ mod tests {
         eprintln!("result: {:?}", result);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_decrypt_new_message_body() {
+        let encrypted_content = "c2e96368f4167f1b39d3ec84b1894299067e8f8b279f1c706d48867d736158e18b298abbba124e759dbb1411682812d6583ccbff53feb6f912fe25eeb7c1826441e50ba08c4073b32574dbe7e62ffec024337c5d3caa410fda7294b98f92334b6ac0460e6255ba89b5e596f095bf81e1cab8636040fb5722b684e018fa4a3d0c9cd2f3345e0f2aad6e149b79d6f16274b7353b620c25f5ee6430b9a3cfee69e062de1135d76b61badf667a969d979f17040e96172ec9ef68340d4a912dc4b9fec46fe40c4c9abebc783667c761431e475d9f6d5ead682516d09d811bb8e376385daa163a33fd92fecf5181350fe8ec40cc7a58f5bd40b1de680e157aa23e6a75b23a7b991670e8301d406fdd4d41669377ef970cbe2936166f96bcc5e06428e5716b327088ccd2914c0b990482698498bf4db8b50608104e56249aa210d90fa2055f659b35c45216c697aadc7b8519e5ad51bb694562984f6aad93d2653c3e8186261377a1e6143f6e93bc0d68269276f60e45f3b2b1360b7b3a1a9312bed97df1608ff5a2c934e0917e8a06ca178bfd642cf080a92b485f89658c4dabf4c8b9741de258054cd5d0fcafc4104356325cb66bb2e967d658c4a4eb707769d04bd840a6a8aef141d4e3fb9f26d0";
+        let encrypted_data = EncryptedShinkaiBody {
+            content: format!("encrypted:{}", encrypted_content),
+        };
+
+        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let sender_pk =
+            string_to_encryption_public_key("3139fa22bc37ea6266d72a696a930777dec58123254f4a8ab41724421adb2949")
+                .unwrap();
+
+        let result = MessageBody::decrypt_message_body(&encrypted_data, &my_encryption_sk, &sender_pk);
+        eprintln!("result: {:?}", result);
+        assert!(result.is_ok());
+    }
+
+    // Note(Nico): this was used to generate the encrypted content for the typescript lib test
+    // #[test]
+    // fn test_create_get_all_inboxes_for_profile_request() {
+    //     let my_encryption_secret_key = unsafe_deterministic_encryption_keypair(0).0;
+    //     let my_signature_secret_key = unsafe_deterministic_signature_keypair(0).0;
+    //     let receiver_pk =
+    //         string_to_encryption_public_key("3139fa22bc37ea6266d72a696a930777dec58123254f4a8ab41724421adb2949")
+    //             .unwrap();
+
+    //     let sender = "@@localhost.shinkai".to_string();
+    //     let recipient = "@@localhost.shinkai".to_string();
+    //     let sender_subidentity = "main".to_string();
+
+    //     let get_all_inboxes_message_result = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
+    //         my_encryption_secret_key,
+    //         my_signature_secret_key,
+    //         receiver_pk,
+    //         format!("{}/{}", sender, sender_subidentity),
+    //         sender_subidentity.clone(),
+    //         sender.clone(),
+    //         recipient.clone(),
+    //     );
+
+    //     assert!(get_all_inboxes_message_result.is_ok());
+    //     let get_all_inboxes_message = get_all_inboxes_message_result.unwrap();
+
+    //     let message = get_all_inboxes_message.to_string();
+
+    //     eprintln!("get_all_inboxes_message: {:?}", message);
+    // }
 }
