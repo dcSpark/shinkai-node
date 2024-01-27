@@ -138,7 +138,7 @@ pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &Shi
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Error,
-                "Failed to validate message's signature",
+                "Failed to validate outer message's signature",
             );
             shinkai_log(
                 ShinkaiLogOption::Network,
@@ -150,7 +150,7 @@ pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &Shi
             );
             Err(io::Error::new(
                 io::ErrorKind::Other,
-                "Failed to validate message's signature",
+                "Failed to validate outer message's signature",
             ))
         }
         Err(_) => {

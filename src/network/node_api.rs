@@ -439,7 +439,7 @@ where
             StatusCode::OK,
         )),
         Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&json!({"status": "error", "error": error})),
+            warp::reply::json(&json!({"status": "error", "error": error.message})),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
