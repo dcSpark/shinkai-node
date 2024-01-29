@@ -99,7 +99,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs();
 
-    let fs_internals = vector_fs._get_profile_fs_internals(&default_test_profile());
+    let fs_internals = vector_fs.get_profile_fs_internals(&default_test_profile());
     assert!(fs_internals.is_ok())
 }
 
@@ -128,13 +128,13 @@ async fn test_vector_fs_saving_reading() {
     // Validate new folder path points to an entry at all (not empty), then specifically a folder, and finally not to an item.
     let folder_path = path.push_cloned(folder_name.to_string());
     assert!(vector_fs
-        ._validate_path_points_to_entry(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_entry(folder_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_folder(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_folder(folder_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_item(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_item(folder_path.clone(), &writer.profile)
         .is_err());
 
     // Create a Vector Resource and source file to be added into the VectorFS
@@ -155,17 +155,17 @@ async fn test_vector_fs_saving_reading() {
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
     let item_path = folder_path.push_cloned(resource.as_trait_object().name().to_string());
     assert!(vector_fs
-        ._validate_path_points_to_entry(item_path.clone(), &writer.profile)
+        .validate_path_points_to_entry(item_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_item(item_path.clone(), &writer.profile)
+        .validate_path_points_to_item(item_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_folder(item_path.clone(), &writer.profile)
+        .validate_path_points_to_folder(item_path.clone(), &writer.profile)
         .is_err());
 
     let internals = vector_fs
-        ._get_profile_fs_internals_read_only(&default_test_profile())
+        .get_profile_fs_internals_read_only(&default_test_profile())
         .unwrap();
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 

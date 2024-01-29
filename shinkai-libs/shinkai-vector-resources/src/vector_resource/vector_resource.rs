@@ -57,7 +57,8 @@ pub trait VectorResourceCore: Send + Sync {
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a Blake3 hash.
     fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError>;
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(
+    ///  If no new written datetime is provided, generates now.
+    fn insert_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -65,19 +66,24 @@ pub trait VectorResourceCore: Send + Sync {
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(), VRError>;
     /// Replace a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
-    fn replace_node(
+    fn replace_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(Node, Embedding), VRError>;
-    /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
+    fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(Node, Embedding), VRError>;
+    // /// Removes all Nodes/Embeddings at the root level depth.
+    // fn remove_nodes_dt_specified(
+    //     &mut self,
+    //     new_written_datetime: Option<DateTime<Utc>>,
+    // ) -> Result<(Node, Embedding), VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
     /// ISO RFC3339 when then Vector Resource was last written
@@ -96,6 +102,21 @@ pub trait VectorResourceCore: Send + Sync {
     /// Attempts to cast the VectorResource into an mut OrderedVectorResource. Fails if
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
+
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
+    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        self.insert_node_dt_specified(id, node, embedding, None)
+    }
+
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth).
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        self.replace_node_dt_specified(id, node, embedding, None)
+    }
+
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth).
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        self.remove_node_dt_specified(id, None)
+    }
 
     /// Returns the size of the whole Vector Resource after being encoded as JSON.
     /// Of note, encoding as JSON ensures we get accurate numbers when the user transfers/saves the VR to file.
@@ -386,7 +407,7 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding, Some(current_time))?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
@@ -406,7 +427,7 @@ pub trait VectorResourceCore: Send + Sync {
         // Rebuild the nodes after removing the target node
         if !deconstructed_nodes.is_empty() {
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            self.replace_node(node_key, node, embedding, Some(current_time))?;
+            self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         }
 
         Ok((removed_node.1, removed_node.2))
@@ -437,7 +458,7 @@ pub trait VectorResourceCore: Send + Sync {
 
             // Rebuild the nodes after replacing the node
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            let result = self.replace_node(node_key, node, embedding, Some(current_time))?;
+            let result = self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
 
             Ok(result)
         } else {
@@ -457,7 +478,7 @@ pub trait VectorResourceCore: Send + Sync {
         let current_time = ShinkaiTime::generate_time_now();
         // If inserting at root, just do it directly
         if parent_path.path_ids.is_empty() {
-            self.insert_node(
+            self.insert_node_dt_specified(
                 node_to_insert_id,
                 node_to_insert,
                 node_to_insert_embedding,
@@ -477,7 +498,7 @@ pub trait VectorResourceCore: Send + Sync {
 
         // Rebuild the nodes after inserting the new node
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding, Some(current_time))?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
@@ -555,8 +576,9 @@ pub trait VectorResourceCore: Send + Sync {
             let (_node_key, ref mut node, ref mut _embedding) = last_mut;
             match &mut node.content {
                 NodeContent::Resource(resource) => {
-                    let (removed_node, removed_embedding) =
-                        resource.as_trait_object_mut().remove_node(id.to_string(), None)?;
+                    let (removed_node, removed_embedding) = resource
+                        .as_trait_object_mut()
+                        .remove_node_dt_specified(id.to_string(), None)?;
                     deconstructed_nodes.push((id.clone(), removed_node, removed_embedding));
                 }
                 _ => {
@@ -581,7 +603,7 @@ pub trait VectorResourceCore: Send + Sync {
             if let NodeContent::Resource(resource) = &mut node.content {
                 // Preserve the last written datetime on the node assigned by prior functions
                 let current_node_last_written = current_node.1.last_written_datetime;
-                resource.as_trait_object_mut().insert_node(
+                resource.as_trait_object_mut().insert_node_dt_specified(
                     current_node.0,
                     current_node.1,
                     current_node.2,

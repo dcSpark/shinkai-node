@@ -124,7 +124,7 @@ impl VectorFS {
     ) -> Result<Vec<FSItem>, VectorFSError> {
         let ret_nodes =
             self._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])?;
-        let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
 
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
@@ -236,7 +236,7 @@ impl VectorFS {
         traversal_options: &Vec<TraversalOption>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
-        let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
         let stringified_permissions_map = internals
             .permissions_index
             .export_permissions_hashmap_with_reader(reader);

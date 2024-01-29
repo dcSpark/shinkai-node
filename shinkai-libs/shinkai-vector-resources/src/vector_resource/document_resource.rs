@@ -234,7 +234,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(
+    fn insert_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -310,7 +310,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(
+    fn replace_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -352,11 +352,11 @@ impl VectorResourceCore for DocumentVectorResource {
 
         // Then deletion of old node from indexes and addition of new node
         if old_node.data_tag_names != new_node.data_tag_names {
-            self.data_tag_index.remove_node(&old_node);
+            self.data_tag_index.remove_node_dt_specified(&old_node);
             self.data_tag_index.add_node(&new_node);
         }
         if old_node.metadata_keys() != new_node.metadata_keys() {
-            self.metadata_index.remove_node(&old_node);
+            self.metadata_index.remove_node_dt_specified(&old_node);
             self.metadata_index.add_node(&new_node);
         }
 
@@ -369,7 +369,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(
+    fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
@@ -694,9 +694,9 @@ impl DocumentVectorResource {
     /// Deletes a node and associated embedding from the resource.
     pub fn remove_node_with_integer(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         // Remove the node + adjust remaining node ids
-        let deleted_node = self._remove_node(id)?;
-        self.data_tag_index.remove_node(&deleted_node);
-        self.metadata_index.remove_node(&deleted_node);
+        let deleted_node = self._remove_node_dt_specified(id)?;
+        self.data_tag_index.remove_node_dt_specified(&deleted_node);
+        self.metadata_index.remove_node_dt_specified(&deleted_node);
 
         // Remove the embedding
         let index = if id == 0 { 0 } else { (id - 1) as usize };
@@ -711,7 +711,7 @@ impl DocumentVectorResource {
     }
 
     /// Internal node deletion
-    fn _remove_node(&mut self, id: u64) -> Result<Node, VRError> {
+    fn _remove_node_dt_specified(&mut self, id: u64) -> Result<Node, VRError> {
         if id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
         }

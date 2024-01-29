@@ -187,7 +187,7 @@ impl VectorFS {
     /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType
     /// for the profile's VectorFS.
     pub fn _get_embedding_generator(&self, profile: &ShinkaiName) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
-        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        let internals = self.get_profile_fs_internals_read_only(profile)?;
         let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
             &self.embedding_generator.api_url,
             self.embedding_generator.api_key.clone(),
@@ -219,7 +219,7 @@ impl VectorFS {
         profile: &ShinkaiName,
         error_message: &str,
     ) -> Result<(), VectorFSError> {
-        if let Ok(_) = self._get_profile_fs_internals_read_only(profile) {
+        if let Ok(_) = self.get_profile_fs_internals_read_only(profile) {
             if profile.profile_name == requester_name.profile_name {
                 return Ok(());
             }
@@ -232,10 +232,7 @@ impl VectorFS {
 
     /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map.
-    pub fn _get_profile_fs_internals(
-        &mut self,
-        profile: &ShinkaiName,
-    ) -> Result<&mut VectorFSInternals, VectorFSError> {
+    pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
         self.internals_map
             .get_mut(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
@@ -243,7 +240,7 @@ impl VectorFS {
 
     /// Attempts to fetch an immutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map. Used for pure reads where no updates are needed.
-    pub fn _get_profile_fs_internals_read_only(
+    pub fn get_profile_fs_internals_read_only(
         &self,
         profile: &ShinkaiName,
     ) -> Result<&VectorFSInternals, VectorFSError> {

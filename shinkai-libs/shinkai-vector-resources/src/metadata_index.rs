@@ -22,15 +22,15 @@ impl MetadataIndex {
     }
 
     /// Removes the node from the index
-    pub fn remove_node(&mut self, node: &Node) {
+    pub fn remove_node_dt_specified(&mut self, node: &Node) {
         if let Some(keys) = node.metadata_keys() {
             self.remove_node_id_multi_keys(&node.id, &keys);
         }
     }
 
     /// Deletes the old_node from the index replacing it with the new_node
-    pub fn replace_node(&mut self, old_node: &Node, new_node: &Node) {
-        self.remove_node(&old_node);
+    pub fn replace_node_dt_specified(&mut self, old_node: &Node, new_node: &Node) {
+        self.remove_node_dt_specified(&old_node);
         self.add_node(&new_node);
     }
 

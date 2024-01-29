@@ -40,7 +40,7 @@ impl VFSReader {
         };
 
         // Validate read permissions to ensure requester_name has rights
-        let fs_internals = vector_fs._get_profile_fs_internals(&profile)?;
+        let fs_internals = vector_fs.get_profile_fs_internals(&profile)?;
         if fs_internals
             .permissions_index
             .validate_read_permission(&requester_name, &path)
@@ -91,7 +91,7 @@ impl VectorFS {
     /// Retrieves the FSEntry for the reader's path in the VectorFS. If path is root `/`, then returns a
     /// FSFolder that matches the FS root structure.
     pub fn retrieve_fs_entry(&mut self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
-        let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
 
         // Create FSRoot directly if path is root
         if reader.path.is_empty() {
@@ -185,7 +185,7 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<RetrievedNode, VectorFSError> {
-        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        let internals = self.get_profile_fs_internals_read_only(profile)?;
         internals
             .fs_core_resource
             .retrieve_node_at_path(path.clone())
@@ -193,7 +193,7 @@ impl VectorFS {
     }
 
     /// Validates that the path points to a FSFolder
-    pub fn _validate_path_points_to_folder(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+    pub fn validate_path_points_to_folder(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
         let ret_node = self._retrieve_core_resource_node_at_path(path.clone(), profile)?;
 
         match ret_node.node.content {
@@ -203,7 +203,7 @@ impl VectorFS {
     }
 
     /// Validates that the path points to a FSItem
-    pub fn _validate_path_points_to_item(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+    pub fn validate_path_points_to_item(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
         let ret_node = self._retrieve_core_resource_node_at_path(path.clone(), profile)?;
 
         match ret_node.node.content {
@@ -213,7 +213,7 @@ impl VectorFS {
     }
 
     /// Validates that the path points to any FSEntry, meaning that something exists at that path
-    pub fn _validate_path_points_to_entry(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+    pub fn validate_path_points_to_entry(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
         self._retrieve_core_resource_node_at_path(path, profile).map(|_| ())
     }
 }
