@@ -17,8 +17,8 @@ export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
-export TELEMETRY_ENDPOINT="https://apm-node-b1.shinkai.com/api/default"
-export TELEMETRY_AUTH_HEADER="Basic xxx"
+# export TELEMETRY_ENDPOINT="https://apm-node-b1.shinkai.com/api/default"
+# export TELEMETRY_AUTH_HEADER="Basic xxx"
 
 export STATIC_SERVER_PORT="9554"
 export STATIC_SERVER_IP="0.0.0.0"
