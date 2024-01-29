@@ -183,7 +183,7 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Returns all nodes in the MapVectorResource
-    fn get_nodes(&self) -> Vec<Node> {
+    fn get_root_nodes(&self) -> Vec<Node> {
         self.nodes.values().cloned().collect()
     }
 
@@ -214,7 +214,7 @@ impl VectorResourceCore for MapVectorResource {
         }
 
         // Insert node/embeddings
-        self._insert_node_dt_specified(updated_node.clone());
+        self._insert_node(updated_node.clone());
         self.embeddings.insert(updated_node.id.clone(), embedding);
 
         // Update indices
@@ -262,11 +262,11 @@ impl VectorResourceCore for MapVectorResource {
 
         // Then deletion of old node from indexes and addition of new node
         if old_node.data_tag_names != new_node.data_tag_names {
-            self.data_tag_index.remove_node_dt_specified(&old_node);
+            self.data_tag_index.remove_node(&old_node);
             self.data_tag_index.add_node(&new_node);
         }
         if old_node.metadata_keys() != new_node.metadata_keys() {
-            self.metadata_index.remove_node_dt_specified(&old_node);
+            self.metadata_index.remove_node(&old_node);
             self.metadata_index.add_node(&new_node);
         }
 
@@ -308,6 +308,22 @@ impl VectorResourceCore for MapVectorResource {
         }
 
         results
+    }
+
+    /// Removes all Nodes/Embeddings at the root level depth.
+    fn remove_root_nodes_dt_specified(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
+        let ids: Vec<String> = self.nodes.keys().cloned().collect();
+        let mut results = vec![];
+
+        for id in ids {
+            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone())?;
+            results.push(result);
+        }
+
+        Ok(results)
     }
 }
 
@@ -500,7 +516,6 @@ impl MapVectorResource {
 
     /// Insert a new node and associated embeddings to the Map resource
     /// without checking if tags are valid.
-    /// TODO: Deprecate once switch over to VectorFS fully
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -510,7 +525,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.insert_node_dt_specified(key.to_string(), node, embedding.clone(), None);
+        self.insert_node(key.to_string(), node, embedding.clone());
     }
 
     /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.
@@ -646,7 +661,6 @@ impl MapVectorResource {
 
     /// Replaces an existing node & associated embeddings in the Map resource
     /// without checking if tags are valid.
-    /// TODO: Deprecate once VectorFS is used strictly.
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -661,11 +675,11 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        self.replace_node_dt_specified(key.to_string(), new_node, embedding.clone(), None)
+        self.replace_node(key.to_string(), new_node, embedding.clone())
     }
 
     /// Internal method. Node deletion from the hashmap
-    fn _remove_node_dt_specified(&mut self, key: &str) -> Result<Node, VRError> {
+    fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId(key.to_string()))?;
         self.update_last_written_to_now();
@@ -673,7 +687,7 @@ impl MapVectorResource {
     }
 
     // Internal method. Inserts a node into the nodes hashmap
-    fn _insert_node_dt_specified(&mut self, node: Node) {
+    fn _insert_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
         self.update_last_written_to_now();

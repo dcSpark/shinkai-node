@@ -51,7 +51,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Retrieves a copy of a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
-    fn get_nodes(&self) -> Vec<Node>;
+    fn get_root_nodes(&self) -> Vec<Node>;
     /// Returns the merkle root of the Vector Resource (if it is not None).
     fn get_merkle_root(&self) -> Result<String, VRError>;
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a Blake3 hash.
@@ -79,11 +79,11 @@ pub trait VectorResourceCore: Send + Sync {
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(Node, Embedding), VRError>;
-    // /// Removes all Nodes/Embeddings at the root level depth.
-    // fn remove_nodes_dt_specified(
-    //     &mut self,
-    //     new_written_datetime: Option<DateTime<Utc>>,
-    // ) -> Result<(Node, Embedding), VRError>;
+    /// Removes all Nodes/Embeddings at the root level depth. If no new written datetime is provided, generates now.
+    fn remove_root_nodes_dt_specified(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(Node, Embedding)>, VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
     /// ISO RFC3339 when then Vector Resource was last written
@@ -118,6 +118,11 @@ pub trait VectorResourceCore: Send + Sync {
         self.remove_node_dt_specified(id, None)
     }
 
+    /// Removes all Nodes/Embeddings at the root level depth.
+    fn remove_root_nodes(&mut self) -> Result<Vec<(Node, Embedding)>, VRError> {
+        self.remove_root_nodes_dt_specified(None)
+    }
+
     /// Returns the size of the whole Vector Resource after being encoded as JSON.
     /// Of note, encoding as JSON ensures we get accurate numbers when the user transfers/saves the VR to file.
     fn encoded_size(&self) -> Result<usize, VRError> {
@@ -138,7 +143,7 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::VectorResourceIsNotMerkelized(self.reference_string()));
         }
 
-        let nodes = self.get_nodes();
+        let nodes = self.get_root_nodes();
         let mut hashes = Vec::new();
 
         // Collect the merkle hash of each node

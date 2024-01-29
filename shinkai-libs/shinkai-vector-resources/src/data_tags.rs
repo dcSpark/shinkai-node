@@ -66,14 +66,14 @@ impl DataTagIndex {
     }
 
     /// Removes all references to the node in the index
-    pub fn remove_node_dt_specified(&mut self, node: &Node) {
+    pub fn remove_node(&mut self, node: &Node) {
         self.remove_node_id_multi_tags(&node.id, &node.data_tag_names);
     }
 
     /// Deletes all references in the index associated with old_node,
     /// replacing them with the new_node
-    pub fn replace_node_dt_specified(&mut self, old_node: &Node, new_node: &Node) {
-        self.remove_node_dt_specified(&old_node);
+    pub fn replace_node(&mut self, old_node: &Node, new_node: &Node) {
+        self.remove_node(&old_node);
         self.add_node(&new_node);
     }
 
