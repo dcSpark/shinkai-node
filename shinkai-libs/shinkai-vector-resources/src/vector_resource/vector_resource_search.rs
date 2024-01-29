@@ -99,7 +99,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     format!(
                         "<{}> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
-                        resource.as_trait_object().get_embeddings().len()
+                        resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
@@ -381,7 +381,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             }
         } else {
             // If SyntacticVectorSearch is not in traversal_options, get all embeddings
-            embeddings_to_score = self.get_embeddings();
+            embeddings_to_score = self.get_root_embeddings();
         }
 
         // Score embeddings based on traversal method
