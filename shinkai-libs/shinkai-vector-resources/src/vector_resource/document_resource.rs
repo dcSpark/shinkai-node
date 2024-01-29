@@ -182,7 +182,7 @@ impl VectorResourceCore for DocumentVectorResource {
         self.resource_base_type.clone()
     }
 
-    fn get_embeddings(&self) -> Vec<Embedding> {
+    fn get_root_embeddings(&self) -> Vec<Embedding> {
         self.embeddings.clone()
     }
 
@@ -203,6 +203,22 @@ impl VectorResourceCore for DocumentVectorResource {
     fn set_resource_id(&mut self, id: String) {
         self.update_last_written_to_now();
         self.resource_id = id;
+    }
+
+    fn get_data_tag_index(&self) -> &DataTagIndex {
+        &self.data_tag_index
+    }
+
+    fn set_data_tag_index(&mut self, data_tag_index: DataTagIndex) {
+        self.data_tag_index = data_tag_index;
+    }
+
+    fn get_metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
+    }
+
+    fn set_metadata_index(&mut self, metadata_index: MetadataIndex) {
+        self.metadata_index = metadata_index;
     }
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.

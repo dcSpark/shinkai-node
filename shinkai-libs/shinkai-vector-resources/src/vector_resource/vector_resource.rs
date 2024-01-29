@@ -47,7 +47,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Retrieves an Embedding given its id, at the root level depth.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
-    fn get_embeddings(&self) -> Vec<Embedding>;
+    fn get_root_embeddings(&self) -> Vec<Embedding>;
     /// Retrieves a copy of a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
@@ -90,6 +90,14 @@ pub trait VectorResourceCore: Send + Sync {
     fn last_written_datetime(&self) -> DateTime<Utc>;
     /// Set a RFC3339 Datetime of when then Vector Resource was last written
     fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>);
+    // Returns the Vector Resource's DataTagIndex
+    fn get_data_tag_index(&self) -> &DataTagIndex;
+    // Sets the Vector Resource's DataTagIndex
+    fn set_data_tag_index(&mut self, data_tag_index: DataTagIndex);
+    // Returns the Vector Resource's MetadataIndex
+    fn get_metadata_index(&self) -> &MetadataIndex;
+    // Sets the Vector Resource's MetadataIndex
+    fn set_metadata_index(&mut self, metadata_index: MetadataIndex);
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
     // Convert the VectorResource into a &dyn Any
@@ -121,6 +129,13 @@ pub trait VectorResourceCore: Send + Sync {
     /// Removes all Nodes/Embeddings at the root level depth.
     fn remove_root_nodes(&mut self) -> Result<Vec<(Node, Embedding)>, VRError> {
         self.remove_root_nodes_dt_specified(None)
+    }
+
+    /// Retrieves all Nodes and their corresponding Embeddings at the root level depth of the Vector Resource.
+    fn get_root_nodes_and_embeddings(&self) -> Vec<(Node, Embedding)> {
+        let nodes = self.get_root_nodes();
+        let embeddings = self.get_root_embeddings();
+        nodes.into_iter().zip(embeddings.into_iter()).collect()
     }
 
     /// Returns the size of the whole Vector Resource after being encoded as JSON.
