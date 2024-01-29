@@ -174,7 +174,20 @@ impl Node {
             }
         };
 
-        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
+        let inbox_name_result = InboxName::new(last_messages_inbox_request.inbox.clone());
+        let inbox_name = match inbox_name_result {
+            Ok(inbox) => inbox,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse InboxName: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
@@ -256,7 +269,19 @@ impl Node {
             }
         };
 
-        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
+        let inbox_name_result = InboxName::new(last_messages_inbox_request.inbox.clone());
+        let inbox_name = match inbox_name_result {
+            Ok(inbox) => inbox,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse InboxName: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
@@ -527,8 +552,21 @@ impl Node {
         // Decrypt the message
         let message_to_decrypt = msg.clone();
 
-        let decrypted_message =
-            message_to_decrypt.decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)?;
+        let decrypted_message_result =
+            message_to_decrypt.decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk);
+
+        let decrypted_message = match decrypted_message_result {
+            Ok(message) => message,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to decrypt message: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Err(Box::new(e));
+            }
+        };
 
         // Deserialize body.content into RegistrationCode
         let content = decrypted_message.get_message_content()?;
@@ -963,6 +1001,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
+        eprintln!("api_get_all_smart_inboxes_for_profile");
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
             .await;
@@ -973,6 +1012,7 @@ impl Node {
                 return Ok(());
             }
         };
+        eprintln!("api_get_all_smart_inboxes_for_profile 2");
 
         let profile_requested: String = msg.get_message_content()?;
 
