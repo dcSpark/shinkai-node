@@ -1001,7 +1001,6 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
-        eprintln!("api_get_all_smart_inboxes_for_profile");
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
             .await;
@@ -1012,7 +1011,6 @@ impl Node {
                 return Ok(());
             }
         };
-        eprintln!("api_get_all_smart_inboxes_for_profile 2");
 
         let profile_requested: String = msg.get_message_content()?;
 
