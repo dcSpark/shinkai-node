@@ -1,6 +1,6 @@
 use super::super::{vector_fs_error::VectorFSError, vector_fs_internals::VectorFSInternals};
-use crate::db::ShinkaiDB;
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
+use crate::db::ShinkaiDB;
 use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
@@ -80,7 +80,7 @@ impl VectorFSDB {
             .take(8)
             .map(char::from)
             .collect();
-        let db_path = format!("db_tests/empty_vec_fs_db_{}", random_string);
+        let db_path = format!("db_tests/empty_vector_fs_db_{}", random_string);
         Self {
             db: DB::open_default(&db_path).unwrap(),
             path: db_path,

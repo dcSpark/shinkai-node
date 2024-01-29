@@ -2,7 +2,9 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{collections::HashMap, fmt::Write};
 
-use super::{vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
+use super::{
+    vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader, vector_fs_writer::VFSWriter,
+};
 
 /// Struct that holds the read/write permissions specified for a specific path in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -15,6 +17,15 @@ pub struct PathPermission {
 }
 
 impl PathPermission {
+    /// Get the whitelist permission for a given ShinkaiName.
+    /// If the ShinkaiName is not found (ie. profile's name), checks if permission exists for its node/global name instead.
+    pub fn get_whitelist_permission(&self, requester_name: &ShinkaiName) -> Option<&WhitelistPermission> {
+        let node_name = ShinkaiName::from_node_name(requester_name.node_name.clone()).ok()?;
+        self.whitelist
+            .get(requester_name)
+            .or_else(|| self.whitelist.get(&node_name))
+    }
+
     /// Serialize the PathPermission struct into a JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
@@ -136,7 +147,8 @@ impl PermissionsIndex {
         Ok(())
     }
 
-    /// Removes a permission from the fs_permissions map.
+    /// Internal method which removes a permission from the fs_permissions map.
+    /// Should only be used by VectorFS when deleting FSEntries entirely.
     pub fn remove_path_permission(&mut self, path: VRPath) {
         self.fs_permissions.remove(&path);
     }
@@ -206,7 +218,7 @@ impl PermissionsIndex {
                     // directories (if they are also whitelisted) to see if the WhitelistPermission can be found there, until a non-whitelisted
                     // directory is found (returns false), or the WhitelistPermission is found for the requester.
                     ReadPermission::Whitelist => {
-                        if let Some(whitelist_permission) = path_permission.whitelist.get(requester_name) {
+                        if let Some(whitelist_permission) = path_permission.get_whitelist_permission(requester_name) {
                             if matches!(
                                 whitelist_permission,
                                 WhitelistPermission::Read | WhitelistPermission::ReadWrite
@@ -291,5 +303,83 @@ impl PermissionsIndex {
                 ));
             }
         }
+    }
+}
+
+impl VectorFS {
+    /// Sets the read/write permissions for the FSEntry at the writer's path (overwrites).
+    /// This action is only allowed to be performed by the profile owner.
+    /// No remove_path_permission is implemented, as all FSEntries must have a path permission.
+    pub fn set_path_permission(
+        &mut self,
+        writer: &VFSWriter,
+        read_permission: ReadPermission,
+        write_permission: WritePermission,
+    ) -> Result<(), VectorFSError> {
+        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+            if writer.requester_name == writer.profile {
+                fs_internals.permissions_index.insert_path_permission(
+                    writer.path.clone(),
+                    read_permission,
+                    write_permission,
+                )?;
+                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+            } else {
+                return Err(VectorFSError::InvalidWritePermission(
+                    writer.requester_name.clone(),
+                    writer.path.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Inserts a ShinkaiName into the Whitelist permissions list for the FSEntry at the writer's path (overwrites).
+    /// This action is only allowed to be performed by the profile owner.
+    pub fn set_whitelist_permission(
+        &mut self,
+        writer: &VFSWriter,
+        name_to_whitelist: ShinkaiName,
+        whitelist_perm: WhitelistPermission,
+    ) -> Result<(), VectorFSError> {
+        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+            if writer.requester_name == writer.profile {
+                fs_internals.permissions_index.insert_to_whitelist(
+                    writer.path.clone(),
+                    name_to_whitelist,
+                    whitelist_perm,
+                )?;
+                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+            } else {
+                return Err(VectorFSError::InvalidWritePermission(
+                    writer.requester_name.clone(),
+                    writer.path.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Removes a ShinkaiName from the Whitelist permissions list for the FSEntry at the writer's path.
+    /// This action is only allowed to be performed by the profile owner.
+    pub fn remove_whitelist_permission(
+        &mut self,
+        writer: &VFSWriter,
+        name_to_remove: ShinkaiName,
+    ) -> Result<(), VectorFSError> {
+        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+            if writer.requester_name == writer.profile {
+                fs_internals
+                    .permissions_index
+                    .remove_from_whitelist(writer.path.clone(), name_to_remove)?;
+                self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
+            } else {
+                return Err(VectorFSError::InvalidWritePermission(
+                    writer.requester_name.clone(),
+                    writer.path.clone(),
+                ));
+            }
+        }
+        Ok(())
     }
 }

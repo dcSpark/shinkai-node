@@ -3,6 +3,7 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
+use log::kv::source;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
@@ -213,29 +214,79 @@ impl VectorFS {
         }
     }
 
-    // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.
-    // /// If no VR (FSItem) with the same name already exists underneath the current path, then errors.
-    // pub fn update_source_file(&mut self,) {
+    /// Updates the SourceFileMap of the FSItem at the writer's path.
+    /// If no FSItem with the same name already exists underneath the current path, then errors.
+    pub fn update_source_file_map(
+        &mut self,
+        writer: &VFSWriter,
+        source_file_map: SourceFileMap,
+        distribution_origin: Option<DistributionOrigin>,
+    ) -> Result<FSItem, VectorFSError> {
+        let batch = ProfileBoundWriteBatch::new(&writer.profile);
+        let mut source_db_key = String::new();
+        let mut node_metadata = None;
+        let mut vr_header = None;
+        let mut new_item = None;
 
-    // Don't forget to update the sourcefile map last saved metadata key
-    // if source_file_map.is_some() {
-    //     node_metadata.insert(
-    //         FSItem::source_file_map_last_saved_metadata_key(),
-    //         current_datetime.to_rfc3339(),
-    //     );
-    // }
+        {
+            // If an existing FSFolder is already saved at the node path, return error.
+            if let Ok(_) = self._validate_path_points_to_folder(writer.path.clone(), &writer.profile) {
+                return Err(VectorFSError::CannotOverwriteFolder(writer.path.clone()));
+            }
+            // If an existing FSItem is saved at the node path
+            if let Ok(_) = self._validate_path_points_to_item(writer.path.clone(), &writer.profile) {
+                if let Ok(ret_node) = self._retrieve_core_resource_node_at_path(writer.path.clone(), &writer.profile) {
+                    if let Ok(header) = ret_node.node.get_vr_header_content() {
+                        node_metadata = ret_node.node.metadata.clone();
+                        vr_header = Some(header.clone());
+                        source_db_key = header.reference_string();
+                    } else {
+                        return Err(VectorFSError::InvalidFSEntryType(writer.path.to_string()));
+                    }
+                }
+            }
 
-    // }
+            // Now all validation checks/setup have passed, move forward with saving header/source file map
+            let current_datetime = ShinkaiTime::generate_time_now();
+            // Update the metadata keys of the FSItem node
+            let mut node_metadata = node_metadata.unwrap_or_else(|| HashMap::new());
+            node_metadata.insert(
+                FSItem::source_file_map_last_saved_metadata_key(),
+                current_datetime.to_rfc3339(),
+            );
+            let sfm_size = source_file_map.encoded_size()?;
+            node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
+            if let Some(dis_orig) = &distribution_origin {
+                node_metadata.insert(FSItem::distribution_origin_metadata_key(), dis_orig.to_json()?);
+            }
 
-    // /// Attempts to update the FSItem at the VFSWriter's path by mutating it's SourceFileMap (if available)
-    // /// by attaching the `original_creation_datetime` to the SourceFile at  `source_file_map_path` in the map.
-    // pub fn update_source_file_original_creation_datetime(
-    //     &mut self,
-    //     writer: &VFSWriter,
-    //     source_file_map_path: VRPath,
-    //     original_creation_datetime: DateTime<Utc>,
-    // ) -> Result<(), VectorFSError> {
-    // }
+            // Now after updating the metadata, finally save the VRHeader Node into the core vector resource
+            let vr_header = vr_header.ok_or(VectorFSError::InvalidFSEntryType(writer.path.to_string()))?;
+            {
+                new_item = Some(self._add_vr_header_to_core_resource(
+                    writer,
+                    vr_header,
+                    Some(node_metadata),
+                    current_datetime,
+                    true,
+                )?);
+            }
+        }
+
+        // Finally saving the the source file map and the FSInternals into the FSDB
+        let mut write_batch = writer.new_write_batch()?;
+        self.db
+            .wb_save_source_file_map(&source_file_map, &source_db_key, &mut write_batch)?;
+        let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
+
+        if let Some(item) = new_item {
+            Ok(item)
+        } else {
+            Err(VectorFSError::NoEntryAtPath(writer.path.clone()))
+        }
+    }
 
     /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.
     fn _add_vr_header_to_core_resource(
@@ -261,10 +312,14 @@ impl VectorFS {
             let node_id = vr_header.resource_name.clone();
             let resource = node.get_vector_resource_content_mut()?;
             let new_vr_header_node = Node::new_vr_header(node_id, &vr_header, metadata.clone(), &vec![]);
+            let new_node_embedding = vr_header
+                .resource_embedding
+                .clone()
+                .ok_or(VRError::NoEmbeddingProvided)?;
             resource.as_trait_object_mut().insert_node(
                 vr_header.resource_name.clone(),
                 new_vr_header_node,
-                embedding.clone(),
+                new_node_embedding,
                 Some(current_datetime),
             )?;
             Ok(())

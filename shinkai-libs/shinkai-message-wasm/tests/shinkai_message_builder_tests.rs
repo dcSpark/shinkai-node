@@ -870,7 +870,7 @@ mod tests {
         // Check the content
         // assert_eq!(content["inbox"], "inbox::@@node.shinkai::true");
         // assert_eq!(content["is_e2e"], true);
-        // assert_eq!(content["identities"][0]["full_name"], "@@node.shinkai");
+        // assert_eq!(content["identities"][0], "@@node.shinkai");
         // assert_eq!(content["identities"][0]["node_name"], "@@node.shinkai");
         // assert_eq!(content["count"], 10);
         // assert_eq!(content["offset"], "offset_string");
@@ -959,14 +959,8 @@ mod tests {
             "inbox::@@node.shinkai::true"
         );
         assert_eq!(content["inbox_name"]["RegularInbox"]["is_e2e"], true);
-        assert_eq!(
-            content["inbox_name"]["RegularInbox"]["identities"][0]["full_name"],
-            "@@node.shinkai"
-        );
-        assert_eq!(
-            content["inbox_name"]["RegularInbox"]["identities"][0]["node_name"],
-            "@@node.shinkai"
-        );
+        assert_eq!(content["inbox_name"]["RegularInbox"]["identities"][0], "@@node.shinkai");
+        assert_eq!(content["inbox_name"]["RegularInbox"]["identities"][0], "@@node.shinkai");
         assert_eq!(content["up_to_time"], "2023-07-02T20:53:34Z");
     }
 }

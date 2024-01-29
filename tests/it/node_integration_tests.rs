@@ -1,6 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -12,6 +11,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
@@ -42,7 +42,7 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let rt = Runtime::new().unwrap();
 
@@ -86,9 +86,9 @@ fn subidentity_registration() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name.clone()));
-        let node2_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node2_identity_name.clone()));
+        let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);

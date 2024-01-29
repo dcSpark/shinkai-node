@@ -27,7 +27,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use utils::static_server::start_static_server;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -36,6 +35,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use utils::environment::{fetch_static_server_env, NodeEnvironment};
 use utils::open_telemetry::init_telemetry_tracing;
+use utils::static_server::start_static_server;
 
 mod agent;
 mod cron_tasks;
@@ -45,7 +45,6 @@ mod managers;
 mod network;
 mod payments;
 mod planner;
-mod resources;
 mod schemas;
 mod tools;
 mod utils;

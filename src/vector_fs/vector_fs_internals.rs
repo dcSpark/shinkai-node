@@ -69,7 +69,7 @@ impl VectorFSInternals {
 
     /// A hard-coded DB key for the profile-wide VectorFSInternals.
     pub fn profile_fs_internals_shinkai_db_key() -> String {
-        "profile_vec_fs_internals".to_string()
+        "profile_vector_fs_internals".to_string()
     }
 
     pub fn to_json(&self) -> serde_json::Result<String> {
