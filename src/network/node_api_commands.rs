@@ -1782,11 +1782,35 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-        let serialized_agent_string = msg.get_message_content()?;
-        let serialized_agent: APIAddAgentRequest =
-            serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {
-                message: format!("Failed to parse APIAddAgentRequest: {}", e),
-            })?;
+        let serialized_agent_string_result = msg.get_message_content();
+
+        let serialized_agent_string = match serialized_agent_string_result {
+            Ok(content) => content,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get message content: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let serialized_agent_result = serde_json::from_str::<APIAddAgentRequest>(&serialized_agent_string);
+
+        let serialized_agent = match serialized_agent_result {
+            Ok(agent) => agent,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse APIAddAgentRequest: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let profile_result = {
             let identity_name = sender_identity.get_full_identity_name();
