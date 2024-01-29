@@ -1,6 +1,8 @@
 use crate::schemas::shinkai_name::ShinkaiName;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::str::FromStr;
+use serde::de::{self, Deserializer, Visitor};
+use std::fmt;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -16,18 +18,12 @@ pub struct SerializedAgent {
     pub allowed_message_senders: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AgentLLMInterface {
-    #[serde(rename = "openai")]
     OpenAI(OpenAI),
-    #[serde(rename = "genericapi")]
     GenericAPI(GenericAPI),
-    #[serde(rename = "ollama")]
     Ollama(Ollama),
-    #[serde(rename = "shinkai-backend")]
     ShinkaiBackend(ShinkaiBackend),
-    #[serde(rename = "local-llm")]
     LocalLLM(LocalLLM),
 }
 
@@ -73,5 +69,77 @@ impl FromStr for AgentLLMInterface {
         } else {
             Err(())
         }
+    }
+}
+
+impl Serialize for AgentLLMInterface {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            AgentLLMInterface::OpenAI(openai) => {
+                let model_type = format!("openai:{}", openai.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            AgentLLMInterface::GenericAPI(genericapi) => {
+                let model_type = format!("genericapi:{}", genericapi.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            AgentLLMInterface::Ollama(ollama) => {
+                let model_type = format!("ollama:{}", ollama.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            AgentLLMInterface::ShinkaiBackend(shinkaibackend) => {
+                let model_type = format!("shinkai-backend:{}", shinkaibackend.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            AgentLLMInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
+        }
+    }
+}
+
+struct AgentLLMInterfaceVisitor;
+
+impl<'de> Visitor<'de> for AgentLLMInterfaceVisitor {
+    type Value = AgentLLMInterface;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a string representing an AgentLLMInterface variant")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        let parts: Vec<&str> = value.split(':').collect();
+        match parts[0] {
+            "openai" => Ok(AgentLLMInterface::OpenAI(OpenAI {
+                model_type: parts[1].to_string(),
+            })),
+            "genericapi" => Ok(AgentLLMInterface::GenericAPI(GenericAPI {
+                model_type: parts[1].to_string(),
+            })),
+            "ollama" => Ok(AgentLLMInterface::Ollama(Ollama {
+                model_type: parts[1].to_string(),
+            })),
+            "shinkai-backend" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
+                model_type: parts[1].to_string(),
+            })),
+            "local-llm" => Ok(AgentLLMInterface::LocalLLM(LocalLLM {})),
+            _ => Err(de::Error::unknown_variant(
+                value,
+                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm"],
+            )),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentLLMInterface {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(AgentLLMInterfaceVisitor)
     }
 }
