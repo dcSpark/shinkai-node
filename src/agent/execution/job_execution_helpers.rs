@@ -13,6 +13,7 @@ use shinkai_vector_resources::source::{SourceFileType, VRSource};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 impl JobManager {
     /// Extracts a String using the provided key in the JSON response
@@ -73,6 +74,7 @@ impl JobManager {
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
     /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
+    #[instrument]
     async fn extract_json_value_from_inference_response(
         response: Result<JsonValue, AgentError>,
         agent: SerializedAgent,
