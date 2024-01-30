@@ -36,7 +36,14 @@ use std::{env, fs};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
-pub async fn run_node() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_node() {
+    match run_node_internal().await {
+        Ok(_) => (),
+        Err(e) => eprintln!("Error running node: {}", e),
+    }
+}
+
+pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
     // Check if TELEMETRY_ENDPOINT is defined
     if let Ok(telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
         // If TELEMETRY_ENDPOINT is defined, initialize telemetry tracing

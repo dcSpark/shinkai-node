@@ -6,6 +6,7 @@ authors = ["Nico Arqueros <nico@shinkai.com>"]
 
 [features]
 default = ["telemetry"]
+stream = ["reqwest/stream"]
 telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry", "tonic"]
 
 [lib]

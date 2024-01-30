@@ -13,9 +13,9 @@ mod utils;
 mod vector_fs;
 mod runner;
 
-use shinkai_node::run_node;
+use runner::run_node_internal;
 
 #[tokio::main]
 pub async fn main() {
-    run_node().await.unwrap();
+    run_node_internal().await.unwrap();
 }
