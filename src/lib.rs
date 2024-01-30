@@ -10,3 +10,6 @@ pub mod schemas;
 pub mod tools;
 pub mod utils;
 pub mod vector_fs;
+pub mod runner;
+
+pub use runner::run_node;
