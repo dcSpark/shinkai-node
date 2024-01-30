@@ -66,13 +66,13 @@ impl VFSReader {
 
     /// Generates a VFSReader using the same requester_name/profile held in self.
     /// Read permissions are verified before the VFSReader is produced.
-    pub fn _new_reader_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSReader, VectorFSError> {
+    pub fn new_reader_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSReader, VectorFSError> {
         VFSReader::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
     }
 
     /// Generates a VFSWriter using the same requester_name/profile held in self.
     /// Write permissions are verified before the VFSWriter is produced.
-    pub fn _new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
+    pub fn new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
         VFSWriter::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
     }
 
@@ -152,7 +152,7 @@ impl VectorFS {
         reader: &VFSReader,
         item_name: String,
     ) -> Result<BaseVectorResource, VectorFSError> {
-        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
         self.retrieve_vector_resource(&new_reader)
     }
 
@@ -164,7 +164,7 @@ impl VectorFS {
         reader: &VFSReader,
         item_name: String,
     ) -> Result<SourceFileMap, VectorFSError> {
-        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
         self.retrieve_source_file_map(&new_reader)
     }
 
@@ -175,7 +175,7 @@ impl VectorFS {
         reader: &VFSReader,
         item_name: String,
     ) -> Result<(BaseVectorResource, SourceFileMap), VectorFSError> {
-        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
         self.retrieve_vr_and_source_file_map(&new_reader)
     }
 

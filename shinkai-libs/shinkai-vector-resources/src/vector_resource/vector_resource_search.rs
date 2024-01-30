@@ -85,7 +85,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
     fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
         let nodes = self.retrieve_nodes_exhaustive(starting_path, resources_only);
         for node in nodes {
-            let path = node.retrieval_path.format_to_string();
+            let ret_path = node.retrieval_path;
+            let path = ret_path.format_to_string();
+            let path_depth = ret_path.path_ids.len();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
@@ -95,7 +97,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     }
                 }
                 NodeContent::Resource(resource) => {
-                    println!("");
+                    if path_depth == 1 {
+                        println!(" ");
+                    }
                     format!(
                         "<{}> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
@@ -103,12 +107,10 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    println!("");
                     format!("External: {}", external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    println!("");
                     format!("Header For Vector Resource: {}", header.reference_string())
                 }
             };
@@ -121,10 +123,24 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     merkle_hash = hash.to_string()
                 }
             }
+
+            // Create indent string and do the final print
+            let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
             if merkle_hash.len() == 0 {
-                println!("{}: {}", path, data);
+                println!(
+                    "{}{}: {}",
+                    indent_string,
+                    ret_path.path_ids.last().unwrap_or(&path),
+                    data
+                );
             } else {
-                println!("{}: {} | Merkle Hash: {}", path, data, merkle_hash);
+                println!(
+                    "{}{}: {} | Merkle Hash: {}",
+                    indent_string,
+                    ret_path.path_ids.last().unwrap_or(&path),
+                    data,
+                    merkle_hash
+                );
             }
         }
     }

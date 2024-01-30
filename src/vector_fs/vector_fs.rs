@@ -5,7 +5,7 @@ use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore};
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
 
 /// Struct that wraps all functionality of the VectorFS.
@@ -247,5 +247,15 @@ impl VectorFS {
         self.internals_map
             .get(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
+    }
+
+    /// Prints the internal nodes (of the core VR) of a Profile's VectorFS
+    pub fn print_profile_vector_fs_resource(&self, profile: ShinkaiName) {
+        let internals = self.get_profile_fs_internals_read_only(&profile).unwrap();
+        println!(
+            "\n\n{}'s VectorFS Internal Resource Representation\n------------------------------------------------",
+            profile.clone()
+        );
+        internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
     }
 }

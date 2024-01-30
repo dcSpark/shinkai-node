@@ -61,13 +61,13 @@ impl VFSWriter {
 
     /// Generates a VFSReader using the same requester_name/profile held in self.
     /// Read permissions are verified before the VFSReader is produced.
-    pub fn _new_reader_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSReader, VectorFSError> {
+    pub fn new_reader_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSReader, VectorFSError> {
         VFSReader::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
     }
 
     /// Generates a VFSWriter using the same requester_name/profile held in self.
     /// Write permissions are verified before the VFSWriter is produced.
-    pub fn _new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
+    pub fn new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
         VFSWriter::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
     }
 
@@ -87,6 +87,9 @@ impl VectorFS {
     }
 
     /// Internal method to copy the FSFolder from the writer's path into being held underneath the destination_path.
+    /// TODO: Check if memory requirements spin out of control because for each recursive item/folder save we also re-save
+    /// the whole of FS internals. If so, add a boolean input to saving methods for whether to skip the fs internals saving.
+    /// Or try using rocksdb merge instead of write batch.
     fn wb_copy_folder(
         &mut self,
         writer: &VFSWriter,
@@ -94,7 +97,7 @@ impl VectorFS {
         mut write_batch: ProfileBoundWriteBatch,
     ) -> Result<(ProfileBoundWriteBatch, FSFolder), VectorFSError> {
         let current_datetime = ShinkaiTime::generate_time_now();
-        let destination_writer = writer._new_writer_copied_data(destination_path.clone(), self)?;
+        let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
 
         // Ensure paths are valid before proceeding
         self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
@@ -137,7 +140,7 @@ impl VectorFS {
 
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
         for (node, _) in nodes_embeddings {
-            let origin_writer = writer._new_writer_copied_data(writer.path.push_cloned(node.id.clone()), self)?;
+            let origin_writer = writer.new_writer_copied_data(writer.path.push_cloned(node.id.clone()), self)?;
             let dest_path = destination_writer.path.push_cloned(node.id.clone());
             match node.content {
                 NodeContent::Resource(_) => {
@@ -157,7 +160,7 @@ impl VectorFS {
         self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
 
         // Fetch the new FSFolder after everything has been copied over in fs internals
-        let reader = destination_writer._new_reader_copied_data(destination_child_path.clone(), self)?;
+        let reader = destination_writer.new_reader_copied_data(destination_child_path.clone(), self)?;
         let fs_entry = self.retrieve_fs_entry(&reader)?;
 
         match fs_entry {
@@ -177,8 +180,6 @@ impl VectorFS {
 
     /// Internal method to copy the FSItem from the writer's path into being held underneath the destination_path.
     /// Does not support copying into VecFS root.
-    /// TODO: Check if memory requirements spin out of control because for each recursive item/folder save we also re-save
-    /// the whole of FS internals. If so, add a boolean input to saving methods for whether to skip the fs internals saving.
     fn wb_copy_item(
         &mut self,
         writer: &VFSWriter,
@@ -186,7 +187,7 @@ impl VectorFS {
         mut write_batch: ProfileBoundWriteBatch,
     ) -> Result<(ProfileBoundWriteBatch, FSItem), VectorFSError> {
         let current_datetime = ShinkaiTime::generate_time_now();
-        let destination_writer = writer._new_writer_copied_data(destination_path.clone(), self)?;
+        let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
 
         // Ensure paths are valid before proceeding
         self.validate_path_points_to_item(writer.path.clone(), &writer.profile)?;
@@ -209,7 +210,7 @@ impl VectorFS {
             .map_or(false, |_| true);
 
         // Fetch the VR and SFM from the DB
-        let reader = writer._new_reader_copied_data(writer.path.clone(), self)?;
+        let reader = writer.new_reader_copied_data(writer.path.clone(), self)?;
         if source_file_map_is_saved {
             source_file_map = Some(self.retrieve_source_file_map(&reader)?);
         }
@@ -246,7 +247,7 @@ impl VectorFS {
     /// Does not support moving into VecFS root.
     pub fn move_item(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError> {
         let current_datetime = ShinkaiTime::generate_time_now();
-        let destination_writer = writer._new_writer_copied_data(destination_path.clone(), self)?;
+        let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
 
         // Ensure paths are valid before proceeding
         self.validate_path_points_to_item(writer.path.clone(), &writer.profile)?;
@@ -303,7 +304,7 @@ impl VectorFS {
     /// Supports moving into VecFS root.
     pub fn move_folder(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError> {
         let current_datetime = ShinkaiTime::generate_time_now();
-        let destination_writer = writer._new_writer_copied_data(destination_path.clone(), self)?;
+        let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
 
         // Ensure paths are valid before proceeding
         self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;

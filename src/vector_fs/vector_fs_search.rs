@@ -93,7 +93,7 @@ impl VectorFS {
 
         for item in items {
             // Create a new reader at the path of the fs_item, and then fetch the VR from there
-            let new_reader = reader._new_reader_copied_data(item.path.clone(), self)?;
+            let new_reader = reader.new_reader_copied_data(item.path.clone(), self)?;
             let resource = self.retrieve_vector_resource(&new_reader)?;
 
             // Store the VectorFS path of the item in the hashmap for use later
@@ -157,7 +157,7 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
             let res_pair = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name())?;
             results.push(res_pair);
         }
@@ -176,7 +176,7 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
             let res = self.retrieve_vector_resource_in_folder(&new_reader, item.name())?;
             results.push(res);
         }
@@ -195,7 +195,7 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
             let res = self.retrieve_source_file_map_in_folder(&new_reader, item.name())?;
             results.push(res);
         }
