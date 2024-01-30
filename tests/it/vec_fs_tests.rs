@@ -463,13 +463,58 @@ async fn test_vector_fs_operations() {
     vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
     // Copy from new root folder to 2nd folder inside of first folder
+    let root_folder_file_path = new_root_folder_path.push_cloned(resource_name.to_string());
     let orig_writer = vector_fs
-        .new_writer(default_test_profile(), new_root_folder_path, default_test_profile())
+        .new_writer(default_test_profile(), root_folder_file_path, default_test_profile())
         .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(second_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs.copy_item(&orig_writer, second_folder_path.clone()).unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
     vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
     // Copy first folder as a whole into new root folder
+    let new_root_folder_first_folder_path = new_root_folder_path.push_cloned(folder_name.to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(new_root_folder_first_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs
+        .copy_folder(&orig_writer, new_root_folder_path.clone())
+        .unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
     vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    assert!(1 == 2);
+
+    // Copying into a folder which does not exist fails
 }
