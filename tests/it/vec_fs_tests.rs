@@ -376,3 +376,100 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     assert!(res.len() > 0);
 }
+
+#[tokio::test]
+async fn test_vector_fs_operations() {
+    setup();
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let mut vector_fs = setup_default_vector_fs();
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let folder_name = "first_folder";
+    vector_fs.create_new_folder(&writer, folder_name.clone()).unwrap();
+
+    // Create a folder inside of first_folder
+    let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let folder_name_2 = "second_folder";
+    vector_fs.create_new_folder(&writer, folder_name_2).unwrap();
+    let second_folder_path = first_folder_path.push_cloned(folder_name_2.to_string());
+
+    // Create a Vector Resource and source file to be added into the VectorFS
+    let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+    let mut resource = BaseVectorResource::Document(doc_resource);
+    let resource_name = resource.as_trait_object().name().clone();
+    let resource_ref_string = resource.as_trait_object().reference_string();
+    let resource_merkle_root = resource.as_trait_object().get_merkle_root();
+    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count().clone();
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let first_folder_item = vector_fs
+        .save_vector_resource_in_folder(
+            &writer,
+            resource.clone(),
+            Some(source_file_map.clone()),
+            DistributionOrigin::None,
+        )
+        .unwrap();
+
+    //
+    // Copy Tests
+    //
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let new_root_folder_name = "new_root_folder".to_string();
+    vector_fs.create_new_folder(&writer, &new_root_folder_name).unwrap();
+    let new_root_folder_path = VRPath::root().push_cloned(new_root_folder_name.clone());
+
+    // Copy item from 1st folder into new root folder
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_item.path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(new_root_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs.copy_item(&orig_writer, new_root_folder_path.clone()).unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    // Copy from new root folder to 2nd folder inside of first folder
+    let orig_writer = vector_fs
+        .new_writer(default_test_profile(), new_root_folder_path, default_test_profile())
+        .unwrap();
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    // Copy first folder as a whole into new root folder
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+}

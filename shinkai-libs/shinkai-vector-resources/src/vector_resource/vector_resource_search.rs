@@ -101,17 +101,17 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         println!(" ");
                     }
                     format!(
-                        "<{}> - {} Nodes Held Inside",
+                        "{} <Folder> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
                         resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    format!("External: {}", external_content)
+                    format!("{} <External Content>", external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    format!("Header For Vector Resource: {}", header.reference_string())
+                    format!("{} <VRHeader>", header.reference_string())
                 }
             };
             // Adding merkle hash if it exists to output string
@@ -127,20 +127,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
             // Create indent string and do the final print
             let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
             if merkle_hash.len() == 0 {
-                println!(
-                    "{}{}: {}",
-                    indent_string,
-                    ret_path.path_ids.last().unwrap_or(&path),
-                    data
-                );
+                println!("{}{}", indent_string, data,);
             } else {
-                println!(
-                    "{}{}: {} | Merkle Hash: {}",
-                    indent_string,
-                    ret_path.path_ids.last().unwrap_or(&path),
-                    data,
-                    merkle_hash
-                );
+                println!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
             }
         }
     }

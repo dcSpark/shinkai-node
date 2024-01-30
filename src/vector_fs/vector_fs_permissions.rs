@@ -155,18 +155,14 @@ impl PermissionsIndex {
 
     /// Copies the path permissions from the origin_path to the destination_path.
     /// Note, this will overwrite any old permission at the destination_path.
-    pub fn copy_path_permissions(
-        &mut self,
-        origin_path: VRPath,
-        destination_path: VRPath,
-    ) -> Result<(), VectorFSError> {
+    pub fn copy_path_permission(&mut self, origin_path: VRPath, destination_path: VRPath) -> Result<(), VectorFSError> {
         if let Some(origin_permission_json) = self.fs_permissions.get(&origin_path) {
             let origin_permission = PathPermission::from_json(&origin_permission_json.clone())?;
             self.fs_permissions
                 .insert(destination_path, origin_permission.to_json()?);
             Ok(())
         } else {
-            Err(VectorFSError::NoEntryAtPath(origin_path))
+            Err(VectorFSError::NoPermissionEntryAtPath(origin_path))
         }
     }
 

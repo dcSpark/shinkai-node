@@ -49,6 +49,7 @@ pub enum VectorFSError {
     PathDoesNotPointAtItem(VRPath),
     PathDoesNotPointAtFolder(VRPath),
     NoEntryAtPath(VRPath),
+    NoPermissionEntryAtPath(VRPath),
     EntryAlreadyExistsAtPath(VRPath),
     DateTimeParseError(String),
     FailedGettingFSPathOfRetrievedNode(String),
@@ -133,6 +134,13 @@ impl fmt::Display for VectorFSError {
                 write!(
                     f,
                     "Supplied path does not exist/hold any FSEntry in the VectorFS: {}",
+                    e
+                )
+            }
+            VectorFSError::NoPermissionEntryAtPath(e) => {
+                write!(
+                    f,
+                    "Path does not have a path permission specified in the VectorFS: {}",
                     e
                 )
             }
