@@ -135,7 +135,7 @@ impl VectorFS {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
                 .permissions_index
-                .copy_path_permissions(writer.path.clone(), destination_path.clone())?;
+                .copy_path_permission(writer.path.clone(), destination_path.clone())?;
         }
 
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
@@ -227,11 +227,10 @@ impl VectorFS {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
                 .permissions_index
-                .copy_path_permissions(writer.path.clone(), new_item.path.clone())?;
+                .copy_path_permission(writer.path.clone(), new_item.path.clone())?;
         }
 
         // Save fs internals, new VR, and new SFM to the DB
-        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
         if let Some(sfm) = source_file_map {
             self.db
                 .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
@@ -294,7 +293,7 @@ impl VectorFS {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
                 .permissions_index
-                .copy_path_permissions(writer.path.clone(), new_item.path.clone())?;
+                .copy_path_permission(writer.path.clone(), new_item.path.clone())?;
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
         Ok(new_item)
@@ -380,7 +379,7 @@ impl VectorFS {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
                 .permissions_index
-                .copy_path_permissions(writer.path.clone(), new_folder.path.clone())?;
+                .copy_path_permission(writer.path.clone(), new_folder.path.clone())?;
         }
         Ok(new_folder)
     }
@@ -521,18 +520,29 @@ impl VectorFS {
             }
         }
 
-        // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
-        let mut write_batch = writer.new_write_batch()?;
-        if let Some(sfm) = source_file_map {
-            self.db
-                .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
-        }
-        self.db.wb_save_resource(&resource, &mut write_batch)?;
-        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
-        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
-        self.db.write_pb(write_batch)?;
-
+        // Now that we've inserted the the new item into the fs internals core VR proceed forward
         if let Some(item) = new_item {
+            // Add private read/write permission for the new item path
+            {
+                let internals = self.get_profile_fs_internals(&writer.profile)?;
+                internals.permissions_index.insert_path_permission(
+                    item.path.clone(),
+                    ReadPermission::Private,
+                    WritePermission::Private,
+                )?;
+            }
+
+            // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
+            let mut write_batch = writer.new_write_batch()?;
+            if let Some(sfm) = source_file_map {
+                self.db
+                    .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
+            }
+            self.db.wb_save_resource(&resource, &mut write_batch)?;
+            let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+            self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+            self.db.write_pb(write_batch)?;
+
             Ok(item)
         } else {
             Err(VectorFSError::NoEntryAtPath(node_path))
