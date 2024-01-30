@@ -6,10 +6,16 @@ import "./App.css";
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
+  const [nodeStatus, setNodeStatus] = useState("");
 
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
     setGreetMsg(await invoke("greet", { name }));
+  }
+
+  async function startNode() {
+    const result = await invoke("start_shinkai_node");
+    setNodeStatus(result as string);
   }
 
   return (
@@ -46,6 +52,9 @@ function App() {
       </form>
 
       <p>{greetMsg}</p>
+
+      <button onClick={startNode}>Start Node</button>
+      <p>{nodeStatus}</p>
     </div>
   );
 }

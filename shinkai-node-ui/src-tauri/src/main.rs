@@ -17,6 +17,13 @@ async fn start_shinkai_node() -> String {
 }
 
 fn main() {
+    dotenv::dotenv().ok();
+
+    // Print environment variables
+    for (key, value) in std::env::vars() {
+        println!("{}: {}", key, value);
+    }
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![greet, start_shinkai_node])
         .run(tauri::generate_context!())
