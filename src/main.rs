@@ -13,9 +13,10 @@ mod utils;
 mod vector_fs;
 mod runner;
 
-use runner::run_node_internal;
+use runner::{initialize_node, run_node_tasks};
 
 #[tokio::main]
 pub async fn main() {
-    run_node_internal().await.unwrap();
+    let result = initialize_node().await.unwrap();
+    let _ = run_node_tasks(result.1, result.2, result.3).await;
 }

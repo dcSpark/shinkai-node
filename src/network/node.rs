@@ -242,6 +242,9 @@ pub enum NodeCommand {
     APIIsPristine {
         res: Sender<Result<bool, APIError>>,
     },
+    IsPristine {
+        res: Sender<bool>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -523,6 +526,7 @@ impl Node {
                             Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
                             Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
                             Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
+                            Some(NodeCommand::IsPristine { res }) => self.local_is_pristine(res).await,
                             _ => break,
                         }
                     }

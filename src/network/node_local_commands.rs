@@ -287,4 +287,10 @@ impl Node {
             }
         }
     }
+
+    pub async fn local_is_pristine(&self, res: Sender<bool>) {
+        let db_lock = self.db.lock().await;
+        let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
+        let _ = res.send(!has_any_profile).await;
+    }
 }

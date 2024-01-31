@@ -1,12 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/tauri";
 import "./App.css";
+
+type Settings = { [key: string]: string };
 
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
   const [nodeStatus, setNodeStatus] = useState("");
+  const [page, setPage] = useState("home");
+  const [settings, setSettings] = useState<Settings>({});
+
+  useEffect(() => {
+    // Get the current settings when the component mounts
+    invoke<Settings>("get_settings").then((fetchedSettings) => {
+      console.log(fetchedSettings);
+      setSettings(fetchedSettings);
+    });
+
+    // Start the interval to check node health
+    const intervalId = setInterval(checkNodeHealth, 2000);
+
+    // Clear the interval when the component unmounts
+    return () => clearInterval(intervalId);
+  }, []);
 
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -18,43 +36,74 @@ function App() {
     setNodeStatus(result as string);
   }
 
+  async function checkNodeHealth() {
+    const result = await invoke("check_node_health");
+    setNodeStatus(result as string);
+  }
+
+  async function saveSettings() {
+    for (let key in settings) {
+      await invoke("set_env_var", { key, value: settings[key] });
+    }
+  }
+
   return (
     <div className="container">
-      <h1>Welcome to Tauri!</h1>
-
-      <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      <div className="tab-bar">
+        <button onClick={() => setPage("home")}>Home</button>
+        <button onClick={() => setPage("settings")}>Settings</button>
       </div>
 
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-
-      <p>{greetMsg}</p>
-
-      <button onClick={startNode}>Start Node</button>
-      <p>{nodeStatus}</p>
+      {page === "home" && (
+        <>
+          <h1>Welcome to Shinkai Node!</h1>
+          <div className="row">
+            <a href="https://vitejs.dev" target="_blank">
+              <img src="/vite.svg" className="logo vite" alt="Shinkai Logo" />
+            </a>
+          </div>
+          // TODO: Check if the node has ever been started before
+          <p></p>
+          <div className="start-button-container">
+            <button className="start-button" onClick={startNode}>
+              Start Node
+            </button>
+          </div>
+          <p>{nodeStatus}</p>
+        </>
+      )}
+      {page === "settings" && (
+        <>
+          <h1>Settings</h1>
+          <>
+            <form
+              className="settings-grid"
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveSettings();
+              }}
+            >
+              {Object.keys(settings).map((key) => (
+                <label key={key}>
+                  <span className="key-name">{key}:</span>
+                  <input
+                    value={settings[key] || ""}
+                    onChange={(e) =>
+                      setSettings({ ...settings, [key]: e.target.value })
+                    }
+                  />
+                </label>
+              ))}
+            </form>
+            {/* Separate container for the save button */}
+            <div className="save-button-container">
+              <button type="submit" onClick={saveSettings}>
+                Save
+              </button>
+            </div>
+          </>
+        </>
+      )}
     </div>
   );
 }

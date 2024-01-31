@@ -21,7 +21,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
-    self, init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
+    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
@@ -30,20 +30,77 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 use std::{env, fs};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
-pub async fn run_node() {
-    match run_node_internal().await {
-        Ok(_) => (),
-        Err(e) => eprintln!("Error running node: {}", e),
+#[derive(Debug)]
+pub struct NodeRunnerError {
+    pub source: Box<dyn StdError + Send + Sync>,
+}
+
+impl fmt::Display for NodeRunnerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.source)
     }
 }
 
-pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
+impl StdError for NodeRunnerError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+impl From<Box<dyn StdError + Send + Sync>> for NodeRunnerError {
+    fn from(err: Box<dyn StdError + Send + Sync>) -> Self {
+        Self { source: err }
+    }
+}
+
+pub async fn tauri_initialize_node() -> Result<
+    (
+        async_channel::Sender<NodeCommand>,
+        JoinHandle<()>,
+        JoinHandle<()>,
+        JoinHandle<()>,
+    ),
+    NodeRunnerError,
+> {
+    match initialize_node().await {
+        Ok((node_local_commands, api_server, node_task, ws_server)) => {
+            Ok((node_local_commands, api_server, node_task, ws_server))
+        }
+        Err(e) => {
+            eprintln!("Error running node: {}", e);
+            Err(NodeRunnerError { source: e })
+        }
+    }
+}
+
+pub async fn tauri_run_node_tasks(
+    api_server: JoinHandle<()>,
+    node_task: JoinHandle<()>,
+    ws_server: JoinHandle<()>,
+) -> Result<(), NodeRunnerError> {
+    match run_node_tasks(api_server, node_task, ws_server).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Error running node tasks: {}", e);
+            Err(NodeRunnerError { source: e })
+        }
+    }
+}
+
+// pub async fn run_node_internal() -> Result<Sender<NodeCommand>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn initialize_node() -> Result<
+    (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, JoinHandle<()>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     // Check if TELEMETRY_ENDPOINT is defined
     if let Ok(telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
         // If TELEMETRY_ENDPOINT is defined, initialize telemetry tracing
@@ -82,7 +139,6 @@ pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string()));
 
     // Initialization, creating Tokio runtime and fetching needed startup data
-    // let mut _rt = initialize_runtime();
     let initial_agents = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
@@ -125,7 +181,10 @@ pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
     // CLI check
     if args.create_message {
         cli_handle_create_message(args, &node_keys, &global_identity_name);
-        return Ok(());
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Node not started due to CLI message creation",
+        )));
     }
 
     // Store secrets into machine filesystem `db.secret` file (needed if new secrets were generated)
@@ -180,6 +239,9 @@ pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
     // Node task
     let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
 
+    // Copy of node commands center
+    let node_commands_sender_copy = node_commands_sender.clone();
+
     // Check if the node is ready
     if !node.lock().await.is_node_ready().await {
         println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
@@ -227,15 +289,28 @@ pub async fn run_node_internal() -> Result<(), Box<dyn std::error::Error>> {
         init_ws_server(&node_env, identity_manager, shinkai_db).await;
     });
 
-    // With this line
-    tokio::try_join!(api_server, node_task, ws_server)
-        .map(|_| ())
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    // eprintln!("before join");
+    // let _ = tokio::try_join!(api_server, node_task, ws_server)
+    //     .map(|_| ())
+    //     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>);
+
+    // eprintln!("after join");
+
+    // Return the node_commands_sender_copy and the tasks
+    Ok((node_commands_sender_copy, api_server, node_task, ws_server))
 }
 
-/// Initialized Tokio runtime
-fn initialize_runtime() -> Runtime {
-    Runtime::new().unwrap()
+pub async fn run_node_tasks(
+    api_server: JoinHandle<()>,
+    node_task: JoinHandle<()>,
+    ws_server: JoinHandle<()>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _ = tokio::try_join!(api_server, node_task, ws_server)
+        .map(|_| ())
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>);
+
+    eprintln!("after join");
+    Ok(())
 }
 
 /// Machine filesystem path to the main ShinkaiDB database, pub key based.
