@@ -313,9 +313,7 @@ impl VectorResourceCore for MapVectorResource {
         };
 
         let id = VRPath::clean_string(&id);
-        let path = VRPath::from_string(&("/".to_owned() + &id))?;
-
-        let results = self.remove_node_at_path(path);
+        let results = self.remove_node(&id);
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
@@ -694,6 +692,21 @@ impl MapVectorResource {
             new_tag_names.clone(),
         );
         self.replace_node(key.to_string(), new_node, embedding.clone())
+    }
+
+    /// Internal method for removing root node/embedding, and updating indexes.
+    fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_node(key)?;
+        let deleted_embedding = self
+            .embeddings
+            .remove(key)
+            .ok_or(VRError::InvalidNodeId(key.to_string()))?;
+
+        self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
+
+        self.update_last_written_to_now();
+        Ok((deleted_node, deleted_embedding))
     }
 
     /// Internal method. Node deletion from the hashmap
