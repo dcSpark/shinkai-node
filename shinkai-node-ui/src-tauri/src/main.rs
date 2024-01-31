@@ -25,8 +25,8 @@ lazy_static! {
 }
 
 static NODE_CONTROLLER: Lazy<Arc<Mutex<Option<NodeController>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-static NODE_TASKS: Lazy<Arc<Mutex<Option<(JoinHandle<()>, JoinHandle<()>, JoinHandle<()>, broadcast::Sender<()>)>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-
+static NODE_TASKS: Lazy<Arc<Mutex<Option<(JoinHandle<()>, JoinHandle<()>, JoinHandle<()>, broadcast::Receiver<()>)>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static NODE_CANCEL_TX: Lazy<Mutex<Option<broadcast::Sender<()>>>> = Lazy::new(|| Mutex::new(None));
 struct NodeController {
     commands: Sender<NodeCommand>,
 }
@@ -64,14 +64,20 @@ async fn get_settings() -> std::collections::HashMap<String, String> {
 async fn stop_shinkai_node() -> String {
     eprintln!("Stopping shinkai node");
     let mut node_tasks = NODE_TASKS.lock().await;
-    if let Some((api_server, node_task, ws_server, tx)) = node_tasks.take() {
+    eprintln!("after lock");
+    if let Some((api_server, node_task, ws_server, _)) = node_tasks.take() {
+        eprintln!("after take");
         api_server.abort();
         node_task.abort();
         ws_server.abort();
-        match tx.send(()) {
-            Ok(_) => "Node shutdown command sent".to_string(),
-            Err(e) => format!("Failed to send shutdown command: {}", e),
+        eprintln!("after aborts");
+
+        // Send cancellation signal
+        if let Some(cancel_tx) = NODE_CANCEL_TX.lock().await.as_ref() {
+            let _ = cancel_tx.send(());
         }
+
+        "Node shutdown command sent".to_string()
     } else {
         eprintln!("Node tasks are not running");
         "Node tasks are not running".to_string()
@@ -128,19 +134,24 @@ async fn start_shinkai_node() -> String {
     eprintln!("Starting shinkai node");
     match initialize_node().await {
         Ok((node_local_commands, api_server, node_task, ws_server)) => {
-            let (tx, _) = broadcast::channel(1);
-            let rx1 = tx.subscribe();
-            let rx2 = tx.subscribe();
-            let rx3 = tx.subscribe();
+            let (tx, rx) = broadcast::channel(1);
 
-            let api_server = tokio::spawn(run_with_cancellation(api_server, rx1));
-            let node_task = tokio::spawn(run_with_cancellation(node_task, rx2));
-            let ws_server = tokio::spawn(run_with_cancellation(ws_server, rx3));
+            let controller = NodeController {
+                commands: node_local_commands.clone(),
+            };
+            let mut node_controller = NODE_CONTROLLER.lock().await;
+            *node_controller = Some(controller);
 
-            let mut node_tasks = NODE_TASKS.lock().await;
-            *node_tasks = Some((api_server, node_task, ws_server, tx));
+            // let mut node_tasks = NODE_TASKS.lock().await;
+            // *node_tasks = Some((api_server, node_task, ws_server, rx));
 
-            "".to_string()
+            let mut node_cancel_tx = NODE_CANCEL_TX.lock().await;
+            *node_cancel_tx = Some(tx);
+
+            match shinkai_node::run_node_tasks(api_server, node_task, ws_server, rx).await {
+                Ok(_) => "".to_string(),
+                Err(e) => format!("Failed to run node tasks: {}", e),
+            }
         }
         Err(e) => e,
     }

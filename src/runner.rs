@@ -36,7 +36,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{env, fs};
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
 
 #[derive(Debug)]
@@ -86,8 +86,9 @@ pub async fn tauri_run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
+    cancel_rx: broadcast::Receiver<()>,
 ) -> Result<(), NodeRunnerError> {
-    match run_node_tasks(api_server, node_task, ws_server).await {
+    match run_node_tasks(api_server, node_task, ws_server, cancel_rx).await {
         Ok(_) => Ok(()),
         Err(e) => {
             eprintln!("Error running node tasks: {}", e);
@@ -304,13 +305,29 @@ pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
+    mut cancel_rx: broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let _ = tokio::try_join!(api_server, node_task, ws_server)
-        .map(|_| ())
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>);
+    eprintln!("Running node tasks");
+    let cancel_task: JoinHandle<Result<(), &'static str>> = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            if cancel_rx.try_recv().is_ok() {
+                eprintln!("Cancel received");
+                return Err("Cancelled");
+            }
+        }
+    });
 
-    eprintln!("after join");
-    Ok(())
+    match tokio::try_join!(api_server, node_task, ws_server, cancel_task) {
+        Ok(_) => {
+            eprintln!("All tasks completed");
+            Ok(())
+        },
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+        }
+    }
 }
 
 /// Machine filesystem path to the main ShinkaiDB database, pub key based.
