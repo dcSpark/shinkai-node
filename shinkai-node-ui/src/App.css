@@ -24,6 +24,11 @@
   /* Add any additional styles needed for the container */
 }
 
+.stop-button {
+  background-color: red;
+  color: white;
+}
+
 
 /* TopBar styles */
 

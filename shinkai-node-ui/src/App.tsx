@@ -47,6 +47,11 @@ function App() {
     }
   }
 
+  async function stopNode() {
+    const result = await invoke("stop_shinkai_node");
+    setNodeStatus(result as string);
+  }
+
   return (
     <div className="container">
       <div className="tab-bar">
@@ -67,6 +72,9 @@ function App() {
           <div className="start-button-container">
             <button className="start-button" onClick={startNode}>
               Start Node
+            </button>
+            <button className="stop-button" onClick={stopNode}>
+              Stop Node
             </button>
           </div>
           <p>{nodeStatus}</p>

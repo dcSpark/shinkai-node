@@ -479,7 +479,10 @@ impl Node {
                         match command {
                             Some(NodeCommand::Shutdown) => {
                                 shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
-                                break;
+                            // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
+                                return Err(NodeError {
+                                    message: "Shutdown command received".to_string(),
+                                });
                             },
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,

@@ -10,13 +10,14 @@ use config::Source;
 use once_cell::sync::Lazy;
 use shinkai_node;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::runner::NodeRunnerError;
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use tauri::async_runtime::Mutex;
+use tokio::sync::oneshot;
 use toml;
 
 lazy_static! {
@@ -24,6 +25,7 @@ lazy_static! {
 }
 
 static NODE_CONTROLLER: Lazy<Arc<Mutex<Option<NodeController>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static NODE_TASKS: Lazy<Arc<Mutex<Option<(JoinHandle<()>, JoinHandle<()>, JoinHandle<()>, broadcast::Sender<()>)>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 struct NodeController {
     commands: Sender<NodeCommand>,
@@ -59,15 +61,33 @@ async fn get_settings() -> std::collections::HashMap<String, String> {
 }
 
 #[tauri::command]
+async fn stop_shinkai_node() -> String {
+    eprintln!("Stopping shinkai node");
+    let mut node_tasks = NODE_TASKS.lock().await;
+    if let Some((api_server, node_task, ws_server, tx)) = node_tasks.take() {
+        api_server.abort();
+        node_task.abort();
+        ws_server.abort();
+        match tx.send(()) {
+            Ok(_) => "Node shutdown command sent".to_string(),
+            Err(e) => format!("Failed to send shutdown command: {}", e),
+        }
+    } else {
+        eprintln!("Node tasks are not running");
+        "Node tasks are not running".to_string()
+    }
+}
+
+#[tauri::command]
 async fn check_node_health() -> String {
-    eprintln!("Checking node health");
+    // eprintln!("Checking node health");
     let node_controller = NODE_CONTROLLER.lock().await;
     if let Some(controller) = &*node_controller {
         let (res_sender, res_receiver) = async_channel::bounded(1);
         match controller.send_command(NodeCommand::IsPristine { res: res_sender }).await {
             Ok(_) => match res_receiver.recv().await {
                 Ok(is_pristine) => {
-                    eprintln!("is_pristine: {}", is_pristine);
+                    // eprintln!("is_pristine: {}", is_pristine);
                     if is_pristine {
                         "Node is pristine".to_string()
                     } else {
@@ -108,15 +128,28 @@ async fn start_shinkai_node() -> String {
     eprintln!("Starting shinkai node");
     match initialize_node().await {
         Ok((node_local_commands, api_server, node_task, ws_server)) => {
-            match shinkai_node::tauri_run_node_tasks(api_server, node_task, ws_server).await {
-                Ok(_) => "".to_string(),
-                Err(e) => {
-                    eprintln!("Error running node tasks: {}", e);
-                    e.to_string()
-                }
-            }
+            let (tx, _) = broadcast::channel(1);
+            let rx1 = tx.subscribe();
+            let rx2 = tx.subscribe();
+            let rx3 = tx.subscribe();
+
+            let api_server = tokio::spawn(run_with_cancellation(api_server, rx1));
+            let node_task = tokio::spawn(run_with_cancellation(node_task, rx2));
+            let ws_server = tokio::spawn(run_with_cancellation(ws_server, rx3));
+
+            let mut node_tasks = NODE_TASKS.lock().await;
+            *node_tasks = Some((api_server, node_task, ws_server, tx));
+
+            "".to_string()
         }
         Err(e) => e,
+    }
+}
+
+async fn run_with_cancellation(task: JoinHandle<()>, mut rx: broadcast::Receiver<()>) {
+    tokio::select! {
+        _ = task => {},
+        _ = rx.recv() => {},
     }
 }
 
@@ -151,7 +184,8 @@ fn main() {
             greet,
             start_shinkai_node,
             get_settings,
-            check_node_health
+            check_node_health,
+            stop_shinkai_node
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
