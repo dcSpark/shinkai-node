@@ -339,6 +339,8 @@ impl VectorResourceCore for MapVectorResource {
             results.push(result);
         }
 
+        println!(" Self nodes: {:?}", self.get_root_nodes());
+
         Ok(results)
     }
 }
