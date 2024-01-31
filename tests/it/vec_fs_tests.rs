@@ -514,7 +514,15 @@ async fn test_vector_fs_operations() {
 
     vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
-    assert!(1 == 2);
-
     // Copying into a folder which does not exist fails
+    let non_existent_folder_path = VRPath::root().push_cloned("non_existent_folder".to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let copy_result = vector_fs.copy_folder(&orig_writer, non_existent_folder_path.clone());
+    assert!(copy_result.is_err());
 }

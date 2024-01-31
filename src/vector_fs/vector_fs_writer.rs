@@ -152,7 +152,7 @@ impl VectorFS {
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
         for (node, _) in nodes_embeddings {
             let origin_writer = writer.new_writer_copied_data(writer.path.push_cloned(node.id.clone()), self)?;
-            let dest_path = destination_writer.path.push_cloned(node.id.clone());
+            let dest_path = destination_child_path.clone();
             match node.content {
                 NodeContent::Resource(_) => {
                     println!("found resource node");
