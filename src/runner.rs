@@ -306,14 +306,8 @@ pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
-    start_node: Weak<Mutex<Node>>,
+    _: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let shinkai_db: Weak<Mutex<VectorFS>>;
-    {
-        let db_arc = start_node.upgrade().unwrap();
-        shinkai_db = Arc::downgrade(&db_arc.lock().await.vector_fs.clone());
-    }
-
     match tokio::try_join!(api_server, node_task, ws_server) {
         Ok(_) => {
             eprintln!("All tasks completed");
@@ -321,13 +315,6 @@ pub async fn run_node_tasks(
         }
         Err(e) => {
             eprintln!("Error try_join!: {:?}", e);
-            {
-                // let node_arc = start_node.upgrade().unwrap();
-                let shinkai_arc = shinkai_db.upgrade().unwrap();
-
-                // println!("Strong references to start_node: {}", Arc::strong_count(&node_arc));
-                println!("Strong references to vector_fs_db: {}", Arc::strong_count(&shinkai_arc));
-            }
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
     }

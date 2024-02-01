@@ -24,6 +24,7 @@ mod tests {
         init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db_weak = Arc::downgrade(&db);
 
         let agent_id = "agent_id1".to_string();
         let agent_name =
@@ -46,7 +47,7 @@ mod tests {
         };
 
         let manager = ModelCapabilitiesManager {
-            db,
+            db: db_weak,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![gpt_3_5_agent.clone()],
         };
@@ -65,6 +66,7 @@ mod tests {
         init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db_weak = Arc::downgrade(&db);
 
         let agent_id = "agent_id2".to_string();
         let agent_name =
@@ -87,7 +89,7 @@ mod tests {
         };
 
         let manager = ModelCapabilitiesManager {
-            db,
+            db: db_weak,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![gpt_4_vision_agent],
         };
@@ -102,6 +104,7 @@ mod tests {
         init_default_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db_weak = Arc::downgrade(&db);
 
         let agent_id = "agent_id3".to_string();
         let agent_name =
@@ -124,7 +127,7 @@ mod tests {
         };
 
         let manager = ModelCapabilitiesManager {
-            db,
+            db: db_weak,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![fake_gpt_agent],
         };
