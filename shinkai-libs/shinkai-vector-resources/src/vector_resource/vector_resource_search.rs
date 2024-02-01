@@ -167,6 +167,8 @@ pub trait VectorResourceSearch: VectorResourceCore {
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, VRError> {
+        // Setup the root VRHeader that will be attached to all RetrievedNodes
+        let root_vr_header = self.generate_resource_header();
         // We only traverse 1 level of depth at a time to be able to re-process the input_query as needed
         let mut traversal_options = traversal_options.clone();
         traversal_options.push(TraversalOption::UntilDepth(0));
@@ -211,12 +213,13 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     }
 
                     // Call vector_search() on the resource to get all the next depth Nodes from it
-                    let new_results = resource.as_trait_object().vector_search_customized(
+                    let new_results = resource.as_trait_object()._vector_search_customized_with_root_header(
                         query_embedding,
                         num_of_results,
                         TraversalMethod::Exhaustive,
                         &traversal_options,
                         starting_path.clone(),
+                        Some(root_vr_header.clone()),
                     );
                     // Take into account current resource score, then push the new results to latest_returned_results to be further processed
                     if let Some(ScoringMode::HierarchicalAverageScoring) =
@@ -268,8 +271,30 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
+        // Call the new method, passing None for the root_header parameter
+        self._vector_search_customized_with_root_header(
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            starting_path,
+            None,
+        )
+    }
+
+    /// Vector search customized core logic, with ability to specify root_header
+    fn _vector_search_customized_with_root_header(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+        root_header: Option<VRHeader>,
+    ) -> Vec<RetrievedNode> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
-        let root_vr_header = self.generate_resource_header();
+        let root_vr_header = root_header.unwrap_or_else(|| self.generate_resource_header());
+        println!("\n\nRoot vr header reference string: {:?}\n\n", root_vr_header);
 
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
