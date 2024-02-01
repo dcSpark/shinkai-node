@@ -14,6 +14,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::Weak;
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -67,7 +68,7 @@ pub struct WebSocketManager {
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
     subscriptions: HashMap<String, HashMap<String, bool>>,
     shared_keys: HashMap<String, String>,
-    shinkai_db: Arc<Mutex<ShinkaiDB>>,
+    shinkai_db: Weak<Mutex<ShinkaiDB>>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
     message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
@@ -79,7 +80,7 @@ impl Clone for WebSocketManager {
             connections: self.connections.clone(),
             subscriptions: self.subscriptions.clone(),
             shared_keys: self.shared_keys.clone(),
-            shinkai_db: Arc::clone(&self.shinkai_db),
+            shinkai_db: self.shinkai_db.clone(),
             node_name: self.node_name.clone(),
             identity_manager_trait: Arc::clone(&self.identity_manager_trait),
             message_queue: Arc::clone(&self.message_queue),
@@ -89,7 +90,7 @@ impl Clone for WebSocketManager {
 
 impl WebSocketManager {
     pub async fn new(
-        shinkai_db: Arc<Mutex<ShinkaiDB>>,
+        shinkai_db: Weak<Mutex<ShinkaiDB>>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
     ) -> Arc<Mutex<Self>> {
@@ -177,8 +178,8 @@ impl WebSocketManager {
                     Ok(identity) => identity,
                     Err(_) => return false,
                 };
-
-                match Node::has_inbox_access(self.shinkai_db.clone(), &inbox_name, &sender_identity).await {
+                let db_arc = self.shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+                match Node::has_inbox_access(db_arc, &inbox_name, &sender_identity).await {
                     Ok(value) => {
                         if value {
                             shinkai_log(

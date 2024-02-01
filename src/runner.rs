@@ -33,9 +33,8 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::{env, fs};
-use tokio::runtime::Runtime;
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
 
@@ -68,13 +67,13 @@ pub async fn tauri_initialize_node() -> Result<
         JoinHandle<()>,
         JoinHandle<()>,
         JoinHandle<()>,
-        String,
+        Weak<Mutex<Node>>,
     ),
     NodeRunnerError,
 > {
     match initialize_node().await {
-        Ok((node_local_commands, api_server, node_task, ws_server, main_db_path)) => {
-            Ok((node_local_commands, api_server, node_task, ws_server, main_db_path))
+        Ok((node_local_commands, api_server, node_task, ws_server, node)) => {
+            Ok((node_local_commands, api_server, node_task, ws_server, node))
         }
         Err(e) => {
             eprintln!("Error running node: {}", e);
@@ -87,8 +86,9 @@ pub async fn tauri_run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
+    node: Weak<Mutex<Node>>,
 ) -> Result<(), NodeRunnerError> {
-    match run_node_tasks(api_server, node_task, ws_server).await {
+    match run_node_tasks(api_server, node_task, ws_server, node).await {
         Ok(_) => Ok(()),
         Err(e) => {
             eprintln!("Error running node tasks: {}", e);
@@ -98,7 +98,13 @@ pub async fn tauri_run_node_tasks(
 }
 
 pub async fn initialize_node() -> Result<
-    (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, JoinHandle<()>, String),
+    (
+        Sender<NodeCommand>,
+        JoinHandle<()>,
+        JoinHandle<()>,
+        JoinHandle<()>,
+        Weak<Mutex<Node>>,
+    ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     // Check if TELEMETRY_ENDPOINT is defined
@@ -202,7 +208,7 @@ pub async fn initialize_node() -> Result<
 
     // Now that all core init data acquired, start running the node itself
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
-    let node = std::sync::Arc::new(tokio::sync::Mutex::new(
+    let node = Arc::new(tokio::sync::Mutex::new(
         Node::new(
             global_identity_name.clone().to_string(),
             node_env.listen_address,
@@ -223,6 +229,7 @@ pub async fn initialize_node() -> Result<
 
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
+    let node_copy = Arc::downgrade(&start_node.clone());
 
     // Run the API server and node in separate tasks
     // Get identity_manager before starting the node
@@ -291,14 +298,21 @@ pub async fn initialize_node() -> Result<
     });
 
     // Return the node_commands_sender_copy and the tasks
-    Ok((node_commands_sender_copy, api_server, node_task, ws_server, main_db_path))
+    Ok((node_commands_sender_copy, api_server, node_task, ws_server, node_copy))
 }
 
 pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
+    start_node: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let shinkai_db: Weak<Mutex<ShinkaiDB>>;
+    {
+        let db_arc = start_node.upgrade().unwrap();
+        shinkai_db = Arc::downgrade(&db_arc.lock().await.db.clone());
+    }
+
     match tokio::try_join!(api_server, node_task, ws_server) {
         Ok(_) => {
             eprintln!("All tasks completed");
@@ -306,6 +320,28 @@ pub async fn run_node_tasks(
         }
         Err(e) => {
             eprintln!("Error try_join!: {:?}", e);
+
+            {
+                // let node_arc = start_node.upgrade().unwrap();
+                let shinkai_arc = shinkai_db.upgrade().unwrap();
+
+                // println!("Strong references to start_node: {}", Arc::strong_count(&node_arc));
+                println!("Strong references to shinkai_db: {}", Arc::strong_count(&shinkai_arc));
+            }
+
+            // Print the number of strong references before dropping
+
+            // drop(start_node);
+            // drop(shinkai_db);
+            // {
+            //     let mut resource_guard = start_node.lock().await;
+            //     *resource_guard = None; // This drops the resource, even if `resource` is still referenced elsewhere
+            // }
+
+            // {
+            //     let mut resource_guard = shinkai_db.lock().await;
+            //     *resource_guard = None; // This drops the resource, even if `resource` is still referenced elsewhere
+            // }
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
     }
@@ -414,7 +450,7 @@ async fn init_ws_server(
 
     let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
     // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), shinkai_name, new_identity_manager).await;
+    let manager = WebSocketManager::new(Arc::downgrade(&shinkai_db.clone()), shinkai_name, new_identity_manager).await;
 
     // Update ShinkaiDB with manager so it can trigger updates
     {

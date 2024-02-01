@@ -9,18 +9,17 @@ use config::Config;
 use config::Source;
 use once_cell::sync::Lazy;
 use shinkai_node;
-use shinkai_node::db::ShinkaiDB;
-use shinkai_node::network::node;
 use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::Node;
 use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Weak;
 use tauri::async_runtime::Mutex;
 use tokio::sync::broadcast;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use toml;
 
@@ -41,7 +40,6 @@ static NODE_TASKS: Lazy<
 
 struct NodeController {
     commands: Sender<NodeCommand>,
-    db_path: String,
 }
 
 impl NodeController {
@@ -87,6 +85,10 @@ async fn stop_shinkai_node() -> String {
     if let Some(controller) = &*node_controller {
         eprintln!("controller OK");
 
+        let result = controller.send_command(NodeCommand::Shutdown).await;
+        eprintln!("result: {:?}", result);
+
+
         // Abort tasks using abort handles
         let mut node_tasks = NODE_TASKS.lock().await;
         if let Some((api_server_handle, node_task_handle, ws_server_handle)) = node_tasks.take() {
@@ -97,10 +99,10 @@ async fn stop_shinkai_node() -> String {
 
         eprintln!("after aborts");
 
-        eprintln!("db_path: {}", controller.db_path);
-        // wait 1 second for tasks to finish
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        let _ = force_remove_db_lock(Path::new(controller.db_path.clone().as_str()));
+        // eprintln!("db_path: {}", controller.db_path);
+        // // wait 1 second for tasks to finish
+        // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        // let _ = force_remove_db_lock(Path::new(controller.db_path.clone().as_str()));
         // let shinkai_db = controller.shinkai_db.clone();
 
         // // Set needs_reset to true
@@ -152,14 +154,14 @@ async fn initialize_node() -> Result<
         JoinHandle<()>,
         JoinHandle<()>,
         JoinHandle<()>,
+        Weak<Mutex<Node>>,
     ),
     String,
 > {
     match shinkai_node::tauri_initialize_node().await {
-        Ok((node_local_commands, api_server, node_task, ws_server, main_db_path)) => {
+        Ok((node_local_commands, api_server, node_task, ws_server, node)) => {
             let controller = NodeController {
                 commands: node_local_commands.clone(),
-                db_path: main_db_path.clone(),
             };
 
             eprintln!("\n\n Initializing node controller");
@@ -174,7 +176,7 @@ async fn initialize_node() -> Result<
                 ws_server.abort_handle(),
             ));
 
-            Ok((node_local_commands, api_server, node_task, ws_server))
+            Ok((node_local_commands, api_server, node_task, ws_server, node))
         }
         Err(e) => {
             eprintln!("Failed to initialize node: {}", e);
@@ -187,13 +189,13 @@ async fn initialize_node() -> Result<
 async fn start_shinkai_node() -> String {
     eprintln!("Starting shinkai node");
     match initialize_node().await {
-        Ok((_, api_server, node_task, ws_server)) => {
-            match shinkai_node::run_node_tasks(api_server, node_task, ws_server).await {
+        Ok((_, api_server, node_task, ws_server, node)) => {
+            match shinkai_node::run_node_tasks(api_server, node_task, ws_server, node).await {
                 Ok(_) => "Finished".to_string(),
                 Err(e) => {
                     eprintln!("Failed to run node tasks: {}", e);
                     format!("Failed to run node tasks: {}", e)
-                },
+                }
             }
         }
         Err(e) => e,
