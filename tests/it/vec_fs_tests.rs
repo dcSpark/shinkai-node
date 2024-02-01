@@ -169,6 +169,14 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
+    // Sets the permission to private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(default_test_profile(), item_path.clone(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
+
     /// Retrieve the Vector Resource & Source File Map from the db
     // Test both retrieve interfaces
     let reader = vector_fs
@@ -219,13 +227,21 @@ async fn test_vector_fs_saving_reading() {
     let writer = vector_fs
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
-    vector_fs
+    let item = vector_fs
         .save_vector_resource_in_folder(
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
             DistributionOrigin::None,
         )
+        .unwrap();
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(default_test_profile(), item.path.clone(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
         .unwrap();
 
     // Searching for FSItems
@@ -241,6 +257,7 @@ async fn test_vector_fs_saving_reading() {
     let res = vector_fs.vector_search_fs_item(&reader, query_embedding, 100).unwrap();
     assert_eq!(res[0].name(), "shinkai_intro");
 
+    vector_fs.print_profile_vector_fs_resource(reader.profile.clone());
     // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
     let reader = vector_fs
         .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
@@ -424,10 +441,22 @@ async fn test_vector_fs_operations() {
         .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
         .unwrap();
     let folder_name = "first_folder";
+    let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
     vector_fs.create_new_folder(&writer, folder_name.clone()).unwrap();
 
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
+
     // Create a folder inside of first_folder
-    let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
     let writer = vector_fs
         .new_writer(
             default_test_profile(),
@@ -438,6 +467,18 @@ async fn test_vector_fs_operations() {
     let folder_name_2 = "second_folder";
     vector_fs.create_new_folder(&writer, folder_name_2).unwrap();
     let second_folder_path = first_folder_path.push_cloned(folder_name_2.to_string());
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            second_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
 
     // Create a Vector Resource and source file to be added into the VectorFS
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
@@ -472,6 +513,18 @@ async fn test_vector_fs_operations() {
     let new_root_folder_name = "new_root_folder".to_string();
     vector_fs.create_new_folder(&writer, &new_root_folder_name).unwrap();
     let new_root_folder_path = VRPath::root().push_cloned(new_root_folder_name.clone());
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_root_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
 
     // Copy item from 1st folder into new root folder
     let orig_writer = vector_fs

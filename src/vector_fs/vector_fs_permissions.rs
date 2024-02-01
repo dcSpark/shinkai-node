@@ -204,7 +204,14 @@ impl PermissionsIndex {
 
         loop {
             if let Some(path_permission_json) = self.fs_permissions.get(&path) {
-                let mut path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+                let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+
+                // Global profile owner check
+                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                    return Ok(());
+                }
+
+                // Otherwise check specific permission
                 match &path_permission.read_permission {
                     // If Public, then reading is always allowed
                     ReadPermission::Public => return Ok(()),
@@ -270,11 +277,19 @@ impl PermissionsIndex {
 
         loop {
             if let Some(path_permission_json) = self.fs_permissions.get(&path) {
-                let mut path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+                let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+
+                // Global profile owner check
+                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                    return Ok(());
+                }
+
+                // Otherwise check specific permission
                 match &path_permission.write_permission {
                     // If private, then writing is allowed for the specific profile that owns the VectorFS
                     WritePermission::Private => {
                         if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                            return Ok(());
                         } else {
                             return Err(VectorFSError::InvalidWritePermission(
                                 requester_name.clone(),

@@ -294,7 +294,6 @@ pub trait VectorResourceSearch: VectorResourceCore {
     ) -> Vec<RetrievedNode> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = root_header.unwrap_or_else(|| self.generate_resource_header());
-        println!("\n\nRoot vr header reference string: {:?}\n\n", root_vr_header);
 
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {

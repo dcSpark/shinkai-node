@@ -289,8 +289,6 @@ impl VectorFS {
             .permissions_index
             .export_permissions_hashmap_with_reader(reader);
 
-        println!("In vector search core----------------------");
-
         // Search without unique scoring (ie. hierarchical) because "folders" have no content/real embedding.
         // Also remove any set traversal limit, so we can enforce folder permission traversal limiting.
         traversal_options.retain(|option| match option {
