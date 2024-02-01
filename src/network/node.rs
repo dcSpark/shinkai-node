@@ -349,7 +349,8 @@ impl Node {
         }
 
         // Setup Identity Manager
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
+        let db_weak = Arc::downgrade(&db_arc);
+        let subidentity_manager = IdentityManager::new(db_weak, node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -407,13 +408,15 @@ impl Node {
 
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
+        let db_weak = Arc::downgrade(&self.db);
+        let vector_fs_weak = Arc::downgrade(&self.vector_fs);
         self.job_manager = Some(Arc::new(Mutex::new(
             JobManager::new(
-                Arc::clone(&self.db),
+                db_weak,
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_profile_name.clone(),
-                self.vector_fs.clone(),
+                vector_fs_weak,
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
             )
@@ -425,10 +428,11 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("Starting node with name: {}", self.node_profile_name),
         );
+        let db_weak = Arc::downgrade(&self.db);
         self.cron_manager = match &self.job_manager {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(
-                    Arc::clone(&self.db),
+                    db_weak,
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_profile_name.clone(),
                     Arc::clone(job_manager),

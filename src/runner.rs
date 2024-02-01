@@ -14,6 +14,7 @@ use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
+use crate::vector_fs::vector_fs::VectorFS;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -292,7 +293,7 @@ pub async fn initialize_node() -> Result<
         .await;
     });
 
-    let shinkai_db_copy = shinkai_db.clone();
+    let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
     let ws_server = tokio::spawn(async move {
         init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
     });
@@ -307,10 +308,10 @@ pub async fn run_node_tasks(
     ws_server: JoinHandle<()>,
     start_node: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let shinkai_db: Weak<Mutex<ShinkaiDB>>;
+    let shinkai_db: Weak<Mutex<VectorFS>>;
     {
         let db_arc = start_node.upgrade().unwrap();
-        shinkai_db = Arc::downgrade(&db_arc.lock().await.db.clone());
+        shinkai_db = Arc::downgrade(&db_arc.lock().await.vector_fs.clone());
     }
 
     match tokio::try_join!(api_server, node_task, ws_server) {
@@ -320,28 +321,13 @@ pub async fn run_node_tasks(
         }
         Err(e) => {
             eprintln!("Error try_join!: {:?}", e);
-
             {
                 // let node_arc = start_node.upgrade().unwrap();
                 let shinkai_arc = shinkai_db.upgrade().unwrap();
 
                 // println!("Strong references to start_node: {}", Arc::strong_count(&node_arc));
-                println!("Strong references to shinkai_db: {}", Arc::strong_count(&shinkai_arc));
+                println!("Strong references to vector_fs_db: {}", Arc::strong_count(&shinkai_arc));
             }
-
-            // Print the number of strong references before dropping
-
-            // drop(start_node);
-            // drop(shinkai_db);
-            // {
-            //     let mut resource_guard = start_node.lock().await;
-            //     *resource_guard = None; // This drops the resource, even if `resource` is still referenced elsewhere
-            // }
-
-            // {
-            //     let mut resource_guard = shinkai_db.lock().await;
-            //     *resource_guard = None; // This drops the resource, even if `resource` is still referenced elsewhere
-            // }
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
     }
@@ -440,7 +426,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
 async fn init_ws_server(
     node_env: &NodeEnvironment,
     identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
-    shinkai_db: Arc<Mutex<ShinkaiDB>>,
+    shinkai_db: Weak<Mutex<ShinkaiDB>>,
 ) {
     let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
         let identity_manager_inner = identity_manager.lock().await;
@@ -450,11 +436,12 @@ async fn init_ws_server(
 
     let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
     // Start the WebSocket server
-    let manager = WebSocketManager::new(Arc::downgrade(&shinkai_db.clone()), shinkai_name, new_identity_manager).await;
+    let manager = WebSocketManager::new(shinkai_db.clone(), shinkai_name, new_identity_manager).await;
 
     // Update ShinkaiDB with manager so it can trigger updates
     {
-        let mut shinkai_db = shinkai_db.lock().await;
+        let db = shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let mut shinkai_db = db.lock().await;
         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
     run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;

@@ -9,7 +9,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::{mpsc, Mutex};
 
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
@@ -77,13 +77,14 @@ pub struct JobQueueManager<T: Debug> {
     queues: Arc<Mutex<HashMap<String, MutexQueue<T>>>>,
     subscribers: Arc<Mutex<HashMap<String, Vec<Subscriber<T>>>>>,
     all_subscribers: Arc<Mutex<Vec<Subscriber<T>>>>,
-    db: Arc<Mutex<ShinkaiDB>>,
+    db: Weak<Mutex<ShinkaiDB>>,
 }
 
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
+    pub async fn new(db: Weak<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
         // Lock the db for safe access
-        let db_lock = db.lock().await;
+        let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db_lock = db_arc.lock().await;
 
         // Call the get_all_queues method to get all queue data from the db
         match db_lock.get_all_queues() {
@@ -99,7 +100,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
                     queues: Arc::new(Mutex::new(manager_queues)),
                     subscribers: Arc::new(Mutex::new(HashMap::new())),
                     all_subscribers: Arc::new(Mutex::new(Vec::new())),
-                    db: Arc::clone(&db),
+                    db: db.clone(),
                 })
             }
             Err(e) => Err(e),
@@ -107,7 +108,8 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     }
 
     async fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
-        let db = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db = db_arc.lock().await;
         db.get_job_queues(key)
     }
 
@@ -124,7 +126,8 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         guarded_queue.push(value.clone());
 
         // Persist queue to the database
-        let db = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db = db_arc.lock().await;
         db.persist_queue(key, &guarded_queue)?;
 
         // Notify subscribers
@@ -162,7 +165,8 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         };
 
         // Persist queue to the database
-        let db = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db = db_arc.lock().await;
         db.persist_queue(key, &guarded_queue)?;
 
         Ok(result)
@@ -180,7 +184,8 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     }
 
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
-        let db_lock = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let db_lock = db_arc.lock().await;
         let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>()?;
 
         // Sort the keys based on the first element in each queue, falling back to key names
@@ -235,7 +240,7 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
             queues: Arc::clone(&self.queues),
             subscribers: Arc::clone(&self.subscribers),
             all_subscribers: Arc::clone(&self.all_subscribers),
-            db: Arc::clone(&self.db),
+            db: self.db.clone(),
         }
     }
 }
@@ -259,7 +264,8 @@ mod tests {
     async fn test_queue_manager() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
+        let db_weak = Arc::downgrade(&db);
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let mut receiver = manager.subscribe("job_id::123::false").await;
@@ -312,8 +318,9 @@ mod tests {
     async fn test_queue_manager_consistency() {
         setup();
         let db_path = "db_tests/";
-        let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
-        let mut manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
+        let db_arc = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
+        let db_weak = Arc::downgrade(&db_arc);
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
 
         // Push to a queue
         let job = JobForProcessing::new(
@@ -341,7 +348,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500));
 
         // Create a new manager and recover the state
-        let mut new_manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
+        let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
 
         // Try to pop the job from the queue using the new manager
         match new_manager.dequeue("my_queue").await {
@@ -375,7 +382,8 @@ mod tests {
     async fn test_queue_manager_with_jsonvalue() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<OrdJsonValue>::new(db).await.unwrap();
+        let db_weak = Arc::downgrade(&db);
+        let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let mut receiver = manager.subscribe("my_queue").await;
@@ -416,7 +424,8 @@ mod tests {
     async fn test_get_all_elements_interleave() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
+        let db_weak = Arc::downgrade(&db);
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak).await.unwrap();
 
         // Create jobs
         let job_a1 = JobForProcessing::new(

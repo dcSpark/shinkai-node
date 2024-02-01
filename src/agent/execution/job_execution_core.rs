@@ -19,6 +19,7 @@ use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileT
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::result::Result::Ok;
+use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -29,11 +30,12 @@ impl JobManager {
     #[instrument(skip(identity_secret_key, db))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<String, AgentError> {
+        let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let job_id = job_message.job_message.job_id.clone();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -331,7 +333,8 @@ impl JobManager {
                         &format!("Found an image file: {}", filename),
                     );
 
-                    let agent_capabilities = ModelCapabilitiesManager::new(db.clone(), profile.clone()).await;
+                    let db_weak = Arc::downgrade(&db);
+                    let agent_capabilities = ModelCapabilitiesManager::new(db_weak, profile.clone()).await;
                     let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
 
                     if !has_image_analysis {

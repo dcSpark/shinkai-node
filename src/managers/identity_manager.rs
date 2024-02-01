@@ -11,14 +11,14 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct IdentityManager {
     pub local_node_name: ShinkaiName,
     pub local_identities: Vec<Identity>,
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Weak<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
     pub is_ready: bool,
 }
@@ -39,26 +39,29 @@ impl Clone for Box<dyn IdentityManagerTrait + Send> {
 
 impl IdentityManager {
     pub async fn new(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         local_node_name: ShinkaiName,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
-            let db = db.lock().await;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db = db_arc.lock().await;
             db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
                 .collect()
         };
 
         let agents = {
-            let db = db.lock().await;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db = db_arc.lock().await;
             db.get_all_agents()?
                 .into_iter()
                 .map(Identity::Agent)
                 .collect::<Vec<_>>()
         };
         {
-            let db = db.lock().await;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db = db_arc.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
         }
 
@@ -162,7 +165,8 @@ impl IdentityManager {
     }
 
     pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedAgent> {
-        let db = self.db.lock().await;
+        let db_arc = self.db.upgrade()?;
+        let db = db_arc.lock().await;
         db.get_agent(agent_id, profile).ok().flatten()
     }
 
@@ -177,7 +181,8 @@ impl IdentityManager {
     }
 
     pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
-        let db = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
+        let db = db_arc.lock().await;
         db.get_all_agents()
     }
 

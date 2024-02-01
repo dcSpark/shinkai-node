@@ -105,14 +105,16 @@ mod tests {
         }
 
         let vector_fs = Arc::new(Mutex::new(VectorFS::new_empty()));
+        let vector_fs_weak = Arc::downgrade(&vector_fs);
+        let db_weak = Arc::downgrade(&db);
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
-                Arc::clone(&db),
+                db_weak.clone(),
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
-                vector_fs,
+                vector_fs_weak,
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
             )
@@ -145,7 +147,7 @@ mod tests {
                                                   profile: String| {
             Box::pin(CronManager::process_job_message_queued(
                 job,
-                db,
+                db_weak.clone(),
                 identity_sk,
                 job_manager.clone(),
                 node_profile_name.clone(),

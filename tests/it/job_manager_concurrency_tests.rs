@@ -21,6 +21,7 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::unstructured;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
+use std::sync::Weak;
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex, Semaphore};
@@ -82,7 +83,7 @@ async fn test_process_job_queue_concurrency() {
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Arc<Mutex<ShinkaiDB>>,
+                              db: Weak<Mutex<ShinkaiDB>>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -109,26 +110,28 @@ async fn test_process_job_queue_concurrency() {
             );
 
             // Write the message to an inbox with the job name
-            let mut db = db.lock().await;
+            let db_arc = db.upgrade().unwrap();
+            let mut db = db_arc.lock().await;
             let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })
     };
 
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
+    let db_weak = Arc::downgrade(&db);
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager,
-        db.clone(),
+        db_weak.clone(),
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
         move |job, db, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db, identity_sk, generator, unstructured_api)
+            mock_processing_fn(job, db_weak.clone(), identity_sk, generator, unstructured_api)
         },
     )
     .await;
@@ -187,7 +190,7 @@ async fn test_sequnetial_process_for_same_job_id() {
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Arc<Mutex<ShinkaiDB>>,
+                              db: Weak<Mutex<ShinkaiDB>>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -214,26 +217,28 @@ async fn test_sequnetial_process_for_same_job_id() {
             );
 
             // Write the message to an inbox with the job name
-            let mut db = db.lock().await;
+            let db_arc = db.upgrade().unwrap();
+            let mut db = db_arc.lock().await;
             let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })
     };
 
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
+    let db_weak = Arc::downgrade(&db);
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager,
-        db.clone(),
+        db_weak.clone(),
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
         move |job, db, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db, identity_sk, generator, unstructured_api)
+            mock_processing_fn(job, db_weak.clone(), identity_sk, generator, unstructured_api)
         },
     )
     .await;

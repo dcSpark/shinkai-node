@@ -24,6 +24,7 @@ use std::collections::HashSet;
 use std::mem;
 use std::pin::Pin;
 use std::result::Result::Ok;
+use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -31,7 +32,7 @@ const NUM_THREADS: usize = 4;
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Weak<Mutex<ShinkaiDB>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub agents: Vec<Arc<Mutex<Agent>>>,
     pub identity_secret_key: SigningKey,
@@ -39,7 +40,7 @@ pub struct JobManager {
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
     // The Node's VectorFS
-    pub vector_fs: Arc<Mutex<VectorFS>>,
+    pub vector_fs: Weak<Mutex<VectorFS>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -48,17 +49,18 @@ pub struct JobManager {
 
 impl JobManager {
     pub async fn new(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
-            let shinkai_db = db.lock().await;
+            let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+            let shinkai_db = db_arc.lock().await;
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
@@ -119,14 +121,14 @@ impl JobManager {
 
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         job_processing_fn: impl Fn(
                 JobForProcessing,
-                Arc<Mutex<ShinkaiDB>>,
+                Weak<Mutex<ShinkaiDB>>,
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
@@ -322,7 +324,8 @@ impl JobManager {
         // TODO: add job_id to agent so it's aware
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
-            let mut shinkai_db = self.db.lock().await;
+            let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+            let mut shinkai_db = db_arc.lock().await;
             match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope) {
                 Ok(_) => (),
                 Err(err) => return Err(AgentError::ShinkaiDB(err)),
@@ -381,7 +384,8 @@ impl JobManager {
             Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
         };
 
-        let mut shinkai_db = self.db.lock().await;
+        let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let mut shinkai_db = db_arc.lock().await;
         let is_empty = shinkai_db.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
