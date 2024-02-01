@@ -5,7 +5,9 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::source::SourceFileMap;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, LimitTraversalMode, Node, NodeContent, VRHeader};
+use shinkai_vector_resources::vector_resource::{
+    BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
+};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
@@ -77,29 +79,62 @@ impl VectorFS {
         self.generate_query_embedding(input_query, &reader.profile).await
     }
 
-    /// Performs a  "deep" vector search into the VectorFS starting at the reader's path,
+    /// Performs a "deep" vector search into the VectorFS starting at the reader's path,
     /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
-    pub fn vector_search_fs_retrieved_node(
+    pub async fn deep_vector_search(
         &mut self,
         reader: &VFSReader,
-        query: Embedding,
+        query_text: String,
         num_of_resources_to_search_into: u64,
         num_of_results: u64,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
+        self.deep_vector_search_customized(
+            reader,
+            query_text,
+            num_of_resources_to_search_into,
+            num_of_results,
+            vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        )
+        .await
+    }
+
+    /// Performs a "deep" vector search into the VectorFS starting at the reader's path,
+    /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
+    /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
+    /// Allows specifying custom deep_traversal_options which are used when searching into the VRs themselves.
+    pub async fn deep_vector_search_customized(
+        &mut self,
+        reader: &VFSReader,
+        query_text: String,
+        num_of_resources_to_search_into: u64,
+        num_of_results: u64,
+        deep_traversal_options: Vec<TraversalOption>,
+    ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
+        let query = self
+            .generate_query_embedding_using_reader(query_text.clone(), &reader)
+            .await?;
+
         let mut ret_nodes = Vec::new();
         let mut fs_path_hashmap = HashMap::new();
         let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
 
-        // If all perms pass, then retrieve the VR and perform deep Vector Search
         for item in items {
             if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self) {
                 if let Ok(resource) = self.retrieve_vector_resource(&new_reader) {
-                    // Store the VectorFS path of the item in the hashmap for use later
                     fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
-                    // Perform the internal vector search into the resource itself
-                    let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+                    let generator = self._get_embedding_generator(&reader.profile)?;
+                    let results = resource
+                        .as_trait_object()
+                        .dynamic_vector_search_customized(
+                            query_text.clone(),
+                            num_of_results,
+                            &deep_traversal_options,
+                            None,
+                            generator,
+                        )
+                        .await?;
                     ret_nodes.extend(results);
                 }
             }

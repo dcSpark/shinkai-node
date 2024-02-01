@@ -248,11 +248,12 @@ async fn test_vector_fs_saving_reading() {
     let query_string = "Who is building Shinkai?".to_string();
     println!("Query String: {}", query_string);
     let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string, &reader)
+        .generate_query_embedding_using_reader(query_string.clone(), &reader)
         .await
         .unwrap();
     let res = vector_fs
-        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .await
         .unwrap();
     assert_eq!(
         "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
@@ -272,11 +273,12 @@ async fn test_vector_fs_saving_reading() {
     let query_string = "What do you know about camels?".to_string();
     println!("Query String: {}", query_string);
     let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string, &reader)
+        .generate_query_embedding_using_reader(query_string.clone(), &reader)
         .await
         .unwrap();
     let res = vector_fs
-        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .await
         .unwrap();
     assert_eq!(
         "Camels are slow animals with large humps.",
@@ -561,7 +563,37 @@ async fn test_vector_fs_operations() {
     let copy_result = vector_fs.copy_folder(&orig_writer, non_existent_folder_path.clone());
     assert!(copy_result.is_err());
 
-    // Moving item from one folder to another means previous path is empty
+    //
+    // Move Tests
+    //
+
+    // Moving item from one folder to another means previous path is empty & file is in new location
+    // let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
+    // let destination_folder_path = second_folder_path.clone();
+    // let orig_writer = vector_fs
+    //     .new_writer(
+    //         default_test_profile(),
+    //         item_to_move_path.clone(),
+    //         default_test_profile(),
+    //     )
+    //     .unwrap();
+    // vector_fs
+    //     .move_item(&orig_writer, destination_folder_path.clone())
+    //     .unwrap();
+
+    // let orig_location_check = vector_fs
+    //     .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
+    //     .is_err();
+    // assert!(
+    //     orig_location_check,
+    //     "The item should no longer exist in the original location."
+    // );
+
+    // let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
+    // let new_location_check = vector_fs
+    //     .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+    //     .is_ok();
+    // assert!(new_location_check, "The item should now exist in the new location.");
 
     // Moving Folder from one location to another means previous path is empty
 }

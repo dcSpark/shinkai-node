@@ -440,7 +440,7 @@ impl VectorFS {
             self._add_existing_vr_to_core_resource(writer, new_vr, embedding, metadata, current_datetime)?;
         let new_folder_path = new_folder.path.clone();
 
-        // Add default empty whitelist read/write permission for the new folder path
+        // Add private read/write permission for the folder path
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals.permissions_index.insert_path_permission(
@@ -542,7 +542,7 @@ impl VectorFS {
 
         // Now that we've inserted the the new item into the fs internals core VR proceed forward
         if let Some(item) = new_item {
-            // Add default empty whitelist read/write permission for the new item path
+            // Add private read/write permission for the new item path
             {
                 let internals = self.get_profile_fs_internals(&writer.profile)?;
                 internals.permissions_index.insert_path_permission(
