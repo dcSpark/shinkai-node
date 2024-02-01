@@ -44,6 +44,7 @@ fn simple_node_registration_test() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_abort_handler = env.node1_abort_handler;
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -61,6 +62,8 @@ fn simple_node_registration_test() {
                 )
                 .await;
             }
+
+            node1_abort_handler.abort();
         })
     });
 }

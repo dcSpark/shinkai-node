@@ -17,8 +17,6 @@ mod tests {
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
     use tokio::runtime::Runtime;
 
-    use super::utils::node_test_api::api_registration_device_node_profile_main;
-
     // #[test]
     fn test_restore_db() {
         let rt = Runtime::new().unwrap();
@@ -69,6 +67,7 @@ mod tests {
                 );
                 let _ = node1.await.start().await;
             });
+            let abort_handler = node1_handler.abort_handle();
 
             let interactions_handler = tokio::spawn(async move {
                 shinkai_log(
@@ -92,10 +91,25 @@ mod tests {
                     let expected_content = "{\"job_id\":\"jobid_c6ff9307-3965-42e9-9537-4f20f0656af1\",\"content\":\"The document appears to outline a framework for evaluating the planning capabilities of large language models (LLMs) through a benchmark called PlanBench. This benchmark assesses various aspects of reasoning about actions and change, with tasks designed to evaluate different reasoning skills. These tasks involve generating and generalizing plans based on given initial conditions and goals, such as the distribution of objects and their relationships. Examples provided include plans involving loading and flying airplanes, and the craving relationships between objects. The document also references various research papers related to solving math word problems, scaling language models, and automated planning in artificial intelligence\",\"files_inbox\":\"\"}";
                     assert_eq!(content, expected_content);
                 }
+
+                abort_handler.abort();
             });
 
             // Wait for all tasks to complete
-            let _ = tokio::try_join!(node1_handler, interactions_handler).unwrap();
+        let result = tokio::try_join!(node1_handler, interactions_handler);
+
+        match result {
+            Ok(_) => {},
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    panic!("An unexpected error occurred: {:?}", e);
+                }
+            }
+        }
         });
     }
 }

@@ -9,7 +9,6 @@ use serde_json::Value as JsonValue;
 use serde_json::{self, Map};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use tiktoken_rs::model::get_context_size;
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -81,13 +80,6 @@ impl LLMProvider for OpenAI {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
-
-                eprintln!("Curl command:");
-                eprintln!("curl -X POST \\");
-                eprintln!("  -H 'Content-Type: application/json' \\");
-                eprintln!("  -H 'Authorization: Bearer {}' \\", key);
-                eprintln!("  -d '{}' \\", payload);
-                eprintln!("  '{}'", url);
 
                 let res = client
                     .post(url)

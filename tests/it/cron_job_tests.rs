@@ -136,7 +136,7 @@ mod tests {
                 false,
                 agent_id.clone(),
             ) {
-                Ok(_) => (),
+                Ok(_) => eprintln!("Added cron task 1"),
                 Err(e) => eprintln!("Failed to add cron task: {}", e),
             }
         }
@@ -169,7 +169,7 @@ mod tests {
         );
 
         // Set a timeout for the task to complete
-        let timeout_duration = Duration::from_millis(100000);
+        let timeout_duration = Duration::from_millis(5000);
         let job_queue_handler_result = tokio::time::timeout(timeout_duration, job_queue_handler).await;
 
         // Check the results of the task

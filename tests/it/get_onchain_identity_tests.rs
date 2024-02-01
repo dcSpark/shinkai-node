@@ -55,5 +55,7 @@ mod tests {
 
             panic!("Cache time did not update within 5 seconds");
         });
+
+        rt.shutdown_background();
     }
 }

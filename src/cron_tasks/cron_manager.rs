@@ -95,7 +95,6 @@ impl From<InboxNameError> for CronManagerError {
 }
 
 const NUM_THREADS: usize = 2;
-const CRON_INTERVAL_TIME: u64 = 60 * 1;
 
 impl CronManager {
     pub async fn new(
@@ -108,7 +107,7 @@ impl CronManager {
             db.clone(),
             node_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
-            CRON_INTERVAL_TIME,
+            Self::cron_interval_time(),
             job_manager.clone(),
             |job, db, identity_sk, job_manager, node_name, profile| {
                 Box::pin(CronManager::process_job_message_queued(
@@ -129,6 +128,13 @@ impl CronManager {
             job_manager,
             cron_processing_task: Some(cron_processing_task),
         }
+    }
+
+    fn cron_interval_time() -> u64 {
+        std::env::var("CRON_INTERVAL_TIME")
+            .unwrap_or_else(|_| "60".to_string())
+            .parse()
+            .unwrap_or(60)
     }
 
     pub fn process_job_queue(

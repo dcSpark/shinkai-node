@@ -40,6 +40,7 @@ fn node_toolkit_api() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_abort_handler = env.node1_abort_handler;
 
             // For this test
             let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
@@ -267,8 +268,8 @@ fn node_toolkit_api() {
                     })
                     .await
                     .unwrap();
-                let resp = res_list_receiver.recv().await.unwrap();
-                eprintln!("resp: {:?}", resp);
+                let _ = res_list_receiver.recv().await.unwrap();
+                node1_abort_handler.abort();
             }
         })
     });
