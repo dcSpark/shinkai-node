@@ -344,7 +344,7 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     assert_eq!(res.len(), 0);
 
-    // Now give permission to first folder and see if results return the VR in it
+    // Now give permission to first folder and see if results return the VRHeader in it
     let first_folder_path = VRPath::new().push_cloned(folder_name.to_string());
     let writer = vector_fs
         .new_writer(
@@ -364,6 +364,14 @@ async fn test_vector_fs_saving_reading() {
         )
         .unwrap();
 
+    {
+        let internals = vector_fs
+            .get_profile_fs_internals_read_only(&default_test_profile())
+            .unwrap();
+
+        println!("FS permissions: {:?}", internals.permissions_index.fs_permissions);
+    }
+
     let reader = vector_fs
         .new_reader(
             invalid_requester.clone(),
@@ -372,7 +380,34 @@ async fn test_vector_fs_saving_reading() {
         )
         .unwrap();
     let res = vector_fs
-        .vector_search_vector_resource(&reader, query_embedding, 100)
+        .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
+        .unwrap();
+    assert!(res.len() == 0);
+    let res = vector_fs
+        .vector_search_vr_header(&reader, query_embedding.clone(), 100)
+        .unwrap();
+    assert!(res.len() > 0);
+
+    // Now give permission to the item in the folder and see that the resource is returned
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.push_cloned("shinkai_intro".to_string()),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&writer, ReadPermission::Whitelist, WritePermission::Private)
+        .unwrap();
+    vector_fs
+        .set_whitelist_permission(
+            &writer,
+            invalid_requester.clone(),
+            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+        )
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
         .unwrap();
     assert!(res.len() > 0);
 }
