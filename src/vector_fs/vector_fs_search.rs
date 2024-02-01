@@ -91,17 +91,18 @@ impl VectorFS {
         let mut fs_path_hashmap = HashMap::new();
         let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
 
+        // If all perms pass, then retrieve the VR and perform deep Vector Search
         for item in items {
-            // Create a new reader at the path of the fs_item, and then fetch the VR from there
-            let new_reader = reader.new_reader_copied_data(item.path.clone(), self)?;
-            let resource = self.retrieve_vector_resource(&new_reader)?;
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self) {
+                if let Ok(resource) = self.retrieve_vector_resource(&new_reader) {
+                    // Store the VectorFS path of the item in the hashmap for use later
+                    fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
-            // Store the VectorFS path of the item in the hashmap for use later
-            fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
-
-            // Perform the internal vector search into the resource itself
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            ret_nodes.extend(results);
+                    // Perform the internal vector search into the resource itself
+                    let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+                    ret_nodes.extend(results);
+                }
+            }
         }
 
         let mut final_results = vec![];
@@ -122,6 +123,7 @@ impl VectorFS {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<FSItem>, VectorFSError> {
+        println!("Starting vector search fs_item----------------------");
         let ret_nodes =
             self._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])?;
         let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
@@ -145,8 +147,8 @@ impl VectorFS {
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
-    /// returning the retrieved (BaseVectorResource, SourceFileMap) pairs of the most
-    /// similar FSItems.
+    /// returning the retrieved (BaseVectorResource, SourceFileMap) pairs of the most similar FSItems.
+    /// Ignores FSItem results which the requester_name does not have permission to read.
     pub fn vector_search_vr_and_source_file_map(
         &mut self,
         reader: &VFSReader,
@@ -156,16 +158,20 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
-            let res_pair = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name())?;
-            results.push(res_pair);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved BaseVectorResources which are the most similar.
+    /// Ignores FSItem (Vector Resource) results which the requester_name does not have permission to read.
     pub fn vector_search_vector_resource(
         &mut self,
         reader: &VFSReader,
@@ -175,16 +181,20 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
-            let res = self.retrieve_vector_resource_in_folder(&new_reader, item.name())?;
-            results.push(res);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_vector_resource_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved SourceFileMap which are the most similar.
+    /// Ignores FSItem (SFM) results which the requester_name does not have permission to read.
     pub fn vector_search_source_file_map(
         &mut self,
         reader: &VFSReader,
@@ -194,10 +204,13 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader.new_reader_copied_data(item.path.parent_path(), self)?;
-            let res = self.retrieve_source_file_map_in_folder(&new_reader, item.name())?;
-            results.push(res);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_source_file_map_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
@@ -240,6 +253,8 @@ impl VectorFS {
         let stringified_permissions_map = internals
             .permissions_index
             .export_permissions_hashmap_with_reader(reader);
+
+        println!("In vector search core----------------------");
 
         // Search without unique scoring (ie. hierarchical) because "folders" have no content/real embedding.
         // Also remove any set traversal limit, so we can enforce folder permission traversal limiting.
