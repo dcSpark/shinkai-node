@@ -72,7 +72,6 @@ function App() {
               <img src="/vite.svg" className="logo vite" alt="Shinkai Logo" />
             </a>
           </div>
-          // TODO: Check if the node has ever been started before
           <p></p>
           <div className="start-button-container">
             <button className="start-button" onClick={startNode}>
