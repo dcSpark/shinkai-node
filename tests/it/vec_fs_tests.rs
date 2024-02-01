@@ -525,4 +525,8 @@ async fn test_vector_fs_operations() {
         .unwrap();
     let copy_result = vector_fs.copy_folder(&orig_writer, non_existent_folder_path.clone());
     assert!(copy_result.is_err());
+
+    // Moving item from one folder to another means previous path is empty
+
+    // Moving Folder from one location to another means previous path is empty
 }
