@@ -14,7 +14,6 @@ use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
-use crate::vector_fs::vector_fs::VectorFS;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -36,7 +35,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::{env, fs};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 #[derive(Debug)]

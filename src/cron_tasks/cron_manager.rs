@@ -168,7 +168,16 @@ impl CronManager {
 
             loop {
                 let jobs_to_process: HashMap<String, Vec<(String, CronTask)>> = {
-                    let db_arc = db.upgrade().unwrap();
+                    let db_arc = db.upgrade();
+                    if db_arc.is_none() {
+                        shinkai_log(
+                            ShinkaiLogOption::CronExecution,
+                            ShinkaiLogLevel::Error,
+                            "Failed to upgrade Weak reference to Arc for DB access. Exiting job queue processing loop.",
+                        );
+                        return;
+                    }
+                    let db_arc = db_arc.unwrap();
                     let mut db_lock = db_arc.lock().await;
                     db_lock
                         .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())

@@ -14,14 +14,14 @@ use shinkai_node::network::Node;
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io;
 use std::io::Write;
-use std::path::Path;
+use std::os::fd::IntoRawFd;
 use std::sync::Arc;
 use std::sync::Weak;
 use tauri::async_runtime::Mutex;
-use tauri::utils::platform::resource_dir;
 use tauri::Manager;
-use tauri::{CustomMenuItem, Menu, MenuItem, Submenu, SystemTray, SystemTrayEvent, SystemTrayMenu};
+use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use toml;
@@ -216,9 +216,8 @@ async fn stop_node_and_delete_storage() -> String {
     }
 }
 
-fn load_settings(settings_file_path: String) {
+fn load_settings(settings_file_path: String, registry_path: String) {
     // Load settings from a TOML
-
     let mut settings = tauri::async_runtime::block_on(SETTINGS.lock());
     if let Err(e) = settings.merge(config::File::with_name(&settings_file_path).required(true)) {
         eprintln!("Failed to merge settings: {}", e);
@@ -226,11 +225,35 @@ fn load_settings(settings_file_path: String) {
 
     // Set environment variables from settings
     for (key, value) in settings.collect().unwrap().iter() {
-        // Use the correct method to iterate
-        if let Some(val) = value.clone().into_str().ok() {
-            // Clone value before calling into_str
+        if key == "ABI_PATH" {
+            // Use registry_path for ABI_PATH key
+            env::set_var(key, &registry_path);
+        } else if let Some(val) = value.clone().into_str().ok() {
+            // Clone value before calling into_str for other keys
             env::set_var(key, val);
         }
+    }
+}
+
+// fn redirect_stdout_to_file() -> io::Result<()> {
+//     let log_file = File::create("/tmp/app_stdout.log")?;
+//     let log_file_fd = log_file.into_raw_fd();
+
+//     // SAFETY: This is safe as long as no other threads are currently writing to stdout or
+//     // attempting to change the global stdout handle at the same time.
+//     unsafe {
+//         // Duplicate the log file's file descriptor and use it as the new stdout.
+//         let _ = libc::dup2(log_file_fd, libc::STDOUT_FILENO);
+//     }
+
+//     // From this point on, all writes to stdout will go to /tmp/app_stdout.log.
+//     Ok(())
+// }
+
+fn log_environment() {
+    let mut file = File::create("/tmp/app_environment.log").unwrap();
+    for (key, value) in env::vars() {
+        writeln!(file, "{}: {}", key, value).unwrap();
     }
 }
 
@@ -275,6 +298,7 @@ fn main() {
                 .resource_dir()
                 .expect("Failed to get resource directory");
             let settings_file_path = resource_path.join("Settings.toml");
+            let onchain_registry_path = resource_path.join("ShinkaiRegistry.json");
 
             // Convert PathBuf to String
             let settings_file_path_str = settings_file_path
@@ -282,8 +306,13 @@ fn main() {
                 .expect("Path contains invalid Unicode")
                 .to_owned();
 
+            let onchain_registry_path_str = onchain_registry_path
+                .to_str()
+                .expect("Path contains invalid Unicode")
+                .to_owned();
+
             // Now you can pass the String to load_settings
-            load_settings(settings_file_path_str);
+            load_settings(settings_file_path_str, onchain_registry_path_str);
 
             let window = app.get_window("main").unwrap();
             let icon_bytes = include_bytes!("../icons/icon.ico").to_vec();
