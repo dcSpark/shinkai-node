@@ -17,6 +17,7 @@ impl IdentityNetworkManager {
         let rpc_url = env::var("RPC_URL").unwrap_or("https://rpc.sepolia.org".to_string());
         let contract_address = env::var("CONTRACT_ADDRESS").unwrap_or("0x6964241D2458f0Fd300BB37535CF0145380810E0".to_string());
         let abi_path = env::var("ABI_PATH").unwrap_or("./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json".to_string());
+        eprintln!("ABI Path: {}", abi_path);
 
         let registry = ShinkaiRegistry::new(
             &rpc_url,

@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
-import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/tauri";
 import "./App.css";
 
 type Settings = { [key: string]: string };
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
   const [nodeStatus, setNodeStatus] = useState("");
   const [page, setPage] = useState("home");
   const [settings, setSettings] = useState<Settings>({});
@@ -26,11 +23,6 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
   async function startNode() {
     const result = await invoke("start_shinkai_node");
     setNodeStatus(result as string);
@@ -48,13 +40,13 @@ function App() {
   }
 
   async function stopNode() {
-    const result = await invoke("stop_shinkai_node");
-    setNodeStatus(result as string);
+    await invoke("stop_shinkai_node");
+    setNodeStatus("Server Stopped");
   }
 
   async function pruneServer() {
-    const result = await invoke("stop_node_and_delete_storage");
-    setNodeStatus(result as string);
+    await invoke("stop_node_and_delete_storage");
+    setNodeStatus("Server Pruned and Stopped");
   }
 
   return (

@@ -22,6 +22,6 @@ INITIAL_AGENT_URLS = "https://api.openai.com,https://api.openai.com"
 INITIAL_AGENT_MODELS = "openai:gpt-4-1106-preview,openai:gpt-4-vision-preview"
 RPC_URL = "https://rpc.sepolia.org"
 CONTRACT_ADDRESS = "0x6964241D2458f0Fd300BB37535CF0145380810E0"
-ABI_PATH = "../../src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json"
+ABI_PATH = "Resources/ShinkaiRegistry.json"
 INITIAL_AGENT_API_KEYS = "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,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"
 LOG_ALL = 1

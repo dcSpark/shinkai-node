@@ -19,6 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Weak;
 use tauri::async_runtime::Mutex;
+use tauri::utils::platform::resource_dir;
 use tauri::Manager;
 use tauri::{CustomMenuItem, Menu, MenuItem, Submenu, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tokio::sync::broadcast;
@@ -52,11 +53,6 @@ impl NodeController {
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 async fn get_settings() -> std::collections::HashMap<String, String> {
     let settings = SETTINGS.lock().await;
     let settings_map = settings
@@ -85,21 +81,6 @@ async fn stop_shinkai_node() -> String {
             api_server_handle.abort();
             ws_server_handle.abort();
         }
-
-        eprintln!("after aborts");
-
-        // eprintln!("db_path: {}", controller.db_path);
-        // // wait 1 second for tasks to finish
-        // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        // let _ = force_remove_db_lock(Path::new(controller.db_path.clone().as_str()));
-        // let shinkai_db = controller.shinkai_db.clone();
-
-        // // Set needs_reset to true
-        // shinkai_db.lock().await.set_needs_reset().unwrap();
-        // eprintln!("after set_needs_reset");
-        // let value = shinkai_db.lock().await.read_needs_reset().unwrap();
-        // eprintln!("value: {}", value);
-
         "Node shutdown command sent".to_string()
     } else {
         "NodeController is not initialized".to_string()
@@ -179,7 +160,6 @@ async fn start_shinkai_node() -> String {
             match shinkai_node::run_node_tasks(api_server, node_task, ws_server, node).await {
                 Ok(_) => "Finished".to_string(),
                 Err(e) => {
-                    eprintln!("Failed to run node tasks: {}", e);
                     format!("Failed to run node tasks: {}", e)
                 }
             }
@@ -221,7 +201,9 @@ async fn stop_node_and_delete_storage() -> String {
 
         // Retrieve storage db path from settings or fallback to default
         let settings = SETTINGS.lock().await;
-        let storage_db_path = settings.get_str("NODE_STORAGE_PATH").unwrap_or_else(|_| "storage".to_string());
+        let storage_db_path = settings
+            .get_str("NODE_STORAGE_PATH")
+            .unwrap_or_else(|_| "storage".to_string());
 
         match fs::remove_dir_all(&storage_db_path) {
             Ok(_) => eprintln!("Storage successfully deleted at {}", storage_db_path),
@@ -234,23 +216,25 @@ async fn stop_node_and_delete_storage() -> String {
     }
 }
 
-fn main() {
+fn load_settings(settings_file_path: String) {
     // Load settings from a TOML
-    {
-        let mut settings = tauri::async_runtime::block_on(SETTINGS.lock());
-        if let Err(e) = settings.merge(config::File::with_name("Settings.toml").required(true)) {
-            eprintln!("Failed to merge settings: {}", e);
-        }
 
-        // Set environment variables from settings
-        for (key, value) in settings.collect().unwrap().iter() {
-            // Use the correct method to iterate
-            if let Some(val) = value.clone().into_str().ok() {
-                // Clone value before calling into_str
-                env::set_var(key, val);
-            }
+    let mut settings = tauri::async_runtime::block_on(SETTINGS.lock());
+    if let Err(e) = settings.merge(config::File::with_name(&settings_file_path).required(true)) {
+        eprintln!("Failed to merge settings: {}", e);
+    }
+
+    // Set environment variables from settings
+    for (key, value) in settings.collect().unwrap().iter() {
+        // Use the correct method to iterate
+        if let Some(val) = value.clone().into_str().ok() {
+            // Clone value before calling into_str
+            env::set_var(key, val);
         }
     }
+}
+
+fn main() {
     // Tray Code
     let tray_menu = SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("show", "Show App"))
@@ -262,7 +246,6 @@ fn main() {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            greet,
             start_shinkai_node,
             get_settings,
             check_node_health,
@@ -278,7 +261,6 @@ fn main() {
             tauri::Menu::new().add_submenu(tauri::Submenu::new(
                 "Shinkai",
                 tauri::Menu::new()
-                    .add_item(tauri::CustomMenuItem::new("greet", "Greet"))
                     .add_item(tauri::CustomMenuItem::new("start_node", "Start Node"))
                     .add_item(tauri::CustomMenuItem::new("stop_node", "Stop Node"))
                     .add_item(tauri::CustomMenuItem::new("check_health", "Check Node Health"))
@@ -288,6 +270,21 @@ fn main() {
             )),
         )
         .setup(|app| {
+            let resource_path = app
+                .path_resolver()
+                .resource_dir()
+                .expect("Failed to get resource directory");
+            let settings_file_path = resource_path.join("Settings.toml");
+
+            // Convert PathBuf to String
+            let settings_file_path_str = settings_file_path
+                .to_str()
+                .expect("Path contains invalid Unicode")
+                .to_owned();
+
+            // Now you can pass the String to load_settings
+            load_settings(settings_file_path_str);
+
             let window = app.get_window("main").unwrap();
             let icon_bytes = include_bytes!("../icons/icon.ico").to_vec();
             let icon = tauri::Icon::Raw(icon_bytes);
@@ -296,19 +293,17 @@ fn main() {
         })
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| match event {
-            SystemTrayEvent::MenuItemClick { id, .. } => {
-                match id.as_str() {
-                    "show" => {
-                        let window = app.get_window("main").unwrap();
-                        window.show().unwrap();
-                        window.set_focus().unwrap();
-                    }
-                    "quit" => {
-                        std::process::exit(0);
-                    }
-                    _ => {}
+            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+                "show" => {
+                    let window = app.get_window("main").unwrap();
+                    window.show().unwrap();
+                    window.set_focus().unwrap();
                 }
-            }
+                "quit" => {
+                    std::process::exit(0);
+                }
+                _ => {}
+            },
             _ => {}
         })
         .run(tauri::generate_context!())
