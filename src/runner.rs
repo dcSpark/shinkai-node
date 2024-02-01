@@ -68,12 +68,13 @@ pub async fn tauri_initialize_node() -> Result<
         JoinHandle<()>,
         JoinHandle<()>,
         JoinHandle<()>,
+        String,
     ),
     NodeRunnerError,
 > {
     match initialize_node().await {
-        Ok((node_local_commands, api_server, node_task, ws_server)) => {
-            Ok((node_local_commands, api_server, node_task, ws_server))
+        Ok((node_local_commands, api_server, node_task, ws_server, main_db_path)) => {
+            Ok((node_local_commands, api_server, node_task, ws_server, main_db_path))
         }
         Err(e) => {
             eprintln!("Error running node: {}", e);
@@ -86,9 +87,8 @@ pub async fn tauri_run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
-    cancel_rx: broadcast::Receiver<()>,
 ) -> Result<(), NodeRunnerError> {
-    match run_node_tasks(api_server, node_task, ws_server, cancel_rx).await {
+    match run_node_tasks(api_server, node_task, ws_server).await {
         Ok(_) => Ok(()),
         Err(e) => {
             eprintln!("Error running node tasks: {}", e);
@@ -97,9 +97,8 @@ pub async fn tauri_run_node_tasks(
     }
 }
 
-// pub async fn run_node_internal() -> Result<Sender<NodeCommand>, Box<dyn std::error::Error + Send + Sync>> {
 pub async fn initialize_node() -> Result<
-    (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, JoinHandle<()>),
+    (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, JoinHandle<()>, String),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     // Check if TELEMETRY_ENDPOINT is defined
@@ -286,45 +285,27 @@ pub async fn initialize_node() -> Result<
         .await;
     });
 
+    let shinkai_db_copy = shinkai_db.clone();
     let ws_server = tokio::spawn(async move {
-        init_ws_server(&node_env, identity_manager, shinkai_db).await;
+        init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
     });
 
-    // eprintln!("before join");
-    // let _ = tokio::try_join!(api_server, node_task, ws_server)
-    //     .map(|_| ())
-    //     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>);
-
-    // eprintln!("after join");
-
     // Return the node_commands_sender_copy and the tasks
-    Ok((node_commands_sender_copy, api_server, node_task, ws_server))
+    Ok((node_commands_sender_copy, api_server, node_task, ws_server, main_db_path))
 }
 
 pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
     ws_server: JoinHandle<()>,
-    mut cancel_rx: broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    eprintln!("Running node tasks");
-    let cancel_task: JoinHandle<Result<(), &'static str>> = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            if cancel_rx.try_recv().is_ok() {
-                eprintln!("Cancel received");
-                return Err("Cancelled");
-            }
-        }
-    });
-
-    match tokio::try_join!(api_server, node_task, ws_server, cancel_task) {
+    match tokio::try_join!(api_server, node_task, ws_server) {
         Ok(_) => {
             eprintln!("All tasks completed");
             Ok(())
-        },
+        }
         Err(e) => {
-            eprintln!("Error: {:?}", e);
+            eprintln!("Error try_join!: {:?}", e);
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
     }
@@ -332,8 +313,6 @@ pub async fn run_node_tasks(
 
 /// Machine filesystem path to the main ShinkaiDB database, pub key based.
 fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_storage_path: Option<String>) -> String {
-    eprintln!("node_storage_path: {:?}", node_storage_path);
-    eprintln!("main_db: {:?}", main_db);
     if let Some(path) = node_storage_path {
         Path::new(&path)
             .join(main_db)
