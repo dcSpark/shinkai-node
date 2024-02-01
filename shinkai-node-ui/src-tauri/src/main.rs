@@ -19,6 +19,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Weak;
 use tauri::async_runtime::Mutex;
+use tauri::Manager;
+use tauri::{CustomMenuItem, Menu, MenuItem, Submenu, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use toml;
@@ -56,9 +58,7 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 async fn get_settings() -> std::collections::HashMap<String, String> {
-    eprintln!("Getting settings");
     let settings = SETTINGS.lock().await;
-    eprintln!("after lock");
     let settings_map = settings
         .collect()
         .unwrap()
@@ -74,20 +74,9 @@ async fn get_settings() -> std::collections::HashMap<String, String> {
 #[tauri::command]
 async fn stop_shinkai_node() -> String {
     eprintln!("Stopping shinkai node");
-    eprintln!("after lock");
-    // eprintln!("after take");
-    // api_server.abort();
-    // node_task.abort();
-    // ws_server.abort();
-    // eprintln!("after aborts");
-
     let node_controller = NODE_CONTROLLER.lock().await;
     if let Some(controller) = &*node_controller {
-        eprintln!("controller OK");
-
-        let result = controller.send_command(NodeCommand::Shutdown).await;
-        eprintln!("result: {:?}", result);
-
+        let _ = controller.send_command(NodeCommand::Shutdown).await;
 
         // Abort tasks using abort handles
         let mut node_tasks = NODE_TASKS.lock().await;
@@ -113,7 +102,6 @@ async fn stop_shinkai_node() -> String {
 
         "Node shutdown command sent".to_string()
     } else {
-        eprintln!("NodeController is not initialized");
         "NodeController is not initialized".to_string()
     }
 }
@@ -123,7 +111,6 @@ async fn check_node_health() -> String {
     // eprintln!("Checking node health");
     let node_controller = NODE_CONTROLLER.lock().await;
     if let Some(controller) = &*node_controller {
-        eprintln!("check_node_health> controller OK");
         let (res_sender, res_receiver) = async_channel::bounded(1);
         match controller
             .send_command(NodeCommand::IsPristine { res: res_sender })
@@ -143,7 +130,6 @@ async fn check_node_health() -> String {
             Err(_) => "Failed to send command".to_string(),
         }
     } else {
-        eprintln!("NodeController is not initialized");
         "NodeController is not initialized".to_string()
     }
 }
@@ -210,22 +196,42 @@ async fn run_with_cancellation(task: JoinHandle<()>, mut rx: broadcast::Receiver
 }
 
 #[tauri::command]
-fn save_settings(settings: std::collections::HashMap<String, String>) -> Result<(), Box<dyn std::error::Error>> {
-    let toml = toml::to_string(&settings)?;
-    let mut file = File::create("Settings.toml")?;
-    file.write_all(toml.as_bytes())?;
+fn save_settings(settings: std::collections::HashMap<String, String>) -> Result<(), String> {
+    let toml = toml::to_string(&settings).map_err(|e| e.to_string())?;
+    let mut file = File::create("Settings.toml").map_err(|e| e.to_string())?;
+    file.write_all(toml.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn force_remove_db_lock(db_path: &Path) -> std::io::Result<()> {
-    let lock_file_path = db_path.join("LOCK");
-    if lock_file_path.exists() {
-        eprintln!("Removing LOCK file");
-        fs::remove_file(lock_file_path)?;
+#[tauri::command]
+async fn stop_node_and_delete_storage() -> String {
+    eprintln!("Stopping node and deleting storage");
+    let node_controller = NODE_CONTROLLER.lock().await;
+    if let Some(controller) = &*node_controller {
+        // Send shutdown command to node
+        let _ = controller.send_command(NodeCommand::Shutdown).await;
+
+        // Abort tasks using abort handles
+        let mut node_tasks = NODE_TASKS.lock().await;
+        if let Some((api_server_handle, node_task_handle, ws_server_handle)) = node_tasks.take() {
+            node_task_handle.abort();
+            api_server_handle.abort();
+            ws_server_handle.abort();
+        }
+
+        // Retrieve storage db path from settings or fallback to default
+        let settings = SETTINGS.lock().await;
+        let storage_db_path = settings.get_str("NODE_STORAGE_PATH").unwrap_or_else(|_| "storage".to_string());
+
+        match fs::remove_dir_all(&storage_db_path) {
+            Ok(_) => eprintln!("Storage successfully deleted at {}", storage_db_path),
+            Err(e) => eprintln!("Failed to delete storage at {}: {}", storage_db_path, e),
+        }
+
+        "Node stopped and storage deleted".to_string()
     } else {
-        eprintln!("LOCK file does not exist");
+        "NodeController is not initialized".to_string()
     }
-    Ok(())
 }
 
 fn main() {
@@ -245,6 +251,14 @@ fn main() {
             }
         }
     }
+    // Tray Code
+    let tray_menu = SystemTrayMenu::new()
+        .add_item(CustomMenuItem::new("show", "Show App"))
+        // .add_item(CustomMenuItem::new("show", "Restart Node"))
+        // .add_native_item(SystemTrayMenu::Separator)
+        .add_item(CustomMenuItem::new("quit", "Quit"));
+
+    let system_tray = SystemTray::new().with_menu(tray_menu);
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -252,8 +266,51 @@ fn main() {
             start_shinkai_node,
             get_settings,
             check_node_health,
-            stop_shinkai_node
+            stop_shinkai_node,
+            stop_node_and_delete_storage,
+            save_settings
         ])
+        // This is the App menu
+        // Update it to show:
+        // - About
+        // - Quit
+        .menu(
+            tauri::Menu::new().add_submenu(tauri::Submenu::new(
+                "Shinkai",
+                tauri::Menu::new()
+                    .add_item(tauri::CustomMenuItem::new("greet", "Greet"))
+                    .add_item(tauri::CustomMenuItem::new("start_node", "Start Node"))
+                    .add_item(tauri::CustomMenuItem::new("stop_node", "Stop Node"))
+                    .add_item(tauri::CustomMenuItem::new("check_health", "Check Node Health"))
+                    .add_item(tauri::CustomMenuItem::new("get_settings", "Get Settings"))
+                    .add_native_item(tauri::MenuItem::Separator)
+                    .add_native_item(tauri::MenuItem::Quit),
+            )),
+        )
+        .setup(|app| {
+            let window = app.get_window("main").unwrap();
+            let icon_bytes = include_bytes!("../icons/icon.ico").to_vec();
+            let icon = tauri::Icon::Raw(icon_bytes);
+            window.set_icon(icon).expect("Failed to set icon");
+            Ok(())
+        })
+        .system_tray(system_tray)
+        .on_system_tray_event(|app, event| match event {
+            SystemTrayEvent::MenuItemClick { id, .. } => {
+                match id.as_str() {
+                    "show" => {
+                        let window = app.get_window("main").unwrap();
+                        window.show().unwrap();
+                        window.set_focus().unwrap();
+                    }
+                    "quit" => {
+                        std::process::exit(0);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

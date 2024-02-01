@@ -15,7 +15,7 @@ reqwest = { version = "0.11.20", features = ["json", "tokio-native-tls", "blocki
 [dependencies]
 dotenv = "0.15.0"
 reqwest = { version = "0.11.20", features = ["json", "tokio-native-tls", "blocking", "stream"] }
-tauri = { version = "1.5", features = ["shell-open"] }
+tauri = { version = "1.5", features = [ "system-tray", "shell-open", "icon-ico", "icon-png"] }
 serde_json = "1.0.105"
 shinkai_node = { path = "../../../shinkai-node", features = ["stream"] }
 config = "0.10"

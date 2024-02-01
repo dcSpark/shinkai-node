@@ -52,6 +52,11 @@ function App() {
     setNodeStatus(result as string);
   }
 
+  async function pruneServer() {
+    const result = await invoke("stop_node_and_delete_storage");
+    setNodeStatus(result as string);
+  }
+
   return (
     <div className="container">
       <div className="tab-bar">
@@ -75,6 +80,9 @@ function App() {
             </button>
             <button className="stop-button" onClick={stopNode}>
               Stop Node
+            </button>
+            <button className="prune-button" onClick={pruneServer} style={{backgroundColor: "red"}}>
+              Prune Server
             </button>
           </div>
           <p>{nodeStatus}</p>
