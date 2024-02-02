@@ -1,4 +1,4 @@
-use super::VectorResourceSearch;
+use super::{VRKeywords, VectorResourceSearch};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -34,6 +34,7 @@ pub struct MapVectorResource {
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
+    keywords: VRKeywords,
 }
 impl VectorResource for MapVectorResource {}
 impl VectorResourceSearch for MapVectorResource {}
@@ -116,6 +117,14 @@ impl VectorResourceCore for MapVectorResource {
         self.source.clone()
     }
 
+    fn keywords(&self) -> &VRKeywords {
+        &self.keywords
+    }
+
+    fn keywords_mut(&mut self) -> &mut VRKeywords {
+        &mut self.keywords
+    }
+
     fn set_name(&mut self, new_name: String) {
         self.name = new_name;
     }
@@ -140,7 +149,7 @@ impl VectorResourceCore for MapVectorResource {
         self.resource_base_type.clone()
     }
 
-    fn get_embeddings(&self) -> Vec<Embedding> {
+    fn get_root_embeddings(&self) -> Vec<Embedding> {
         self.embeddings.values().cloned().collect()
     }
 
@@ -163,6 +172,22 @@ impl VectorResourceCore for MapVectorResource {
         self.resource_id = id;
     }
 
+    fn get_data_tag_index(&self) -> &DataTagIndex {
+        &self.data_tag_index
+    }
+
+    fn set_data_tag_index(&mut self, data_tag_index: DataTagIndex) {
+        self.data_tag_index = data_tag_index;
+    }
+
+    fn get_metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
+    }
+
+    fn set_metadata_index(&mut self, metadata_index: MetadataIndex) {
+        self.metadata_index = metadata_index;
+    }
+
     /// Retrieves a node's embedding given its key (id)
     fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
         let key = VRPath::clean_string(&key);
@@ -183,12 +208,12 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Returns all nodes in the MapVectorResource
-    fn get_nodes(&self) -> Vec<Node> {
+    fn get_root_nodes(&self) -> Vec<Node> {
         self.nodes.values().cloned().collect()
     }
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(
+    fn insert_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -230,7 +255,7 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(
+    fn replace_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -285,7 +310,7 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(
+    fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
@@ -297,9 +322,7 @@ impl VectorResourceCore for MapVectorResource {
         };
 
         let id = VRPath::clean_string(&id);
-        let path = VRPath::from_string(&("/".to_owned() + &id))?;
-
-        let results = self.remove_node_at_path(path);
+        let results = self.remove_node(&id);
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
@@ -308,6 +331,24 @@ impl VectorResourceCore for MapVectorResource {
         }
 
         results
+    }
+
+    /// Removes all Nodes/Embeddings at the root level depth.
+    fn remove_root_nodes_dt_specified(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
+        let ids: Vec<String> = self.nodes.keys().cloned().collect();
+        let mut results = vec![];
+
+        for id in ids {
+            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone())?;
+            results.push(result);
+        }
+
+        println!(" Self nodes: {:?}", self.get_root_nodes());
+
+        Ok(results)
     }
 }
 
@@ -349,6 +390,7 @@ impl MapVectorResource {
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
             merkle_root,
+            keywords: VRKeywords::new(),
         };
         // Generate a unique resource_id:
         resource.generate_and_update_resource_id();
@@ -500,7 +542,6 @@ impl MapVectorResource {
 
     /// Insert a new node and associated embeddings to the Map resource
     /// without checking if tags are valid.
-    /// TODO: Deprecate once switch over to VectorFS fully
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -510,7 +551,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.insert_node(key.to_string(), node, embedding.clone(), None);
+        self.insert_node(key.to_string(), node, embedding.clone());
     }
 
     /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.
@@ -646,7 +687,6 @@ impl MapVectorResource {
 
     /// Replaces an existing node & associated embeddings in the Map resource
     /// without checking if tags are valid.
-    /// TODO: Deprecate once VectorFS is used strictly.
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -661,7 +701,22 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        self.replace_node(key.to_string(), new_node, embedding.clone(), None)
+        self.replace_node(key.to_string(), new_node, embedding.clone())
+    }
+
+    /// Internal method for removing root node/embedding, and updating indexes.
+    fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_node(key)?;
+        let deleted_embedding = self
+            .embeddings
+            .remove(key)
+            .ok_or(VRError::InvalidNodeId(key.to_string()))?;
+
+        self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
+
+        self.update_last_written_to_now();
+        Ok((deleted_node, deleted_embedding))
     }
 
     /// Internal method. Node deletion from the hashmap

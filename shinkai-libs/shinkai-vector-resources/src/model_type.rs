@@ -8,6 +8,38 @@ pub enum EmbeddingModelType {
     OpenAI(OpenAI),
 }
 
+impl EmbeddingModelType {
+    /// Returns the maximum allowed token count for an input string to be embedded, based on the embedding model
+    pub fn max_input_token_count(&self) -> usize {
+        match self {
+            EmbeddingModelType::TextEmbeddingsInference(model) => match model {
+                TextEmbeddingsInference::AllMiniLML6v2 => 510,
+                TextEmbeddingsInference::AllMiniLML12v2 => 510,
+                TextEmbeddingsInference::MultiQAMiniLML6 => 510,
+                TextEmbeddingsInference::BgeLargeEn => 510,
+                TextEmbeddingsInference::BgeBaseEn => 510,
+                TextEmbeddingsInference::EmberV1 => 510,
+                TextEmbeddingsInference::GteLarge => 510,
+                TextEmbeddingsInference::GteBase => 510,
+                TextEmbeddingsInference::E5LargeV2 => 510,
+                TextEmbeddingsInference::BgeSmallEn => 510,
+                TextEmbeddingsInference::E5BaseV2 => 510,
+                TextEmbeddingsInference::MultilingualE5Large => 510,
+                TextEmbeddingsInference::Other(_) => 510,
+            },
+            EmbeddingModelType::BertCPP(model) => match model {
+                BertCPP::AllMiniLML6v2 => 510,
+                BertCPP::AllMiniLML12v2 => 510,
+                BertCPP::MultiQAMiniLML6 => 510,
+                BertCPP::Other(_) => 510,
+            },
+            EmbeddingModelType::OpenAI(model) => match model {
+                OpenAI::OpenAITextEmbeddingAda002 => 8190,
+            },
+        }
+    }
+}
+
 impl fmt::Display for EmbeddingModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

@@ -194,7 +194,7 @@ impl FSFolder {
         let mut child_items = Vec::new();
 
         // Parse all of the inner nodes
-        for node in &resource.as_trait_object().get_nodes() {
+        for node in &resource.as_trait_object().get_root_nodes() {
             match &node.content {
                 // If it's a Resource, then create a FSFolder by recursing, and push it to child_folders
                 NodeContent::Resource(inner_resource) => {

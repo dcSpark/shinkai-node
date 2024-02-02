@@ -27,7 +27,7 @@ pub trait EmbeddingGenerator: Sync + Send {
     fn box_clone(&self) -> Box<dyn EmbeddingGenerator>;
 
     /// Generates an embedding from the given input string, and assigns the
-    /// provided id. This is a blocking method (not async).
+    /// provided id.
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
@@ -37,7 +37,6 @@ pub trait EmbeddingGenerator: Sync + Send {
     }
 
     /// Generates embeddings from the given list of input strings and ids.
-    /// Note: This is a blocking method.
     fn generate_embeddings_blocking(
         &self,
         input_strings: &Vec<String>,
@@ -45,27 +44,9 @@ pub trait EmbeddingGenerator: Sync + Send {
     ) -> Result<Vec<Embedding>, VRError>;
 
     /// Generate Embeddings for a list of input strings, sets ids to default.
-    /// Note: This is a blocking method.
     fn generate_embeddings_blocking_default(&self, input_strings: &Vec<String>) -> Result<Vec<Embedding>, VRError> {
         let ids: Vec<String> = vec!["".to_string(); input_strings.len()];
         self.generate_embeddings_blocking(input_strings, &ids)
-    }
-
-    /// Generates embeddings from the given list of input strings and ids.
-    /// Uses the `max_input_length` to cut any input strings short before sending them
-    /// to have an embedding generated.
-    /// Note: This is a blocking method.
-    fn generate_embeddings_blocking_shorten_inputs(
-        &self,
-        input_strings: &Vec<String>,
-        ids: &Vec<String>,
-        max_input_length: u64,
-    ) -> Result<Vec<Embedding>, VRError> {
-        let shortened_input_strings: Vec<String> = input_strings
-            .iter()
-            .map(|s| s.chars().take(max_input_length as usize).collect())
-            .collect();
-        self.generate_embeddings_blocking(&shortened_input_strings, ids)
     }
 
     /// Generates an embedding from the given input string, and assigns the
@@ -89,47 +70,6 @@ pub trait EmbeddingGenerator: Sync + Send {
     async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Embedding>, VRError> {
         let ids: Vec<String> = vec!["".to_string(); input_strings.len()];
         self.generate_embeddings(input_strings, &ids).await
-    }
-
-    /// Generates embedding for the input.
-    /// Uses the `max_input_length` to cut any input string short before sending
-    /// to have an embedding generated.
-    async fn generate_embedding_shorten_input(
-        &self,
-        input_string: &str,
-        id: &str,
-        max_input_length: u64,
-    ) -> Result<Embedding, VRError> {
-        let shortened_string: String = input_string.chars().take(max_input_length as usize).collect();
-        self.generate_embedding(&shortened_string, id).await
-    }
-
-    /// Generates embedding for the input string with a default id.
-    /// Uses the `max_input_length` to cut any input string short before sending
-    /// to have an embedding generated.
-    async fn generate_embedding_shorten_input_default(
-        &self,
-        input_string: &str,
-        max_input_length: u64,
-    ) -> Result<Embedding, VRError> {
-        self.generate_embedding_shorten_input(input_string, "", max_input_length)
-            .await
-    }
-
-    /// Generates embeddings from the given list of input strings and ids.
-    /// Uses the `max_input_length` to cut any input strings short before sending them
-    /// to have an embedding generated.
-    async fn generate_embeddings_shorten_inputs(
-        &self,
-        input_strings: &Vec<String>,
-        ids: &Vec<String>,
-        max_input_length: u64,
-    ) -> Result<Vec<Embedding>, VRError> {
-        let shortened_input_strings: Vec<String> = input_strings
-            .iter()
-            .map(|s| s.chars().take(max_input_length as usize).collect())
-            .collect();
-        self.generate_embeddings(&shortened_input_strings, ids).await
     }
 }
 
@@ -158,6 +98,11 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         input_strings: &Vec<String>,
         ids: &Vec<String>,
     ) -> Result<Vec<Embedding>, VRError> {
+        let input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
+            .collect();
+
         match self.model_type {
             EmbeddingModelType::BertCPP(_) => {
                 let mut embeddings = Vec::new();
@@ -186,6 +131,10 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Note this method is blocking.
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         let input_strings = vec![input_string.to_string()];
+        let input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
+            .collect();
         let ids = vec![id.to_string()];
 
         let results = self.generate_embeddings_blocking(&input_strings, &ids)?;
@@ -206,6 +155,11 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         input_strings: &Vec<String>,
         ids: &Vec<String>,
     ) -> Result<Vec<Embedding>, VRError> {
+        let input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
+            .collect();
+
         match self.model_type {
             EmbeddingModelType::BertCPP(_) => Err(VRError::FailedEmbeddingGeneration(
                 "BertCPP support does not include async operation".to_string(),
@@ -228,6 +182,10 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
     async fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         let input_strings = vec![input_string.to_string()];
+        let input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
+            .collect();
         let ids = vec![id.to_string()];
 
         let results = self.generate_embeddings(&input_strings, &ids).await?;

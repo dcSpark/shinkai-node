@@ -8,7 +8,6 @@ use serde_json::from_str;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use std::collections::HashMap;
 
 impl ShinkaiDB {
@@ -150,10 +149,7 @@ impl ShinkaiDB {
         for tool in toolkit.tools {
             let js_tool = ShinkaiTool::JS(tool);
             let embedding = embedding_generator
-                .generate_embedding_shorten_input_default(
-                    &js_tool.format_embedding_string(),
-                    MAX_EMBEDDING_STRING_SIZE as u64,
-                ) // TODO: remove the hard-coding of embedding string size
+                .generate_embedding_default(&js_tool.format_embedding_string())
                 .await?;
             tool_router.add_shinkai_tool(&js_tool, embedding)?;
         }
