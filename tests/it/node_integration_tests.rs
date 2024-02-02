@@ -213,6 +213,7 @@ fn subidentity_registration() {
             eprintln!("Starting node 2");
             let _ = node2.await.start().await;
         });
+        let node2_abort_handler = node2_handler.abort_handle();
 
         let interactions_handler = tokio::spawn(async move {
             eprintln!("Starting interactions");
@@ -643,6 +644,7 @@ fn subidentity_registration() {
                     "Node 1's profile send an encrypted message to Node 1's profile"
                 );
                 node1_abort_handler.abort();
+                node2_abort_handler.abort();
             }
         });
 

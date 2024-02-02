@@ -448,9 +448,10 @@ async fn test_websocket() {
         .send(tungstenite::Message::Close(None))
         .await
         .expect("Failed to send close message");
+
+    std::mem::drop(shinkai_db);
 }
 
-// TODO(Nico): if you subscribe to smart_inbox you will receive messages of all the inboxes that you have access to
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
     init_default_tracing();
@@ -639,4 +640,6 @@ async fn test_websocket_smart_inbox() {
         .send(tungstenite::Message::Close(None))
         .await
         .expect("Failed to send close message");
+
+    std::mem::drop(shinkai_db);
 }

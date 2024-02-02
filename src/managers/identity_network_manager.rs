@@ -3,8 +3,6 @@ use shinkai_message_primitives::shinkai_utils::{
 };
 use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
-use x25519_dalek::PublicKey as EncryptionPublicKey;
-
 use crate::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
 
 pub struct IdentityNetworkManager {
