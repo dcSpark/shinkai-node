@@ -275,6 +275,7 @@ pub trait VectorResourceCore: Send + Sync {
         let embedding = self.resource_embedding().clone();
         let metadata_index_keys = self.metadata_index().get_all_metadata_keys();
         let merkle_root = self.get_merkle_root().ok();
+        let keywords = self.keywords().clone();
 
         VRHeader::new(
             self.name(),
@@ -288,6 +289,7 @@ pub trait VectorResourceCore: Send + Sync {
             metadata_index_keys,
             self.embedding_model_used(),
             merkle_root,
+            keywords,
         )
     }
 

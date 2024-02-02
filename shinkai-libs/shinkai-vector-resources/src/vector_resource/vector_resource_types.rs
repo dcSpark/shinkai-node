@@ -541,6 +541,7 @@ pub struct VRHeader {
     pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
+    pub resource_keywords: VRKeywords,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes
@@ -561,6 +562,7 @@ impl VRHeader {
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
+        resource_keywords: VRKeywords,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -574,6 +576,7 @@ impl VRHeader {
             metadata_index_keys,
             resource_embedding_model_used,
             resource_merkle_root,
+            resource_keywords,
         }
     }
 
@@ -589,6 +592,7 @@ impl VRHeader {
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
+        resource_keywords: VRKeywords,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -609,6 +613,7 @@ impl VRHeader {
             metadata_index_keys,
             resource_embedding_model_used,
             resource_merkle_root,
+            resource_keywords,
         })
     }
 
