@@ -1,4 +1,4 @@
-use super::{BaseVectorResource, VRBaseType, VRHeader, VectorResourceSearch};
+use super::{BaseVectorResource, VRBaseType, VRHeader, VRKeywords, VectorResourceSearch};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -33,6 +33,7 @@ pub struct DocumentVectorResource {
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
+    keywords: VRKeywords,
 }
 impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}
@@ -158,6 +159,14 @@ impl VectorResourceCore for DocumentVectorResource {
         self.source.clone()
     }
 
+    fn keywords(&self) -> &VRKeywords {
+        &self.keywords
+    }
+
+    fn keywords_mut(&mut self) -> &mut VRKeywords {
+        &mut self.keywords
+    }
+
     fn set_name(&mut self, new_name: String) {
         self.name = new_name;
     }
@@ -182,7 +191,7 @@ impl VectorResourceCore for DocumentVectorResource {
         self.resource_base_type.clone()
     }
 
-    fn get_embeddings(&self) -> Vec<Embedding> {
+    fn get_root_embeddings(&self) -> Vec<Embedding> {
         self.embeddings.clone()
     }
 
@@ -203,6 +212,22 @@ impl VectorResourceCore for DocumentVectorResource {
     fn set_resource_id(&mut self, id: String) {
         self.update_last_written_to_now();
         self.resource_id = id;
+    }
+
+    fn get_data_tag_index(&self) -> &DataTagIndex {
+        &self.data_tag_index
+    }
+
+    fn set_data_tag_index(&mut self, data_tag_index: DataTagIndex) {
+        self.data_tag_index = data_tag_index;
+    }
+
+    fn get_metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
+    }
+
+    fn set_metadata_index(&mut self, metadata_index: MetadataIndex) {
+        self.metadata_index = metadata_index;
     }
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
@@ -229,12 +254,12 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Returns all nodes in the DocumentVectorResource
-    fn get_nodes(&self) -> Vec<Node> {
+    fn get_root_nodes(&self) -> Vec<Node> {
         self.nodes.iter().cloned().collect()
     }
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(
+    fn insert_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -310,7 +335,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(
+    fn replace_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -369,7 +394,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(
+    fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
@@ -394,6 +419,23 @@ impl VectorResourceCore for DocumentVectorResource {
         }
 
         results
+    }
+
+    /// Removes all Nodes/Embeddings at the root level depth.
+    fn remove_root_nodes_dt_specified(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
+        let mut ids: Vec<u64> = (0..self.node_count()).collect();
+        ids.reverse();
+        let mut results = vec![];
+
+        for id in ids {
+            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone())?;
+            results.push(result);
+        }
+
+        Ok(results)
     }
 }
 
@@ -435,6 +477,7 @@ impl DocumentVectorResource {
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
             merkle_root,
+            keywords: VRKeywords::new(),
         };
 
         // Generate a unique resource_id

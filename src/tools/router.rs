@@ -4,7 +4,6 @@ use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
@@ -240,11 +239,6 @@ impl ShinkaiTool {
             embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
         }
 
-        // Cut the string off at MAX_EMBEDDING_STRING_SIZE characters
-        if embedding_string.len() > MAX_EMBEDDING_STRING_SIZE {
-            embedding_string.truncate(MAX_EMBEDDING_STRING_SIZE);
-        }
-
         embedding_string
     }
 
@@ -406,7 +400,7 @@ impl ToolRouter {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         self.routing_resource.print_all_nodes_exhaustive(None, false, false);
         println!("Tool key: {}", key);
-        self.routing_resource.remove_node(key, None)?;
+        self.routing_resource.remove_node_dt_specified(key, None)?;
         Ok(())
     }
 

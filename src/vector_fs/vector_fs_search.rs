@@ -3,9 +3,10 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::vector_fs::vector_fs_permissions::PermissionsIndex;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::source::SourceFileMap;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, LimitTraversalMode, Node, NodeContent, VRHeader};
+use shinkai_vector_resources::vector_resource::{
+    BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
+};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
@@ -53,6 +54,11 @@ impl FSRetrievedNode {
     }
 }
 
+/// TODO:
+/// 1. Implement embedding generation for FSFolders by using the keywords of the FSItems in the folder.
+/// 2. Implement new VectorFSSearchOptions interface, which wraps around the standard vec search options interface
+/// and allows for similar functionality on the VecFS itself without any edge cases being hit due to VecFS structure.
+/// 3. Update all vec search in VectorFS to use dynamic search to support alternate embedding models by default for both resource embedding & keyword embedding
 impl VectorFS {
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
     /// This automatically uses the correct default embedding model for the given profile.
@@ -62,9 +68,7 @@ impl VectorFS {
         profile: &ShinkaiName,
     ) -> Result<Embedding, VectorFSError> {
         let generator = self._get_embedding_generator(profile)?;
-        Ok(generator
-            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
-            .await?)
+        Ok(generator.generate_embedding_default(&input_query).await?)
     }
 
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
@@ -77,31 +81,65 @@ impl VectorFS {
         self.generate_query_embedding(input_query, &reader.profile).await
     }
 
-    /// Performs a  "deep" vector search into the VectorFS starting at the reader's path,
+    /// Performs a "deep" vector search into the VectorFS starting at the reader's path,
     /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
-    pub fn vector_search_fs_retrieved_node(
+    pub async fn deep_vector_search(
         &mut self,
         reader: &VFSReader,
-        query: Embedding,
+        query_text: String,
         num_of_resources_to_search_into: u64,
         num_of_results: u64,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
+        self.deep_vector_search_customized(
+            reader,
+            query_text,
+            num_of_resources_to_search_into,
+            num_of_results,
+            vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        )
+        .await
+    }
+
+    /// Performs a "deep" vector search into the VectorFS starting at the reader's path,
+    /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
+    /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
+    /// Allows specifying custom deep_traversal_options which are used when searching into the VRs themselves.
+    pub async fn deep_vector_search_customized(
+        &mut self,
+        reader: &VFSReader,
+        query_text: String,
+        num_of_resources_to_search_into: u64,
+        num_of_results: u64,
+        deep_traversal_options: Vec<TraversalOption>,
+    ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
+        let query = self
+            .generate_query_embedding_using_reader(query_text.clone(), &reader)
+            .await?;
+
         let mut ret_nodes = Vec::new();
         let mut fs_path_hashmap = HashMap::new();
         let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
 
         for item in items {
-            // Create a new reader at the path of the fs_item, and then fetch the VR from there
-            let new_reader = reader._new_reader_copied_data(item.path.clone(), self)?;
-            let resource = self.retrieve_vector_resource(&new_reader)?;
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self) {
+                if let Ok(resource) = self.retrieve_vector_resource(&new_reader) {
+                    fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
-            // Store the VectorFS path of the item in the hashmap for use later
-            fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
-
-            // Perform the internal vector search into the resource itself
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            ret_nodes.extend(results);
+                    let generator = self._get_embedding_generator(&reader.profile)?;
+                    let results = resource
+                        .as_trait_object()
+                        .dynamic_vector_search_customized(
+                            query_text.clone(),
+                            num_of_results,
+                            &deep_traversal_options,
+                            None,
+                            generator,
+                        )
+                        .await?;
+                    ret_nodes.extend(results);
+                }
+            }
         }
 
         let mut final_results = vec![];
@@ -122,9 +160,10 @@ impl VectorFS {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<FSItem>, VectorFSError> {
+        println!("Starting vector search fs_item----------------------");
         let ret_nodes =
             self._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])?;
-        let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
 
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
@@ -145,8 +184,8 @@ impl VectorFS {
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
-    /// returning the retrieved (BaseVectorResource, SourceFileMap) pairs of the most
-    /// similar FSItems.
+    /// returning the retrieved (BaseVectorResource, SourceFileMap) pairs of the most similar FSItems.
+    /// Ignores FSItem results which the requester_name does not have permission to read.
     pub fn vector_search_vr_and_source_file_map(
         &mut self,
         reader: &VFSReader,
@@ -156,16 +195,20 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
-            let res_pair = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name())?;
-            results.push(res_pair);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved BaseVectorResources which are the most similar.
+    /// Ignores FSItem (Vector Resource) results which the requester_name does not have permission to read.
     pub fn vector_search_vector_resource(
         &mut self,
         reader: &VFSReader,
@@ -175,16 +218,20 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
-            let res = self.retrieve_vector_resource_in_folder(&new_reader, item.name())?;
-            results.push(res);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_vector_resource_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved SourceFileMap which are the most similar.
+    /// Ignores FSItem (SFM) results which the requester_name does not have permission to read.
     pub fn vector_search_source_file_map(
         &mut self,
         reader: &VFSReader,
@@ -194,10 +241,13 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
+        // If all perms pass, push
         for item in items {
-            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
-            let res = self.retrieve_source_file_map_in_folder(&new_reader, item.name())?;
-            results.push(res);
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
+                if let Ok(res) = self.retrieve_source_file_map_in_folder(&new_reader, item.name()) {
+                    results.push(res);
+                }
+            }
         }
         Ok(results)
     }
@@ -236,7 +286,7 @@ impl VectorFS {
         traversal_options: &Vec<TraversalOption>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
-        let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
         let stringified_permissions_map = internals
             .permissions_index
             .export_permissions_hashmap_with_reader(reader);
