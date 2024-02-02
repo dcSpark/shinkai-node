@@ -6,6 +6,7 @@ pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
+use crate::{embedding_generator::EmbeddingGenerator, embeddings::MAX_EMBEDDING_STRING_SIZE};
 use blake3::hash;
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
@@ -626,11 +627,99 @@ impl VRHeader {
     }
 }
 
+/// A struct which holds a Vector Resource's keywords/optional
+/// keywords embedding
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VRKeywords {
+    pub keyword_list: Vec<String>,
+    pub keywords_embedding: Option<KeywordEmbedding>,
+}
+
+impl VRKeywords {
+    /// Creates a new instance of VRKeywords.
+    pub fn new() -> Self {
+        VRKeywords {
+            keyword_list: Vec::new(),
+            keywords_embedding: None,
+        }
+    }
+
+    /// Adds a keyword to the list.
+    pub fn add_keyword(&mut self, keyword: String) {
+        self.keyword_list.push(keyword);
+    }
+
+    /// Removes the last keyword from the list and returns it.
+    pub fn pop_keyword(&mut self) -> Option<String> {
+        self.keyword_list.pop()
+    }
+
+    /// Sets the entire list of keywords.
+    pub fn set_keywords(&mut self, keywords: Vec<String>) {
+        self.keyword_list = keywords;
+    }
+
+    /// Sets the keyword embedding, overwriting the previous value.
+    pub fn set_embedding(&mut self, embedding: Embedding, model_type: EmbeddingModelType) {
+        let keyword_embedding = KeywordEmbedding::new(embedding, model_type);
+        self.keywords_embedding = Some(keyword_embedding);
+    }
+
+    /// Removes the keyword embedding and returns it.
+    pub fn remove_embedding(&mut self) -> Option<KeywordEmbedding> {
+        self.keywords_embedding.take()
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Asynchronously regenerates and updates the keywords' embedding using the provided keywords.
+    pub async fn update_keywords_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
+        let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
+        let new_embedding = generator
+            .generate_embedding_shorten_input(&formatted_keywords, "KE", MAX_EMBEDDING_STRING_SIZE as u64)
+            .await?;
+        self.set_embedding(new_embedding, generator.model_type());
+        Ok(())
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Synchronously regenerates and updates the keywords' embedding using the provided keywords.
+    pub fn update_keywords_embedding_blocking(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
+        let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
+        let new_embedding = generator.generate_embedding_blocking_shorten_input(
+            &formatted_keywords,
+            "KE",
+            MAX_EMBEDDING_STRING_SIZE as u64,
+        )?;
+        self.set_embedding(new_embedding, generator.model_type());
+        Ok(())
+    }
+}
+
+/// Struct which holds the embedding for a Vector Resource's keywords
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KeywordEmbedding {
+    pub embedding: Embedding,
+    pub model_used: EmbeddingModelType,
+}
+
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
+}
+
+impl KeywordEmbedding {
+    /// Creates a new instance of KeywordEmbedding.
+    pub fn new(embedding: Embedding, model_used: EmbeddingModelType) -> Self {
+        KeywordEmbedding { embedding, model_used }
+    }
+
+    /// Sets the embedding and model type.
+    pub fn set_embedding(&mut self, embedding: Embedding, model_type: EmbeddingModelType) {
+        self.embedding = embedding;
+        self.model_used = model_type;
+    }
 }
 
 impl VRPath {

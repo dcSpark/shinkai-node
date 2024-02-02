@@ -154,13 +154,16 @@ impl UnstructuredParser {
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
+        // Sets the keywords
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding(generator).await?;
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
                 println!("Generating embedding for resource: {:?}", &name);
-                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-                doc.update_resource_embedding(generator, keywords).await?;
+                doc.update_resource_embedding(generator, None).await?;
             }
         }
 
@@ -214,13 +217,16 @@ impl UnstructuredParser {
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
+        // Sets the keywords and generates a keyword embedding
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding_blocking(generator)?;
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
                 println!("Generating embedding for resource: {:?}", &name);
-                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-                doc.update_resource_embedding_blocking(generator, keywords)?;
+                doc.update_resource_embedding_blocking(generator, None)?;
             }
         }
 

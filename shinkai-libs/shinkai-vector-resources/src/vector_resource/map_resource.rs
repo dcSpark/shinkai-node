@@ -1,4 +1,4 @@
-use super::VectorResourceSearch;
+use super::{VRKeywords, VectorResourceSearch};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -34,6 +34,7 @@ pub struct MapVectorResource {
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
+    keywords: VRKeywords,
 }
 impl VectorResource for MapVectorResource {}
 impl VectorResourceSearch for MapVectorResource {}
@@ -114,6 +115,14 @@ impl VectorResourceCore for MapVectorResource {
 
     fn source(&self) -> VRSource {
         self.source.clone()
+    }
+
+    fn keywords(&self) -> &VRKeywords {
+        &self.keywords
+    }
+
+    fn keywords_mut(&mut self) -> &mut VRKeywords {
+        &mut self.keywords
     }
 
     fn set_name(&mut self, new_name: String) {
@@ -381,6 +390,7 @@ impl MapVectorResource {
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
             merkle_root,
+            keywords: VRKeywords::new(),
         };
         // Generate a unique resource_id:
         resource.generate_and_update_resource_id();

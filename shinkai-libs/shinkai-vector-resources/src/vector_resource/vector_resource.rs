@@ -32,6 +32,8 @@ pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
+    fn keywords(&self) -> &VRKeywords;
+    fn keywords_mut(&mut self) -> &mut VRKeywords;
     fn set_name(&mut self, new_name: String);
     fn set_description(&mut self, new_description: Option<String>);
     fn set_source(&mut self, new_source: VRSource);
@@ -177,11 +179,13 @@ pub trait VectorResourceCore: Send + Sync {
 
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
+    /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     async fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
-        keywords: Vec<String>,
+        keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
+        let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
         let formatted = self.format_embedding_string(keywords);
         let new_embedding = generator
             .generate_embedding_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)
@@ -192,11 +196,13 @@ pub trait VectorResourceCore: Send + Sync {
 
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
+    /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     fn update_resource_embedding_blocking(
         &mut self,
         generator: &dyn EmbeddingGenerator,
-        keywords: Vec<String>,
+        keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
+        let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
         let formatted = self.format_embedding_string(keywords);
         let new_embedding =
             generator.generate_embedding_blocking_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)?;

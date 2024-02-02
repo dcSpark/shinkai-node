@@ -1,4 +1,4 @@
-use super::{BaseVectorResource, VRBaseType, VRHeader, VectorResourceSearch};
+use super::{BaseVectorResource, VRBaseType, VRHeader, VRKeywords, VectorResourceSearch};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -33,6 +33,7 @@ pub struct DocumentVectorResource {
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
+    keywords: VRKeywords,
 }
 impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}
@@ -156,6 +157,14 @@ impl VectorResourceCore for DocumentVectorResource {
 
     fn source(&self) -> VRSource {
         self.source.clone()
+    }
+
+    fn keywords(&self) -> &VRKeywords {
+        &self.keywords
+    }
+
+    fn keywords_mut(&mut self) -> &mut VRKeywords {
+        &mut self.keywords
     }
 
     fn set_name(&mut self, new_name: String) {
@@ -468,6 +477,7 @@ impl DocumentVectorResource {
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
             merkle_root,
+            keywords: VRKeywords::new(),
         };
 
         // Generate a unique resource_id

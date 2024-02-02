@@ -186,6 +186,10 @@ async fn test_vector_fs_saving_reading() {
     assert_eq!(ret_resource, resource);
     assert_eq!(ret_source_file_map, source_file_map);
 
+    println!("Keywords: {:?}", ret_resource.as_trait_object().keywords());
+    assert!(ret_resource.as_trait_object().keywords().keyword_list.len() > 0);
+    assert!(ret_resource.as_trait_object().keywords().keywords_embedding.is_some());
+
     let reader = vector_fs
         .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
@@ -208,9 +212,9 @@ async fn test_vector_fs_saving_reading() {
         true,
     );
     doc.set_embedding_model_used(generator.model_type());
-    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
-        .await
-        .unwrap();
+    doc.keywords_mut()
+        .set_keywords(vec!["animal".to_string(), "wild life".to_string()]);
+    doc.update_resource_embedding(&generator, None).await.unwrap();
     let fact1 = "Dogs are creatures with 4 legs that bark.";
     let fact1_embedding = generator.generate_embedding_default(fact1).await.unwrap();
     let fact2 = "Camels are slow animals with large humps.";
