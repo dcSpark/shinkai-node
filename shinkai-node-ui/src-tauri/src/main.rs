@@ -17,12 +17,13 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::os::fd::IntoRawFd;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Weak;
+use tauri::api::path::data_dir;
 use tauri::async_runtime::Mutex;
 use tauri::Manager;
 use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu};
-use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use toml;
 
@@ -154,7 +155,8 @@ async fn initialize_node() -> Result<
 
 #[tauri::command]
 async fn start_shinkai_node() -> String {
-    eprintln!("Starting shinkai node");
+    println!("Starting shinkai node");
+    log_environment();
     match initialize_node().await {
         Ok((_, api_server, node_task, ws_server, node)) => {
             match shinkai_node::run_node_tasks(api_server, node_task, ws_server, node).await {
@@ -165,13 +167,6 @@ async fn start_shinkai_node() -> String {
             }
         }
         Err(e) => e,
-    }
-}
-
-async fn run_with_cancellation(task: JoinHandle<()>, mut rx: broadcast::Receiver<()>) {
-    tokio::select! {
-        _ = task => {},
-        _ = rx.recv() => {},
     }
 }
 
@@ -216,48 +211,75 @@ async fn stop_node_and_delete_storage() -> String {
     }
 }
 
-fn load_settings(settings_file_path: String, registry_path: String) {
+async fn load_settings(settings_file_path: String, registry_path: String) {
     // Load settings from a TOML
-    let mut settings = tauri::async_runtime::block_on(SETTINGS.lock());
+    let mut settings = SETTINGS.lock().await;
     if let Err(e) = settings.merge(config::File::with_name(&settings_file_path).required(true)) {
         eprintln!("Failed to merge settings: {}", e);
     }
 
-    // Set environment variables from settings
     for (key, value) in settings.collect().unwrap().iter() {
         if key == "ABI_PATH" {
             // Use registry_path for ABI_PATH key
             env::set_var(key, &registry_path);
+        } else if key == "NODE_STORAGE_PATH" {
+            // Update the NODE_STORAGE_PATH key with the new path
+            let db_path = get_database_path(); // Assuming get_database_path returns a String
+            env::set_var(key, db_path);
         } else if let Some(val) = value.clone().into_str().ok() {
             // Clone value before calling into_str for other keys
             env::set_var(key, val);
         }
     }
+
+    eprintln!("Settings loaded successfully");
+    log_environment();
 }
 
-// fn redirect_stdout_to_file() -> io::Result<()> {
-//     let log_file = File::create("/tmp/app_stdout.log")?;
-//     let log_file_fd = log_file.into_raw_fd();
+fn get_database_path() -> String {
+    // Use Tauri's API to get an appropriate data directory for the app
+    // This directory is OS-specific but appropriate for storing app data
+    let base_path = data_dir().expect("Failed to find a data directory");
 
-//     // SAFETY: This is safe as long as no other threads are currently writing to stdout or
-//     // attempting to change the global stdout handle at the same time.
-//     unsafe {
-//         // Duplicate the log file's file descriptor and use it as the new stdout.
-//         let _ = libc::dup2(log_file_fd, libc::STDOUT_FILENO);
-//     }
+    // Append your specific storage directory to the path
+    let db_path = base_path.join("Shinkai").join("storage");
 
-//     // From this point on, all writes to stdout will go to /tmp/app_stdout.log.
-//     Ok(())
-// }
+    // Ensure the storage directory exists or create it
+    if !db_path.exists() {
+        std::fs::create_dir_all(&db_path).expect("Failed to create storage directory");
+    }
+
+    // Convert the path to a String
+    db_path.to_string_lossy().into_owned()
+}
+
+fn redirect_stdout_to_file() -> io::Result<()> {
+    let log_file = File::create("/tmp/app_stdout.log")?;
+    let log_file_fd = log_file.into_raw_fd();
+
+    // SAFETY: This is safe as long as no other threads are currently writing to stdout or
+    // attempting to change the global stdout handle at the same time.
+    unsafe {
+        // Duplicate the log file's file descriptor and use it as the new stdout.
+        let _ = libc::dup2(log_file_fd, libc::STDOUT_FILENO);
+    }
+
+    // From this point on, all writes to stdout will go to /tmp/app_stdout.log.
+    Ok(())
+}
 
 fn log_environment() {
     let mut file = File::create("/tmp/app_environment.log").unwrap();
     for (key, value) in env::vars() {
         writeln!(file, "{}: {}", key, value).unwrap();
+        println!("{}: {}", key, value);
     }
 }
 
 fn main() {
+    let _ = redirect_stdout_to_file();
+    log_environment();
+
     // Tray Code
     let tray_menu = SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("show", "Show App"))
@@ -312,7 +334,10 @@ fn main() {
                 .to_owned();
 
             // Now you can pass the String to load_settings
-            load_settings(settings_file_path_str, onchain_registry_path_str);
+            // Create a new Tokio runtime
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            // Use the runtime to block on the async function
+            rt.block_on(load_settings(settings_file_path_str, onchain_registry_path_str));
 
             let window = app.get_window("main").unwrap();
             let icon_bytes = include_bytes!("../icons/icon.ico").to_vec();

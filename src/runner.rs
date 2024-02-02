@@ -307,13 +307,20 @@ pub async fn run_node_tasks(
     ws_server: JoinHandle<()>,
     _: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let api_server_abort = api_server.abort_handle();
+    let node_task_abort = node_task.abort_handle();
+    let ws_server_abort = ws_server.abort_handle();
+
     match tokio::try_join!(api_server, node_task, ws_server) {
         Ok(_) => {
             eprintln!("All tasks completed");
             Ok(())
         }
         Err(e) => {
-            eprintln!("Error try_join!: {:?}", e);
+            api_server_abort.abort();
+            node_task_abort.abort();
+            ws_server_abort.abort();
+
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
     }

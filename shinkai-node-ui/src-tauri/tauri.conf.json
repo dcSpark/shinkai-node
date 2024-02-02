@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "shinkai-node-ui",
+    "productName": "Shinkai",
     "version": "0.0.1"
   },
   "tauri": {
