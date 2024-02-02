@@ -176,8 +176,7 @@ pub trait VectorResourceCore: Send + Sync {
     }
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding using the name/description/source
-    /// and the provided keywords.
+    /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
     async fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -192,15 +191,15 @@ pub trait VectorResourceCore: Send + Sync {
     }
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding using the name/description/source
-    /// and the provided keywords.
+    /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
     fn update_resource_embedding_blocking(
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
     ) -> Result<(), VRError> {
         let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
+        let new_embedding =
+            generator.generate_embedding_blocking_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
@@ -242,8 +241,8 @@ pub trait VectorResourceCore: Send + Sync {
             .unwrap_or_default();
         let source_string = format!("Source: {}", self.source().format_source_string());
 
-        // Take keywords until we hit an upper 500 character cap to ensure
-        // we do not go past the embedding LLM context window.
+        // Take keywords until we hit an upper token cap to ensure
+        // we do not go past the embedding LLM window.
         let pre_keyword_length = name.len() + desc.len() + source_string.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
