@@ -608,6 +608,18 @@ async fn test_vector_fs_operations() {
 
     vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
+    let node = vector_fs
+        ._retrieve_core_resource_node_at_path(dest_reader.path.clone(), &dest_reader.profile)
+        .unwrap();
+    println!(
+        "Folder keywords: {:?}",
+        node.node
+            .get_vector_resource_content()
+            .unwrap()
+            .as_trait_object()
+            .keywords()
+    );
+
     // Copying into a folder which does not exist fails
     let non_existent_folder_path = VRPath::root().push_cloned("non_existent_folder".to_string());
     let orig_writer = vector_fs

@@ -10,6 +10,9 @@ use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseTy
 use blake3::hash;
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use serde::{Deserialize, Deserializer};
 use serde::{Serialize, Serializer};
 use std::collections::HashMap;
@@ -691,6 +694,28 @@ impl VRKeywords {
         let new_embedding = generator.generate_embedding_blocking(&formatted_keywords, "KE")?;
         self.set_embedding(new_embedding, generator.model_type());
         Ok(())
+    }
+    /// Randomly replaces a specified number of keywords in `keyword_list` with the first `actual_num_to_replace` keywords from the provided list.
+    pub fn random_replace_keywords(&mut self, num_to_replace: usize, replacement_keywords: Vec<String>) {
+        // Calculate the actual number of keywords to replace
+        let actual_num_to_replace = std::cmp::min(
+            num_to_replace,
+            std::cmp::min(self.keyword_list.len(), replacement_keywords.len()),
+        );
+
+        // Take the first `actual_num_to_replace` keywords from the input list
+        let replacement_keywords = &replacement_keywords[..actual_num_to_replace];
+
+        // Randomly select indices in the current keyword list to replace
+        let mut rng = StdRng::from_entropy();
+        let mut indices_to_replace: Vec<usize> = (0..self.keyword_list.len()).collect();
+        indices_to_replace.shuffle(&mut rng);
+        let indices_to_replace = &indices_to_replace[..actual_num_to_replace];
+
+        // Perform the replacement
+        for (&index, replacement_keyword) in indices_to_replace.iter().zip(replacement_keywords.iter()) {
+            self.keyword_list[index] = replacement_keyword.clone();
+        }
     }
 }
 

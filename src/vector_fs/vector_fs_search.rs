@@ -54,6 +54,11 @@ impl FSRetrievedNode {
     }
 }
 
+/// TODO:
+/// 1. Implement embedding generation for FSFolders by using the keywords of the FSItems in the folder.
+/// 2. Implement new VectorFSSearchOptions interface, which wraps around the standard vec search options interface
+/// and allows for similar functionality on the VecFS itself without any edge cases being hit due to VecFS structure.
+/// 3. Update all vec search in VectorFS to use dynamic search to support alternate embedding models by default for both resource embedding & keyword embedding
 impl VectorFS {
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
     /// This automatically uses the correct default embedding model for the given profile.

@@ -678,6 +678,19 @@ impl VectorFS {
                 new_node_embedding,
                 Some(current_datetime),
             )?;
+
+            // Update the resource's keywords. If no keywords, copy all, else random replace a few
+            if resource.as_trait_object_mut().keywords().keyword_list.len() == 0 {
+                resource
+                    .as_trait_object_mut()
+                    .keywords_mut()
+                    .set_keywords(vr_header.resource_keywords.keyword_list.clone())
+            } else {
+                resource
+                    .as_trait_object_mut()
+                    .keywords_mut()
+                    .random_replace_keywords(5, vr_header.resource_keywords.keyword_list.clone())
+            }
             Ok(())
         };
 
@@ -727,6 +740,7 @@ impl VectorFS {
         current_datetime: DateTime<Utc>,
     ) -> Result<FSFolder, VectorFSError> {
         let resource_name = resource.as_trait_object().name().to_string();
+        let resource_keywords = resource.as_trait_object().keywords().keyword_list.clone();
         let new_node_path = writer.path.push_cloned(resource_name.clone());
 
         // Check the path points to a folder
@@ -769,13 +783,29 @@ impl VectorFS {
                 .map(|m| m.insert(FSFolder::last_modified_key(), current_datetime.to_rfc3339()));
             // Create the new folder child node and insert it
             let new_node = Node::new_vector_resource(resource_name.clone(), &resource, metadata.clone());
-            let resource = node.get_vector_resource_content_mut()?;
-            resource.as_trait_object_mut().insert_node_dt_specified(
+            let parent_resource = node.get_vector_resource_content_mut()?;
+            parent_resource.as_trait_object_mut().insert_node_dt_specified(
                 resource_name.clone(),
                 new_node,
                 embedding.clone(),
                 None,
             )?;
+
+            // If new resource has keywords, and none in target copy all, else random replace a few
+            if resource_keywords.len() > 0 {
+                if parent_resource.as_trait_object_mut().keywords().keyword_list.len() == 0 {
+                    parent_resource
+                        .as_trait_object_mut()
+                        .keywords_mut()
+                        .set_keywords(resource_keywords.clone())
+                } else {
+                    parent_resource
+                        .as_trait_object_mut()
+                        .keywords_mut()
+                        .random_replace_keywords(5, resource_keywords.clone())
+                }
+            }
+
             Ok(())
         };
 
