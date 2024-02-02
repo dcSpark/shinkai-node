@@ -112,19 +112,19 @@ impl<'de> Visitor<'de> for AgentLLMInterfaceVisitor {
     where
         E: de::Error,
     {
-        let parts: Vec<&str> = value.split(':').collect();
+        let parts: Vec<&str> = value.splitn(2, ':').collect();
         match parts[0] {
             "openai" => Ok(AgentLLMInterface::OpenAI(OpenAI {
-                model_type: parts[1].to_string(),
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "genericapi" => Ok(AgentLLMInterface::GenericAPI(GenericAPI {
-                model_type: parts[1].to_string(),
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "ollama" => Ok(AgentLLMInterface::Ollama(Ollama {
-                model_type: parts[1].to_string(),
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "shinkai-backend" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
-                model_type: parts[1].to_string(),
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "local-llm" => Ok(AgentLLMInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
