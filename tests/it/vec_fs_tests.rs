@@ -99,7 +99,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs();
 
-    let fs_internals = vector_fs._get_profile_fs_internals(&default_test_profile());
+    let fs_internals = vector_fs.get_profile_fs_internals(&default_test_profile());
     assert!(fs_internals.is_ok())
 }
 
@@ -128,13 +128,13 @@ async fn test_vector_fs_saving_reading() {
     // Validate new folder path points to an entry at all (not empty), then specifically a folder, and finally not to an item.
     let folder_path = path.push_cloned(folder_name.to_string());
     assert!(vector_fs
-        ._validate_path_points_to_entry(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_entry(folder_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_folder(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_folder(folder_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_item(folder_path.clone(), &writer.profile)
+        .validate_path_points_to_item(folder_path.clone(), &writer.profile)
         .is_err());
 
     // Create a Vector Resource and source file to be added into the VectorFS
@@ -155,19 +155,27 @@ async fn test_vector_fs_saving_reading() {
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
     let item_path = folder_path.push_cloned(resource.as_trait_object().name().to_string());
     assert!(vector_fs
-        ._validate_path_points_to_entry(item_path.clone(), &writer.profile)
+        .validate_path_points_to_entry(item_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_item(item_path.clone(), &writer.profile)
+        .validate_path_points_to_item(item_path.clone(), &writer.profile)
         .is_ok());
     assert!(vector_fs
-        ._validate_path_points_to_folder(item_path.clone(), &writer.profile)
+        .validate_path_points_to_folder(item_path.clone(), &writer.profile)
         .is_err());
 
     let internals = vector_fs
-        ._get_profile_fs_internals_read_only(&default_test_profile())
+        .get_profile_fs_internals_read_only(&default_test_profile())
         .unwrap();
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
+
+    // Sets the permission to private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(default_test_profile(), item_path.clone(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
 
     /// Retrieve the Vector Resource & Source File Map from the db
     // Test both retrieve interfaces
@@ -177,6 +185,10 @@ async fn test_vector_fs_saving_reading() {
     let (ret_resource, ret_source_file_map) = vector_fs.retrieve_vr_and_source_file_map(&reader).unwrap();
     assert_eq!(ret_resource, resource);
     assert_eq!(ret_source_file_map, source_file_map);
+
+    println!("Keywords: {:?}", ret_resource.as_trait_object().keywords());
+    assert!(ret_resource.as_trait_object().keywords().keyword_list.len() > 0);
+    assert!(ret_resource.as_trait_object().keywords().keywords_embedding.is_some());
 
     let reader = vector_fs
         .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
@@ -200,9 +212,9 @@ async fn test_vector_fs_saving_reading() {
         true,
     );
     doc.set_embedding_model_used(generator.model_type());
-    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
-        .await
-        .unwrap();
+    doc.keywords_mut()
+        .set_keywords(vec!["animal".to_string(), "wild life".to_string()]);
+    doc.update_resource_embedding(&generator, None).await.unwrap();
     let fact1 = "Dogs are creatures with 4 legs that bark.";
     let fact1_embedding = generator.generate_embedding_default(fact1).await.unwrap();
     let fact2 = "Camels are slow animals with large humps.";
@@ -219,13 +231,21 @@ async fn test_vector_fs_saving_reading() {
     let writer = vector_fs
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
-    vector_fs
+    let item = vector_fs
         .save_vector_resource_in_folder(
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
             DistributionOrigin::None,
         )
+        .unwrap();
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(default_test_profile(), item.path.clone(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
         .unwrap();
 
     // Searching for FSItems
@@ -241,6 +261,7 @@ async fn test_vector_fs_saving_reading() {
     let res = vector_fs.vector_search_fs_item(&reader, query_embedding, 100).unwrap();
     assert_eq!(res[0].name(), "shinkai_intro");
 
+    vector_fs.print_profile_vector_fs_resource(reader.profile.clone());
     // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
     let reader = vector_fs
         .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
@@ -248,11 +269,12 @@ async fn test_vector_fs_saving_reading() {
     let query_string = "Who is building Shinkai?".to_string();
     println!("Query String: {}", query_string);
     let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string, &reader)
+        .generate_query_embedding_using_reader(query_string.clone(), &reader)
         .await
         .unwrap();
     let res = vector_fs
-        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .await
         .unwrap();
     assert_eq!(
         "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
@@ -272,11 +294,12 @@ async fn test_vector_fs_saving_reading() {
     let query_string = "What do you know about camels?".to_string();
     println!("Query String: {}", query_string);
     let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string, &reader)
+        .generate_query_embedding_using_reader(query_string.clone(), &reader)
         .await
         .unwrap();
     let res = vector_fs
-        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .deep_vector_search(&reader, query_string.clone(), 100, 100)
+        .await
         .unwrap();
     assert_eq!(
         "Camels are slow animals with large humps.",
@@ -344,7 +367,7 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     assert_eq!(res.len(), 0);
 
-    // Now give permission to first folder and see if results return the VR in it
+    // Now give permission to first folder and see if results return the VRHeader in it
     let first_folder_path = VRPath::new().push_cloned(folder_name.to_string());
     let writer = vector_fs
         .new_writer(
@@ -364,6 +387,14 @@ async fn test_vector_fs_saving_reading() {
         )
         .unwrap();
 
+    {
+        let internals = vector_fs
+            .get_profile_fs_internals_read_only(&default_test_profile())
+            .unwrap();
+
+        println!("FS permissions: {:?}", internals.permissions_index.fs_permissions);
+    }
+
     let reader = vector_fs
         .new_reader(
             invalid_requester.clone(),
@@ -372,7 +403,266 @@ async fn test_vector_fs_saving_reading() {
         )
         .unwrap();
     let res = vector_fs
-        .vector_search_vector_resource(&reader, query_embedding, 100)
+        .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
+        .unwrap();
+    assert!(res.len() == 0);
+    let res = vector_fs
+        .vector_search_vr_header(&reader, query_embedding.clone(), 100)
         .unwrap();
     assert!(res.len() > 0);
+
+    // Now give permission to the item in the folder and see that the resource is returned
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.push_cloned("shinkai_intro".to_string()),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&writer, ReadPermission::Whitelist, WritePermission::Private)
+        .unwrap();
+    vector_fs
+        .set_whitelist_permission(
+            &writer,
+            invalid_requester.clone(),
+            shinkai_node::vector_fs::vector_fs_permissions::WhitelistPermission::Read,
+        )
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
+        .unwrap();
+    assert!(res.len() > 0);
+}
+
+#[tokio::test]
+async fn test_vector_fs_operations() {
+    setup();
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let mut vector_fs = setup_default_vector_fs();
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let folder_name = "first_folder";
+    let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
+    vector_fs.create_new_folder(&writer, folder_name.clone()).unwrap();
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
+
+    // Create a folder inside of first_folder
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let folder_name_2 = "second_folder";
+    vector_fs.create_new_folder(&writer, folder_name_2).unwrap();
+    let second_folder_path = first_folder_path.push_cloned(folder_name_2.to_string());
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            second_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
+
+    // Create a Vector Resource and source file to be added into the VectorFS
+    let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+    let mut resource = BaseVectorResource::Document(doc_resource);
+    let resource_name = resource.as_trait_object().name().clone();
+    let resource_ref_string = resource.as_trait_object().reference_string();
+    let resource_merkle_root = resource.as_trait_object().get_merkle_root();
+    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count().clone();
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let first_folder_item = vector_fs
+        .save_vector_resource_in_folder(
+            &writer,
+            resource.clone(),
+            Some(source_file_map.clone()),
+            DistributionOrigin::None,
+        )
+        .unwrap();
+
+    //
+    // Copy Tests
+    //
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let new_root_folder_name = "new_root_folder".to_string();
+    vector_fs.create_new_folder(&writer, &new_root_folder_name).unwrap();
+    let new_root_folder_path = VRPath::root().push_cloned(new_root_folder_name.clone());
+
+    // Sets the permission to Private from default Whitelist (for later test cases)
+    let perm_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_root_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    vector_fs
+        .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
+        .unwrap();
+
+    // Copy item from 1st folder into new root folder
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_item.path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(new_root_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs.copy_item(&orig_writer, new_root_folder_path.clone()).unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    // Copy from new root folder to 2nd folder inside of first folder
+    let root_folder_file_path = new_root_folder_path.push_cloned(resource_name.to_string());
+    let orig_writer = vector_fs
+        .new_writer(default_test_profile(), root_folder_file_path, default_test_profile())
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(second_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs.copy_item(&orig_writer, second_folder_path.clone()).unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    // Copy first folder as a whole into new root folder
+    let new_root_folder_first_folder_path = new_root_folder_path.push_cloned(folder_name.to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(new_root_folder_first_folder_path.clone(), &mut vector_fs)
+        .unwrap();
+    vector_fs
+        .copy_folder(&orig_writer, new_root_folder_path.clone())
+        .unwrap();
+    let mut retrieved_vr = vector_fs
+        .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
+        .unwrap();
+
+    assert_eq!(resource_name, retrieved_vr.as_trait_object().name());
+    assert_eq!(
+        resource_node_count,
+        retrieved_vr.as_document_resource().unwrap().node_count()
+    );
+    assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
+    assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    let node = vector_fs
+        ._retrieve_core_resource_node_at_path(dest_reader.path.clone(), &dest_reader.profile)
+        .unwrap();
+    println!(
+        "Folder keywords: {:?}",
+        node.node
+            .get_vector_resource_content()
+            .unwrap()
+            .as_trait_object()
+            .keywords()
+    );
+
+    // Copying into a folder which does not exist fails
+    let non_existent_folder_path = VRPath::root().push_cloned("non_existent_folder".to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            first_folder_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let copy_result = vector_fs.copy_folder(&orig_writer, non_existent_folder_path.clone());
+    assert!(copy_result.is_err());
+
+    //
+    // Move Tests
+    //
+
+    // Moving item from one folder to another means previous path is empty & file is in new location
+    // let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
+    // let destination_folder_path = second_folder_path.clone();
+    // let orig_writer = vector_fs
+    //     .new_writer(
+    //         default_test_profile(),
+    //         item_to_move_path.clone(),
+    //         default_test_profile(),
+    //     )
+    //     .unwrap();
+    // vector_fs
+    //     .move_item(&orig_writer, destination_folder_path.clone())
+    //     .unwrap();
+
+    // let orig_location_check = vector_fs
+    //     .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
+    //     .is_err();
+    // assert!(
+    //     orig_location_check,
+    //     "The item should no longer exist in the original location."
+    // );
+
+    // let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
+    // let new_location_check = vector_fs
+    //     .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+    //     .is_ok();
+    // assert!(new_location_check, "The item should now exist in the new location.");
+
+    // Moving Folder from one location to another means previous path is empty
 }

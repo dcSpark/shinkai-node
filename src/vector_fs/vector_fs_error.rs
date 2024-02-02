@@ -45,9 +45,11 @@ pub enum VectorFSError {
     InvalidMetadata(String),
     FailedCreatingProfileBoundWriteBatch(String),
     CannotOverwriteFolder(VRPath),
+    CannotOverwriteFSEntry(VRPath),
     PathDoesNotPointAtItem(VRPath),
     PathDoesNotPointAtFolder(VRPath),
     NoEntryAtPath(VRPath),
+    NoPermissionEntryAtPath(VRPath),
     EntryAlreadyExistsAtPath(VRPath),
     DateTimeParseError(String),
     FailedGettingFSPathOfRetrievedNode(String),
@@ -121,6 +123,7 @@ impl fmt::Display for VectorFSError {
                 write!(f, "Failed parsing profile and creating a write batch for: {}", e)
             }
             VectorFSError::CannotOverwriteFolder(e) => write!(f, "Cannot write over existing folder at: {}", e),
+            VectorFSError::CannotOverwriteFSEntry(e) => write!(f, "Cannot write over existing fs entry at: {}", e),
             VectorFSError::PathDoesNotPointAtFolder(e) => {
                 write!(f, "Entry at supplied path does not hold an FSFolder: {}", e)
             }
@@ -131,6 +134,13 @@ impl fmt::Display for VectorFSError {
                 write!(
                     f,
                     "Supplied path does not exist/hold any FSEntry in the VectorFS: {}",
+                    e
+                )
+            }
+            VectorFSError::NoPermissionEntryAtPath(e) => {
+                write!(
+                    f,
+                    "Path does not have a path permission specified in the VectorFS: {}",
                     e
                 )
             }

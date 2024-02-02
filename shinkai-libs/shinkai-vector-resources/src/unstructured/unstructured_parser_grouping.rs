@@ -84,7 +84,7 @@ impl UnstructuredParser {
             let batch_ids = &ids[..batch.len()];
             println!("Generating batched embeddings for {} text groups", batch_ids.len());
             match generator
-                .generate_embeddings_shorten_inputs(&batch.to_vec(), &batch_ids.to_vec(), max_chunk_size)
+                .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
                 .await
             {
                 Ok(batch_embeddings) => {
@@ -139,11 +139,7 @@ impl UnstructuredParser {
         for batch in texts.chunks(max_batch_size as usize) {
             let batch_ids = &ids[..batch.len()];
             println!("Generating batched embeddings for {} text groups", batch_ids.len());
-            match generator.generate_embeddings_blocking_shorten_inputs(
-                &batch.to_vec(),
-                &batch_ids.to_vec(),
-                max_chunk_size,
-            ) {
+            match generator.generate_embeddings_blocking(&batch.to_vec(), &batch_ids.to_vec()) {
                 Ok(batch_embeddings) => {
                     embeddings.extend(batch_embeddings);
                 }

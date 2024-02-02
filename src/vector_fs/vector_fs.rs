@@ -5,7 +5,7 @@ use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore};
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
 
 /// Struct that wraps all functionality of the VectorFS.
@@ -134,6 +134,28 @@ impl VectorFS {
         Ok(())
     }
 
+    /// Reverts the internals of a profile to the last saved state in the database.
+    pub fn revert_internals_to_last_db_save(
+        &mut self,
+        requester_name: &ShinkaiName,
+        profile: &ShinkaiName,
+    ) -> Result<(), VectorFSError> {
+        // Validate the requester's permission to perform this action
+        self._validate_profile_action_permission(
+            requester_name,
+            profile,
+            &format!("Failed reverting fs internals to last DB save for profile: {}", profile),
+        )?;
+
+        // Fetch the last saved state of the profile fs internals from the database
+        let internals = self.db.get_profile_fs_internals(profile)?;
+
+        // Overwrite the current state of the profile internals in the map with the fetched state
+        self.internals_map.insert(profile.clone(), internals);
+
+        Ok(())
+    }
+
     /// Sets the supported embedding models for a specific profile
     pub fn set_profile_supported_models(
         &mut self,
@@ -165,7 +187,7 @@ impl VectorFS {
     /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType
     /// for the profile's VectorFS.
     pub fn _get_embedding_generator(&self, profile: &ShinkaiName) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
-        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        let internals = self.get_profile_fs_internals_read_only(profile)?;
         let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
             &self.embedding_generator.api_url,
             self.embedding_generator.api_key.clone(),
@@ -197,7 +219,7 @@ impl VectorFS {
         profile: &ShinkaiName,
         error_message: &str,
     ) -> Result<(), VectorFSError> {
-        if let Ok(_) = self._get_profile_fs_internals_read_only(profile) {
+        if let Ok(_) = self.get_profile_fs_internals_read_only(profile) {
             if profile.profile_name == requester_name.profile_name {
                 return Ok(());
             }
@@ -210,10 +232,7 @@ impl VectorFS {
 
     /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map.
-    pub fn _get_profile_fs_internals(
-        &mut self,
-        profile: &ShinkaiName,
-    ) -> Result<&mut VectorFSInternals, VectorFSError> {
+    pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
         self.internals_map
             .get_mut(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
@@ -221,12 +240,22 @@ impl VectorFS {
 
     /// Attempts to fetch an immutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map. Used for pure reads where no updates are needed.
-    pub fn _get_profile_fs_internals_read_only(
+    pub fn get_profile_fs_internals_read_only(
         &self,
         profile: &ShinkaiName,
     ) -> Result<&VectorFSInternals, VectorFSError> {
         self.internals_map
             .get(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
+    }
+
+    /// Prints the internal nodes (of the core VR) of a Profile's VectorFS
+    pub fn print_profile_vector_fs_resource(&self, profile: ShinkaiName) {
+        let internals = self.get_profile_fs_internals_read_only(&profile).unwrap();
+        println!(
+            "\n\n{}'s VectorFS Internal Resource Representation\n------------------------------------------------",
+            profile.clone()
+        );
+        internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
     }
 }

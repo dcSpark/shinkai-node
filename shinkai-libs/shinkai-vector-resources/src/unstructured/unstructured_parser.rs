@@ -2,7 +2,6 @@ use super::unstructured_types::{GroupedText, UnstructuredElement};
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
@@ -154,13 +153,16 @@ impl UnstructuredParser {
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
+        // Sets the keywords
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding(generator).await?;
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
                 println!("Generating embedding for resource: {:?}", &name);
-                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-                doc.update_resource_embedding(generator, keywords).await?;
+                doc.update_resource_embedding(generator, None).await?;
             }
         }
 
@@ -188,9 +190,7 @@ impl UnstructuredParser {
                     doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
-                    let embedding = generator
-                        .generate_embedding_shorten_input_default(&grouped_text.text, MAX_EMBEDDING_STRING_SIZE as u64)
-                        .await?;
+                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
                     doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
                 }
             }
@@ -214,13 +214,16 @@ impl UnstructuredParser {
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
+        // Sets the keywords and generates a keyword embedding
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding_blocking(generator)?;
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
                 println!("Generating embedding for resource: {:?}", &name);
-                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-                doc.update_resource_embedding_blocking(generator, keywords)?;
+                doc.update_resource_embedding_blocking(generator, None)?;
             }
         }
 

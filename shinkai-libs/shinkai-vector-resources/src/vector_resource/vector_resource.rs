@@ -6,7 +6,6 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
@@ -32,6 +31,8 @@ pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
+    fn keywords(&self) -> &VRKeywords;
+    fn keywords_mut(&mut self) -> &mut VRKeywords;
     fn set_name(&mut self, new_name: String);
     fn set_description(&mut self, new_description: Option<String>);
     fn set_source(&mut self, new_source: VRSource);
@@ -47,17 +48,18 @@ pub trait VectorResourceCore: Send + Sync {
     /// Retrieves an Embedding given its id, at the root level depth.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
-    fn get_embeddings(&self) -> Vec<Embedding>;
+    fn get_root_embeddings(&self) -> Vec<Embedding>;
     /// Retrieves a copy of a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
-    fn get_nodes(&self) -> Vec<Node>;
+    fn get_root_nodes(&self) -> Vec<Node>;
     /// Returns the merkle root of the Vector Resource (if it is not None).
     fn get_merkle_root(&self) -> Result<String, VRError>;
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a Blake3 hash.
     fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError>;
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(
+    ///  If no new written datetime is provided, generates now.
+    fn insert_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
@@ -65,25 +67,38 @@ pub trait VectorResourceCore: Send + Sync {
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(), VRError>;
     /// Replace a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
-    fn replace_node(
+    fn replace_node_dt_specified(
         &mut self,
         id: String,
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(Node, Embedding), VRError>;
-    /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
+    fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
     ) -> Result<(Node, Embedding), VRError>;
+    /// Removes all Nodes/Embeddings at the root level depth. If no new written datetime is provided, generates now.
+    fn remove_root_nodes_dt_specified(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<Vec<(Node, Embedding)>, VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
     /// ISO RFC3339 when then Vector Resource was last written
     fn last_written_datetime(&self) -> DateTime<Utc>;
     /// Set a RFC3339 Datetime of when then Vector Resource was last written
     fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>);
+    // Returns the Vector Resource's DataTagIndex
+    fn get_data_tag_index(&self) -> &DataTagIndex;
+    // Sets the Vector Resource's DataTagIndex
+    fn set_data_tag_index(&mut self, data_tag_index: DataTagIndex);
+    // Returns the Vector Resource's MetadataIndex
+    fn get_metadata_index(&self) -> &MetadataIndex;
+    // Sets the Vector Resource's MetadataIndex
+    fn set_metadata_index(&mut self, metadata_index: MetadataIndex);
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
     // Convert the VectorResource into a &dyn Any
@@ -96,6 +111,33 @@ pub trait VectorResourceCore: Send + Sync {
     /// Attempts to cast the VectorResource into an mut OrderedVectorResource. Fails if
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
+
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
+    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        self.insert_node_dt_specified(id, node, embedding, None)
+    }
+
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth).
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        self.replace_node_dt_specified(id, node, embedding, None)
+    }
+
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth).
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        self.remove_node_dt_specified(id, None)
+    }
+
+    /// Removes all Nodes/Embeddings at the root level depth.
+    fn remove_root_nodes(&mut self) -> Result<Vec<(Node, Embedding)>, VRError> {
+        self.remove_root_nodes_dt_specified(None)
+    }
+
+    /// Retrieves all Nodes and their corresponding Embeddings at the root level depth of the Vector Resource.
+    fn get_root_nodes_and_embeddings(&self) -> Vec<(Node, Embedding)> {
+        let nodes = self.get_root_nodes();
+        let embeddings = self.get_root_embeddings();
+        nodes.into_iter().zip(embeddings.into_iter()).collect()
+    }
 
     /// Returns the size of the whole Vector Resource after being encoded as JSON.
     /// Of note, encoding as JSON ensures we get accurate numbers when the user transfers/saves the VR to file.
@@ -117,7 +159,7 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::VectorResourceIsNotMerkelized(self.reference_string()));
         }
 
-        let nodes = self.get_nodes();
+        let nodes = self.get_root_nodes();
         let mut hashes = Vec::new();
 
         // Collect the merkle hash of each node
@@ -135,30 +177,30 @@ pub trait VectorResourceCore: Send + Sync {
     }
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding using the name/description/source
-    /// and the provided keywords.
+    /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
+    /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     async fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
-        keywords: Vec<String>,
+        keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
-        let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator
-            .generate_embedding_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)
-            .await?;
+        let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
+        let formatted = self.format_embedding_string(keywords, generator.model_type());
+        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding using the name/description/source
-    /// and the provided keywords.
+    /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
+    /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     fn update_resource_embedding_blocking(
         &mut self,
         generator: &dyn EmbeddingGenerator,
-        keywords: Vec<String>,
+        keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
-        let formatted = self.format_embedding_string(keywords);
+        let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
+        let formatted = self.format_embedding_string(keywords, generator.model_type());
         let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
         Ok(())
@@ -193,7 +235,7 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Generates a formatted string that represents the text to be used for
     /// generating the resource embedding.
-    fn format_embedding_string(&self, keywords: Vec<String>) -> String {
+    fn format_embedding_string(&self, keywords: Vec<String>, model: EmbeddingModelType) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
             .description()
@@ -201,19 +243,19 @@ pub trait VectorResourceCore: Send + Sync {
             .unwrap_or_default();
         let source_string = format!("Source: {}", self.source().format_source_string());
 
-        // Take keywords until we hit an upper 500 character cap to ensure
-        // we do not go past the embedding LLM context window.
+        // Take keywords until we hit an upper token cap to ensure
+        // we do not go past the embedding LLM window.
         let pre_keyword_length = name.len() + desc.len() + source_string.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
-            if pre_keyword_length + keyword_string.len() + phrase.len() <= MAX_EMBEDDING_STRING_SIZE {
+            if pre_keyword_length + keyword_string.len() + phrase.len() <= model.max_input_token_count() {
                 keyword_string = format!("{}, {}", keyword_string, phrase);
             }
         }
 
         let mut result = format!("{}{}{}, Keywords: [{}]", name, source_string, desc, keyword_string);
-        if result.len() > MAX_EMBEDDING_STRING_SIZE {
-            result.truncate(MAX_EMBEDDING_STRING_SIZE);
+        if result.len() > model.max_input_token_count() {
+            result.truncate(model.max_input_token_count());
         }
         result
     }
@@ -233,6 +275,7 @@ pub trait VectorResourceCore: Send + Sync {
         let embedding = self.resource_embedding().clone();
         let metadata_index_keys = self.metadata_index().get_all_metadata_keys();
         let merkle_root = self.get_merkle_root().ok();
+        let keywords = self.keywords().clone();
 
         VRHeader::new(
             self.name(),
@@ -246,6 +289,7 @@ pub trait VectorResourceCore: Send + Sync {
             metadata_index_keys,
             self.embedding_model_used(),
             merkle_root,
+            keywords,
         )
     }
 
@@ -386,7 +430,7 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding, Some(current_time))?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
@@ -406,7 +450,7 @@ pub trait VectorResourceCore: Send + Sync {
         // Rebuild the nodes after removing the target node
         if !deconstructed_nodes.is_empty() {
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            self.replace_node(node_key, node, embedding, Some(current_time))?;
+            self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         }
 
         Ok((removed_node.1, removed_node.2))
@@ -437,7 +481,7 @@ pub trait VectorResourceCore: Send + Sync {
 
             // Rebuild the nodes after replacing the node
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            let result = self.replace_node(node_key, node, embedding, Some(current_time))?;
+            let result = self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
 
             Ok(result)
         } else {
@@ -457,7 +501,7 @@ pub trait VectorResourceCore: Send + Sync {
         let current_time = ShinkaiTime::generate_time_now();
         // If inserting at root, just do it directly
         if parent_path.path_ids.is_empty() {
-            self.insert_node(
+            self.insert_node_dt_specified(
                 node_to_insert_id,
                 node_to_insert,
                 node_to_insert_embedding,
@@ -477,7 +521,7 @@ pub trait VectorResourceCore: Send + Sync {
 
         // Rebuild the nodes after inserting the new node
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding, Some(current_time))?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
@@ -555,8 +599,9 @@ pub trait VectorResourceCore: Send + Sync {
             let (_node_key, ref mut node, ref mut _embedding) = last_mut;
             match &mut node.content {
                 NodeContent::Resource(resource) => {
-                    let (removed_node, removed_embedding) =
-                        resource.as_trait_object_mut().remove_node(id.to_string(), None)?;
+                    let (removed_node, removed_embedding) = resource
+                        .as_trait_object_mut()
+                        .remove_node_dt_specified(id.to_string(), None)?;
                     deconstructed_nodes.push((id.clone(), removed_node, removed_embedding));
                 }
                 _ => {
@@ -581,7 +626,7 @@ pub trait VectorResourceCore: Send + Sync {
             if let NodeContent::Resource(resource) = &mut node.content {
                 // Preserve the last written datetime on the node assigned by prior functions
                 let current_node_last_written = current_node.1.last_written_datetime;
-                resource.as_trait_object_mut().insert_node(
+                resource.as_trait_object_mut().insert_node_dt_specified(
                     current_node.0,
                     current_node.1,
                     current_node.2,

@@ -1,3 +1,4 @@
+use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
@@ -9,6 +10,9 @@ use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseTy
 use blake3::hash;
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use serde::{Deserialize, Deserializer};
 use serde::{Serialize, Serializer};
 use std::collections::HashMap;
@@ -540,6 +544,7 @@ pub struct VRHeader {
     pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
+    pub resource_keywords: VRKeywords,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes
@@ -560,6 +565,7 @@ impl VRHeader {
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
+        resource_keywords: VRKeywords,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -573,6 +579,7 @@ impl VRHeader {
             metadata_index_keys,
             resource_embedding_model_used,
             resource_merkle_root,
+            resource_keywords,
         }
     }
 
@@ -588,6 +595,7 @@ impl VRHeader {
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
+        resource_keywords: VRKeywords,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -608,6 +616,7 @@ impl VRHeader {
             metadata_index_keys,
             resource_embedding_model_used,
             resource_merkle_root,
+            resource_keywords,
         })
     }
 
@@ -626,11 +635,115 @@ impl VRHeader {
     }
 }
 
+/// A struct which holds a Vector Resource's keywords/optional
+/// keywords embedding
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VRKeywords {
+    pub keyword_list: Vec<String>,
+    pub keywords_embedding: Option<KeywordEmbedding>,
+}
+
+impl VRKeywords {
+    /// Creates a new instance of VRKeywords.
+    pub fn new() -> Self {
+        VRKeywords {
+            keyword_list: Vec::new(),
+            keywords_embedding: None,
+        }
+    }
+
+    /// Adds a keyword to the list.
+    pub fn add_keyword(&mut self, keyword: String) {
+        self.keyword_list.push(keyword);
+    }
+
+    /// Removes the last keyword from the list and returns it.
+    pub fn pop_keyword(&mut self) -> Option<String> {
+        self.keyword_list.pop()
+    }
+
+    /// Sets the entire list of keywords.
+    pub fn set_keywords(&mut self, keywords: Vec<String>) {
+        self.keyword_list = keywords;
+    }
+
+    /// Sets the keyword embedding, overwriting the previous value.
+    pub fn set_embedding(&mut self, embedding: Embedding, model_type: EmbeddingModelType) {
+        let keyword_embedding = KeywordEmbedding::new(embedding, model_type);
+        self.keywords_embedding = Some(keyword_embedding);
+    }
+
+    /// Removes the keyword embedding and returns it.
+    pub fn remove_embedding(&mut self) -> Option<KeywordEmbedding> {
+        self.keywords_embedding.take()
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Asynchronously regenerates and updates the keywords' embedding using the provided keywords.
+    pub async fn update_keywords_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
+        let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
+        let new_embedding = generator.generate_embedding(&formatted_keywords, "KE").await?;
+        self.set_embedding(new_embedding, generator.model_type());
+        Ok(())
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Synchronously regenerates and updates the keywords' embedding using the provided keywords.
+    pub fn update_keywords_embedding_blocking(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
+        let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
+        let new_embedding = generator.generate_embedding_blocking(&formatted_keywords, "KE")?;
+        self.set_embedding(new_embedding, generator.model_type());
+        Ok(())
+    }
+    /// Randomly replaces a specified number of keywords in `keyword_list` with the first `actual_num_to_replace` keywords from the provided list.
+    pub fn random_replace_keywords(&mut self, num_to_replace: usize, replacement_keywords: Vec<String>) {
+        // Calculate the actual number of keywords to replace
+        let actual_num_to_replace = std::cmp::min(
+            num_to_replace,
+            std::cmp::min(self.keyword_list.len(), replacement_keywords.len()),
+        );
+
+        // Take the first `actual_num_to_replace` keywords from the input list
+        let replacement_keywords = &replacement_keywords[..actual_num_to_replace];
+
+        // Randomly select indices in the current keyword list to replace
+        let mut rng = StdRng::from_entropy();
+        let mut indices_to_replace: Vec<usize> = (0..self.keyword_list.len()).collect();
+        indices_to_replace.shuffle(&mut rng);
+        let indices_to_replace = &indices_to_replace[..actual_num_to_replace];
+
+        // Perform the replacement
+        for (&index, replacement_keyword) in indices_to_replace.iter().zip(replacement_keywords.iter()) {
+            self.keyword_list[index] = replacement_keyword.clone();
+        }
+    }
+}
+
+/// Struct which holds the embedding for a Vector Resource's keywords
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KeywordEmbedding {
+    pub embedding: Embedding,
+    pub model_used: EmbeddingModelType,
+}
+
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
+}
+
+impl KeywordEmbedding {
+    /// Creates a new instance of KeywordEmbedding.
+    pub fn new(embedding: Embedding, model_used: EmbeddingModelType) -> Self {
+        KeywordEmbedding { embedding, model_used }
+    }
+
+    /// Sets the embedding and model type.
+    pub fn set_embedding(&mut self, embedding: Embedding, model_type: EmbeddingModelType) {
+        self.embedding = embedding;
+        self.model_used = model_type;
+    }
 }
 
 impl VRPath {

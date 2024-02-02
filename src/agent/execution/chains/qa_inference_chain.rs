@@ -8,7 +8,6 @@ use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -36,9 +35,7 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator
-            .generate_embedding_shorten_input_default(&query_text, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
-            .await?;
+        let query = generator.generate_embedding_default(&query_text).await?;
         let ret_nodes =
             JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile, true).await?;
 

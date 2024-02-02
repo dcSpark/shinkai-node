@@ -4,7 +4,6 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 pub use crate::source::VRSource;
@@ -85,7 +84,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
     fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
         let nodes = self.retrieve_nodes_exhaustive(starting_path, resources_only);
         for node in nodes {
-            let path = node.retrieval_path.format_to_string();
+            let ret_path = node.retrieval_path;
+            let path = ret_path.format_to_string();
+            let path_depth = ret_path.path_ids.len();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
@@ -95,21 +96,21 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     }
                 }
                 NodeContent::Resource(resource) => {
-                    println!("");
+                    if path_depth == 1 {
+                        println!(" ");
+                    }
                     format!(
-                        "<{}> - {} Nodes Held Inside",
+                        "{} <Folder> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
-                        resource.as_trait_object().get_embeddings().len()
+                        resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    println!("");
-                    format!("External: {}", external_content)
+                    format!("{} <External Content>", external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    println!("");
-                    format!("Header For Vector Resource: {}", header.reference_string())
+                    format!("{} <VRHeader>", header.reference_string())
                 }
             };
             // Adding merkle hash if it exists to output string
@@ -121,10 +122,13 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     merkle_hash = hash.to_string()
                 }
             }
+
+            // Create indent string and do the final print
+            let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
             if merkle_hash.len() == 0 {
-                println!("{}: {}", path, data);
+                println!("{}{}", indent_string, data,);
             } else {
-                println!("{}: {} | Merkle Hash: {}", path, data, merkle_hash);
+                println!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
             }
         }
     }
@@ -162,6 +166,8 @@ pub trait VectorResourceSearch: VectorResourceCore {
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, VRError> {
+        // Setup the root VRHeader that will be attached to all RetrievedNodes
+        let root_vr_header = self.generate_resource_header();
         // We only traverse 1 level of depth at a time to be able to re-process the input_query as needed
         let mut traversal_options = traversal_options.clone();
         traversal_options.push(TraversalOption::UntilDepth(0));
@@ -169,9 +175,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
 
         // First manually embedding generate & search the self Vector Resource
-        let mut query_embedding = embedding_generator
-            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
-            .await?;
+        let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
         input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
         let mut latest_returned_results = self.vector_search_customized(
             query_embedding,
@@ -181,7 +185,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             starting_path.clone(),
         );
 
-        // Keep looping until we go through all nodes in the Vector Resource while carrying foward the score weighting
+        // Keep looping until we go through all nodes in the Vector Resource while carrying forward the score weighting
         // through the deeper levels of the Vector Resource
         let mut node_results = vec![];
         while let Some(ret_node) = latest_returned_results.pop() {
@@ -199,19 +203,18 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             &embedding_generator.api_url,
                             embedding_generator.api_key.clone(),
                         );
-                        query_embedding = embedding_generator
-                            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
-                            .await?;
+                        query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
                         input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
                     }
 
                     // Call vector_search() on the resource to get all the next depth Nodes from it
-                    let new_results = resource.as_trait_object().vector_search_customized(
+                    let new_results = resource.as_trait_object()._vector_search_customized_with_root_header(
                         query_embedding,
                         num_of_results,
                         TraversalMethod::Exhaustive,
                         &traversal_options,
                         starting_path.clone(),
+                        Some(root_vr_header.clone()),
                     );
                     // Take into account current resource score, then push the new results to latest_returned_results to be further processed
                     if let Some(ScoringMode::HierarchicalAverageScoring) =
@@ -263,8 +266,29 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
+        // Call the new method, passing None for the root_header parameter
+        self._vector_search_customized_with_root_header(
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            starting_path,
+            None,
+        )
+    }
+
+    /// Vector search customized core logic, with ability to specify root_header
+    fn _vector_search_customized_with_root_header(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+        root_header: Option<VRHeader>,
+    ) -> Vec<RetrievedNode> {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
-        let root_vr_header = self.generate_resource_header();
+        let root_vr_header = root_header.unwrap_or_else(|| self.generate_resource_header());
 
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
@@ -381,7 +405,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             }
         } else {
             // If SyntacticVectorSearch is not in traversal_options, get all embeddings
-            embeddings_to_score = self.get_embeddings();
+            embeddings_to_score = self.get_root_embeddings();
         }
 
         // Score embeddings based on traversal method
