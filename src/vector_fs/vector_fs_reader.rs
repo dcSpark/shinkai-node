@@ -6,7 +6,6 @@ use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot, LastReadIndex};
 use super::vector_fs_writer::VFSWriter;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::{SourceFile, SourceFileMap};

@@ -1,3 +1,4 @@
+use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
@@ -6,7 +7,6 @@ pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
-use crate::{embedding_generator::EmbeddingGenerator, embeddings::MAX_EMBEDDING_STRING_SIZE};
 use blake3::hash;
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
@@ -674,9 +674,7 @@ impl VRKeywords {
     /// Asynchronously regenerates and updates the keywords' embedding using the provided keywords.
     pub async fn update_keywords_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
         let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
-        let new_embedding = generator
-            .generate_embedding_shorten_input(&formatted_keywords, "KE", MAX_EMBEDDING_STRING_SIZE as u64)
-            .await?;
+        let new_embedding = generator.generate_embedding(&formatted_keywords, "KE").await?;
         self.set_embedding(new_embedding, generator.model_type());
         Ok(())
     }
@@ -685,11 +683,7 @@ impl VRKeywords {
     /// Synchronously regenerates and updates the keywords' embedding using the provided keywords.
     pub fn update_keywords_embedding_blocking(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
         let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
-        let new_embedding = generator.generate_embedding_blocking_shorten_input(
-            &formatted_keywords,
-            "KE",
-            MAX_EMBEDDING_STRING_SIZE as u64,
-        )?;
+        let new_embedding = generator.generate_embedding_blocking(&formatted_keywords, "KE")?;
         self.set_embedding(new_embedding, generator.model_type());
         Ok(())
     }

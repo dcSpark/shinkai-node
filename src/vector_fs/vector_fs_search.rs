@@ -3,7 +3,6 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::vector_fs::vector_fs_permissions::PermissionsIndex;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
@@ -64,9 +63,7 @@ impl VectorFS {
         profile: &ShinkaiName,
     ) -> Result<Embedding, VectorFSError> {
         let generator = self._get_embedding_generator(profile)?;
-        Ok(generator
-            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
-            .await?)
+        Ok(generator.generate_embedding_default(&input_query).await?)
     }
 
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.

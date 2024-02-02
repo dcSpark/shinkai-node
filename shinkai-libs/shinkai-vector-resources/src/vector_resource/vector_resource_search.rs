@@ -4,7 +4,6 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 pub use crate::source::VRSource;
@@ -176,9 +175,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
 
         // First manually embedding generate & search the self Vector Resource
-        let mut query_embedding = embedding_generator
-            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
-            .await?;
+        let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
         input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
         let mut latest_returned_results = self.vector_search_customized(
             query_embedding,
@@ -188,7 +185,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             starting_path.clone(),
         );
 
-        // Keep looping until we go through all nodes in the Vector Resource while carrying foward the score weighting
+        // Keep looping until we go through all nodes in the Vector Resource while carrying forward the score weighting
         // through the deeper levels of the Vector Resource
         let mut node_results = vec![];
         while let Some(ret_node) = latest_returned_results.pop() {
@@ -206,9 +203,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             &embedding_generator.api_url,
                             embedding_generator.api_key.clone(),
                         );
-                        query_embedding = embedding_generator
-                            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
-                            .await?;
+                        query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
                         input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
                     }
 

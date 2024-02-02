@@ -249,7 +249,7 @@ impl JobManager {
 
         // TODO: we need the vector search for the tools
         // let query = generator
-        //     .generate_embedding_shorten_input_default(&query_text, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
+        //     .generate_embedding_default(&query_text)
         //     .await?;
         // let ret_nodes = JobManager::job_scope_vector_search(
         //     db.clone(),

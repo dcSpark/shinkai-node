@@ -4,7 +4,6 @@ use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
@@ -238,11 +237,6 @@ impl ShinkaiTool {
 
         for arg in self.output_args() {
             embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
-        }
-
-        // Cut the string off at MAX_EMBEDDING_STRING_SIZE characters
-        if embedding_string.len() > MAX_EMBEDDING_STRING_SIZE {
-            embedding_string.truncate(MAX_EMBEDDING_STRING_SIZE);
         }
 
         embedding_string

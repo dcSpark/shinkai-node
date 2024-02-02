@@ -6,7 +6,6 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
@@ -186,10 +185,8 @@ pub trait VectorResourceCore: Send + Sync {
         keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
         let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
-        let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator
-            .generate_embedding_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)
-            .await?;
+        let formatted = self.format_embedding_string(keywords, generator.model_type());
+        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
@@ -203,9 +200,8 @@ pub trait VectorResourceCore: Send + Sync {
         keyword_list: Option<Vec<String>>,
     ) -> Result<(), VRError> {
         let keywords = keyword_list.unwrap_or(self.keywords().keyword_list.clone());
-        let formatted = self.format_embedding_string(keywords);
-        let new_embedding =
-            generator.generate_embedding_blocking_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)?;
+        let formatted = self.format_embedding_string(keywords, generator.model_type());
+        let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
@@ -239,7 +235,7 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Generates a formatted string that represents the text to be used for
     /// generating the resource embedding.
-    fn format_embedding_string(&self, keywords: Vec<String>) -> String {
+    fn format_embedding_string(&self, keywords: Vec<String>, model: EmbeddingModelType) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
             .description()
@@ -252,14 +248,14 @@ pub trait VectorResourceCore: Send + Sync {
         let pre_keyword_length = name.len() + desc.len() + source_string.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
-            if pre_keyword_length + keyword_string.len() + phrase.len() <= MAX_EMBEDDING_STRING_SIZE {
+            if pre_keyword_length + keyword_string.len() + phrase.len() <= model.max_input_token_count() {
                 keyword_string = format!("{}, {}", keyword_string, phrase);
             }
         }
 
         let mut result = format!("{}{}{}, Keywords: [{}]", name, source_string, desc, keyword_string);
-        if result.len() > MAX_EMBEDDING_STRING_SIZE {
-            result.truncate(MAX_EMBEDDING_STRING_SIZE);
+        if result.len() > model.max_input_token_count() {
+            result.truncate(model.max_input_token_count());
         }
         result
     }
