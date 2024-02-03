@@ -298,4 +298,9 @@ impl Node {
         let result = self.internal_scan_ollama_models().await;
         let _ = res.send(result.map_err(|e| e.message)).await;
     }
+
+    pub async fn local_add_ollama_models(&self, input_models: Vec<String>, res: Sender<Result<(), String>>) {
+        let result = self.internal_add_ollama_models(input_models).await;
+        let _ = res.send(result).await;
+    }
 }

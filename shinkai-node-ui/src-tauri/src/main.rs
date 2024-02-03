@@ -171,6 +171,49 @@ async fn start_shinkai_node() -> String {
 }
 
 #[tauri::command]
+async fn scan_ollama_models() -> Result<Vec<String>, String> {
+    let node_controller = NODE_CONTROLLER.lock().await;
+    if let Some(controller) = &*node_controller {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        match controller
+            .send_command(NodeCommand::LocalScanOllamaModels { res: res_sender })
+            .await
+        {
+            Ok(_) => match res_receiver.recv().await {
+                Ok(result) => {
+                    eprintln!("scan_ollama_models result: {:?}", result);
+                    result.map_err(|e| e.to_string())
+                },
+                Err(_) => Err("Failed to receive response".to_string()),
+            },
+            Err(_) => Err("Failed to send command".to_string()),
+        }
+    } else {
+        Err("NodeController is not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+async fn add_ollama_models(models: Vec<String>) -> String {
+    let node_controller = NODE_CONTROLLER.lock().await;
+    if let Some(controller) = &*node_controller {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        match controller
+            .send_command(NodeCommand::AddOllamaModels { models, res: res_sender })
+            .await
+        {
+            Ok(_) => match res_receiver.recv().await {
+                Ok(_) => "Models added successfully".to_string(),
+                Err(_) => "Failed to receive response".to_string(),
+            },
+            Err(_) => "Failed to send command".to_string(),
+        }
+    } else {
+        "NodeController is not initialized".to_string()
+    }
+}
+
+#[tauri::command]
 fn save_settings(settings: std::collections::HashMap<String, String>) -> Result<(), String> {
     let toml = toml::to_string(&settings).map_err(|e| e.to_string())?;
     let mut file = File::create("Settings.toml").map_err(|e| e.to_string())?;
@@ -200,8 +243,10 @@ async fn stop_node_and_delete_storage() -> String {
             .get_str("NODE_STORAGE_PATH")
             .unwrap_or_else(|_| "storage".to_string());
 
+        eprintln!("Deleting storage at {}", storage_db_path);
+
         match fs::remove_dir_all(&storage_db_path) {
-            Ok(_) => eprintln!("Storage successfully deleted at {}", storage_db_path),
+            Ok(_) => println!("Storage successfully deleted at {}", storage_db_path),
             Err(e) => eprintln!("Failed to delete storage at {}: {}", storage_db_path, e),
         }
 
@@ -222,10 +267,13 @@ async fn load_settings(settings_file_path: String, registry_path: String) {
         if key == "ABI_PATH" {
             // Use registry_path for ABI_PATH key
             env::set_var(key, &registry_path);
+            settings.set(key, registry_path.clone()).expect("Failed to update ABI_PATH in settings");
         } else if key == "NODE_STORAGE_PATH" {
             // Update the NODE_STORAGE_PATH key with the new path
             let db_path = get_database_path(); // Assuming get_database_path returns a String
-            env::set_var(key, db_path);
+            println!("db_path: {}", db_path);
+            env::set_var(key, db_path.clone());
+            settings.set(key, db_path).expect("Failed to update NODE_STORAGE_PATH in settings");
         } else if let Some(val) = value.clone().into_str().ok() {
             // Clone value before calling into_str for other keys
             env::set_var(key, val);
@@ -277,7 +325,7 @@ fn log_environment() {
 }
 
 fn main() {
-    let _ = redirect_stdout_to_file();
+    // let _ = redirect_stdout_to_file();
     log_environment();
 
     // Tray Code
@@ -296,7 +344,9 @@ fn main() {
             check_node_health,
             stop_shinkai_node,
             stop_node_and_delete_storage,
-            save_settings
+            save_settings,
+            scan_ollama_models,
+            add_ollama_models
         ])
         // This is the App menu
         // Update it to show:
