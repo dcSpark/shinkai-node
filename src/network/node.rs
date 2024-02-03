@@ -242,6 +242,9 @@ pub enum NodeCommand {
     APIIsPristine {
         res: Sender<Result<bool, APIError>>,
     },
+    IsPristine {
+        res: Sender<bool>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -346,7 +349,8 @@ impl Node {
         }
 
         // Setup Identity Manager
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
+        let db_weak = Arc::downgrade(&db_arc);
+        let subidentity_manager = IdentityManager::new(db_weak, node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -404,13 +408,15 @@ impl Node {
 
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
+        let db_weak = Arc::downgrade(&self.db);
+        let vector_fs_weak = Arc::downgrade(&self.vector_fs);
         self.job_manager = Some(Arc::new(Mutex::new(
             JobManager::new(
-                Arc::clone(&self.db),
+                db_weak,
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_profile_name.clone(),
-                self.vector_fs.clone(),
+                vector_fs_weak,
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
             )
@@ -422,10 +428,11 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("Starting node with name: {}", self.node_profile_name),
         );
+        let db_weak = Arc::downgrade(&self.db);
         self.cron_manager = match &self.job_manager {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(
-                    Arc::clone(&self.db),
+                    db_weak,
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_profile_name.clone(),
                     Arc::clone(job_manager),
@@ -476,6 +483,7 @@ impl Node {
                         match command {
                             Some(NodeCommand::Shutdown) => {
                                 shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
+                            // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
                                 break;
                             },
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
@@ -523,7 +531,8 @@ impl Node {
                             Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
                             Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
                             Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
-                            _ => break,
+                            Some(NodeCommand::IsPristine { res }) => self.local_is_pristine(res).await,
+                            _ => {},
                         }
                     }
             };

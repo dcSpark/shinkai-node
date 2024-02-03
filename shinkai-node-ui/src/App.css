@@ -1,0 +1,143 @@
+
+/* Main page styles */
+
+.logo.vite:hover {
+  filter: drop-shadow(0 0 2em #747bff);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafb);
+}
+
+/* Assuming .start-button is the class for your "Start Node" button */
+.start-button {
+  padding: 0.5rem 1rem; /* Adjust the padding to make the button smaller */
+  font-size: 1rem; /* Adjust font size if necessary */
+  margin: auto; /* Centers the button in the container */
+  display: block; /* Needed to allow margin: auto to work */
+  width: fit-content; /* Makes the button only as wide as its content */
+}
+
+/* If the button is within a container, you may need to adjust the container as well */
+.start-button-container {
+  text-align: center; /* This centers the button in the container */
+  /* Add any additional styles needed for the container */
+}
+
+.stop-button {
+  background-color: red;
+  color: white;
+}
+
+
+/* TopBar styles */
+
+/* Adjustments for .tab-bar */
+.tab-bar {
+  display: flex;
+  justify-content: start; /* Aligns items to the start of the container */
+  gap: 1rem; /* Adds space between the buttons */
+  margin-top: 0; /* Removes the top margin, adjust as needed */
+  padding-top: 1rem; /* Adds padding at the top inside the container */
+}
+
+/* Styles for individual buttons in the .tab-bar */
+.tab-bar button {
+  padding: 0.5rem 1rem; /* Adjust padding to your preference */
+  margin-bottom: 1rem; /* Adds a bottom margin if needed */
+  /* Add any additional styles for buttons here */
+}
+
+
+/*
+Settings page styles
+*/
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.settings-grid label {
+  display: flex;
+  flex-direction: column;
+  background: #333; /* Dark background for each setting */
+  color: #fff; /* Light color for the text */
+  padding: 0.5rem;
+  border-radius: 8px;
+  overflow: hidden; /* Prevent any child elements from overflowing */
+}
+
+.settings-grid span.key-name {
+  font-size: 0.85em; /* Smaller font size for key names */
+  margin-bottom: 0.5rem;
+  word-break: break-all; /* Ensure long words do not cause overflow */
+}
+
+.settings-grid input {
+  width: calc(100% - 1rem); /* Subtracting padding from width */
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid #444; /* Subtle border for the inputs */
+  background: #444; /* Dark background for the inputs */
+  color: #ddd; /* Light color for the input text */
+  border-radius: 4px;
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+.settings-grid input::placeholder {
+  color: #555;
+}
+
+.settings-grid button {
+  background: #0f0;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.settings-grid button:hover {
+  background: #0b0;
+}
+
+.save-button-container {
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+  grid-column: 1 / -1; /* Makes sure the container spans all columns */
+}
+
+.save-button-container button {
+  background: #333; /* Dark gray background */
+  color: #fff;
+  border: 1px solid #444; /* Slightly lighter border */
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+  width: auto; /* Auto width to fit content */
+  max-width: 100%; /* Ensure it doesn't overflow */
+}
+
+.save-button-container button:hover {
+  background: #444; /* Slightly lighter gray on hover */
+}
+
+/* Updated button styles */
+.settings-grid button {
+  background: #333; /* Dark gray background */
+  color: #fff;
+  border: 1px solid #444; /* Slightly lighter border */
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+}
+
+.settings-grid button:hover {
+  background: #444; /* Slightly lighter gray on hover */
+}

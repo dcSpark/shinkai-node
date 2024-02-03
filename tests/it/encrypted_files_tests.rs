@@ -59,6 +59,7 @@ fn sandwich_messages_with_files_test() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_abort_handler = env.node1_abort_handler;
 
             // For this test
             let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
@@ -388,8 +389,6 @@ fn sandwich_messages_with_files_test() {
                 }
             }
 
-            println!("Sending next message in convo");
-
             let new_job_message_content = "Can you output markdown for an FAQ where my previous question is the heading and your response is the text underneath?".to_string();
             {
                 // Send a Message to the Job for processing
@@ -448,6 +447,7 @@ fn sandwich_messages_with_files_test() {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             }
+            node1_abort_handler.abort();
         })
     });
 }

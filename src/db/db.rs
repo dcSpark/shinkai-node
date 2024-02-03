@@ -1,6 +1,6 @@
-use crate::vector_fs::vector_fs_error::VectorFSError;
-use crate::network::ws_manager::{WebSocketManager, WSUpdateHandler};
 use super::db_errors::ShinkaiDBError;
+use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
+use crate::vector_fs::vector_fs_error::VectorFSError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
@@ -41,6 +41,7 @@ pub enum Topic {
     TempFilesInbox,
     JobQueues,
     CronQueues,
+    InternalComms,
 }
 
 impl Topic {
@@ -65,12 +66,13 @@ impl Topic {
             Self::VectorResources => "resources",
             Self::Agents => "agents",
             Self::Toolkits => "toolkits",
-            Self::MessagesToRetry => "mesages_to_retry",
+            Self::MessagesToRetry => "messages_to_retry",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
             Self::MessageBoxSymmetricKeysTimes => "message_box_symmetric_keys_times",
             Self::TempFilesInbox => "temp_files_inbox",
             Self::JobQueues => "job_queues",
             Self::CronQueues => "cron_queues",
+            Self::InternalComms => "internal_comms",
         }
     }
 }
@@ -131,6 +133,7 @@ impl ShinkaiDB {
                 Topic::TempFilesInbox.as_str().to_string(),
                 Topic::JobQueues.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
+                Topic::InternalComms.as_str().to_string(),
             ]
         };
 
@@ -153,11 +156,35 @@ impl ShinkaiDB {
         })
     }
 
+    /// Required for intra-communications between node UI and node
+    pub fn read_needs_reset(&self) -> Result<bool, Error> {
+        let cf = self.get_cf_handle(Topic::InternalComms).unwrap();
+        match self.db.get_cf(cf, b"needs_reset") {
+            Ok(Some(value)) => Ok(value == b"true"),
+            Ok(None) => Ok(false),
+            Err(e) => {
+                eprintln!("Error reading needs_reset: {:?}", e);
+                Err(e)
+            },
+        }
+    }
+
+    /// Required for intra-communications between node UI and node
+    pub fn reset_needs_reset(&self) -> Result<(), Error> {
+        let cf = self.get_cf_handle(Topic::InternalComms).unwrap();
+        self.db.put_cf(cf, b"needs_reset", b"false")
+    }
+
+    /// Sets the needs_reset value to true
+    pub fn set_needs_reset(&self) -> Result<(), Error> {
+        let cf = self.get_cf_handle(Topic::InternalComms).unwrap();
+        self.db.put_cf(cf, b"needs_reset", b"true")
+    }
+
     pub fn set_ws_manager(&mut self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
         self.ws_manager = Some(ws_manager);
     }
 
-    
     /// Extracts the profile name with ShinkaiDBError wrapping
     pub fn get_profile_name(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
         profile

@@ -159,6 +159,7 @@ async fn test_websocket() {
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
@@ -181,7 +182,7 @@ async fn test_websocket() {
     };
 
     // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
+    let manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
@@ -447,9 +448,10 @@ async fn test_websocket() {
         .send(tungstenite::Message::Close(None))
         .await
         .expect("Failed to send close message");
+
+    std::mem::drop(shinkai_db);
 }
 
-// TODO(Nico): if you subscribe to smart_inbox you will receive messages of all the inboxes that you have access to
 #[tokio::test]
 async fn test_websocket_smart_inbox() {
     init_default_tracing();
@@ -462,6 +464,7 @@ async fn test_websocket_smart_inbox() {
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
@@ -484,7 +487,7 @@ async fn test_websocket_smart_inbox() {
     };
 
     // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
+    let manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
@@ -637,4 +640,6 @@ async fn test_websocket_smart_inbox() {
         .send(tungstenite::Message::Close(None))
         .await
         .expect("Failed to send close message");
+
+    std::mem::drop(shinkai_db);
 }

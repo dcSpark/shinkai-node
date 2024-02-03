@@ -1,6 +1,7 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
+use tokio::task::AbortHandle;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
@@ -46,6 +47,7 @@ pub struct TestEnvironment {
     pub node1_device_identity_pk: VerifyingKey,
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
+    pub node1_abort_handler: AbortHandle,
 }
 
 pub fn run_test_one_node_network<F>(interactions_handler_logic: F)
@@ -101,6 +103,8 @@ where
             let _ = node1.await.start().await;
         });
 
+        let node1_abort_handler = node1_handler.abort_handle();
+
         let env = TestEnvironment {
             node1_identity_name: node1_identity_name.to_string(),
             node1_profile_name: node1_profile_name.to_string(),
@@ -120,10 +124,24 @@ where
             node1_device_identity_pk,
             node1_device_encryption_sk,
             node1_device_encryption_pk,
+            node1_abort_handler
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));
 
-        let _ = tokio::try_join!(node1_handler, interactions_handler).unwrap();
+        let result = tokio::try_join!(node1_handler, interactions_handler);
+        match result {
+            Ok(_) => {},
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    eprintln!("One of the tasks was aborted, but this is expected.");
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    panic!("An unexpected error occurred: {:?}", e);
+                }
+            }
+        }
     });
+    rt.shutdown_background();
 }

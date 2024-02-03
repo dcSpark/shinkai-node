@@ -11,7 +11,7 @@ use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
 };
-use std::{sync::Arc, fmt};
+use std::{sync::{Arc, Weak}, fmt};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -87,15 +87,16 @@ pub enum ModelPrivacy {
 
 // Struct for AgentsCapabilitiesManager
 pub struct ModelCapabilitiesManager {
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Weak<Mutex<ShinkaiDB>>,
     pub profile: ShinkaiName,
     pub agents: Vec<SerializedAgent>,
 }
 
 impl ModelCapabilitiesManager {
     // Constructor
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, profile: ShinkaiName) -> Self {
-        let agents = Self::get_agents(&db, profile.clone()).await;
+    pub async fn new(db: Weak<Mutex<ShinkaiDB>>, profile: ShinkaiName) -> Self {
+        let db_arc = db.upgrade().unwrap();
+        let agents = Self::get_agents(&db_arc, profile.clone()).await;
         Self { db, profile, agents }
     }
 

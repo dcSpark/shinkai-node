@@ -206,11 +206,14 @@ fn subidentity_registration() {
             let _ = node1.await.start().await;
         });
 
+        let node1_abort_handler = node1_handler.abort_handle();
+
         let node2_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 2");
             let _ = node2.await.start().await;
         });
+        let node2_abort_handler = node2_handler.abort_handle();
 
         let interactions_handler = tokio::spawn(async move {
             eprintln!("Starting interactions");
@@ -640,10 +643,26 @@ fn subidentity_registration() {
                     message_to_check_content_unencrypted.get_message_content().unwrap(),
                     "Node 1's profile send an encrypted message to Node 1's profile"
                 );
+                node1_abort_handler.abort();
+                node2_abort_handler.abort();
             }
         });
 
         // Wait for all tasks to complete
-        let _ = tokio::try_join!(node1_handler, node2_handler, interactions_handler).unwrap();
+        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+        match result {
+            Ok(_) => {},
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    eprintln!("One of the tasks was aborted, but this is expected.");
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    panic!("An unexpected error occurred: {:?}", e);
+                }
+            }
+        }
     });
+
+    rt.shutdown_background();
 }

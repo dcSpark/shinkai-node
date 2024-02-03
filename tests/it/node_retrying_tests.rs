@@ -12,21 +12,15 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::agent::agent;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils;
-use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
-};
-use super::utils::node_test_local::local_registration_profile_node;
+use super::utils::node_test_api::api_registration_device_node_profile_main;
 
 #[test]
 fn node_retrying_test() {
@@ -126,6 +120,7 @@ fn node_retrying_test() {
             eprintln!("Starting node 1");
             let _ = node1.await.start().await;
         });
+        let abort_handler_node1 = node1_handler.abort_handle();
 
         let node2_handler = tokio::spawn(async move {
             eprintln!("\n\n");
@@ -134,6 +129,7 @@ fn node_retrying_test() {
             eprintln!("\n\n*** Starting node 2 ***");
             let _ = node2.await.start().await;
         });
+        let abort_handler_node2 = node2_handler.abort_handle();
 
         let interactions_handler = tokio::spawn(async move {
             eprintln!("Starting interactions");
@@ -238,9 +234,27 @@ fn node_retrying_test() {
                 let node1_last_messages = res1_receiver.recv().await.unwrap();
                 eprintln!("node1_last_messages: {:?}", node1_last_messages);
                 assert_eq!(node1_last_messages.len(), 2);
+
+                abort_handler_node1.abort();
+                abort_handler_node2.abort();
             }
         });
 
-        let _ = tokio::try_join!(node1_handler, node2_handler, interactions_handler).unwrap();
+        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    panic!("An unexpected error occurred: {:?}", e);
+                }
+            }
+        }
     });
+
+    rt.shutdown_background();
 }

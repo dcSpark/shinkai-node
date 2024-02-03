@@ -10,7 +10,8 @@ mod tests {
         },
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair,
-            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_default_tracing,
+            shinkai_logging::init_default_tracing,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
     use shinkai_node::{
@@ -23,7 +24,7 @@ mod tests {
     use shinkai_vector_resources::{
         embedding_generator::RemoteEmbeddingGenerator, unstructured::unstructured_api::UnstructuredAPI,
     };
-    use std::env;
+    use std::{env, sync::Weak};
     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
 
@@ -38,9 +39,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_cron_job() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db_weak = Arc::downgrade(&db);
         let (identity_secret_key, identity_public_key) = unsafe_deterministic_signature_keypair(0);
         let (_, encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
         let node_profile_name = ShinkaiName::new("@@localhost.shinkai/main".to_string()).unwrap();
@@ -61,7 +63,7 @@ mod tests {
             }
         }
 
-        let subidentity_manager = IdentityManager::new(db.clone(), node_profile_name.clone())
+        let subidentity_manager = IdentityManager::new(db_weak.clone(), node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -105,14 +107,16 @@ mod tests {
         }
 
         let vector_fs = Arc::new(Mutex::new(VectorFS::new_empty()));
+        let vector_fs_weak = Arc::downgrade(&vector_fs);
+        let db_weak = Arc::downgrade(&db);
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
-                Arc::clone(&db),
+                db_weak.clone(),
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
-                vector_fs,
+                vector_fs_weak,
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
             )
@@ -132,29 +136,31 @@ mod tests {
                 false,
                 agent_id.clone(),
             ) {
-                Ok(_) => (),
+                Ok(_) => eprintln!("Added cron task 1"),
                 Err(e) => eprintln!("Failed to add cron task: {}", e),
             }
         }
 
-        let process_job_message_queued_wrapper = |job: CronTask,
-                                                  db: Arc<Mutex<ShinkaiDB>>,
-                                                  identity_sk: SigningKey,
-                                                  job_manager: Arc<Mutex<JobManager>>,
-                                                  node_profile_name: ShinkaiName,
-                                                  profile: String| {
-            Box::pin(CronManager::process_job_message_queued(
-                job,
-                db,
-                identity_sk,
-                job_manager.clone(),
-                node_profile_name.clone(),
-                profile,
-            )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
-        };
+        let db_weak_clone = db_weak.clone();
+        let process_job_message_queued_wrapper =
+            move |job: CronTask,
+                  db: Weak<Mutex<ShinkaiDB>>,
+                  identity_sk: SigningKey,
+                  job_manager: Arc<Mutex<JobManager>>,
+                  node_profile_name: ShinkaiName,
+                  profile: String| {
+                Box::pin(CronManager::process_job_message_queued(
+                    job,
+                    db_weak_clone.clone(),
+                    identity_sk,
+                    job_manager.clone(),
+                    node_profile_name.clone(),
+                    profile,
+                )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
+            };
 
         let job_queue_handler = CronManager::process_job_queue(
-            db.clone(),
+            db_weak.clone(),
             node_profile_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             CRON_INTERVAL_TIME,
@@ -163,7 +169,7 @@ mod tests {
         );
 
         // Set a timeout for the task to complete
-        let timeout_duration = Duration::from_millis(100000);
+        let timeout_duration = Duration::from_millis(5000);
         let job_queue_handler_result = tokio::time::timeout(timeout_duration, job_queue_handler).await;
 
         // Check the results of the task
@@ -175,8 +181,8 @@ mod tests {
 
     #[test]
     fn test_should_execute_cron_task() {
-        init_default_tracing(); 
-        
+        init_default_tracing();
+
         use chrono::Timelike;
         use chrono::Utc;
 

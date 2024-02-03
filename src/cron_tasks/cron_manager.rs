@@ -24,7 +24,7 @@ c) Execute Task
 use std::{
     collections::HashMap,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 use chrono::{Timelike, Utc};
@@ -39,7 +39,8 @@ use shinkai_message_primitives::{
     shinkai_utils::{
         job_scope::JobScope,
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        signatures::clone_signature_secret_key, shinkai_message_builder::ShinkaiMessageBuilder,
+        shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
     },
 };
 use tokio::sync::Mutex;
@@ -52,7 +53,7 @@ use crate::{
 };
 
 pub struct CronManager {
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Weak<Mutex<ShinkaiDB>>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
@@ -94,11 +95,10 @@ impl From<InboxNameError> for CronManagerError {
 }
 
 const NUM_THREADS: usize = 2;
-const CRON_INTERVAL_TIME: u64 = 60 * 1;
 
 impl CronManager {
     pub async fn new(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -107,7 +107,7 @@ impl CronManager {
             db.clone(),
             node_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
-            CRON_INTERVAL_TIME,
+            Self::cron_interval_time(),
             job_manager.clone(),
             |job, db, identity_sk, job_manager, node_name, profile| {
                 Box::pin(CronManager::process_job_message_queued(
@@ -130,15 +130,22 @@ impl CronManager {
         }
     }
 
+    fn cron_interval_time() -> u64 {
+        std::env::var("CRON_INTERVAL_TIME")
+            .unwrap_or_else(|_| "60".to_string())
+            .parse()
+            .unwrap_or(60)
+    }
+
     pub fn process_job_queue(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
         job_manager: Arc<Mutex<JobManager>>,
         job_processing_fn: impl Fn(
                 CronTask,
-                Arc<Mutex<ShinkaiDB>>,
+                Weak<Mutex<ShinkaiDB>>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
@@ -161,8 +168,20 @@ impl CronManager {
 
             loop {
                 let jobs_to_process: HashMap<String, Vec<(String, CronTask)>> = {
-                    let mut db_lock = db.lock().await;
-                    db_lock.get_all_cron_tasks_from_all_profiles(node_profile_name.clone()).unwrap_or(HashMap::new())
+                    let db_arc = db.upgrade();
+                    if db_arc.is_none() {
+                        shinkai_log(
+                            ShinkaiLogOption::CronExecution,
+                            ShinkaiLogLevel::Error,
+                            "Failed to upgrade Weak reference to Arc for DB access. Exiting job queue processing loop.",
+                        );
+                        return;
+                    }
+                    let db_arc = db_arc.unwrap();
+                    let mut db_lock = db_arc.lock().await;
+                    db_lock
+                        .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())
+                        .unwrap_or(HashMap::new())
                 };
                 if !jobs_to_process.is_empty() {
                     shinkai_log(
@@ -231,7 +250,7 @@ impl CronManager {
 
     pub async fn process_job_message_queued(
         cron_job: CronTask,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Weak<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
@@ -262,8 +281,9 @@ impl CronManager {
             .await?;
 
         // Note(Nico): should we close the job after the processing?
+        let db_arc = db.upgrade().unwrap();
         let inbox_name_result =
-            JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_job".to_string(), kai_file).await;
+            JobManager::insert_kai_job_file_into_inbox(db_arc.clone(), "cron_job".to_string(), kai_file).await;
 
         if let Err(e) = inbox_name_result {
             shinkai_log(
@@ -282,14 +302,18 @@ impl CronManager {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
 
             // Add permission
-            let mut db = db.lock().await;
+            let db_arc = db.upgrade().unwrap();
+            let mut db = db_arc.lock().await;
             db.add_permission_with_profile(
                 inbox_name.to_string().as_str(),
                 shinkai_profile.clone(),
                 InboxPermission::Admin,
             )?;
 
-            let cron_request_message = format!("My scheduled job \"{}\" created on \"{}\" is ready to be executed", cron_job.prompt, cron_job.created_at);
+            let cron_request_message = format!(
+                "My scheduled job \"{}\" created on \"{}\" is ready to be executed",
+                cron_job.prompt, cron_job.created_at
+            );
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                 job_id.to_string(),
                 cron_request_message.to_string(),
@@ -299,7 +323,8 @@ impl CronManager {
                 node_profile_name.node_name.clone(),
             )
             .unwrap();
-            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await?;
+            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                .await?;
             db.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
 
@@ -362,7 +387,8 @@ impl CronManager {
         let db = self.db.clone();
         // Note: needed to avoid a deadlock
         tokio::spawn(async move {
-            let mut db_lock = db.lock().await;
+            let db_arc = db.upgrade().unwrap();
+            let mut db_lock = db_arc.lock().await;
             db_lock
                 .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
                 .map_err(|e| CronManagerError::SomeError(e.to_string()))

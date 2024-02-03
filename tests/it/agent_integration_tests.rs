@@ -167,6 +167,8 @@ fn node_agent_registration() {
             let _ = node1.await.start().await;
         });
 
+        let abort_handler = node1_handler.abort_handle();
+
         let interactions_handler = tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -474,10 +476,26 @@ fn node_agent_registration() {
                     EncryptionMethod::None,
                 )
                 .build();
+
+                abort_handler.abort();
             }
         });
 
         // Wait for all tasks to complete
-        let _ = tokio::try_join!(node1_handler, interactions_handler).unwrap();
+        let result = tokio::try_join!(node1_handler, interactions_handler);
+
+        match result {
+            Ok(_) => {},
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    panic!("An unexpected error occurred: {:?}", e);
+                }
+            }
+        }
     });
+    rt.shutdown_background();
 }
