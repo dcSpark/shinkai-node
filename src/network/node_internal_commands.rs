@@ -396,4 +396,23 @@ impl Node {
         }
         Ok(())
     }
+
+    pub async fn internal_scan_ollama_models(&self) -> Result<Vec<String>, NodeError> {
+        let client = reqwest::Client::new();
+        let res = client.get("http://localhost:11434/api/tags")
+            .send()
+            .await
+            .map_err(|e| NodeError { message: format!("Failed to send request: {}", e) })?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| NodeError { message: format!("Failed to parse response: {}", e) })?;
+    
+        let models = res["models"].as_array().ok_or_else(|| NodeError {
+            message: "Unexpected response format".to_string(),
+        })?;
+    
+        let names = models.iter().filter_map(|model| model["name"].as_str().map(String::from)).collect();
+    
+        Ok(names)
+    }
 }

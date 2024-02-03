@@ -245,6 +245,9 @@ pub enum NodeCommand {
     IsPristine {
         res: Sender<bool>,
     },
+    LocalScanOllamaModels {
+        res: Sender<Result<Vec<String>, String>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -505,6 +508,7 @@ impl Node {
                             Some(NodeCommand::JobMessage { shinkai_message, res: _ }) => self.internal_job_message(shinkai_message).await?,
                             Some(NodeCommand::AddAgent { agent, profile, res }) => self.local_add_agent(agent, &profile, res).await,
                             Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
+                            Some(NodeCommand::LocalScanOllamaModels { res }) => self.local_scan_ollama_models(res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints
                             Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,

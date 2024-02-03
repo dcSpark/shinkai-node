@@ -293,4 +293,9 @@ impl Node {
         let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
         let _ = res.send(!has_any_profile).await;
     }
+
+    pub async fn local_scan_ollama_models(&self, res: Sender<Result<Vec<String>, String>>) {
+        let result = self.internal_scan_ollama_models().await;
+        let _ = res.send(result.map_err(|e| e.message)).await;
+    }
 }
