@@ -1,4 +1,5 @@
 use super::{node_error::NodeError, Node};
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::{
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
@@ -8,18 +9,21 @@ use crate::{
     },
 };
 use async_channel::Sender;
-use log::{error, info};
 use ed25519_dalek::VerifyingKey;
+use log::{error, info};
+use opentelemetry::global;
+use regex::Regex;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::SerializedAgent,
+        agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent},
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::clone_static_secret_key,
-        signatures::clone_signature_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::clone_signature_secret_key,
     },
 };
 use std::{
@@ -27,8 +31,7 @@ use std::{
     net::SocketAddr,
 };
 use std::{str::FromStr, sync::Arc};
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
-use crate::managers::identity_manager::IdentityManagerTrait;
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 impl Node {
     pub async fn send_peer_addresses(&self, sender: Sender<Vec<SocketAddr>>) -> Result<(), Error> {
@@ -70,7 +73,11 @@ impl Node {
         {
             Ok(messages) => messages,
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get last messages from inbox: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get last messages from inbox: {}", e).as_str(),
+                );
                 return Vec::new();
             }
         };
@@ -89,7 +96,11 @@ impl Node {
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to find identity for profile: {}", full_profile_name).as_str());
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                format!("Failed to find identity for profile: {}", full_profile_name).as_str(),
+            );
             return Vec::new();
         }
 
@@ -99,14 +110,22 @@ impl Node {
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
             _ => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str(),
+                );
                 return Vec::new();
             }
         };
         let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get inboxes for profile: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get inboxes for profile: {}", e).as_str(),
+                );
                 return Vec::new();
             }
         };
@@ -118,7 +137,11 @@ impl Node {
         match self.db.lock().await.update_smart_inbox_name(&inbox_id, &new_name) {
             Ok(_) => Ok(()),
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to update inbox name: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to update inbox name: {}", e).as_str(),
+                );
                 Err(format!("Failed to update inbox name: {}", e))
             }
         }
@@ -133,7 +156,11 @@ impl Node {
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to find identity for profile: {}", full_profile_name).as_str());
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                format!("Failed to find identity for profile: {}", full_profile_name).as_str(),
+            );
             return Vec::new();
         }
 
@@ -143,7 +170,11 @@ impl Node {
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
             _ => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str(),
+                );
                 return Vec::new();
             }
         };
@@ -155,7 +186,11 @@ impl Node {
         {
             Ok(inboxes) => inboxes,
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get inboxes for profile: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get inboxes for profile: {}", e).as_str(),
+                );
                 return Vec::new();
             }
         };
@@ -178,7 +213,11 @@ impl Node {
         {
             Ok(messages) => messages,
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get last messages from inbox: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get last messages from inbox: {}", e).as_str(),
+                );
                 return Vec::new();
             }
         };
@@ -394,6 +433,90 @@ impl Node {
             )
             .await;
         }
+        Ok(())
+    }
+
+    pub async fn internal_scan_ollama_models(&self) -> Result<Vec<String>, NodeError> {
+        let client = reqwest::Client::new();
+        let res = client
+            .get("http://localhost:11434/api/tags")
+            .send()
+            .await
+            .map_err(|e| NodeError {
+                message: format!("Failed to send request: {}", e),
+            })?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| NodeError {
+                message: format!("Failed to parse response: {}", e),
+            })?;
+
+        let models = res["models"].as_array().ok_or_else(|| NodeError {
+            message: "Unexpected response format".to_string(),
+        })?;
+
+        let names = models
+            .iter()
+            .filter_map(|model| model["name"].as_str().map(String::from))
+            .collect();
+
+        Ok(names)
+    }
+
+    pub async fn internal_add_ollama_models(&self, input_models: Vec<String>) -> Result<(), String> {
+        {
+            self.db
+                .lock()
+                .await
+                .main_profile_exists(self.node_profile_name.get_node_name().as_str())
+                .map_err(|e| format!("Failed to check if main profile exists: {}", e))?;
+        }
+
+        let available_models = self.internal_scan_ollama_models().await.map_err(|e| e.message)?;
+
+        // Ensure all input models are available
+        for model in &input_models {
+            if !available_models.contains(model) {
+                return Err(format!("Model '{}' is not available.", model));
+            }
+        }
+
+        // Assuming global_identity is available
+        let global_identity =
+            ShinkaiName::from_node_and_profile(self.node_profile_name.get_node_name(), "main".to_string()).unwrap();
+        let external_url = "http://localhost:11434"; // Common URL for all Ollama models
+
+        let agents: Vec<SerializedAgent> = input_models
+            .iter()
+            .map(|model| {
+                // Replace non-alphanumeric characters with underscores for full_identity_name
+                let sanitized_model = Regex::new(r"[^a-zA-Z0-9]").unwrap().replace_all(model, "_").to_string();
+
+                SerializedAgent {
+                    id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
+                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", global_identity.full_name, sanitized_model))
+                        .expect("Failed to create ShinkaiName"),
+                    perform_locally: false,
+                    external_url: Some(external_url.to_string()),
+                    api_key: Some("".to_string()),
+                    model: AgentLLMInterface::Ollama(Ollama {
+                        model_type: model.clone(),
+                    }), // Creates the Ollama model
+                    toolkit_permissions: vec![],
+                    storage_bucket_permissions: vec![],
+                    allowed_message_senders: vec![],
+                }
+            })
+            .collect();
+
+        // Iterate over each agent and add it using internal_add_agent
+        for agent in agents {
+            let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
+            self.internal_add_agent(agent, &profile_name)
+                .await
+                .map_err(|e| format!("Failed to add agent: {}", e.message))?;
+        }
+
         Ok(())
     }
 }

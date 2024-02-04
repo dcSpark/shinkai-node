@@ -3,11 +3,17 @@ import { invoke } from "@tauri-apps/api/tauri";
 import "./App.css";
 
 type Settings = { [key: string]: string };
+type ModelSelection = { [key: string]: boolean };
 
 function App() {
   const [nodeStatus, setNodeStatus] = useState("");
+  const [nodeRunning, setNodeRunning] = useState(false); // Added state to track if the node is running
   const [page, setPage] = useState("home");
   const [settings, setSettings] = useState<Settings>({});
+
+  const [showPopup, setShowPopup] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModels, setSelectedModels] = useState<ModelSelection>({});
 
   useEffect(() => {
     // Get the current settings when the component mounts
@@ -23,25 +29,47 @@ function App() {
     return () => clearInterval(intervalId);
   }, []);
 
-  async function startNode() {
-    const result = await invoke("start_shinkai_node");
-    setNodeStatus(result as string);
+  async function toggleNode() {
+    // Combined start and stop node functions
+    if (nodeRunning) {
+      await invoke("stop_shinkai_node");
+      setNodeStatus("Server Stopped");
+      setNodeRunning(false);
+    } else {
+      const result = await invoke("start_shinkai_node");
+      setNodeStatus(result as string);
+      setNodeRunning(true);
+    }
+  }
+
+  async function scanLocalModels() {
+    const models = await invoke<string[]>("scan_ollama_models");
+    console.log(models); // Or handle the models list as needed
+    const modelsStatus = models.reduce(
+      (acc, model) => ({ ...acc, [model]: true }),
+      {}
+    );
+    setModels(models);
+    setSelectedModels(modelsStatus);
+    setShowPopup(true);
   }
 
   async function checkNodeHealth() {
     const result = await invoke("check_node_health");
+    console.log("nodes health: ", result); // Log the result for debugging (optional)
     setNodeStatus(result as string);
+    // Update to check for both "Server Running" and pristine conditions
+    setNodeRunning(
+      result === "Server Running" ||
+        result === "Node is pristine" ||
+        result === "Node is not pristine"
+    );
   }
 
   async function saveSettings() {
     for (let key in settings) {
       await invoke("set_env_var", { key, value: settings[key] });
     }
-  }
-
-  async function stopNode() {
-    await invoke("stop_shinkai_node");
-    setNodeStatus("Server Stopped");
   }
 
   async function pruneServer() {
@@ -51,6 +79,72 @@ function App() {
 
   return (
     <div className="container">
+      {showPopup && (
+        <div className="popup-backdrop">
+          <div className="popup">
+            <span>Select Models</span>
+            <span
+              className="toggle-select"
+              onClick={() => {
+                const allSelected = Object.values(selectedModels).every(
+                  (value) => value
+                );
+                const newSelections = Object.keys(selectedModels).reduce(
+                  (acc, model) => ({ ...acc, [model]: !allSelected }),
+                  {}
+                );
+                setSelectedModels(newSelections);
+              }}
+              style={{ cursor: "pointer" }}
+            >
+              {Object.values(selectedModels).some((value) => value)
+                ? "Deselect All"
+                : "Select All"}
+            </span>
+          </div>
+          <div className="popup-content">
+            {models.map((model) => (
+              <div key={model}>
+                <input
+                  type="checkbox"
+                  checked={selectedModels[model]}
+                  onChange={() =>
+                    setSelectedModels({
+                      ...selectedModels,
+                      [model]: !selectedModels[model],
+                    })
+                  }
+                />
+                {model}
+              </div>
+            ))}
+          </div>
+          <div className="popup-footer">
+            <button onClick={() => setShowPopup(false)}>Back</button>
+            <button
+              onClick={() => {
+                // Filter the selected models
+                const selectedModelsList = Object.entries(selectedModels)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([model, _]) => model);
+
+                // Call the add_ollama_models function with the selected models
+                invoke("add_ollama_models", { models: selectedModelsList })
+                  .then((response) => {
+                    console.log(response); // Handle the response as needed
+                  })
+                  .catch((error) => {
+                    console.error("Failed to add models:", error); // Handle the error as needed
+                  });
+
+                setShowPopup(false); // Close the popup
+              }}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
       <div className="tab-bar">
         <button onClick={() => setPage("home")}>Home</button>
         <button onClick={() => setPage("settings")}>Settings</button>
@@ -66,14 +160,21 @@ function App() {
           </div>
           <p></p>
           <div className="start-button-container">
-            <button className="start-button" onClick={startNode}>
-              Start Node
+            <button
+              className={nodeRunning ? "stop-button" : "start-button"}
+              onClick={toggleNode}
+            >
+              {nodeRunning ? "Stop Node" : "Start Node"}
             </button>
-            <button className="stop-button" onClick={stopNode}>
-              Stop Node
-            </button>
-            <button className="prune-button" onClick={pruneServer} style={{backgroundColor: "red"}}>
+            <button
+              className="prune-button"
+              onClick={pruneServer}
+              style={{ backgroundColor: "red" }}
+            >
               Prune Server
+            </button>
+            <button className="scan-models-button" onClick={scanLocalModels}>
+              Scan for Local Models
             </button>
           </div>
           <p>{nodeStatus}</p>

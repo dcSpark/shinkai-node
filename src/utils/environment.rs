@@ -22,6 +22,7 @@ pub struct NodeEnvironment {
     pub unstructured_server_api_key: Option<String>,
     pub embeddings_server_url: Option<String>,
     pub embeddings_server_api_key: Option<String>,
+    pub auto_detect_local_llms: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +147,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         None => Some("storage".to_string()),
     };
 
+    // Inside the fetch_node_environment function, add the following line to initialize auto_detect_local_llms
+    let auto_detect_local_llms: bool = env::var("AUTO_DETECT_LOCAL_LLMS")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse()
+        .expect("Failed to parse AUTO_DETECT_LOCAL_LLMS");
+
     // External server env vars
     let unstructured_server_url: Option<String> = env::var("UNSTRUCTURED_SERVER_URL").ok();
     let unstructured_server_api_key: Option<String> = env::var("UNSTRUCTURED_SERVER_API_KEY").ok();
@@ -173,13 +180,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         unstructured_server_api_key,
         embeddings_server_url,
         embeddings_server_api_key,
+        auto_detect_local_llms
     }
 }
 
 pub fn fetch_static_server_env() -> Option<StaticServerEnvironment> {
-    let port = env::var("STATIC_SERVER_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok());
+    let port = env::var("STATIC_SERVER_PORT").ok().and_then(|p| p.parse::<u16>().ok());
     let ip = env::var("STATIC_SERVER_IP")
         .ok()
         .and_then(|ip| ip.parse::<IpAddr>().ok());
@@ -188,13 +194,7 @@ pub fn fetch_static_server_env() -> Option<StaticServerEnvironment> {
     eprintln!("Static server env: {:?} {:?} {:?}", ip, port, folder_path);
 
     match (ip, port, folder_path) {
-        (Some(ip), Some(port), Some(folder_path)) => {
-            Some(StaticServerEnvironment {
-                ip,
-                port,
-                folder_path,
-            })
-        },
+        (Some(ip), Some(port), Some(folder_path)) => Some(StaticServerEnvironment { ip, port, folder_path }),
         _ => None,
     }
 }

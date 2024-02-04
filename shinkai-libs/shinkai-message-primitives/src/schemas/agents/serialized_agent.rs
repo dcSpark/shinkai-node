@@ -9,7 +9,7 @@ use std::fmt;
 pub struct SerializedAgent {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub perform_locally: bool,
+    pub perform_locally: bool, // TODO: Remove this and update libs
     pub external_url: Option<String>,
     pub api_key: Option<String>,
     pub model: AgentLLMInterface,
