@@ -6,7 +6,7 @@ use crate::shinkai_message::shinkai_message::ShinkaiVersion;
 use super::{
     shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
     shinkai_message_error::ShinkaiMessageError,
-    shinkai_message_schemas::MessageSchemaType,
+    shinkai_message_schemas::{JobMessage, MessageSchemaType},
 };
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -21,6 +21,28 @@ impl ShinkaiMessage {
         match &self.body {
             MessageBody::Unencrypted(body) => match &body.message_data {
                 MessageData::Unencrypted(data) => Ok(data.message_raw_content.clone()),
+                _ => Err(ShinkaiMessageError::InvalidMessageSchemaType(
+                    "Message data is encrypted".into(),
+                )),
+            },
+            _ => Err(ShinkaiMessageError::MissingMessageBody("Missing message body".into())),
+        }
+    }
+
+    pub fn get_message_parent_key(&self) -> Result<String, ShinkaiMessageError> {
+        match &self.body {
+            MessageBody::Unencrypted(body) => match &body.message_data {
+                MessageData::Unencrypted(data) => {
+                    if data.message_content_schema == MessageSchemaType::JobMessageSchema {
+                        let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
+                            .map_err(|_| ShinkaiMessageError::InvalidMessageSchemaType("Failed to parse JobMessage".into()))?;
+                        Ok(job_message.parent.unwrap_or_default())
+                    } else {
+                        Err(ShinkaiMessageError::InvalidMessageSchemaType(
+                            "Not a JobMessageSchema".into(),
+                        ))
+                    }
+                }
                 _ => Err(ShinkaiMessageError::InvalidMessageSchemaType(
                     "Message data is encrypted".into(),
                 )),

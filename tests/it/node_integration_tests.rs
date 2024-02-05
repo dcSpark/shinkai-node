@@ -19,7 +19,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
+use shinkai_node::network::node_api::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -293,8 +293,8 @@ fn subidentity_registration() {
                 eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<(), APIError>>,
-                    async_channel::Receiver<Result<(), APIError>>,
+                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender
@@ -455,8 +455,8 @@ fn subidentity_registration() {
                 eprintln!("unchanged_message node 1 sub to node 1 sub 2: {:?}", unchanged_message);
 
                 let (res1_send_msg_sender, res1_send_msg_receiver): (
-                    async_channel::Sender<Result<(), APIError>>,
-                    async_channel::Receiver<Result<(), APIError>>,
+                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
                 ) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::SendOnionizedMessage {
@@ -539,8 +539,8 @@ fn subidentity_registration() {
                 eprintln!("unchanged_message node 1 sub to node 2 sub: {:?}", unchanged_message);
 
                 let (res1_send_msg_sender, res1_send_msg_receiver): (
-                    async_channel::Sender<Result<(), APIError>>,
-                    async_channel::Receiver<Result<(), APIError>>,
+                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
                 ) = async_channel::bounded(1);
 
                 node1_commands_sender

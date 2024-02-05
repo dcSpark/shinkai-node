@@ -1,4 +1,4 @@
-use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
+use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
 use super::node_error::NodeError;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -49,7 +49,7 @@ pub enum NodeCommand {
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
-        res: async_channel::Sender<Result<(), APIError>>,
+        res: async_channel::Sender<Result<SendResponseBodyData, APIError>>,
     },
     // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
@@ -191,7 +191,7 @@ pub enum NodeCommand {
     },
     APIJobMessage {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
     JobMessage {
         shinkai_message: ShinkaiMessage,
@@ -357,9 +357,7 @@ impl Node {
 
         // Setup Identity Manager
         let db_weak = Arc::downgrade(&db_arc);
-        let subidentity_manager = IdentityManager::new(db_weak, node_profile_name.clone())
-            .await
-            .unwrap();
+        let subidentity_manager = IdentityManager::new(db_weak, node_profile_name.clone()).await.unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided

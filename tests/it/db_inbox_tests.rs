@@ -73,7 +73,7 @@ fn generate_message_with_text(
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -193,7 +193,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
 #[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure_and_root() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -355,11 +355,37 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
         paginated_messages_inbox[1][1].clone().get_message_content().unwrap(),
         "Hello World 3".to_string()
     );
+
+    // New test for get_parent_message_hash
+    let parent_hash_test = shinkai_db
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][0].calculate_message_hash())
+        .unwrap();
+
+    assert_eq!(
+        parent_hash_test,
+        Some(last_messages_inbox[1][0].calculate_message_hash())
+    );
+
+    let parent_hash_test_2 = shinkai_db
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][1].calculate_message_hash())
+        .unwrap();
+
+    assert_eq!(
+        parent_hash_test_2,
+        Some(last_messages_inbox[1][0].calculate_message_hash())
+    );
+
+    // Check for the root message, which should return None as it has no parent
+    let root_message_parent_hash = shinkai_db
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[0][0].calculate_message_hash())
+        .unwrap();
+
+    assert_eq!(root_message_parent_hash, None);
 }
 
 #[tokio::test]
 async fn test_insert_messages_with_tree_structure() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -591,7 +617,7 @@ async fn test_insert_messages_with_tree_structure() {
 
 #[tokio::test]
 async fn db_inbox() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let node1_identity_name = "@@node1.shinkai";
@@ -940,7 +966,7 @@ async fn db_inbox() {
 
 #[test]
 fn test_permission_errors() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let node1_identity_name = "@@node1.shinkai";

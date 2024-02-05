@@ -21,6 +21,21 @@ struct NameToExternalProfileData {
 }
 
 #[derive(serde::Serialize)]
+pub struct SendResponseBodyData {
+    pub message_id: String,
+    pub parent_message_id: Option<String>,
+    pub inbox: String,
+    pub scheduled_time: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct SendResponseBody {
+    pub status: String,
+    pub message: String,
+    pub data: Option<SendResponseBodyData>,
+}
+
+#[derive(serde::Serialize)]
 struct GetPublicKeysResponse {
     signature_public_key: String,
     encryption_public_key: String,
@@ -518,8 +533,8 @@ async fn send_msg_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_send_msg_sender, res_send_msg_receiver): (
-        async_channel::Sender<Result<(), APIError>>,
-        async_channel::Receiver<Result<(), APIError>>,
+        async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+        async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
     ) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::SendOnionizedMessage {
@@ -533,11 +548,17 @@ async fn send_msg_handler(
         .await
         .map_err(|e| warp::reject::custom(APIError::from(format!("{}", e))))?;
     match send_result {
-        Ok(_) => {
-            let resp = warp::reply::json(&"Message sent successfully");
-            Ok(resp)
+        Ok(data) => {
+            let response_body = SendResponseBody {
+                status: "Success".to_string(),
+                message: "Message sent successfully".to_string(),
+                data: Some(data),
+            };
+            Ok(warp::reply::json(&response_body))
         }
-        Err(api_error) => Err(warp::reject::custom(api_error)),
+        Err(api_error) => {
+            Err(warp::reject::custom(api_error))
+        },
     }
 }
 
@@ -787,13 +808,35 @@ async fn job_message_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
-        NodeCommand::APIJobMessage {
+    let node_commands_sender = node_commands_sender.clone();
+    let (res_job_msg_sender, res_job_msg_receiver): (
+        async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+        async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
+    ) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::APIJobMessage {
             msg: message,
-            res: res_sender,
+            res: res_job_msg_sender,
+        })
+        .await
+        .map_err(|e| warp::reject::custom(APIError::from(e)))?;
+    let job_result = res_job_msg_receiver
+        .recv()
+        .await
+        .map_err(|e| warp::reject::custom(APIError::from(format!("{}", e))))?;
+    match job_result {
+        Ok(data) => {
+            let response_body = SendResponseBody {
+                status: "Success".to_string(),
+                message: "Job message processed successfully".to_string(),
+                data: Some(data),
+            };
+            Ok(warp::reply::json(&response_body))
         }
-    })
-    .await
+        Err(api_error) => {
+            Err(warp::reject::custom(api_error))
+        },
+    }
 }
 
 async fn get_filenames_message_handler(
