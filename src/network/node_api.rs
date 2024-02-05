@@ -20,7 +20,7 @@ struct NameToExternalProfileData {
     name: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct SendResponseBodyData {
     pub message_id: String,
     pub parent_message_id: Option<String>,
@@ -28,7 +28,7 @@ pub struct SendResponseBodyData {
     pub scheduled_time: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct SendResponseBody {
     pub status: String,
     pub message: String,
