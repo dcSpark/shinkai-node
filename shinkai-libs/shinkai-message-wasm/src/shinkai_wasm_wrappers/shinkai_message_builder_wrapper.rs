@@ -797,6 +797,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         scope: JsValue,
+        is_hidden: bool,
         sender: ProfileName,
         sender_subidentity: String,
         receiver: ProfileName,
@@ -804,7 +805,7 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<String, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let job_creation = JobCreationInfo { scope };
+        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
         let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let mut builder =
