@@ -276,7 +276,8 @@ impl JobManager {
                                     let agent_id = agent_name.get_agent_name().ok_or(AgentError::AgentNotFound)?;
                                     let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                         .map_err(|_| AgentError::ContentParseFailed)?;
-                                    self.process_job_creation(job_creation, &profile, &agent_id).await
+                                    let is_hidden = job_creation.is_hidden.unwrap_or(false);
+                                    self.process_job_creation(job_creation, &profile, &agent_id, is_hidden).await
                                 }
                                 MessageSchemaType::JobMessageSchema => {
                                     let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
@@ -320,13 +321,14 @@ impl JobManager {
         job_creation: JobCreationInfo,
         profile: &ShinkaiName,
         agent_id: &String,
+        is_hidden: bool,
     ) -> Result<String, AgentError> {
         // TODO: add job_id to agent so it's aware
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let mut shinkai_db = db_arc.lock().await;
-            match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope) {
+            match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden).await {
                 Ok(_) => (),
                 Err(err) => return Err(AgentError::ShinkaiDB(err)),
             };

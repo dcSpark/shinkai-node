@@ -7,6 +7,7 @@ pub type JobId = String;
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
+    fn is_hidden(&self) -> bool;
     fn datetime_created(&self) -> &str;
     fn is_finished(&self) -> bool;
     fn parent_agent_id(&self) -> &str;
@@ -19,6 +20,8 @@ pub trait JobLike: Send + Sync {
 pub struct Job {
     /// Based on uuid
     pub job_id: String,
+    /// Marks if the job is hidden or not. Hidden jobs are not shown in the UI to avoid spamming
+    pub is_hidden: bool,
     /// Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
     pub datetime_created: String,
     /// Marks if the job is finished or not
@@ -44,6 +47,10 @@ pub struct Job {
 impl JobLike for Job {
     fn job_id(&self) -> &str {
         &self.job_id
+    }
+
+    fn is_hidden(&self) -> bool {
+        self.is_hidden
     }
 
     fn datetime_created(&self) -> &str {

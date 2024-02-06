@@ -10,6 +10,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 
 enum JobInfo {
     IsFinished,
+    IsHidden,
     DatetimeCreated,
     ParentAgentId,
     ConversationInboxName,
@@ -19,6 +20,7 @@ impl JobInfo {
     fn from_str(s: &str) -> Option<Self> {
         match s {
             "is_finished" => Some(Self::IsFinished),
+            "is_hidden" => Some(Self::IsHidden),
             "datetime_created" => Some(Self::DatetimeCreated),
             "parent_agent_id" => Some(Self::ParentAgentId),
             "conversation_inbox_name" => Some(Self::ConversationInboxName),
@@ -29,6 +31,7 @@ impl JobInfo {
     fn to_str(&self) -> &'static str {
         match self {
             Self::IsFinished => "is_finished",
+            Self::IsHidden => "is_hidden",
             Self::DatetimeCreated => "datetime_created",
             Self::ParentAgentId => "parent_agent_id",
             Self::ConversationInboxName => "conversation_inbox_name",
@@ -37,7 +40,7 @@ impl JobInfo {
 }
 
 impl ShinkaiDB {
-    pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
+    pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope, is_hidden: bool) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -54,6 +57,7 @@ impl ShinkaiDB {
         let cf_job_id_smart_inbox_name = format!("job_inbox::{}::false_smart_inbox_name", &job_id);
         let cf_job_id_children_name = format!("{}_children", &cf_conversation_inbox_name);
         let cf_job_id_parents_name = format!("{}_parents", &cf_conversation_inbox_name);
+        let cf_job_id_is_hidden = format!("{}_is_hidden", &job_id);
 
         // Check that the cf handles exist, and create them
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
@@ -65,6 +69,7 @@ impl ShinkaiDB {
             || self.db.cf_handle(&cf_job_id_smart_inbox_name).is_some()
             || self.db.cf_handle(&cf_job_id_children_name).is_some()
             || self.db.cf_handle(&cf_job_id_parents_name).is_some()
+            || self.db.cf_handle(&cf_job_id_is_hidden).is_some()
         {
             return Err(ShinkaiDBError::JobAlreadyExists(cf_job_id_name.to_string()));
         }
@@ -81,6 +86,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_job_id_smart_inbox_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_children_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_parents_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_is_hidden, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -135,6 +141,12 @@ impl ShinkaiDB {
             &cf_conversation_inbox_name,
         );
 
+        let cf_is_hidden = self
+            .db
+            .cf_handle(&cf_job_id_is_hidden)
+            .expect("to be able to access is hidden column family");
+        batch.put_cf(cf_is_hidden, &cf_conversation_inbox_name, &is_hidden.to_string());
+
         self.db.write(batch)?;
 
         Ok(())
@@ -145,6 +157,7 @@ impl ShinkaiDB {
         let (
             scope,
             is_finished,
+            is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox,
@@ -156,6 +169,7 @@ impl ShinkaiDB {
         // Construct the job
         let job = Job {
             job_id: job_id.to_string(),
+            is_hidden,
             datetime_created,
             is_finished,
             parent_agent_id,
@@ -174,6 +188,7 @@ impl ShinkaiDB {
         let (
             scope,
             is_finished,
+            is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox,
@@ -185,6 +200,7 @@ impl ShinkaiDB {
         // Construct the job
         let job = Job {
             job_id: job_id.to_string(),
+            is_hidden,
             datetime_created,
             is_finished,
             parent_agent_id,
@@ -206,6 +222,7 @@ impl ShinkaiDB {
     ) -> Result<
         (
             JobScope,
+            bool,
             bool,
             String,
             String,
@@ -262,6 +279,12 @@ impl ShinkaiDB {
         let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
         let conversation_inbox = Some(InboxName::new(inbox_name)?);
 
+        let is_hidden_value = self
+            .db
+            .get_cf(cf_job_id, JobInfo::IsHidden.to_str().as_bytes())?
+            .unwrap_or_else(|| b"false".to_vec());
+        let is_hidden = std::str::from_utf8(&is_hidden_value)?.to_string() == "true";
+
         // Reads all of the step history by iterating
         let step_history = self.get_step_history(job_id, fetch_step_history)?;
 
@@ -271,6 +294,7 @@ impl ShinkaiDB {
         Ok((
             scope,
             is_finished,
+            is_hidden,
             datetime_created,
             parent_agent_id,
             conversation_inbox.unwrap(),
