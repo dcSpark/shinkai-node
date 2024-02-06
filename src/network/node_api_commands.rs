@@ -1,6 +1,6 @@
 use super::{
     node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
-    node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
+    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData},
     node_error::NodeError,
     node_shareable_logic::validate_message_main_logic,
     Node,
@@ -1688,10 +1688,10 @@ impl Node {
     pub async fn api_job_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobMessageSchema))
+            .validate_message(potentially_encrypted_msg.clone(), Some(MessageSchemaType::JobMessageSchema))
             .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
@@ -1708,10 +1708,35 @@ impl Node {
         );
         // TODO: add permissions to check if the sender has the right permissions to send the job message
 
-        match self.internal_job_message(msg).await {
+        match self.internal_job_message(msg.clone()).await {
             Ok(_) => {
+                let inbox_name = match InboxName::from_message(&msg.clone()) {
+                    Ok(inbox) => inbox.to_string(),
+                    Err(_) => "".to_string(),
+                };
+    
+                let scheduled_time = msg.external_metadata.scheduled_time;
+                let message_hash = potentially_encrypted_msg.calculate_message_hash();
+    
+                let parent_key = if !inbox_name.is_empty() {
+                    let db_guard = self.db.lock().await;
+                    match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                        Ok(result) => result,
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                let response = SendResponseBodyData {
+                    message_id: message_hash,
+                    parent_message_id: parent_key,
+                    inbox: inbox_name,
+                    scheduled_time,
+                };
+
                 // If everything went well, send the job_id back with an empty string for error
-                let _ = res.send(Ok("Job message processed successfully".to_string())).await;
+                let _ = res.send(Ok(response)).await;
                 Ok(())
             }
             Err(err) => {
@@ -2177,7 +2202,7 @@ impl Node {
     pub async fn api_handle_send_onionized_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<(), APIError>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
         if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
@@ -2191,7 +2216,7 @@ impl Node {
             return Ok(());
         }
 
-        let validation_result = self.validate_message(potentially_encrypted_msg, None).await;
+        let validation_result = self.validate_message(potentially_encrypted_msg.clone(), None).await;
         let (mut msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -2230,9 +2255,13 @@ impl Node {
                         Ok(_) => {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
-                            // TODO(must): it shouldn't always be None
+                            let parent_message_id = match msg.get_message_parent_key() {
+                                Ok(key) => Some(key),
+                                Err(_) => None,
+                            };
+
                             db_guard
-                                .unsafe_insert_inbox_message(&msg.clone(), None)
+                                .unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
                                 .await
                                 .map_err(|e| {
                                     shinkai_log(
@@ -2328,8 +2357,35 @@ impl Node {
             None,
         );
 
-        if res.send(Ok(())).await.is_err() {
-            eprintln!("Failed to send response");
+        {
+            let inbox_name = match InboxName::from_message(&msg.clone()) {
+                Ok(inbox) => inbox.to_string(),
+                Err(_) => "".to_string(),
+            };
+
+            let scheduled_time = msg.external_metadata.scheduled_time;
+            let message_hash = potentially_encrypted_msg.calculate_message_hash();
+
+            let parent_key = if !inbox_name.is_empty() {
+                let db_guard = self.db.lock().await;
+                match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                    Ok(result) => result,
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            let response = SendResponseBodyData {
+                message_id: message_hash,
+                parent_message_id: parent_key,
+                inbox: inbox_name,
+                scheduled_time,
+            };
+
+            if res.send(Ok(response)).await.is_err() {
+                eprintln!("Failed to send response");
+            }
         }
 
         Ok(())

@@ -15,6 +15,7 @@ mod it {
     mod job_multi_page_cron_tests;
     mod job_one_page_cron_tests;
     mod model_capabilities_manager_tests;
+    mod job_concurrency_in_seq_tests;
     mod node_integration_tests;
     mod node_retrying_tests;
     mod node_simple_ux_tests;

@@ -27,6 +27,36 @@ impl ShinkaiDB {
         }
     }
 
+    pub fn get_parent_message_hash(&self, inbox_name: &str, hash_key: &str) -> Result<Option<String>, ShinkaiDBError> {
+        // Fetch the column family for parents based on the inbox name
+        let cf_parents_name = format!("{}_parents", inbox_name);
+        let cf_parents = match self.db.cf_handle(&cf_parents_name) {
+            Some(cf) => cf,
+            None => {
+                return Err(ShinkaiDBError::InboxNotFound(format!(
+                    "Inbox not found: {}",
+                    inbox_name
+                )))
+            }
+        };
+
+        // Fetch the parent message key using the hash_key
+        match self.fetch_parent_message(cf_parents, hash_key)? {
+            Some(parent_key) => {
+                // Split the composite key to get the hash key of the parent
+                let split: Vec<&str> = parent_key.split(":::").collect();
+                let parent_hash_key = if split.len() < 2 {
+                    // If the key does not contain ":::", assume it's a hash key
+                    parent_key
+                } else {
+                    split[1].to_string()
+                };
+                Ok(Some(parent_hash_key))
+            }
+            None => Ok(None), // No parent message found
+        }
+    }
+
     fn fetch_parent_message(
         &self,
         cf_parents: &rocksdb::ColumnFamily,
