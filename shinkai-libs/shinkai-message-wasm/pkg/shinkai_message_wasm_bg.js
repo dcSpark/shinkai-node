@@ -205,37 +205,6 @@ function debugString(val) {
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
 }
-
-let stack_pointer = 128;
-
-function addBorrowedObject(obj) {
-    if (stack_pointer == 1) throw new Error('out of js stack');
-    heap[--stack_pointer] = obj;
-    return stack_pointer;
-}
-/**
-* @param {string} input
-* @returns {string}
-*/
-export function calculate_blake3_hash(input) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.calculate_blake3_hash(retptr, ptr0, len0);
-        var r0 = getInt32Memory0()[retptr / 4 + 0];
-        var r1 = getInt32Memory0()[retptr / 4 + 1];
-        deferred2_0 = r0;
-        deferred2_1 = r1;
-        return getStringFromWasm0(r0, r1);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-}
-
 /**
 * @param {string} encryption_sk
 * @returns {string}
@@ -265,6 +234,37 @@ export function convert_encryption_sk_string_to_encryption_pk_string(encryption_
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
+}
+
+/**
+* @param {string} input
+* @returns {string}
+*/
+export function calculate_blake3_hash(input) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.calculate_blake3_hash(retptr, ptr0, len0);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+let stack_pointer = 128;
+
+function addBorrowedObject(obj) {
+    if (stack_pointer == 1) throw new Error('out of js stack');
+    heap[--stack_pointer] = obj;
+    return stack_pointer;
 }
 
 function handleError(f, args) {
@@ -503,11 +503,12 @@ export class JobCreationWrapper {
     }
     /**
     * @param {any} scope_js
+    * @param {boolean} is_hidden
     */
-    constructor(scope_js) {
+    constructor(scope_js, is_hidden) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.jobcreationwrapper_new(retptr, addBorrowedObject(scope_js));
+            wasm.jobcreationwrapper_new(retptr, addBorrowedObject(scope_js), is_hidden);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -2125,13 +2126,14 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} my_signature_secret_key
     * @param {string} receiver_public_key
     * @param {any} scope
+    * @param {boolean} is_hidden
     * @param {string} sender
     * @param {string} sender_subidentity
     * @param {string} receiver
     * @param {string} receiver_subidentity
     * @returns {string}
     */
-    static job_creation(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, scope, sender, sender_subidentity, receiver, receiver_subidentity) {
+    static job_creation(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, scope, is_hidden, sender, sender_subidentity, receiver, receiver_subidentity) {
         let deferred9_0;
         let deferred9_1;
         try {
@@ -2150,7 +2152,7 @@ export class ShinkaiMessageBuilderWrapper {
             const len5 = WASM_VECTOR_LEN;
             const ptr6 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len6 = WASM_VECTOR_LEN;
-            wasm.shinkaimessagebuilderwrapper_job_creation(retptr, ptr0, len0, ptr1, len1, ptr2, len2, addHeapObject(scope), ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
+            wasm.shinkaimessagebuilderwrapper_job_creation(retptr, ptr0, len0, ptr1, len1, ptr2, len2, addHeapObject(scope), is_hidden, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];

@@ -465,6 +465,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn job_creation(
         scope: JobScope,
+        is_hidden: bool,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -473,7 +474,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let job_creation = JobCreationInfo { scope, is_hidden: Some(false)};
+        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
         let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
