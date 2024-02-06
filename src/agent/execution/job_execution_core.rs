@@ -130,6 +130,7 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
+    #[instrument(skip(identity_secret_key, db, generator))]
     pub async fn process_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
