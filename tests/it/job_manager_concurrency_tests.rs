@@ -1,5 +1,4 @@
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::future::Remote;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -18,7 +17,6 @@ use shinkai_node::agent::job_manager::JobManager;
 use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::unstructured;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::sync::Weak;
@@ -179,7 +177,7 @@ async fn test_process_job_queue_concurrency() {
 }
 
 #[tokio::test]
-async fn test_sequnetial_process_for_same_job_id() {
+async fn test_sequential_process_for_same_job_id() {
     init_default_tracing(); 
     super::utils::db_handlers::setup();
 
@@ -207,7 +205,7 @@ async fn test_sequnetial_process_for_same_job_id() {
 
             // Create a message
             let message = generate_message_with_text(
-                job.job_message.content,
+                job.clone().job_message.content,
                 node1_encryption_sk.clone(),
                 clone_signature_secret_key(&node1_identity_sk),
                 node1_encryption_pk,
@@ -256,11 +254,12 @@ async fn test_sequnetial_process_for_same_job_id() {
         job_queue.push("job_id::123::false", job).await.unwrap();
     }
 
-    // Create a new task that lasts at least 2 seconds
+    // Create a new task that lasts at least 1 seconds
+    let db_copy = db.clone();
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let last_messages_all = db.lock().await.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db_copy.lock().await.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 1);
     });
 
@@ -279,4 +278,6 @@ async fn test_sequnetial_process_for_same_job_id() {
         Ok(_) => (),
         Err(_) => (),
     }
+
+    let _ = db.lock().await;
 }
