@@ -319,7 +319,7 @@ fn job_branchs_retries_tests() {
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
 
                     if node1_last_messages.len() == 4
-                        && node1_last_messages[1]
+                        && node1_last_messages[2]
                             .get_message_content()
                             .unwrap()
                             .contains("hello are u there? (5)")
