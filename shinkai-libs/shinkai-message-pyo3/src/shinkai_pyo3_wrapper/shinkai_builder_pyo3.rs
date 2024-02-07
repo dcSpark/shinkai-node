@@ -1130,6 +1130,7 @@ impl PyShinkaiMessageBuilder {
         my_signature_secret_key: String,
         receiver_public_key: String,
         scope: Py<PyJobScope>,
+        is_hidden: bool,
         sender: String,
         sender_subidentity: String,
         node_receiver: String,
@@ -1146,6 +1147,7 @@ impl PyShinkaiMessageBuilder {
             };
             let job_creation = JobCreationInfo {
                 scope: scope.inner.clone(),
+                is_hidden: Some(is_hidden)
             };
 
             let body = match serde_json::to_string(&job_creation) {
