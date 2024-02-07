@@ -46,6 +46,26 @@ impl Node {
             .internal_get_last_messages_from_inbox(inbox_name, limit, offset_key)
             .await;
 
+        let single_msg_array_array = result.into_iter().filter_map(|msg| msg.first().cloned()).collect();
+
+        // Send the retrieved messages back to the requester.
+        if let Err(e) = res.send(single_msg_array_array).await {
+            error!("Failed to send last messages from inbox: {}", e);
+        }
+    }
+
+    pub async fn local_get_last_messages_from_inbox_with_branches(
+        &self,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Vec<Vec<ShinkaiMessage>>>,
+    ) {
+        // Query the database for the last `limit` number of messages from the specified inbox.
+        let result = self
+            .internal_get_last_messages_from_inbox(inbox_name, limit, offset_key)
+            .await;
+
         // Send the retrieved messages back to the requester.
         if let Err(e) = res.send(result).await {
             error!("Failed to send last messages from inbox: {}", e);

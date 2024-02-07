@@ -124,11 +124,15 @@ impl Node {
         }
     }
 
-    pub async fn api_get_last_messages_from_inbox(
+    async fn process_last_messages_from_inbox<F, T>(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
-    ) -> Result<(), NodeError> {
+        res: Sender<Result<T, APIError>>,
+        response_handler: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnOnce(Vec<Vec<ShinkaiMessage>>) -> T,
+    {
         let validation_result = self
             .validate_message(
                 potentially_encrypted_msg,
@@ -146,20 +150,11 @@ impl Node {
         let content = match msg.body {
             MessageBody::Unencrypted(body) => match body.message_data {
                 MessageData::Unencrypted(data) => data.message_raw_content,
-                _ => {
-                    return Err(NodeError {
-                        message: "Message data is encrypted".into(),
-                    })
-                }
+                _ => return Err(NodeError { message: "Message data is encrypted".into() }),
             },
-            _ => {
-                return Err(NodeError {
-                    message: "Message body is encrypted".into(),
-                })
-            }
+            _ => return Err(NodeError { message: "Message body is encrypted".into() }),
         };
-        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
-            serde_json::from_str(&content);
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> = serde_json::from_str(&content);
 
         let last_messages_inbox_request = match last_messages_inbox_request_result {
             Ok(request) => request,
@@ -191,15 +186,14 @@ impl Node {
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
-        // Check that the message is coming from someone with the right permissions to do this action
-        // TODO(Discuss): can local admin read any messages from any device or profile?
         match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
+                if value {
                     let response = self
                         .internal_get_last_messages_from_inbox(inbox_name.to_string(), count, offset)
                         .await;
-                    let _ = res.send(Ok(response)).await;
+                    let processed_response = response_handler(response);
+                    let _ = res.send(Ok(processed_response)).await;
                     return Ok(());
                 } else {
                     let _ = res
@@ -231,6 +225,26 @@ impl Node {
                 return Ok(());
             }
         }
+    }
+
+    pub async fn api_get_last_messages_from_inbox(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
+    ) -> Result<(), NodeError> {
+        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| {
+            response.into_iter().filter_map(|msg| msg.first().cloned()).collect()
+        }).await
+    }
+
+    pub async fn api_get_last_messages_from_inbox_with_branches(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<Vec<ShinkaiMessage>>, APIError>>,
+    ) -> Result<(), NodeError> {
+        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| {
+            response
+        }).await
     }
 
     pub async fn api_get_last_unread_messages_from_inbox(

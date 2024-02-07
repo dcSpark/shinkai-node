@@ -203,7 +203,7 @@ impl Node {
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
-    ) -> Vec<ShinkaiMessage> {
+    ) -> Vec<Vec<ShinkaiMessage>> {
         // Query the database for the last `limit` number of messages from the specified inbox.
         let result = match self
             .db
@@ -222,7 +222,6 @@ impl Node {
             }
         };
 
-        let result = result.into_iter().filter_map(|path| path.first().cloned()).collect();
         result
     }
 
@@ -494,8 +493,11 @@ impl Node {
 
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
-                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", global_identity.full_name, sanitized_model))
-                        .expect("Failed to create ShinkaiName"),
+                    full_identity_name: ShinkaiName::new(format!(
+                        "{}/agent/o_{}",
+                        global_identity.full_name, sanitized_model
+                    ))
+                    .expect("Failed to create ShinkaiName"),
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
