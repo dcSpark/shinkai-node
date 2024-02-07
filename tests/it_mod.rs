@@ -12,6 +12,7 @@ mod it {
     mod get_onchain_identity_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
+    mod job_branchs_retries_tests;
     mod job_multi_page_cron_tests;
     mod job_one_page_cron_tests;
     mod model_capabilities_manager_tests;

@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -455,7 +456,7 @@ pub async fn api_message_job(
     content: &str,
     files_inbox: &str,
     parent: &str,
-) {
+) -> Result<ShinkaiMessage, APIError> {
     {
         let job_message = ShinkaiMessageBuilder::job_message(
             job_id.to_string(),
@@ -475,7 +476,7 @@ pub async fn api_message_job(
         let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
         node_commands_sender
             .send(NodeCommand::APIJobMessage {
-                msg: job_message,
+                msg: job_message.clone(),
                 res: res_message_job_sender,
             })
             .await
@@ -484,6 +485,7 @@ pub async fn api_message_job(
         eprintln!("node_job_message: {:?}", node_job_message);
 
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
+        Ok(job_message)
     }
 }
 

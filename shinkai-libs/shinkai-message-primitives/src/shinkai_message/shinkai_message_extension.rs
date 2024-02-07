@@ -29,6 +29,13 @@ impl ShinkaiMessage {
         }
     }
 
+    pub fn get_message_inbox(&self) -> Result<String, ShinkaiMessageError> {
+        match &self.body {
+            MessageBody::Unencrypted(body) => Ok(body.internal_metadata.inbox.clone()),
+            _ => Err(ShinkaiMessageError::MissingMessageBody("Missing message body".into())),
+        }
+    }
+
     pub fn get_message_parent_key(&self) -> Result<String, ShinkaiMessageError> {
         match &self.body {
             MessageBody::Unencrypted(body) => match &body.message_data {
