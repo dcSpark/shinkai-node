@@ -317,7 +317,6 @@ fn job_branchs_retries_tests() {
                         .await
                         .unwrap();
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
-                    eprintln!("### node1_last_messages: {:?}", node1_last_messages);
 
                     if node1_last_messages.len() == 4
                         && node1_last_messages[1]
@@ -325,62 +324,23 @@ fn job_branchs_retries_tests() {
                             .unwrap()
                             .contains("hello are u there? (5)")
                     {
-                        // Print the content of each message if the condition passes
-                        for (index, msg) in node1_last_messages.iter().enumerate() {
-                            eprintln!(
-                                "Message position: {}, content: {}",
-                                index,
-                                msg.get_message_content().unwrap()
-                            );
-                        }
+                        // // Print the content of each message if the condition passes
+                        // for (index, msg) in node1_last_messages.iter().enumerate() {
+                        //     eprintln!(
+                        //         "Message position: {}, content: {}",
+                        //         index,
+                        //         msg.get_message_content().unwrap()
+                        //     );
+                        // }
                         break;
                     }
 
-                    // Print the content of each message if the condition passes
-                    for (index, msg) in node1_last_messages.iter().enumerate() {
-                        eprintln!(
-                            "Message position: {}, content: {}",
-                            index,
-                            msg.get_message_content().unwrap()
-                        );
-                    }
-                    break;
                     if start.elapsed() > Duration::from_secs(3) {
                         panic!("Test failed: 3 seconds have passed without receiving the response");
                     }
-
                     tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
                 }
             }
-
-            // // Message 1
-            // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     let start = Instant::now();
-            //     loop {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 8, // Set the limit to 8 to fetch up to 8 messages
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         // eprintln!("node1_last_messages: {:?}", node1_last_messages);
-            //         eprintln!("### node1_last_messages.len(): {:?}", node1_last_messages.len());
-
-            //         // if node1_last_messages.len() >= 8 {
-            //         break; // Break the loop if we have 12 or more messages
-            //                // }
-
-            //         if start.elapsed() > Duration::from_secs(60) {
-            //             panic!("Test failed: 5 seconds have passed without receiving 12 messages");
-            //         }
-
-            //         tokio::time::sleep(Duration::from_millis(500)).await; // Short sleep to prevent tight looping
-            //     }
-            // }
             node1_abort_handler.abort();
         })
     });
