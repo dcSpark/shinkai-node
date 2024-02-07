@@ -140,6 +140,26 @@ pub enum NodeCommand {
         offset: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
     },
+    APIGetLastMessagesFromInboxWithBranches {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<Vec<ShinkaiMessage>>, APIError>>,
+    },
+    GetLastMessagesFromInboxWithBranches {
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Vec<Vec<ShinkaiMessage>>>,
+    },
+    APIRetryMessageWithInbox {
+        inbox_name: String,
+        message_hash: String,
+        res: Sender<Result<(), APIError>>,
+    },
+    RetryMessageWithInbox {
+        inbox_name: String,
+        message_hash: String,
+        res: Sender<Result<(), String>>,
+    },
     APIAddInboxPermission {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -539,6 +559,11 @@ impl Node {
                             Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
                             Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
                             Some(NodeCommand::IsPristine { res }) => self.local_is_pristine(res).await,
+                            Some(NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res }) => self.api_get_last_messages_from_inbox_with_branches(msg, res).await?,
+                            Some(NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
+                            // Some(NodeCommand::APIRetryMessageWithInbox { inbox_name, message_hash, res }) => self.api_retry_message_with_inbox(inbox_name, message_hash, res).await,
+                            // Some(NodeCommand::RetryMessageWithInbox { inbox_name, message_hash, res }) => self.local_retry_message_with_inbox(inbox_name, message_hash, res).await,
+
                             _ => {},
                         }
                     }

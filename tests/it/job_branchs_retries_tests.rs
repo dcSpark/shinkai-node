@@ -317,7 +317,7 @@ fn job_branchs_retries_tests() {
                         .await
                         .unwrap();
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
-                    eprintln!("\n\n node1_last_messages: {:?}", node1_last_messages);
+                    // eprintln!("\n\n node1_last_messages: {:?}", node1_last_messages);
 
                     if node1_last_messages.len() == 4
                         && node1_last_messages[2]
@@ -333,6 +333,67 @@ fn job_branchs_retries_tests() {
                         //         msg.get_message_content().unwrap()
                         //     );
                         // }
+                        break;
+                    }
+
+                    if start.elapsed() > Duration::from_secs(10) {
+                        panic!("Test failed: 3 seconds have passed without receiving the response");
+                    }
+                    tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
+                }
+            }
+            // Check the endpoints that return all the branches
+            {
+                let start = Instant::now();
+                loop {
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::GetLastMessagesFromInboxWithBranches {
+                            limit: 6,
+                            inbox_name: inbox_name.clone().unwrap(),
+                            offset_key: None,
+                            res: res1_sender,
+                        })
+                        .await
+                        .unwrap();
+                    let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    // eprintln!("\n\n node1_last_messages: {:?}", node1_last_messages);
+
+                    // Assuming each ShinkaiMessage can be uniquely identified or grouped by its content
+                    // and that you have a way to determine the structure [[1],[2],[5,3],[6]] from these messages
+
+                    // Since node1_last_messages is Vec<Vec<ShinkaiMessage>>, we need to iterate through both levels
+                    let flattened_messages = node1_last_messages
+                        .iter()
+                        .flat_map(|msg_group| {
+                            msg_group
+                                .iter()
+                                .map(|msg| {
+                                    // Assuming get_message_content() is a method of ShinkaiMessage
+                                    msg.get_message_content().unwrap() // Apply get_message_content to each ShinkaiMessage
+                                })
+                                .collect::<Vec<_>>() // Collects all message contents in the inner Vec<ShinkaiMessage>
+                        })
+                        .collect::<Vec<_>>(); // Collects all contents across all Vec<Vec<ShinkaiMessage>>
+
+                    // Updated validation logic to check for specific content
+                    let expected_contents = vec![
+                        "hello are u there? (1)",
+                        "Hello there, how may I assist you today?",
+                        "hello are u there? (5)",
+                        "hello are u there? (3)",
+                        "Hello there, how may I assist you today?",
+                    ];
+
+                    let is_valid = flattened_messages
+                        .iter()
+                        .zip(expected_contents.iter())
+                        .all(|(actual, &expected)| actual.contains(expected));
+
+                    if is_valid && flattened_messages.len() == expected_contents.len() {
+                        for (index, content) in flattened_messages.iter().enumerate() {
+                            eprintln!("Message position: {}, content: {}", index, content);
+                        }
                         break;
                     }
 

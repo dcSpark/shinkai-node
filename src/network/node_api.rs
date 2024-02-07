@@ -357,6 +357,17 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move || get_all_subidentities_handler(node_commands_sender.clone()))
     };
 
+    // POST v1/last_messages_from_inbox_with_branches
+    let get_last_messages_from_inbox_with_branches = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "last_messages_from_inbox_with_branches")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_last_messages_from_inbox_with_branches_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // POST v1/create_files_inbox_with_symmetric_key
     let create_files_inbox_with_symmetric_key = {
         let node_commands_sender = node_commands_sender.clone();
@@ -424,6 +435,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(update_job_to_finished)
         .or(add_toolkit)
         .or(change_nodes_name)
+        .or(get_last_messages_from_inbox_with_branches)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -556,9 +568,7 @@ async fn send_msg_handler(
             };
             Ok(warp::reply::json(&response_body))
         }
-        Err(api_error) => {
-            Err(warp::reject::custom(api_error))
-        },
+        Err(api_error) => Err(warp::reject::custom(api_error)),
     }
 }
 
@@ -591,6 +601,19 @@ async fn identity_name_to_external_profile_data_handler(
         signature_public_key: signature_public_key_to_string(external_profile_data.node_signature_public_key),
         encryption_public_key: encryption_public_key_to_string(external_profile_data.node_encryption_public_key),
     }))
+}
+
+async fn get_last_messages_from_inbox_with_branches_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetLastMessagesFromInboxWithBranches {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
 }
 
 async fn handle_file_upload(
@@ -833,9 +856,7 @@ async fn job_message_handler(
             };
             Ok(warp::reply::json(&response_body))
         }
-        Err(api_error) => {
-            Err(warp::reject::custom(api_error))
-        },
+        Err(api_error) => Err(warp::reject::custom(api_error)),
     }
 }
 

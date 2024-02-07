@@ -17,9 +17,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::agent::agent;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -31,7 +29,6 @@ use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
 
-use super::utils;
 use mockito::Server;
 
 #[test]
