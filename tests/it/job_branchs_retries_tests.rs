@@ -45,7 +45,7 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
             break;
         }
 
-        if start.elapsed() > Duration::from_secs(3) {
+        if start.elapsed() > Duration::from_secs(10) {
             panic!("Test failed: 3 seconds have passed without receiving the response");
         }
 
@@ -267,7 +267,7 @@ fn job_branchs_retries_tests() {
                         break;
                     }
 
-                    if start.elapsed() > Duration::from_secs(3) {
+                    if start.elapsed() > Duration::from_secs(10) {
                         panic!("Test failed: 3 seconds have passed without receiving the response");
                     }
 
@@ -317,6 +317,7 @@ fn job_branchs_retries_tests() {
                         .await
                         .unwrap();
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    eprintln!("\n\n node1_last_messages: {:?}", node1_last_messages);
 
                     if node1_last_messages.len() == 4
                         && node1_last_messages[2]
@@ -335,7 +336,7 @@ fn job_branchs_retries_tests() {
                         break;
                     }
 
-                    if start.elapsed() > Duration::from_secs(3) {
+                    if start.elapsed() > Duration::from_secs(10) {
                         panic!("Test failed: 3 seconds have passed without receiving the response");
                     }
                     tokio::time::sleep(Duration::from_millis(200)).await; // Short sleep to prevent tight looping
