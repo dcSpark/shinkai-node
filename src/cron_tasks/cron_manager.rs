@@ -271,6 +271,7 @@ impl CronManager {
 
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
+            is_hidden: Some(false),
         };
 
         // Create Job

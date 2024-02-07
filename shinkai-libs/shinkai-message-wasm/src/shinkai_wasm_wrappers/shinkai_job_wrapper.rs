@@ -44,9 +44,9 @@ pub struct JobCreationWrapper {
 #[wasm_bindgen]
 impl JobCreationWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(scope_js: &JsValue) -> Result<JobCreationWrapper, JsValue> {
+    pub fn new(scope_js: &JsValue, is_hidden: bool) -> Result<JobCreationWrapper, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope_js.clone())?;
-        let job_creation = JobCreationInfo { scope };
+        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
         Ok(JobCreationWrapper { inner: job_creation })
     }
 
@@ -82,7 +82,7 @@ impl JobCreationWrapper {
     pub fn empty() -> Result<JobCreationWrapper, JsValue> {
         let job_scope = JobScope::new_default();
         Ok(JobCreationWrapper {
-            inner: JobCreationInfo { scope: job_scope },
+            inner: JobCreationInfo { scope: job_scope, is_hidden: Some(false)},
         })
     }
 }

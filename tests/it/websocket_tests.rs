@@ -254,11 +254,11 @@ async fn test_websocket() {
         let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
-        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone()) {
+        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
-        match shinkai_db.create_new_job(job_id2, agent_id, scope) {
+        match shinkai_db.create_new_job(job_id2, agent_id, scope, false) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
@@ -553,7 +553,7 @@ async fn test_websocket_smart_inbox() {
         let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
-        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone()) {
+        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
@@ -561,7 +561,7 @@ async fn test_websocket_smart_inbox() {
             .add_permission(&inbox_name1_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
 
-        match shinkai_db.create_new_job(no_access_job_id, agent_id, scope) {
+        match shinkai_db.create_new_job(no_access_job_id, agent_id, scope, false) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }

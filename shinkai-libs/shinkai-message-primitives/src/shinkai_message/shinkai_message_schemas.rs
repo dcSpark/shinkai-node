@@ -87,6 +87,7 @@ pub struct SymmetricKeyExchange {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
+    pub is_hidden: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

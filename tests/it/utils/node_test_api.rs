@@ -417,6 +417,7 @@ pub async fn api_create_job(
 
         let job_creation = ShinkaiMessageBuilder::job_creation(
             job_scope,
+            false,
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,

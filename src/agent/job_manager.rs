@@ -326,7 +326,8 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let mut shinkai_db = db_arc.lock().await;
-            match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope) {
+            let is_hidden = job_creation.is_hidden.unwrap_or(false);
+            match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden) {
                 Ok(_) => (),
                 Err(err) => return Err(AgentError::ShinkaiDB(err)),
             };
