@@ -3,6 +3,7 @@ use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
@@ -475,7 +476,7 @@ pub async fn api_message_job(
         let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
         node_commands_sender
             .send(NodeCommand::APIJobMessage {
-                msg: job_message,
+                msg: job_message.clone(),
                 res: res_message_job_sender,
             })
             .await

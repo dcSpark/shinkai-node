@@ -180,6 +180,7 @@ impl ShinkaiDB {
             let existing_children = String::from_utf8(existing_children_bytes)
                 .unwrap()
                 .split(',')
+                .filter(|s| !s.is_empty())
                 .map(String::from)
                 .collect::<Vec<String>>();
 

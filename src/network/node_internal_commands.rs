@@ -222,7 +222,7 @@ impl Node {
             }
         };
 
-        let result = result.into_iter().filter_map(|mut path| path.pop()).collect();
+        let result = result.into_iter().filter_map(|path| path.first().cloned()).collect();
         result
     }
 
