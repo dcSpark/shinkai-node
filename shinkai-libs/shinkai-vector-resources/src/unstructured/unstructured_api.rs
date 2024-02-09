@@ -106,9 +106,7 @@ impl UnstructuredAPI {
     /// overall quality of UnstructuredElements returned.
     pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
         if file_name.ends_with(".html") || file_name.ends_with(".htm") {
-            println!("detected html file");
             let file_content = String::from_utf8_lossy(&file_buffer);
-            println!("\n\nOriginal html: {:?}\n\n", &file_content);
             let document = Html::parse_document(&file_content);
 
             // Try to select the 'main', 'article' tag or a class named 'main'
@@ -150,7 +148,6 @@ impl UnstructuredAPI {
         let res = request_builder.send()?;
 
         let body = res.text()?;
-        println!("Server response: {}", body);
 
         let json: JsonValue = serde_json::from_str(&body)?;
 
