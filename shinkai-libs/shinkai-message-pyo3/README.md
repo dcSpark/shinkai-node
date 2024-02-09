@@ -23,5 +23,6 @@ In case you run into any issues with compiling the library, please try the follo
 ### MacOS
 
 In case the default installation process on MacOS happens to not work as expected (for example by using `brew install maturin`), please verify if your `Xcode Command Line Tools` are installed correctly. If they aren't, try to run `xcode-select --install` first and make sure the installation is completed before proceeding to `maturin` installation.
+Version of `xcode-select` tooling (`package-id: com.apple.pkg.CLTools_Executables`) tested is `15.1`.
 
 If that doesn't work, you can run `Dockerfile.build` file which uses docker to perform library build.
