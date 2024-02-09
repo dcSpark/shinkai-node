@@ -1,14 +1,13 @@
+use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
-
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
-use scraper::{Html, Selector};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,34 +100,6 @@ impl UnstructuredAPI {
         .await
     }
 
-    #[cfg(feature = "native-http")]
-    /// If the file provided is an html file, attempt to extract out the core content to improve
-    /// overall quality of UnstructuredElements returned.
-    pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
-        if file_name.ends_with(".html") || file_name.ends_with(".htm") {
-            let file_content = String::from_utf8_lossy(&file_buffer);
-            let document = Html::parse_document(&file_content);
-
-            // If the file is from GitHub, use a specific selector for GitHub's layout
-            if file_name.contains("github.com") {
-                if let Ok(layout_selector) = Selector::parse(".entry-content") {
-                    if let Some(layout_element) = document.select(&layout_selector).next() {
-                        return layout_element.inner_html().into_bytes();
-                    }
-                }
-            } else {
-                // Try to select the 'main', 'article' tag or a class named 'main'
-                if let Ok(main_selector) = Selector::parse("main, .main, article") {
-                    if let Some(main_element) = document.select(&main_selector).next() {
-                        return main_element.inner_html().into_bytes();
-                    }
-                }
-            }
-        }
-
-        file_buffer
-    }
-
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
     pub fn file_request_blocking(
@@ -137,7 +108,7 @@ impl UnstructuredAPI {
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::blocking::Client::new();
-        let file_buffer = self.extract_core_content(file_buffer, file_name);
+        let file_buffer = extract_core_content(file_buffer, file_name);
 
         let part = blocking_multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
@@ -195,7 +166,7 @@ impl UnstructuredAPI {
         file_buffer: &[u8],
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
-        let file_buffer = self.extract_core_content(file_buffer.to_vec(), file_name);
+        let file_buffer = extract_core_content(file_buffer.to_vec(), file_name);
 
         let part = multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
