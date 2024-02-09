@@ -1,6 +1,5 @@
 use scraper::{Html, Selector};
 
-#[cfg(feature = "native-http")]
 /// If the file provided is an html file, attempt to extract out the core content to improve
 /// overall quality of UnstructuredElements returned.
 pub fn extract_core_content(file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
