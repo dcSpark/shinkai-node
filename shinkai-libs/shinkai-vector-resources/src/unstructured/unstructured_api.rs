@@ -4,6 +4,7 @@ use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
+
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
@@ -105,7 +106,9 @@ impl UnstructuredAPI {
     /// overall quality of UnstructuredElements returned.
     pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
         if file_name.ends_with(".html") || file_name.ends_with(".htm") {
+            println!("detected html file");
             let file_content = String::from_utf8_lossy(&file_buffer);
+            println!("\n\nOriginal html: {:?}\n\n", &file_content);
             let document = Html::parse_document(&file_content);
 
             // Try to select the 'main', 'article' tag or a class named 'main'
@@ -155,15 +158,38 @@ impl UnstructuredAPI {
         Ok(elements)
     }
 
-    /// Makes an async request to process a file in a buffer into a list of
-    /// UnstructuredElements
+    /// Makes an async request to process a file in a buffer into a list of UnstructuredElements
     pub async fn file_request(
         &self,
-        file_buffer: Vec<u8>,
+        mut file_buffer: Vec<u8>,
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::Client::new();
-        let file_buffer = self.extract_core_content(file_buffer, file_name);
+
+        // First attempt with the original file_buffer
+        let attempt = self.send_file_request(&client, &file_buffer, file_name).await;
+
+        match attempt {
+            Ok(elements) => Ok(elements),
+            Err(_) => {
+                // If failed, retry with the cleaned file_buffer
+                let file_content_lossy = String::from_utf8_lossy(&file_buffer);
+                let cleaned_content = clean_string_for_gb2312(&file_content_lossy);
+                file_buffer = cleaned_content.into_bytes();
+
+                self.send_file_request(&client, &file_buffer, file_name).await
+            }
+        }
+    }
+
+    /// Internal method that makes the actual file request
+    async fn send_file_request(
+        &self,
+        client: &reqwest::Client,
+        file_buffer: &[u8],
+        file_name: &str,
+    ) -> Result<Vec<UnstructuredElement>, VRError> {
+        let file_buffer = self.extract_core_content(file_buffer.to_vec(), file_name);
 
         let part = multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
@@ -189,4 +215,23 @@ impl UnstructuredAPI {
         let elements = UnstructuredParser::parse_response_json(json)?;
         Ok(elements)
     }
+}
+
+/// Removes characters from a string that are not representable in 'gb2312'.
+/// Encodes a string to 'gb2312' and decodes it back, effectively removing characters
+/// not representable in 'gb2312'.
+fn clean_string_for_gb2312(input: &str) -> String {
+    // Encode the input string to 'gb2312'. Unsupported characters will be handled
+    // according to the library's default behavior (likely replaced or ignored).
+    let encoded = textcode::gb2312::encode_to_vec(input);
+
+    // Prepare an empty String to hold the decoded output.
+    let mut decoded = String::new();
+
+    // Decode the 'gb2312' encoded bytes back into a String.
+    // This step assumes that the encoding process has already filtered
+    // out or replaced unsupported characters.
+    textcode::gb2312::decode(&encoded, &mut decoded);
+
+    decoded
 }

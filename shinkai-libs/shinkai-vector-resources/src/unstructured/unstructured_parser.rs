@@ -17,18 +17,21 @@ pub struct UnstructuredParser;
 impl UnstructuredParser {
     /// Parses the JSON Array response from Unstructured into a list of `UnstructuredElement`s
     pub fn parse_response_json(json: JsonValue) -> Result<Vec<UnstructuredElement>, VRError> {
-        if let JsonValue::Array(array) = json {
+        if let JsonValue::Array(array) = &json {
             let mut elements = Vec::new();
             for item in array {
-                let element: UnstructuredElement = serde_json::from_value(item)
-                    .map_err(|err| VRError::FailedParsingUnstructedAPIJSON(err.to_string()))?;
+                let element: UnstructuredElement = serde_json::from_value(item.clone()).map_err(|err| {
+                    VRError::FailedParsingUnstructedAPIJSON(format!("{}: {}", err.to_string(), json.to_string()))
+                })?;
                 elements.push(element);
             }
             Ok(elements)
         } else {
-            Err(VRError::FailedParsingUnstructedAPIJSON(
-                "Response is not an array at top level".to_string(),
-            ))
+            Err(VRError::FailedParsingUnstructedAPIJSON(format!(
+                "{}: {}",
+                "Response is not an array at top level: ".to_string(),
+                json.to_string()
+            )))
         }
     }
 
