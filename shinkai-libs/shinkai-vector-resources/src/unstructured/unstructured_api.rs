@@ -1,3 +1,4 @@
+use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
@@ -7,7 +8,6 @@ use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
-use scraper::{Html, Selector};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,25 +100,6 @@ impl UnstructuredAPI {
         .await
     }
 
-    #[cfg(feature = "native-http")]
-    /// If the file provided is an html file, attempt to extract out the core content to improve
-    /// overall quality of UnstructuredElements returned.
-    pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
-        if file_name.ends_with(".html") || file_name.ends_with(".htm") {
-            let file_content = String::from_utf8_lossy(&file_buffer);
-            let document = Html::parse_document(&file_content);
-
-            // Try to select the 'main', 'article' tag or a class named 'main'
-            if let Ok(main_selector) = Selector::parse("main, .main, article") {
-                if let Some(main_element) = document.select(&main_selector).next() {
-                    return main_element.inner_html().into_bytes();
-                }
-            }
-        }
-
-        file_buffer
-    }
-
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
     pub fn file_request_blocking(
@@ -127,7 +108,7 @@ impl UnstructuredAPI {
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::blocking::Client::new();
-        let file_buffer = self.extract_core_content(file_buffer, file_name);
+        let file_buffer = extract_core_content(file_buffer, file_name);
 
         let part = blocking_multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
@@ -147,7 +128,6 @@ impl UnstructuredAPI {
         let res = request_builder.send()?;
 
         let body = res.text()?;
-        println!("Server response: {}", body);
 
         let json: JsonValue = serde_json::from_str(&body)?;
 
@@ -155,15 +135,38 @@ impl UnstructuredAPI {
         Ok(elements)
     }
 
-    /// Makes an async request to process a file in a buffer into a list of
-    /// UnstructuredElements
+    /// Makes an async request to process a file in a buffer into a list of UnstructuredElements
     pub async fn file_request(
         &self,
-        file_buffer: Vec<u8>,
+        mut file_buffer: Vec<u8>,
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::Client::new();
-        let file_buffer = self.extract_core_content(file_buffer, file_name);
+
+        // First attempt with the original file_buffer
+        let attempt = self.send_file_request(&client, &file_buffer, file_name).await;
+
+        match attempt {
+            Ok(elements) => Ok(elements),
+            Err(_) => {
+                // If failed, retry with the cleaned file_buffer
+                let file_content_lossy = String::from_utf8_lossy(&file_buffer);
+                let cleaned_content = clean_string_for_gb2312(&file_content_lossy);
+                file_buffer = cleaned_content.into_bytes();
+
+                self.send_file_request(&client, &file_buffer, file_name).await
+            }
+        }
+    }
+
+    /// Internal method that makes the actual file request
+    async fn send_file_request(
+        &self,
+        client: &reqwest::Client,
+        file_buffer: &[u8],
+        file_name: &str,
+    ) -> Result<Vec<UnstructuredElement>, VRError> {
+        let file_buffer = extract_core_content(file_buffer.to_vec(), file_name);
 
         let part = multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
@@ -189,4 +192,23 @@ impl UnstructuredAPI {
         let elements = UnstructuredParser::parse_response_json(json)?;
         Ok(elements)
     }
+}
+
+/// Removes characters from a string that are not representable in 'gb2312'.
+/// Encodes a string to 'gb2312' and decodes it back, effectively removing characters
+/// not representable in 'gb2312'.
+fn clean_string_for_gb2312(input: &str) -> String {
+    // Encode the input string to 'gb2312'. Unsupported characters will be handled
+    // according to the library's default behavior (likely replaced or ignored).
+    let encoded = textcode::gb2312::encode_to_vec(input);
+
+    // Prepare an empty String to hold the decoded output.
+    let mut decoded = String::new();
+
+    // Decode the 'gb2312' encoded bytes back into a String.
+    // This step assumes that the encoding process has already filtered
+    // out or replaced unsupported characters.
+    textcode::gb2312::decode(&encoded, &mut decoded);
+
+    decoded
 }

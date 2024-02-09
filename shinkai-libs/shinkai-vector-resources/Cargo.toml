@@ -25,7 +25,7 @@ chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.5"
 rand = "0.8.4"
 hex = "=0.4.3"
-# llm = { git = "https://github.com/rustformers/llm", branch="main"} 
+textcode = "0.2.2"
 
 [build-dependencies]
 reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking", "multipart"] }

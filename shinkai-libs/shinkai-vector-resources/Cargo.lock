@@ -1348,6 +1348,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "textcode",
  "tokio",
 ]
 
@@ -1487,6 +1488,12 @@ checksum = "be55cf8942feac5c765c2c993422806843c9a9a45d4d5c407ad6dd2ea95eb9b6"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "textcode"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "383d5314770f8b7b2129936c78638db0dad1cfc9e7ef78706d4ccf9f0a0677fd"
 
 [[package]]
 name = "tinyvec"

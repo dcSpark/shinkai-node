@@ -1887,6 +1887,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "textcode",
 ]
 
 [[package]]
@@ -2041,6 +2042,12 @@ checksum = "6093bad37da69aab9d123a8091e4be0aa4a03e4d601ec641c327398315f62b64"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "textcode"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "383d5314770f8b7b2129936c78638db0dad1cfc9e7ef78706d4ccf9f0a0677fd"
 
 [[package]]
 name = "thiserror"

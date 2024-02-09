@@ -450,8 +450,14 @@ impl SourceFileType {
     /// Clones and cleans the input string of its file extension at the end, if it exists.
     pub fn clean_string_of_extension(file_name: &str) -> String {
         let re = Regex::new(r"\.[^.]+$").unwrap();
-        let file_name_without_extension = re.replace(file_name, "");
-        file_name_without_extension.to_string()
+        let file_name_without_extension = re.replace(file_name, "").to_string();
+
+        // Check if the result is empty, return the original file_name if so
+        if file_name_without_extension.is_empty() {
+            file_name.to_string()
+        } else {
+            file_name_without_extension
+        }
     }
 }
 
