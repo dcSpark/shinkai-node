@@ -109,10 +109,19 @@ impl UnstructuredAPI {
             let file_content = String::from_utf8_lossy(&file_buffer);
             let document = Html::parse_document(&file_content);
 
-            // Try to select the 'main', 'article' tag or a class named 'main'
-            if let Ok(main_selector) = Selector::parse("main, .main, article") {
-                if let Some(main_element) = document.select(&main_selector).next() {
-                    return main_element.inner_html().into_bytes();
+            // If the file is from GitHub, use a specific selector for GitHub's layout
+            if file_name.contains("github.com") {
+                if let Ok(layout_selector) = Selector::parse(".entry-content") {
+                    if let Some(layout_element) = document.select(&layout_selector).next() {
+                        return layout_element.inner_html().into_bytes();
+                    }
+                }
+            } else {
+                // Try to select the 'main', 'article' tag or a class named 'main'
+                if let Ok(main_selector) = Selector::parse("main, .main, article") {
+                    if let Some(main_element) = document.select(&main_selector).next() {
+                        return main_element.inner_html().into_bytes();
+                    }
                 }
             }
         }
