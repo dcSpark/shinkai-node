@@ -28,7 +28,7 @@ hex = "=0.4.3"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [build-dependencies]
-reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
 
 [features]
 default = ["native-http"]

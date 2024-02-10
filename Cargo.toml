@@ -16,7 +16,7 @@ doctest = false
 
 [build-dependencies]
 prost-build = "0.8.0"
-reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking", "stream"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 
 [dependencies]
 async-trait = "0.1.50"
@@ -41,7 +41,7 @@ anyhow = "1.0"
 regex = "1"
 csv = "1.1.6"
 uuid = { version = "0.8", features = ["v4"] }
-reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking"] }
 # llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 ordered-float = "3.7.0"
 keyphrases = "0.3.2"
@@ -55,7 +55,6 @@ urlencoding = "1.1.1"
 hex = "=0.4.3"
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
-tiktoken-rs = "0.5.6"
 async-recursion = "1.0.5"
 cron-parser = "0.8.1"
 thiserror = "1.0.50"
@@ -66,6 +65,7 @@ dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tiktoken-rs = "0.5.8"
 
 [dependencies.opentelemetry]
 version = "0.21.0"
