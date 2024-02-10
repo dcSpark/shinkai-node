@@ -10,11 +10,11 @@ edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "1.5.1", features = [] }
-reqwest = { version = "0.11.20", features = ["json", "tokio-native-tls", "blocking", "stream"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 
 [dependencies]
 dotenv = "0.15.0"
-reqwest = { version = "0.11.20", features = ["json", "tokio-native-tls", "blocking", "stream"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 tauri = { version = "1.5.4", features = [ "system-tray", "shell-open", "icon-ico", "icon-png"] }
 serde_json = "1.0.105"
 shinkai_node = { path = "../../../shinkai-node", features = ["stream"] }

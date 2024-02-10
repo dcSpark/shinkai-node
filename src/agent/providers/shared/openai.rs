@@ -113,10 +113,9 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, pr
         .filter(|message| message.name.as_deref() != Some("image"))
         .collect();
 
-    let used_tokens = tiktoken_rs::num_tokens_from_messages(
-        ModelCapabilitiesManager::normalize_model(&model.clone()).as_str(),
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(
         &filtered_tiktoken_messages,
-    )?;
+    ).map_err(AgentError::TokenizationError)?;
     let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
     max_tokens = std::cmp::min(max_tokens, ModelCapabilitiesManager::get_max_output_tokens(&model.clone()));
 

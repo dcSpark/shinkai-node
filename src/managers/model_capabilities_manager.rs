@@ -2,7 +2,10 @@ use crate::{
     agent::{
         error::AgentError,
         execution::job_prompts::Prompt,
-        providers::shared::{openai::openai_prepare_messages, togetherai::{llama_prepare_messages, llava_prepare_messages}},
+        providers::shared::{
+            openai::openai_prepare_messages,
+            togetherai::{llama_prepare_messages, llava_prepare_messages},
+        },
     },
     db::ShinkaiDB,
 };
@@ -11,7 +14,11 @@ use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
 };
-use std::{sync::{Arc, Weak}, fmt};
+use tiktoken_rs::{ChatCompletionRequestMessage, FunctionCall};
+use std::{
+    fmt,
+    sync::{Arc, Weak},
+};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -136,8 +143,12 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => vec![ModelCapability::TextInference],
-                "gpt-vision" | "gpt-4-vision-preview" | "PREMIUM_VISION_INFERENCE" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
+                    vec![ModelCapability::TextInference]
+                }
+                "gpt-vision" | "gpt-4-vision-preview" | "PREMIUM_VISION_INFERENCE" => {
+                    vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+                }
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
@@ -191,7 +202,9 @@ impl ModelCapabilitiesManager {
             AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
-                "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => ModelCost::GoodValue,
+                "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
+                    ModelCost::GoodValue
+                }
                 "dall-e" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
@@ -216,7 +229,7 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "PREMIUM_TEXT_INFERENCE"  => ModelPrivacy::RemoteGreedy,
+                "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 _ => ModelPrivacy::Unknown,
@@ -329,7 +342,9 @@ impl ModelCapabilitiesManager {
                 0
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type == "PREMIUM_TEXT_INFERENCE" || shinkai_backend.model_type == "PREMIUM_VISION_INFERENCE" {
+                if shinkai_backend.model_type == "PREMIUM_TEXT_INFERENCE"
+                    || shinkai_backend.model_type == "PREMIUM_VISION_INFERENCE"
+                {
                     128_000
                 } else if shinkai_backend.model_type == "STANDARD_TEXT_INFERENCE" {
                     32_000
@@ -406,5 +421,41 @@ impl ModelCapabilitiesManager {
                 "".to_string()
             }
         }
+    }
+
+    pub fn generic_token_estimation(text: &str) -> usize {
+        let average_token_size = 4;
+        let buffer_percentage = 0.1;
+        let char_count = text.chars().count();
+        let estimated_tokens = (char_count as f64 / average_token_size as f64).ceil() as usize;
+        let buffered_token_count = (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize;
+
+        buffered_token_count
+    }
+
+    pub fn num_tokens_from_messages(
+        messages: &[ChatCompletionRequestMessage],
+    ) -> Result<usize, String> {
+        let average_token_size = 4; // Average size of a token (in characters)
+        let buffer_percentage = 0.15; // Buffer to account for tokenization variance
+    
+        let mut total_characters = 0;
+        for message in messages {
+            total_characters += message.role.chars().count() + 1; // +1 for a space or newline after the role
+            if let Some(ref content) = message.content {
+                total_characters += content.chars().count() + 1; // +1 for spaces or newlines between messages
+            }
+            if let Some(ref name) = message.name {
+                total_characters += name.chars().count() + 1; // +1 for a space or newline after the name
+            }
+        }
+    
+        // Calculate estimated tokens without the buffer
+        let estimated_tokens = (total_characters as f64 / average_token_size as f64).ceil() as usize;
+    
+        // Apply the buffer to estimate the total token count
+        let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
+    
+        Ok(buffered_token_count)
     }
 }

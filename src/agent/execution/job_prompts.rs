@@ -1,5 +1,5 @@
 use super::super::error::AgentError;
-use crate::{agent::job::JobStepResult, tools::router::ShinkaiTool};
+use crate::{agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager, tools::router::ShinkaiTool};
 use futures::stream::ForEach;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use serde_json::to_string;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
-use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
+use tiktoken_rs::ChatCompletionRequestMessage;
 
 //
 // Core Job Step Flow
@@ -987,7 +987,7 @@ impl Prompt {
 
             // Only count tokens for non-image content
             if type_ != "image" {
-                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
+                let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&[new_message.clone()])
                     .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
 
                 current_length += new_message_tokens;
