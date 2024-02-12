@@ -52,6 +52,11 @@ pub enum AgentError {
     NetworkError(String),
     NoUserProfileFound,
     InvalidModelType(String),
+    ShinkaiBackendInvalidAuthentication(String),
+    ShinkaiBackendInvalidConfiguration(String),
+    ShinkaiBackendInferenceLimitReached(String),
+    ShinkaiBackendAIProviderError(String),
+    ShinkaiBackendUnexpectedStatusCode(u64),
 }
 
 impl fmt::Display for AgentError {
@@ -112,6 +117,12 @@ impl fmt::Display for AgentError {
             AgentError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
             AgentError::NetworkError(s) => write!(f, "Network error: {}", s),
             AgentError::InvalidModelType(s) => write!(f, "Invalid model type: {}", s),
+            AgentError::ShinkaiBackendInvalidAuthentication(s) => write!(f, "Shinkai Backend Invalid authentication: {}", s),
+            AgentError::ShinkaiBackendInvalidConfiguration(s) => write!(f, "Shinkai Backend Invalid configuration: {}", s),
+            AgentError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference limit reached: {}", s),
+            AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI provider error: {}", s),
+            AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected status code: {}", code),
+     
         }
     }
 }
