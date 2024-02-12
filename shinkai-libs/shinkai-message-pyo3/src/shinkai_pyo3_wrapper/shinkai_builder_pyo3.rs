@@ -1,3 +1,5 @@
+use std::{convert::TryInto, str::FromStr};
+
 use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
 
 use super::{
@@ -301,7 +303,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
-    fn create_custom_shinkai_message_to_node(
+    pub fn create_custom_shinkai_message_to_node(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
@@ -314,6 +316,17 @@ impl PyShinkaiMessageBuilder {
         schema: Py<PyMessageSchemaType>,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
+            println!("my_subidentity_encryption_sk: {}", my_subidentity_encryption_sk);
+            println!("my_subidentity_signature_sk: {}", my_subidentity_signature_sk);
+            println!("receiver_public_key: {}", receiver_public_key);
+            println!("data: {}", data);
+            println!("sender: {}", sender);
+            println!("sender_subidentity: {}", sender_subidentity);
+            println!("recipient: {}", recipient);
+            println!("recipient_subidentity: {}", recipient_subidentity);
+            println!("other: {}", other);
+            println!("schema: {:?}", schema);
+
             let builder_result = PyShinkaiMessageBuilder::new(
                 my_subidentity_encryption_sk,
                 my_subidentity_signature_sk,
@@ -1147,7 +1160,7 @@ impl PyShinkaiMessageBuilder {
             };
             let job_creation = JobCreationInfo {
                 scope: scope.inner.clone(),
-                is_hidden: Some(is_hidden)
+                is_hidden: Some(is_hidden),
             };
 
             let body = match serde_json::to_string(&job_creation) {
@@ -1197,6 +1210,88 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    pub fn job_creation_encrypted(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        scope: Py<PyJobScope>,
+        is_hidden: bool,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let scope: PyJobScope = match scope.extract(py) {
+                Ok(scope) => scope,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to deserialize scope from JSON",
+                    ))
+                }
+            };
+
+            let job_creation = JobCreationInfo {
+                scope: scope.inner.clone(),
+                is_hidden: Some(is_hidden),
+            };
+
+            let mut builder = match PyShinkaiMessageBuilder::new(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+            ) {
+                Ok(builder) => builder,
+                Err(e) => return Err(e),
+            };
+
+            let message_schema = match Py::new(py, PyMessageSchemaType::new("JobCreationSchema".to_string())?) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            let encryption = match Py::new(py, PyEncryptionMethod::new(Some("None"))) {
+                Ok(encryption) => encryption,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create encryption method",
+                    ))
+                }
+            };
+
+            let body = serde_json::to_string(&job_creation).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to serialize job creation to JSON: {}",
+                    e
+                ))
+            })?;
+            let _ = builder.message_raw_content(body);
+            let _ = builder.internal_metadata_with_schema(
+                sender_subidentity.clone(),
+                node_receiver_subidentity.clone(),
+                "".to_string(),
+                message_schema,
+                encryption,
+            );
+
+            let encryption_method = PyEncryptionMethod {
+                inner: EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            };
+            let py_encryption_method = Py::new(py, encryption_method)?;
+            let _ = builder.body_encryption(py_encryption_method);
+            let _ = builder.external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity);
+
+            builder.build_to_string()
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
     #[staticmethod]
     pub fn job_message(
         job_id: String,

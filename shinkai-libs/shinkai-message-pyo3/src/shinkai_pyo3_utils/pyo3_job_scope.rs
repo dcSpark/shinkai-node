@@ -1,12 +1,14 @@
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
+use serde::Deserialize;
+use serde::Serialize;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSScopeEntry;
 
 #[pyclass]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PyJobScope {
     pub inner: JobScope,
 }
