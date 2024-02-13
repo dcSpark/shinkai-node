@@ -6,6 +6,7 @@ use super::shinkai_message_schemas::MessageSchemaType;
 pub struct ShinkaiMessage {
     pub body: MessageBody,
     pub external_metadata: ExternalMetadata,
+    pub api_data: Option<APIData>,
     pub encryption: EncryptionMethod,
     pub version: ShinkaiVersion
 }
@@ -33,6 +34,13 @@ pub struct ExternalMetadata {
     pub signature: String,
     pub intra_sender: String,
     pub other: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct APIData {
+    pub parent_hash: Option<String>,
+    pub node_message_hash: String,
+    pub node_timestamp: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

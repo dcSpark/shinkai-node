@@ -374,6 +374,7 @@ impl ShinkaiMessageBuilder {
                     message_data: new_message_data.clone(),
                     internal_metadata: internal_metadata.clone(),
                 }),
+                api_data: None,
                 encryption: new_self.encryption.clone(),
                 external_metadata: new_self.external_metadata.clone().unwrap(),
                 version: new_self.version.clone(),
@@ -418,6 +419,7 @@ impl ShinkaiMessageBuilder {
                 encryption: new_self.encryption.clone(),
                 external_metadata: new_self.external_metadata.clone().unwrap(),
                 version: new_self.version.clone(),
+                api_data: None,
             };
             let signed_msg = unsigned_msg
                 .sign_outer_layer(&new_self.my_signature_secret_key)

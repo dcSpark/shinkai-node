@@ -321,6 +321,7 @@ mod tests {
                 other: "".into(),
                 intra_sender: "".into(),
             },
+            api_data: None,
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
         };
@@ -360,6 +361,7 @@ mod tests {
                 other: "".into(),
                 intra_sender: "".into(),
             },
+            api_data: None,
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
         };
@@ -471,6 +473,7 @@ mod tests {
                 other: "".into(),
                 intra_sender: "".into(),
             },
+            api_data: None,
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
         };
@@ -507,6 +510,7 @@ mod tests {
                 other: "".into(),
                 intra_sender: "".into(),
             },
+            api_data: None,
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
         };
