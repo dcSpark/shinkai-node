@@ -88,7 +88,7 @@ impl VFSReader {
 impl VectorFS {
     /// Retrieves a simplified JSON String representation of the FSEntry at the reader's path in the VectorFS.
     /// This is the representation that should be sent to frontends to visualize the VectorFS.
-    pub fn retrieve_fs_path_info_json(&mut self, reader: &VFSReader) -> Result<String, VectorFSError> {
+    pub fn retrieve_fs_path_simplified_json(&mut self, reader: &VFSReader) -> Result<String, VectorFSError> {
         let entry = self.retrieve_fs_entry(reader)?;
         return entry.to_json_simplified();
     }

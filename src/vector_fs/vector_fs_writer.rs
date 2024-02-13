@@ -405,8 +405,6 @@ impl VectorFS {
     }
 
     /// Creates a new FSFolder at the writer's path.
-    /// If a VR with the same name already exists underneath the current path, then overwrites it.
-    /// Currently does not support saving into VecFS root.
     pub fn create_new_folder(&mut self, writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
         let current_datetime = ShinkaiTime::generate_time_now();
