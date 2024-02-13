@@ -1,4 +1,4 @@
-# VectorFS Documentation
+# VectorFS In-Node Rust Documentation
 
 ## Introduction
 
@@ -75,7 +75,7 @@ pub struct FSItem {
 
 ### Understanding Permissions in The VectorFS
 
-Every path into the VectorFS which holds an FSEntry has a PathPermission specified for it. The `PathPermission` consists of:
+Every path into the VectorFS holds an FSEntry has a PathPermission specified for it. The `PathPermission` consists of:
 
 - **ReadPermission**: Determines who can read the contents of a path. It can be one of the following:
 
@@ -117,11 +117,11 @@ The VectorFS comprises several key components, each playing a vital role in the 
 
 - **VectorFS**: The central struct that wraps all functionality related to the Vector File System. It maintains a map of `VectorFSInternals` for all profiles on the node, handles the database interactions, and manages permissions and access controls. This is the main struct you will use to interface with the VectorFS.
 
-- **VectorFSInternals**: A struct that contains the internal data of the VectorFS for a specific profile, including permissions, supported embedding models, and everything else.
+- **VectorFSInternals**: A struct that contains the internal data + auxillary metadata of the VectorFS for a specific profile, including permissions, supported embedding models, and everything else.
 
 - **VectorFSDB**: The database layer for the VectorFS, responsible for persisting the file system's state, including profiles, permissions, and file entries.
 
-#### Interacting with VectorFS
+### Interacting with VectorFS
 
 To interact with the VectorFS, two extra structs of note are required which deal with all permissioning in a streamlined manner: `VFSReader` and `VFSWriter`.
 
@@ -129,26 +129,103 @@ To interact with the VectorFS, two extra structs of note are required which deal
 
 - **VFSWriter**: Similar to `VFSReader`, but for write operations. A `VFSWriter` instance grants the ability to perform write actions under a specific profile and specific path, following successful permission validation.
 
-### Workflow
+Once you have created a Reader you can use the following methods on the VectorFS struct for retrieval from the file system:
+
+- `retrieve_fs_path_simplified_json(&mut self, reader: &VFSReader) -> Result<String, VectorFSError>`: Retrieves a simplified JSON String representation of the FSEntry at the reader's path in the VectorFS. (To sent a summary of a profile's whole FS to frontends, target root `/` with this endpoint)
+- `retrieve_vector_resource(reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError>`: Attempts to retrieve a VectorResource from inside an FSItem at the path specified in reader.
+- `vector_search_fs_item(reader: &VFSReader, query: Embedding, num_of_results: u64) -> Result<Vec<FSItem>, VectorFSError>`: Performs a vector search into the VectorFS starting at the reader's path, returning the most similar FSItems (which can be converted via `.to_json_simplified()` before passing to frontends).
+- And more
+
+Once you have created a Writer, you can use the following methods on the VectorFS struct:
+
+- `create_new_folder(writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError>`: Creates a new FSFolder at the writer's path.
+
+- `save_vector_resource_in_folder(writer: &VFSWriter, resource: BaseVectorResource, source_file_map: Option<SourceFileMap>, distribution_origin: DistributionOrigin) -> Result<FSItem, VectorFSError>`: Saves a Vector Resource and optional SourceFileMap into an FSItem, underneath the FSFolder at the writer's path. If an FSItem with the same name (as the VR) already exists underneath the current path, then it updates (overwrites) it. This method does not support saving into the VecFS root.
+
+- `copy_folder(writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError>`: Copies the FSFolder from the writer's path into being held underneath the destination_path.
+
+- `copy_item(writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError>`: Copies the FSItem from the writer's path into being held underneath the destination_path. This method does not support copying into the VecFS root.
+
+- `move_item(writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError>`: Moves the FSItem from the writer's path into being held underneath the destination_path. This method does not support moving into the VecFS root.
+
+- `move_folder(writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError>`: Moves the FSFolder from the writer's path into being held underneath the destination_path. This method supports moving into the VecFS root.
+
+- And more
+
+#### Workflow
 
 1. **Initialization**: Upon the Shinkai Node's startup, the VectorFS is initialized, setting up the necessary structures for all profiles based on the node's configuration.
 
-2. **Creating Readers and Writers**: Before performing any operations on the VectorFS, a valid `VFSReader` or `VFSWriter` must be created. This involves validating the requester's permissions for the desired action (read or write) at the specified path.
+2. **Creating Readers and Writers**: Before performing any operations on the VectorFS, a valid `VFSReader` or `VFSWriter` must be created. This involves validating the requester_name has permissions for the desired action (read or write) at the specified path (when user is interacting through frontends, then requester_name should be specified to be the user's profile).
 
-3. **Performing Operations**: With a valid `VFSReader` or `VFSWriter`, various operations can be performed on the VectorFS, such as retrieving file entries, writing data, and managing permissions.
+3. **Performing Operations**: With a valid `VFSReader` or `VFSWriter`, various operations can be performed on the VectorFS, such as retrieving file entries, writing data, etc.
 
-### Example Usage
+## Example Usage Inside The Node
 
-To read from a specific path in the VectorFS:
+#### Creating a Folder
 
-1. Create a `VFSReader` by validating read permissions for the requester.
-2. Use the `VFSReader` to perform read operations, such as retrieving file entries.
+Assuming that we are in the node and have access to the initialized VectorFS (which is set accessible as a field under the `Node` struct ) we can create a folder in root as such:
 
-To write to a specific path in the VectorFS:
-
-1. Create a `VFSWriter` by validating write permissions for the requester.
-2. Use the `VFSWriter` to perform write operations, such as adding or modifying file entries.
-
+```rust
+    let path = VRPath::new();
+    let writer = vector_fs
+        .new_writer(requester_name, path.clone(), profile_name)
+        .unwrap();
+    let folder_name = "first_folder";
+    let folder = vector_fs.create_new_folder(&writer, folder_name.clone()).unwrap();
+    // And the json can be sent back to the frontend to show all details of the new folder
+    let folder_json = folder.to_json_simplified().unwrap();
 ```
 
+#### Saving A Vector Resource Into An FSItem
+
+Once a folder is created, we can save a BaseVectorResource (ie. One that was generated in the local scope of a job) into as an FSItem in the folder:
+
+```rust
+    let folder_path = path.push_cloned(folder_name);
+    let writer = vector_fs
+        .new_writer(requester_name, folder_path.clone(), profile_name)
+        .unwrap();
+    let item = vector_fs
+        .save_vector_resource_in_folder(
+            &writer,
+            resource.clone(),
+            None,
+            DistributionOrigin::None,
+        )
+        .unwrap();
+
+    // And the json can be sent back to the frontend to show all details of the new item
+    let item_json = item.to_json_simplified().unwrap();
+```
+
+#### Reading The Whole VectorFS As Json
+
+From there, the whole VectorFS of the profile can be retrieved as a simplified JSON representation for the frontend to visualize via:
+
+```rust
+    let reader = vector_fs.new_reader(requester_name, VRPath::root(), profile_name).unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+```
+
+#### Performing Vector Searches On The VectorFS
+
+You can also perform a Vector Search starting from the root (or any path which is a FSFolder) of the VectorFS:
+
+```rust
+    let reader = vector_fs.new_reader(requester_name, VRPath::root(), profile_name).unwrap();
+    let query_string = "Who is building Shinkai?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+
+    // If you just want to return the simplified json representation
+    let items = vector_fs.vector_search_fs_item(&reader, query_embedding, 5).unwrap();
+    let first_item_json = items[0].to_json_simplified().unwrap();
+
+
+    // If you want to return the actual VectorResource encoded as JSON (which the encoding stored in .vrkai files)
+    let resources = vector_fs.vector_search_vector_resource(&reader, query_embedding, 5).unwrap();
+    let resource_json = items[0].to_json().unwrap();
 ```
