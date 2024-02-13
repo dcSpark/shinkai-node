@@ -86,8 +86,14 @@ impl VFSReader {
 }
 
 impl VectorFS {
-    /// Retrieves the FSEntry for the reader's path in the VectorFS. If path is root `/`, then returns a
-    /// FSFolder that matches the FS root structure.
+    /// Retrieves a simplified JSON String representation of the FSEntry at the reader's path in the VectorFS.
+    /// This is the representation that should be sent to frontends to visualize the VectorFS.
+    pub fn retrieve_fs_path_info_json(&mut self, reader: &VFSReader) -> Result<String, VectorFSError> {
+        let entry = self.retrieve_fs_entry(reader)?;
+        return entry.to_json_simplified();
+    }
+
+    /// Retrieves the FSEntry for the reader's path in the VectorFS.
     pub fn retrieve_fs_entry(&mut self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
         let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
 
