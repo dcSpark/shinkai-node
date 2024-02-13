@@ -102,8 +102,13 @@ impl From<FSFolder> for FSRoot {
 /// Actual data represented by a FSFolder is a VectorResource-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSFolder {
+    /// Name of the FSFolder
+    pub name: String,
+    /// Path where the FSItem is held in the VectorFS
     pub path: VRPath,
+    /// FSFolders which are held within this FSFolder
     pub child_folders: Vec<FSFolder>,
+    /// FSItems which are held within this FSFolder
     pub child_items: Vec<FSItem>,
     /// Datetime the FSFolder was first created
     pub created_datetime: DateTime<Utc>,
@@ -131,7 +136,9 @@ impl FSFolder {
         last_modified_datetime: DateTime<Utc>,
         merkle_hash: String,
     ) -> Self {
+        let name = path.last_path_id().unwrap_or("/".to_string());
         Self {
+            name,
             path,
             child_folders,
             child_items,
@@ -263,6 +270,8 @@ impl FSFolder {
 /// Actual data represented by a FSItem is a VRHeader-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSItem {
+    /// Name of the FSItem (based on Vector Resource name)
+    pub name: String,
     /// Path where the FSItem is held in the VectorFS
     pub path: VRPath,
     /// The VRHeader matching the Vector Resource stored at this FSItem's path
@@ -303,7 +312,9 @@ impl FSItem {
         source_file_map_size: usize,
         merkle_hash: String,
     ) -> Self {
+        let name = vr_header.resource_name.clone();
         Self {
+            name,
             path,
             vr_header,
             created_datetime,
@@ -320,7 +331,7 @@ impl FSItem {
 
     /// Returns the name of the FSItem (based on the name in VRHeader)
     pub fn name(&self) -> String {
-        self.vr_header.resource_name.to_string()
+        self.name.clone()
     }
 
     /// DB key where the Vector Resource matching this FSEntry is held.
