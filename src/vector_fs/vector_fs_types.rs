@@ -1,10 +1,10 @@
 use super::vector_fs_error::VectorFSError;
 use chrono::{DateTime, Utc};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::{schemas::shinkai_name::ShinkaiName, shinkai_utils::job_scope::VectorFSScopeEntry};
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
-    vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRPath},
+    vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRKeywords, VRPath},
 };
 use std::{collections::HashMap, mem::discriminant};
 
@@ -49,6 +49,15 @@ impl FSEntry {
         Ok(serde_json::to_string(self)?)
     }
 
+    /// Converts the FSEntry to a "simplified" JSON string by calling simplified methods on items/folders/roots
+    pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
+        match self {
+            FSEntry::Item(item) => item.to_json_simplified(),
+            FSEntry::Folder(folder) => folder.to_json_simplified(),
+            FSEntry::Root(root) => root.to_json_simplified(),
+        }
+    }
+
     /// Creates a FSEntry from a JSON string
     pub fn from_json(s: &str) -> Result<Self, VectorFSError> {
         Ok(serde_json::from_str(s)?)
@@ -61,7 +70,6 @@ impl FSEntry {
 pub struct FSRoot {
     pub path: VRPath,
     pub child_folders: Vec<FSFolder>,
-    pub child_items: Vec<FSItem>,
     // Datetime when the profile's VectorFS was created
     pub created_datetime: DateTime<Utc>,
     /// Datetime which is updated whenever any writes take place. In other words, when
@@ -83,6 +91,21 @@ impl FSRoot {
         let fs_folder = FSFolder::from_vector_resource(resource, VRPath::new(), lr_index, current_datetime)?;
         Ok(Self::from(fs_folder))
     }
+
+    /// Converts to a JSON string
+    pub fn to_json(&self) -> Result<String, VectorFSError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    /// Converts the FSRoot to a "simplified" JSON string without embeddings in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
+        let mut root = self.clone();
+        for child_folder in &mut root.child_folders {
+            *child_folder = serde_json::from_str(&child_folder.to_json_simplified()?)?;
+        }
+        Ok(serde_json::to_string(&root)?)
+    }
 }
 
 impl From<FSFolder> for FSRoot {
@@ -90,7 +113,6 @@ impl From<FSFolder> for FSRoot {
         Self {
             path: folder.path,
             child_folders: folder.child_folders,
-            child_items: folder.child_items,
             created_datetime: folder.created_datetime,
             last_written_datetime: folder.last_written_datetime,
             merkle_root: folder.merkle_hash,
@@ -102,8 +124,13 @@ impl From<FSFolder> for FSRoot {
 /// Actual data represented by a FSFolder is a VectorResource-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSFolder {
+    /// Name of the FSFolder
+    pub name: String,
+    /// Path where the FSItem is held in the VectorFS
     pub path: VRPath,
+    /// FSFolders which are held within this FSFolder
     pub child_folders: Vec<FSFolder>,
+    /// FSItems which are held within this FSFolder
     pub child_items: Vec<FSItem>,
     /// Datetime the FSFolder was first created
     pub created_datetime: DateTime<Utc>,
@@ -131,7 +158,9 @@ impl FSFolder {
         last_modified_datetime: DateTime<Utc>,
         merkle_hash: String,
     ) -> Self {
+        let name = path.last_path_id().unwrap_or("/".to_string());
         Self {
+            name,
             path,
             child_folders,
             child_items,
@@ -256,6 +285,25 @@ impl FSFolder {
     pub fn last_modified_key() -> String {
         String::from("last_modified")
     }
+
+    /// Converts to a JSON string
+    pub fn to_json(&self) -> Result<String, VectorFSError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    /// Converts the FSFolder to a "simplified" JSON string without embeddings in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
+        let mut folder = self.clone();
+        for item in &mut folder.child_items {
+            item.vr_header.resource_embedding = None;
+            item.vr_header.resource_keywords.keywords_embedding = None;
+        }
+        for child_folder in &mut folder.child_folders {
+            *child_folder = serde_json::from_str(&child_folder.to_json_simplified()?)?;
+        }
+        Ok(serde_json::to_string(&folder)?)
+    }
 }
 
 /// An external facing "file" abstraction used to make interacting with the VectorFS easier.
@@ -263,6 +311,8 @@ impl FSFolder {
 /// Actual data represented by a FSItem is a VRHeader-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSItem {
+    /// Name of the FSItem (based on Vector Resource name)
+    pub name: String,
     /// Path where the FSItem is held in the VectorFS
     pub path: VRPath,
     /// The VRHeader matching the Vector Resource stored at this FSItem's path
@@ -303,7 +353,9 @@ impl FSItem {
         source_file_map_size: usize,
         merkle_hash: String,
     ) -> Self {
+        let name = vr_header.resource_name.clone();
         Self {
+            name,
             path,
             vr_header,
             created_datetime,
@@ -320,7 +372,7 @@ impl FSItem {
 
     /// Returns the name of the FSItem (based on the name in VRHeader)
     pub fn name(&self) -> String {
-        self.vr_header.resource_name.to_string()
+        self.name.clone()
     }
 
     /// DB key where the Vector Resource matching this FSEntry is held.
@@ -382,6 +434,27 @@ impl FSItem {
 
             _ => Err(VRError::InvalidNodeType(node.id))?,
         }
+    }
+
+    /// Converts the FSItem into a VectorFSScopeEntry
+    pub fn as_scope_entry(&self) -> VectorFSScopeEntry {
+        VectorFSScopeEntry {
+            resource_header: self.vr_header.clone(),
+            vector_fs_path: self.path.clone(),
+        }
+    }
+
+    /// Converts to a JSON string
+    pub fn to_json(&self) -> Result<String, VectorFSError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    /// Converts the FSItem to a "simplified" JSON string without embeddings and keywords
+    pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
+        let mut item = self.clone();
+        item.vr_header.resource_embedding = None;
+        item.vr_header.resource_keywords = VRKeywords::new();
+        Ok(serde_json::to_string(&item)?)
     }
 
     /// Process the two last_saved datetimes in a Node from the VectorFS core resource.
