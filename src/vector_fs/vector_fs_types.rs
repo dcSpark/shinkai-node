@@ -1,6 +1,6 @@
 use super::vector_fs_error::VectorFSError;
 use chrono::{DateTime, Utc};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::{schemas::shinkai_name::ShinkaiName, shinkai_utils::job_scope::VectorFSScopeEntry};
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
@@ -392,6 +392,14 @@ impl FSItem {
             }
 
             _ => Err(VRError::InvalidNodeType(node.id))?,
+        }
+    }
+
+    /// Converts the FSItem into a VectorFSScopeEntry
+    pub fn as_scope_entry(&self) -> VectorFSScopeEntry {
+        VectorFSScopeEntry {
+            resource_header: self.vr_header.clone(),
+            vector_fs_path: self.path.clone(),
         }
     }
 
