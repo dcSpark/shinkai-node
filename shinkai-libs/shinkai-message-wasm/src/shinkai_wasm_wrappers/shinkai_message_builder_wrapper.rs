@@ -289,10 +289,10 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn build(&mut self) -> Result<ShinkaiMessageWrapper, JsValue> {
         if let Some(ref builder) = self.inner {
             // Print the hash to console if the target architecture is wasm
-            if cfg!(target_arch = "wasm32") {
-                let body = format!("{:?}", builder);
-                web_sys::console::log_1(&JsValue::from_str(&body));
-            }
+            // if cfg!(target_arch = "wasm32") {
+            //     let body = format!("{:?}", builder);
+            //     web_sys::console::log_1(&JsValue::from_str(&body));
+            // }
             match builder.build() {
                 Ok(shinkai_message) => {
                     let js_value = shinkai_message.to_jsvalue().map_err(WasmErrorWrapper)?;
@@ -312,10 +312,10 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn build_to_jsvalue(&mut self) -> Result<JsValue, JsValue> {
         if let Some(ref builder) = self.inner {
             // Print the hash to console if the target architecture is wasm
-            if cfg!(target_arch = "wasm32") {
-                let body = format!("{:?}", builder);
-                web_sys::console::log_1(&JsValue::from_str(&body));
-            }
+            // if cfg!(target_arch = "wasm32") {
+            //     let body = format!("{:?}", builder);
+            //     web_sys::console::log_1(&JsValue::from_str(&body));
+            // }
             match builder.build() {
                 Ok(shinkai_message) => shinkai_message
                     .to_jsvalue()
@@ -333,10 +333,10 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn build_to_string(&mut self) -> Result<String, JsValue> {
         if let Some(ref builder) = self.inner {
             // Print the hash to console if the target architecture is wasm
-            if cfg!(target_arch = "wasm32") {
-                let body = format!("{:?}", builder);
-                web_sys::console::log_1(&JsValue::from_str(&body));
-            }
+            // if cfg!(target_arch = "wasm32") {
+            //     let body = format!("{:?}", builder);
+            //     web_sys::console::log_1(&JsValue::from_str(&body));
+            // }
             match builder.build() {
                 Ok(shinkai_message) => {
                     let json =
