@@ -3073,10 +3073,6 @@ export function __wbindgen_error_new(arg0, arg1) {
     return addHeapObject(ret);
 };
 
-export function __wbg_log_1d3ae0273d8f4f8a(arg0) {
-    console.log(getObject(arg0));
-};
-
 export function __wbindgen_number_new(arg0) {
     const ret = arg0;
     return addHeapObject(ret);
