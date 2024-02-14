@@ -34,8 +34,12 @@ impl JobManager {
         }
 
         for key in &potential_keys {
-            if let Ok(value) = JobManager::extract_inference_json_response(response_json.clone(), key) {
-                return Ok((value, response_json));
+            let keys_to_try = [key.clone(), key[..1].to_uppercase() + &key[1..], key.to_uppercase()];
+
+            for key_variant in keys_to_try.iter() {
+                if let Ok(value) = JobManager::extract_inference_json_response(response_json.clone(), key_variant) {
+                    return Ok((value, response_json));
+                }
             }
         }
 
