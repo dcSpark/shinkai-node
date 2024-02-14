@@ -61,7 +61,8 @@ impl JobManager {
         // is finished and so just return the answer response as a cleaned String
         let response_json = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await?;
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
-            let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
+            let cleaned_answer =
+                ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(&answer_str));
             // println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
         }

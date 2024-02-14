@@ -1,5 +1,6 @@
 use super::job_prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
+use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::Job;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
@@ -118,6 +119,13 @@ impl JobManager {
                     ShinkaiLogLevel::Error,
                     "FailedExtractingJSONObjectFromResponse",
                 );
+                // First try to remove line breaks and re-parse
+                let cleaned_text = ParsingHelper::clean_json_response_line_breaks(&text);
+                if let Ok(json) = serde_json::from_str::<JsonValue>(&cleaned_text) {
+                    return Ok(json);
+                }
+
+                //
                 match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),

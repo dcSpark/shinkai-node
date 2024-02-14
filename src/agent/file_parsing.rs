@@ -129,6 +129,19 @@ impl ParsingHelper {
         Ok(resource)
     }
 
+    /// Removes `\n` when it's either in front or behind of a `{`, `}`, `"`, or `,`.
+    pub fn clean_json_response_line_breaks(json_string: &str) -> String {
+        json_string
+            .replace("\n{", "{")
+            .replace("{\n", "{")
+            .replace("\n}", "}")
+            .replace("}\n", "}")
+            .replace("\n\"", "\"")
+            .replace("\"\n", "\"")
+            .replace("\n,", ",")
+            .replace(",\n", ",")
+    }
+
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
     fn clean_name(name: &str) -> String {
         // Decode URL-encoded characters to simplify processing.
@@ -207,6 +220,21 @@ impl ParsingHelper {
             descriptions.push(description);
         }
         JobPromptGenerator::simple_doc_description(descriptions)
+    }
+
+    /// Given an input string, if the whole string parses into a JSON Value, then
+    /// reads through every key, and concatenates all of their values into a single output string.
+    /// If not parsable into JSON Value, then return original string as a copy.
+    /// To be used when inferencing with dumb LLMs.
+    pub fn flatten_to_content_if_json(string: &str) -> String {
+        match serde_json::from_str::<serde_json::Value>(string) {
+            Ok(serde_json::Value::Object(obj)) => obj
+                .values()
+                .map(|v| v.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<String>>()
+                .join(". "),
+            _ => string.to_owned(),
+        }
     }
 
     /// Removes last sentence from a string if it contains any of the unwanted phrases.

@@ -217,7 +217,7 @@ impl JobPromptGenerator {
         prompt.add_content(job_task, SubPromptType::User, 100);
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand:"),
+            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked:"),
             SubPromptType::System,
             98
         );
