@@ -93,7 +93,7 @@ impl JobManager {
                     Err(e) => Err(e),
                 }
             }
-            Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
+            Err(e) => Err(e),
         }
     }
 

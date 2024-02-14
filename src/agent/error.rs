@@ -7,6 +7,8 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
+use serde::Serialize;
+
 
 #[derive(Debug)]
 pub enum AgentError {
@@ -117,15 +119,81 @@ impl fmt::Display for AgentError {
             AgentError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
             AgentError::NetworkError(s) => write!(f, "Network error: {}", s),
             AgentError::InvalidModelType(s) => write!(f, "Invalid model type: {}", s),
-            AgentError::ShinkaiBackendInvalidAuthentication(s) => write!(f, "Shinkai Backend Invalid authentication: {}", s),
+            AgentError::ShinkaiBackendInvalidAuthentication(s) => write!(f, "Shinkai Backend Invalid Authentication: {}", s),
             AgentError::ShinkaiBackendInvalidConfiguration(s) => write!(f, "Shinkai Backend Invalid configuration: {}", s),
-            AgentError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference limit reached: {}", s),
-            AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI provider error: {}", s),
-            AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected status code: {}", code),
+            AgentError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference Limit Reached: {}", s),
+            AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI Provider Error: {}", s),
+            AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected Status Code: {}", code),
      
         }
     }
 }
+
+impl AgentError {
+    /// Encodes the error as a JSON string that is easily parsable by frontends
+    pub fn to_error_json(&self) -> String {
+        let error_name = match self {
+            AgentError::UrlNotSet => "UrlNotSet",
+            AgentError::ApiKeyNotSet => "ApiKeyNotSet",
+            AgentError::ReqwestError(_) => "ReqwestError",
+            AgentError::MissingInitialStepInExecutionPlan => "MissingInitialStepInExecutionPlan",
+            AgentError::FailedExtractingJSONObjectFromResponse(_) => "FailedExtractingJSONObjectFromResponse",
+            AgentError::InferenceFailed => "InferenceFailed",
+            AgentError::UserPromptMissingEBNFDefinition => "UserPromptMissingEBNFDefinition",
+            AgentError::NotAJobMessage => "NotAJobMessage",
+            AgentError::JobNotFound => "JobNotFound",
+            AgentError::JobCreationDeserializationFailed => "JobCreationDeserializationFailed",
+            AgentError::JobMessageDeserializationFailed => "JobMessageDeserializationFailed",
+            AgentError::JobPreMessageDeserializationFailed => "JobPreMessageDeserializationFailed",
+            AgentError::MessageTypeParseFailed => "MessageTypeParseFailed",
+            AgentError::IO(_) => "IO",
+            AgentError::ShinkaiDB(_) => "ShinkaiDB",
+            AgentError::ShinkaiNameError(_) => "ShinkaiNameError",
+            AgentError::AgentNotFound => "AgentNotFound",
+            AgentError::ContentParseFailed => "ContentParseFailed",
+            AgentError::InferenceJSONResponseMissingField(_) => "InferenceJSONResponseMissingField",
+            AgentError::JSONSerializationError(_) => "JSONSerializationError",
+            AgentError::VectorResource(_) => "VectorResource",
+            AgentError::InvalidSubidentity(_) => "InvalidSubidentity",
+            AgentError::InvalidProfileSubidentity(_) => "InvalidProfileSubidentity",
+            AgentError::SerdeError(_) => "SerdeError",
+            AgentError::TaskJoinError(_) => "TaskJoinError",
+            AgentError::InferenceRecursionLimitReached(_) => "InferenceRecursionLimitReached",
+            AgentError::TokenizationError(_) => "TokenizationError",
+            AgentError::JobDequeueFailed(_) => "JobDequeueFailed",
+            AgentError::ShinkaiMessage(_) => "ShinkaiMessage",
+            AgentError::InboxNameError(_) => "InboxNameError",
+            AgentError::InvalidCronCreationChainStage(_) => "InvalidCronCreationChainStage",
+            AgentError::WebScrapingFailed(_) => "WebScrapingFailed",
+            AgentError::InvalidCronExecutionChainStage(_) => "InvalidCronExecutionChainStage",
+            AgentError::AnyhowError(_) => "AnyhowError",
+            AgentError::AgentMissingCapabilities(_) => "AgentMissingCapabilities",
+            AgentError::UnexpectedPromptResult(_) => "UnexpectedPromptResult",
+            AgentError::AgentsCapabilitiesManagerError(_) => "AgentsCapabilitiesManagerError",
+            AgentError::UnexpectedPromptResultVariant(_) => "UnexpectedPromptResultVariant",
+            AgentError::ImageContentNotFound(_) => "ImageContentNotFound",
+            AgentError::NetworkError(_) => "NetworkError",
+            AgentError::NoUserProfileFound => "NoUserProfileFound",
+            AgentError::InvalidModelType(_) => "InvalidModelType",
+            AgentError::ShinkaiBackendInvalidAuthentication(_) => "ShinkaiBackendInvalidAuthentication",
+            AgentError::ShinkaiBackendInvalidConfiguration(_) => "ShinkaiBackendInvalidConfiguration",
+            AgentError::ShinkaiBackendInferenceLimitReached(_) => "ShinkaiBackendInferenceLimitReached",
+            AgentError::ShinkaiBackendAIProviderError(_) => "ShinkaiBackendAIProviderError",
+            AgentError::ShinkaiBackendUnexpectedStatusCode(_) => "ShinkaiBackendUnexpectedStatusCode",
+        };
+
+        let error_message = format!("{}", self);
+
+        serde_json::json!({
+            "error": error_name,
+            "error_message": error_message
+        }).to_string()
+    }
+}
+
+
+
+
 
 impl From<AnyhowError> for AgentError {
     fn from(error: AnyhowError) -> Self {

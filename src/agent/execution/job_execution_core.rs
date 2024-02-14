@@ -97,13 +97,13 @@ impl JobManager {
                     &format!("Error processing inference chain: {}", e),
                 );
 
-                let error_for_user = format!("Error processing message. More info: {}", e);
+                let error_for_frontend = e.to_error_json();
 
                 // Prepare data to save inference response to the DB
                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                     job_id.to_string(),
-                    error_for_user.to_string(),
+                    error_for_frontend.to_string(),
                     "".to_string(),
                     identity_secret_key_clone,
                     profile_name.clone(),
