@@ -28,7 +28,7 @@ impl JobManager {
             agent.clone(),
             response_json,
             prompt,
-            vec!["answer".to_string()],
+            vec!["summary".to_string(), "answer".to_string()],
             1,
         )
         .await?;

@@ -44,6 +44,8 @@ impl JobManager {
         let chosen_chain = InferenceChain::QAChain;
         let mut inference_response_content = String::new();
         let mut new_execution_context = HashMap::new();
+        // Trim `\n` to prevent dumb models from responding with crappy results
+        let job_message_content = job_message.content.trim_end_matches('\n');
 
         match chosen_chain {
             InferenceChain::QAChain => {
@@ -51,7 +53,7 @@ impl JobManager {
                     inference_response_content = JobManager::start_qa_inference_chain(
                         db,
                         full_job,
-                        job_message.content.clone(),
+                        job_message_content.to_string(),
                         agent,
                         prev_execution_context,
                         generator,
