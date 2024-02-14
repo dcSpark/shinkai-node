@@ -1,6 +1,5 @@
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
-use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
 use std::fmt;
@@ -25,6 +24,15 @@ pub enum MessageSchemaType {
     SymmetricKeyExchange,
     EncryptedFileContent,
     Empty,
+    VecFsRetrievePathSimplifiedJson,
+    VecFsRetrieveVectorSearchSimplifiedJson,
+    VecFsCreateFolder,
+    VecFsDeleteFolder,
+    VecFsMoveFolder,
+    VecFsCopyFolder,
+    VecFsCreateItem,
+    VecFsMoveItem,
+    VecFsCopyItem,
 }
 
 impl MessageSchemaType {
@@ -46,6 +54,15 @@ impl MessageSchemaType {
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
             "APIFinishJob" => Some(Self::APIFinishJob),
             "" => Some(Self::Empty),
+            "VecFsRetrievePathSimplifiedJson" => Some(Self::VecFsRetrievePathSimplifiedJson),
+            "VecFsRetrieveVectorSearchSimplifiedJson" => Some(Self::VecFsRetrieveVectorSearchSimplifiedJson),
+            "VecFsCreateFolder" => Some(Self::VecFsCreateFolder),
+            "VecFsDeleteFolder" => Some(Self::VecFsDeleteFolder),
+            "VecFsMoveFolder" => Some(Self::VecFsMoveFolder),
+            "VecFsCopyFolder" => Some(Self::VecFsCopyFolder),
+            "VecFsCreateItem" => Some(Self::VecFsCreateItem),
+            "VecFsMoveItem" => Some(Self::VecFsMoveItem),
+            "VecFsCopyItem" => Some(Self::VecFsCopyItem),
             _ => None,
         }
     }
@@ -67,6 +84,15 @@ impl MessageSchemaType {
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
             Self::APIFinishJob => "APIFinishJob",
+            Self::VecFsRetrievePathSimplifiedJson => "VecFsRetrievePathSimplifiedJson",
+            Self::VecFsRetrieveVectorSearchSimplifiedJson => "VecFsRetrieveVectorSearchSimplifiedJson",
+            Self::VecFsCreateFolder => "VecFsCreateFolder",
+            Self::VecFsDeleteFolder => "VecFsDeleteFolder",
+            Self::VecFsMoveFolder => "VecFsMoveFolder",
+            Self::VecFsCopyFolder => "VecFsCopyFolder",
+            Self::VecFsCreateItem => "VecFsCreateItem",
+            Self::VecFsMoveItem => "VecFsMoveItem",
+            Self::VecFsCopyItem => "VecFsCopyItem",
             Self::Empty => "",
         }
     }
@@ -196,6 +222,60 @@ pub struct APIReadUpToTimeRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAddAgentRequest {
     pub agent: SerializedAgent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsRetrievePathSimplifiedJson {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
+    pub search: String,
+    pub path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsCreateFolder {
+    pub path: String,
+    pub folder_name: String
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsDeleteFolder {
+    pub path: String,
+    pub folder_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsMoveFolder {
+    pub origin_path: String,
+    pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsCopyFolder {
+    pub origin_path: String,
+    pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsCreateItem {
+    pub path: String,
+    pub item_name: String,
+    pub item_content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsMoveItem {
+    pub origin_path: String,
+    pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsCopyItem {
+    pub origin_path: String,
+    pub destination_path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

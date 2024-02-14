@@ -29,4 +29,5 @@ mod it {
     mod utils;
     mod vec_fs_tests;
     mod websocket_tests;
+    mod vector_fs_api_tests;
 }

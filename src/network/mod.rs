@@ -10,3 +10,4 @@ pub mod node_devops_api_commands;
 pub mod ws_manager;
 pub mod ws_routes;
 pub mod node_shareable_logic;
+pub mod node_api_vecfs_commands;
