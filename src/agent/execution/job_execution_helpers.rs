@@ -16,6 +16,48 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 
 impl JobManager {
+    /// Extracts a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
+    /// Returns a tuple of the extracted key and the (potentially new) response JSON.
+    /// This function can be chained to extract each required key from a response, with retry logic for each.
+    pub async fn extract_single_key_from_inference_response(
+        agent: SerializedAgent,
+        response_json: JsonValue,
+        filled_prompt: Prompt,
+        potential_keys: Vec<String>,
+        retry_attempts: u64,
+    ) -> Result<(String, JsonValue), AgentError> {
+        if potential_keys.is_empty() {
+            return Err(AgentError::InferenceJSONResponseMissingField(
+                "No keys supplied to attempt to extract".to_string(),
+            ));
+        }
+
+        for key in &potential_keys {
+            if let Ok(value) = JobManager::extract_inference_json_response(response_json.clone(), key) {
+                return Ok((value, response_json));
+            }
+        }
+
+        let mut current_response_json = response_json;
+        for _ in 0..retry_attempts {
+            for key in &potential_keys {
+                let new_response_json = JobManager::json_not_found_retry(
+                    agent.clone(),
+                    current_response_json.to_string(),
+                    filled_prompt.clone(),
+                    Some(key.to_string()),
+                )
+                .await?;
+                if let Ok(value) = JobManager::extract_inference_json_response(new_response_json.clone(), key) {
+                    return Ok((value, new_response_json.clone()));
+                }
+                current_response_json = new_response_json;
+            }
+        }
+
+        Err(AgentError::InferenceJSONResponseMissingField(potential_keys.join(", ")))
+    }
+
     /// Extracts a String using the provided key in the JSON response
     /// Errors if the key is not present.
     pub fn extract_inference_json_response(response_json: JsonValue, key: &str) -> Result<String, AgentError> {
@@ -28,18 +70,6 @@ impl JobManager {
         } else {
             Err(AgentError::InferenceJSONResponseMissingField(key.to_string()))
         }
-    }
-
-    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
-    /// a valid JSON object/retrying if it isn't, and finally attempt to extract the provided key
-    /// from the JSON object. Errors if the key is not found.
-    pub async fn inference_agent_and_extract(
-        agent: SerializedAgent,
-        filled_prompt: Prompt,
-        key: &str,
-    ) -> Result<String, AgentError> {
-        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
-        JobManager::extract_inference_json_response(response_json, key)
     }
 
     /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
@@ -88,7 +118,7 @@ impl JobManager {
                     ShinkaiLogLevel::Error,
                     "FailedExtractingJSONObjectFromResponse",
                 );
-                match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt).await {
+                match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
                 }
@@ -98,15 +128,20 @@ impl JobManager {
     }
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse.
+    /// that we can parse. json_key_to_correct allows providing a specific key that the LLM should make sure to correct.
     async fn json_not_found_retry(
         agent: SerializedAgent,
-        text: String,
-        prompt: Prompt,
+        invalid_json_answer: String,
+        original_prompt: Prompt,
+        json_key_to_correct: Option<String>,
     ) -> Result<JsonValue, AgentError> {
         let response = tokio::spawn(async move {
             let agent = Agent::from_serialized_agent(agent);
-            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text, prompt);
+            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(
+                invalid_json_answer,
+                original_prompt,
+                json_key_to_correct,
+            );
             agent.inference(prompt).await
         })
         .await;

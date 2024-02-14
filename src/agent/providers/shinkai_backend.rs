@@ -93,6 +93,8 @@ impl LLMProvider for ShinkaiBackend {
                 let payload_string =
                     serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
 
+                eprintln!("Calling LLM: {:?}", payload_string);
+
                 // eprintln!("Curl command:");
                 // eprintln!("curl -X POST \\");
                 // eprintln!("  -H 'Content-Type: application/json' \\");

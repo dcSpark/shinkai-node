@@ -23,9 +23,16 @@ impl JobManager {
     ) -> Result<String, AgentError> {
         // TODO: the 2000 should be dynamic depending on the LLM model
         let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
-        let desc = Some(ParsingHelper::ending_stripper(
-            &JobManager::inference_agent_and_extract(agent.clone(), prompt, "answer").await?,
-        ));
+        let response_json = JobManager::inference_agent(agent.clone(), prompt.clone()).await?;
+        let (answer, _new_resp_json) = &JobManager::extract_single_key_from_inference_response(
+            agent.clone(),
+            response_json,
+            prompt,
+            vec!["answer".to_string()],
+            1,
+        )
+        .await?;
+        let desc = Some(ParsingHelper::ending_stripper(answer));
         eprintln!("LLM Generated File Description: {:?}", desc);
         Ok(desc.unwrap_or_else(|| "".to_string()))
     }
