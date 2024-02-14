@@ -4,6 +4,7 @@ use super::execution::job_prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
 use csv::Reader;
 use lazy_static::lazy_static;
+use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -131,15 +132,24 @@ impl ParsingHelper {
 
     /// Removes `\n` when it's either in front or behind of a `{`, `}`, `"`, or `,`.
     pub fn clean_json_response_line_breaks(json_string: &str) -> String {
-        json_string
-            .replace("\n{", "{")
-            .replace("{\n", "{")
-            .replace("\n}", "}")
-            .replace("}\n", "}")
-            .replace("\n\"", "\"")
-            .replace("\"\n", "\"")
-            .replace("\n,", ",")
-            .replace(",\n", ",")
+        let patterns = vec![
+            (r#"\n\s*\{"#, "{"),
+            (r#"\{\s*\n"#, "{"),
+            (r#"\n\s*\}"#, "}"),
+            (r#"\}\s*\n"#, "}"),
+            (r#"\n\s*\""#, "\""),
+            (r#"\"\s*\n"#, "\""),
+            (r#"\n\s*,"#, ","),
+            (r#",\s*\n"#, ","),
+        ];
+
+        let mut cleaned_string = json_string.to_string();
+        for (pattern, replacement) in patterns {
+            let re = Regex::new(pattern).unwrap();
+            cleaned_string = re.replace_all(&cleaned_string, replacement).to_string();
+        }
+
+        cleaned_string
     }
 
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
