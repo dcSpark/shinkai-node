@@ -59,7 +59,7 @@ impl JobManager {
 
         // Inference the agent's LLM with the prompt. If it has an answer, the chain
         // is finished and so just return the answer response as a cleaned String
-        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await?;
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
             // println!("QA Chain Final Answer: {:?}", cleaned_answer);
@@ -72,19 +72,35 @@ impl JobManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (mut new_search_text, summary) =
-            match JobManager::extract_inference_json_response(response_json.clone(), "search") {
-                Ok(search_str) => {
-                    let summary_str = response_json
-                        .get("summary")
-                        .and_then(|s| s.as_str())
-                        .map(|s| ParsingHelper::ending_stripper(s));
-                    (search_str, summary_str)
-                }
-                Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
-            };
+        let (new_search_text, summary) = match &JobManager::extract_single_key_from_inference_response(
+            agent.clone(),
+            response_json.clone(),
+            filled_prompt.clone(),
+            vec!["search".to_string(), "search_term".to_string()],
+            1,
+        )
+        .await
+        {
+            Ok((search_str, new_resp_json)) => {
+                let summary_str = match &JobManager::extract_single_key_from_inference_response(
+                    agent.clone(),
+                    new_resp_json.clone(),
+                    filled_prompt.clone(),
+                    vec!["summary".to_string(), "answer".to_string()],
+                    1,
+                )
+                .await
+                {
+                    Ok((summary, _)) => Some(summary.to_string()),
+                    Err(_) => None,
+                };
+                (search_str.to_string(), summary_str)
+            }
+            Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
+        };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
+        let mut new_search_text = new_search_text.clone();
         if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt = JobPromptGenerator::retry_new_search_term_prompt(
                 new_search_text.clone(),
