@@ -1,5 +1,8 @@
 use super::super::error::AgentError;
-use crate::{agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager, tools::router::ShinkaiTool};
+use crate::{
+    agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager,
+    tools::router::ShinkaiTool,
+};
 use futures::stream::ForEach;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -214,7 +217,7 @@ impl JobPromptGenerator {
         prompt.add_content(job_task, SubPromptType::User, 100);
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand:"),
+            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked:"),
             SubPromptType::System,
             98
         );
@@ -246,8 +249,12 @@ impl JobPromptGenerator {
     }
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse, according to one of the EBNFs from the original prompt.
-    pub fn basic_json_retry_response_prompt(non_json_answer: String, original_prompt: Prompt) -> Prompt {
+    /// that we can parse, according to one of the EBNFs from the original prompt, and an optional json_key_to_correct.
+    pub fn basic_json_retry_response_prompt(
+        invalid_json_answer: String,
+        original_prompt: Prompt,
+        json_key_to_correct: Option<String>,
+    ) -> Prompt {
         let mut prompt = Prompt::new();
 
         // Iterate through the original prompt and only keep the EBNF subprompts
@@ -258,15 +265,33 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            format!("Here is the answer to your request: `{}`", non_json_answer),
+            format!("Here is the answer to your request: `{}`", invalid_json_answer),
             SubPromptType::System,
             100,
         );
+
+        // Final content to be added with the specific instructions
+        let mut final_content =
+            r#"No, I need it to be properly formatted as JSON with the correct field/key names. "#.to_string();
+
+        if let Some(key) = json_key_to_correct {
+            final_content += &format!(
+                "Make sure to not forget to include the `{}` key as specified in the EBNF",
+                key
+            );
+        } else {
+            final_content += &format!(
+                "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one.",
+            );
+        }
+
         prompt.add_content(
-            String::from(
-                r#"No, I need it to be properly formatted as JSON. Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one. Remember to escape `\"` any quotes that you include in the content. ```json"#,
+            format!(
+                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the JSON and absolutely no explanation or anything else: "#,
+                final_content
             ),
-            SubPromptType::User, 100
+            SubPromptType::User,
+            100,
         );
 
         prompt
@@ -291,7 +316,7 @@ impl JobPromptGenerator {
             100
         );
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
+            String::from(r#"'{' 'summary' ':' string '}'"#),
             SubPromptType::System,
             100,
         );

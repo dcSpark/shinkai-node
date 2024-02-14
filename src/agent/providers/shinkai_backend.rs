@@ -93,6 +93,8 @@ impl LLMProvider for ShinkaiBackend {
                 let payload_string =
                     serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
 
+                eprintln!("Calling LLM: {:?}", payload_string);
+
                 // eprintln!("Curl command:");
                 // eprintln!("curl -X POST \\");
                 // eprintln!("  -H 'Content-Type: application/json' \\");
@@ -131,9 +133,21 @@ impl LLMProvider for ShinkaiBackend {
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
-                // TODO: refactor parsing logic so it's reusable
                 match data_resp {
                     Ok(value) => {
+                        if let Some(status_code) = value.get("statusCode").and_then(|code| code.as_u64()) {
+                            let resp_message = value.get("message").and_then(|m| m.as_str()).unwrap_or_default();
+                            return Err(match status_code {
+                                401 => AgentError::ShinkaiBackendInvalidAuthentication(resp_message.to_string()),
+                                403 => AgentError::ShinkaiBackendInvalidConfiguration(resp_message.to_string()),
+                                429 => AgentError::ShinkaiBackendInferenceLimitReached(resp_message.to_string()),
+                                500 => AgentError::ShinkaiBackendAIProviderError(resp_message.to_string()),
+                                _ => AgentError::ShinkaiBackendUnexpectedStatusCode(status_code),
+                            });
+                        }
+
+                        // TODO: refactor parsing logic so it's reusable
+                        // If not an error, but actual response
                         if self.model_type.contains("vision") {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data

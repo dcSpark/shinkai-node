@@ -4,6 +4,7 @@ use super::execution::job_prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
 use csv::Reader;
 use lazy_static::lazy_static;
+use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -23,9 +24,16 @@ impl JobManager {
     ) -> Result<String, AgentError> {
         // TODO: the 2000 should be dynamic depending on the LLM model
         let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
-        let desc = Some(ParsingHelper::ending_stripper(
-            &JobManager::inference_agent_and_extract(agent.clone(), prompt, "answer").await?,
-        ));
+        let response_json = JobManager::inference_agent(agent.clone(), prompt.clone()).await?;
+        let (answer, _new_resp_json) = &JobManager::extract_single_key_from_inference_response(
+            agent.clone(),
+            response_json,
+            prompt,
+            vec!["summary".to_string(), "answer".to_string()],
+            1,
+        )
+        .await?;
+        let desc = Some(ParsingHelper::ending_stripper(answer));
         eprintln!("LLM Generated File Description: {:?}", desc);
         Ok(desc.unwrap_or_else(|| "".to_string()))
     }
@@ -122,6 +130,28 @@ impl ParsingHelper {
         Ok(resource)
     }
 
+    /// Removes `\n` when it's either in front or behind of a `{`, `}`, `"`, or `,`.
+    pub fn clean_json_response_line_breaks(json_string: &str) -> String {
+        let patterns = vec![
+            (r#"\n\s*\{"#, "{"),
+            (r#"\{\s*\n"#, "{"),
+            (r#"\n\s*\}"#, "}"),
+            (r#"\}\s*\n"#, "}"),
+            (r#"\n\s*\""#, "\""),
+            (r#"\"\s*\n"#, "\""),
+            (r#"\n\s*,"#, ","),
+            (r#",\s*\n"#, ","),
+        ];
+
+        let mut cleaned_string = json_string.to_string();
+        for (pattern, replacement) in patterns {
+            let re = Regex::new(pattern).unwrap();
+            cleaned_string = re.replace_all(&cleaned_string, replacement).to_string();
+        }
+
+        cleaned_string
+    }
+
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
     fn clean_name(name: &str) -> String {
         // Decode URL-encoded characters to simplify processing.
@@ -200,6 +230,21 @@ impl ParsingHelper {
             descriptions.push(description);
         }
         JobPromptGenerator::simple_doc_description(descriptions)
+    }
+
+    /// Given an input string, if the whole string parses into a JSON Value, then
+    /// reads through every key, and concatenates all of their values into a single output string.
+    /// If not parsable into JSON Value, then return original string as a copy.
+    /// To be used when inferencing with dumb LLMs.
+    pub fn flatten_to_content_if_json(string: &str) -> String {
+        match serde_json::from_str::<serde_json::Value>(string) {
+            Ok(serde_json::Value::Object(obj)) => obj
+                .values()
+                .map(|v| v.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<String>>()
+                .join(". "),
+            _ => string.to_owned(),
+        }
     }
 
     /// Removes last sentence from a string if it contains any of the unwanted phrases.
