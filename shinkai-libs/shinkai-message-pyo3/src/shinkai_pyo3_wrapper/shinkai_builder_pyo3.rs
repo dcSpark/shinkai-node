@@ -1,13 +1,11 @@
-use std::{convert::TryInto, str::FromStr};
-
 use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
 
 use super::{
     encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
     shinkai_message_pyo3::PyShinkaiMessage,
 };
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
+
+use pyo3::{prelude::*, pyclass, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
@@ -23,7 +21,6 @@ use shinkai_message_primitives::{
         signatures::{signature_public_key_to_string, string_to_signature_secret_key},
     },
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[pyclass]
 pub struct PyShinkaiMessageBuilder {
@@ -316,17 +313,6 @@ impl PyShinkaiMessageBuilder {
         schema: Py<PyMessageSchemaType>,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
-            println!("my_subidentity_encryption_sk: {}", my_subidentity_encryption_sk);
-            println!("my_subidentity_signature_sk: {}", my_subidentity_signature_sk);
-            println!("receiver_public_key: {}", receiver_public_key);
-            println!("data: {}", data);
-            println!("sender: {}", sender);
-            println!("sender_subidentity: {}", sender_subidentity);
-            println!("recipient: {}", recipient);
-            println!("recipient_subidentity: {}", recipient_subidentity);
-            println!("other: {}", other);
-            println!("schema: {:?}", schema);
-
             let builder_result = PyShinkaiMessageBuilder::new(
                 my_subidentity_encryption_sk,
                 my_subidentity_signature_sk,
@@ -1137,6 +1123,7 @@ impl PyShinkaiMessageBuilder {
         builder.build_to_string()
     }
 
+    #[allow(clippy::too_many_arguments)]
     #[staticmethod]
     fn job_creation(
         my_encryption_secret_key: String,
@@ -1203,88 +1190,10 @@ impl PyShinkaiMessageBuilder {
                 message_schema,
                 encryption,
             );
+
+            // TODO: add a setting on the higher level of abstraction, so based on builder initialization parameters, we generate encrypted or unencrypted message
+            // to add encryption here, use body_encryption()
             let _ = builder.no_body_encryption();
-            let _ = builder.external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity);
-
-            builder.build_to_string()
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[staticmethod]
-    pub fn job_creation_encrypted(
-        my_encryption_secret_key: String,
-        my_signature_secret_key: String,
-        receiver_public_key: String,
-        scope: Py<PyJobScope>,
-        is_hidden: bool,
-        sender: String,
-        sender_subidentity: String,
-        node_receiver: String,
-        node_receiver_subidentity: String,
-    ) -> PyResult<String> {
-        Python::with_gil(|py| {
-            let scope: PyJobScope = match scope.extract(py) {
-                Ok(scope) => scope,
-                Err(_) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        "Failed to deserialize scope from JSON",
-                    ))
-                }
-            };
-
-            let job_creation = JobCreationInfo {
-                scope: scope.inner.clone(),
-                is_hidden: Some(is_hidden),
-            };
-
-            let mut builder = match PyShinkaiMessageBuilder::new(
-                my_encryption_secret_key,
-                my_signature_secret_key,
-                receiver_public_key,
-            ) {
-                Ok(builder) => builder,
-                Err(e) => return Err(e),
-            };
-
-            let message_schema = match Py::new(py, PyMessageSchemaType::new("JobCreationSchema".to_string())?) {
-                Ok(schema) => schema,
-                Err(_) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        "Failed to create message schema",
-                    ))
-                }
-            };
-
-            let encryption = match Py::new(py, PyEncryptionMethod::new(Some("None"))) {
-                Ok(encryption) => encryption,
-                Err(_) => {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        "Failed to create encryption method",
-                    ))
-                }
-            };
-
-            let body = serde_json::to_string(&job_creation).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Failed to serialize job creation to JSON: {}",
-                    e
-                ))
-            })?;
-            let _ = builder.message_raw_content(body);
-            let _ = builder.internal_metadata_with_schema(
-                sender_subidentity.clone(),
-                node_receiver_subidentity.clone(),
-                "".to_string(),
-                message_schema,
-                encryption,
-            );
-
-            let encryption_method = PyEncryptionMethod {
-                inner: EncryptionMethod::DiffieHellmanChaChaPoly1305,
-            };
-            let py_encryption_method = Py::new(py, encryption_method)?;
-            let _ = builder.body_encryption(py_encryption_method);
             let _ = builder.external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity);
 
             builder.build_to_string()
