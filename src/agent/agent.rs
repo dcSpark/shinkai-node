@@ -1,6 +1,6 @@
-use super::error::AgentError;
 use super::execution::job_prompts::Prompt;
 use super::providers::LLMProvider;
+use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
@@ -107,7 +107,8 @@ impl Agent {
             }
         }?;
 
-        Ok(clean_inference_response_json(response))
+        let cleaned_json = JobManager::convert_inference_response_to_internal_strings(response);
+        Ok(cleaned_json)
     }
 }
 
@@ -124,30 +125,5 @@ impl Agent {
             serialized_agent.storage_bucket_permissions,
             serialized_agent.allowed_message_senders,
         )
-    }
-}
-
-/// Converts the values of the inference response json, into strings to work nicely with
-/// rest of the stack
-fn clean_inference_response_json(value: JsonValue) -> JsonValue {
-    match value {
-        JsonValue::String(s) => JsonValue::String(s.clone()),
-        JsonValue::Array(arr) => JsonValue::String(
-            arr.iter()
-                .map(|v| match v {
-                    JsonValue::String(s) => format!("- {}", s),
-                    _ => format!("- {}", v.to_string()),
-                })
-                .collect::<Vec<String>>()
-                .join("\n"),
-        ),
-        JsonValue::Object(obj) => {
-            let mut res = Map::new();
-            for (k, v) in obj {
-                res.insert(k.clone(), clean_inference_response_json(v));
-            }
-            JsonValue::Object(res)
-        }
-        _ => JsonValue::String(value.to_string()),
     }
 }

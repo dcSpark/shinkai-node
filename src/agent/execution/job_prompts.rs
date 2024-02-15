@@ -259,8 +259,8 @@ impl JobPromptGenerator {
 
         // Iterate through the original prompt and only keep the EBNF subprompts
         for sub_prompt in original_prompt.sub_prompts {
-            if let SubPrompt::EBNF(prompt_type, ebnf, _) = sub_prompt {
-                prompt.add_ebnf(ebnf, prompt_type, 99);
+            if let SubPrompt::EBNF(prompt_type, ebnf, _, _) = sub_prompt {
+                prompt.add_retry_ebnf(ebnf, prompt_type, 99);
             }
         }
 
@@ -281,7 +281,7 @@ impl JobPromptGenerator {
             );
         } else {
             final_content += &format!(
-                "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one.",
+                "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one",
             );
         }
 
@@ -787,7 +787,7 @@ pub enum SubPrompt {
         SubPromptAssetDetail,
         u8,
     ),
-    EBNF(SubPromptType, String, u8),
+    EBNF(SubPromptType, String, u8, bool),
 }
 
 /// Struct that represents a prompt to be used for inferencing an LLM
@@ -851,13 +851,20 @@ impl Prompt {
     /// Of note, priority value must be between 0-100, where higher is greater priority
     pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100);
-        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8);
+        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8, false);
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds an ebnf sub-prompt that is meant for retry prompts.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_retry_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8, true);
         self.add_sub_prompt(sub_prompt);
     }
 
     /// Adds a single sub-prompt.
-    /// Updates the lowest and highest priority values of self using the
-    /// existing priority value.
+    /// Updates the lowest and highest priority values of self using the existing priority value.
     pub fn add_sub_prompt(&mut self, sub_prompt: SubPrompt) {
         self.add_sub_prompts(vec![sub_prompt]);
     }
@@ -868,7 +875,7 @@ impl Prompt {
     pub fn add_sub_prompts(&mut self, sub_prompts: Vec<SubPrompt>) {
         for sub_prompt in sub_prompts {
             match &sub_prompt {
-                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => {
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
                     self.lowest_priority = self.lowest_priority.min(*priority);
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
@@ -888,7 +895,7 @@ impl Prompt {
         let mut updated_sub_prompts = Vec::new();
         for mut sub_prompt in sub_prompts {
             match &mut sub_prompt {
-                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => {
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
                     *priority = capped_priority_value
                 }
                 SubPrompt::Asset(_, _, _, _, priority) => *priority = capped_priority_value,
@@ -931,7 +938,7 @@ impl Prompt {
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
         let lowest_priority = self.lowest_priority;
         if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
-            SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => *priority == lowest_priority,
+            SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
         }) {
             return Some(self.sub_prompts.remove(position));
@@ -945,18 +952,22 @@ impl Prompt {
         if !self
             .sub_prompts
             .iter()
-            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _, _)))
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _, _, _)))
         {
             return Err(AgentError::UserPromptMissingEBNFDefinition);
         }
         Ok(())
     }
 
-    fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
-        format!(
-            "Respond using the following EBNF and absolutely nothing else: {} ",
-            ebnf
-        )
+    fn generate_ebnf_response_string(&self, ebnf: &str, retry: bool) -> String {
+        if retry {
+            format!("An EBNF option to respond with: {} ", ebnf)
+        } else {
+            format!(
+                "Then respond using the following EBNF and absolutely nothing else: {} ",
+                ebnf
+            )
+        }
     }
 
     /// Processes all sub-prompts into a single output String.
@@ -969,7 +980,7 @@ impl Prompt {
             .iter()
             .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(_, content, _) => content.clone(),
-                SubPrompt::EBNF(_, ebnf, _) => self.generate_ebnf_response_string(ebnf),
+                SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, retry.clone()),
                 SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
                     format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
                 }
@@ -994,8 +1005,8 @@ impl Prompt {
         for sub_prompt in &self.sub_prompts {
             let (prompt_type, content, type_) = match sub_prompt {
                 SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone(), "text"),
-                SubPrompt::EBNF(prompt_type, ebnf, _) => {
-                    let ebnf_string = self.generate_ebnf_response_string(ebnf);
+                SubPrompt::EBNF(prompt_type, ebnf, _, retry) => {
+                    let ebnf_string = self.generate_ebnf_response_string(ebnf, retry.clone());
                     (prompt_type, ebnf_string, "text")
                 }
                 SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, _) => {
@@ -1073,8 +1084,8 @@ impl Prompt {
         // First, calculate the total length of EBNF content. We want to add it no matter what or
         // the response will be invalid.
         for sub_prompt in &self.sub_prompts {
-            if let SubPrompt::EBNF(_, ebnf, _) = sub_prompt {
-                let new_message = self.generate_ebnf_response_string(ebnf);
+            if let SubPrompt::EBNF(_, ebnf, _, retry) = sub_prompt {
+                let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
                 current_length += new_message.len();
             }
         }
@@ -1118,8 +1129,8 @@ impl Prompt {
                         SubPromptType::Assistant => system_content_added = true,
                     }
                 }
-                SubPrompt::EBNF(_, ebnf, _) => {
-                    let new_message = self.generate_ebnf_response_string(ebnf);
+                SubPrompt::EBNF(_, ebnf, _, retry) => {
+                    let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
                     messages.push(new_message);
                 }
             }

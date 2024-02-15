@@ -79,7 +79,7 @@ impl JobManager {
             response_json.clone(),
             filled_prompt.clone(),
             vec!["search".to_string(), "search_term".to_string()],
-            1,
+            2,
         )
         .await
         {
@@ -89,7 +89,7 @@ impl JobManager {
                     new_resp_json.clone(),
                     filled_prompt.clone(),
                     vec!["summary".to_string(), "answer".to_string()],
-                    1,
+                    2,
                 )
                 .await
                 {

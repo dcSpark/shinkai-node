@@ -6,7 +6,7 @@ use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use async_std::println;
-use serde_json::Value as JsonValue;
+use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -117,7 +117,10 @@ impl JobManager {
 
         // Validates that the response is a proper JSON object, else inferences again to get the
         // LLM to parse the previous response into proper JSON
-        JobManager::_extract_json_value_from_inference_result(response, agent.clone(), filled_prompt).await
+        let json_resp =
+            JobManager::_extract_json_value_from_inference_result(response, agent.clone(), filled_prompt).await?;
+        let cleaned_json = JobManager::convert_inference_response_to_internal_strings(json_resp);
+        Ok(cleaned_json)
     }
 
     /// Internal method that attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
@@ -137,7 +140,7 @@ impl JobManager {
                     "FailedExtractingJSONObjectFromResponse",
                 );
                 // First try to remove line breaks and re-parse
-                let cleaned_text = ParsingHelper::clean_json_response_line_breaks(&text);
+                let cleaned_text = ParsingHelper::clean_json_response_via_regex(&text);
                 if let Ok(json) = serde_json::from_str::<JsonValue>(&cleaned_text) {
                     return Ok(json);
                 }
@@ -210,6 +213,31 @@ impl JobManager {
     pub async fn get_all_agents(db: Arc<Mutex<ShinkaiDB>>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         let db = db.lock().await;
         db.get_all_agents()
+    }
+
+    /// Converts the values of the inference response json, into strings to work nicely with
+    /// rest of the stack
+    pub fn convert_inference_response_to_internal_strings(value: JsonValue) -> JsonValue {
+        match value {
+            JsonValue::String(s) => JsonValue::String(s.clone()),
+            JsonValue::Array(arr) => JsonValue::String(
+                arr.iter()
+                    .map(|v| match v {
+                        JsonValue::String(s) => format!("- {}", s),
+                        _ => format!("- {}", v.to_string()),
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            ),
+            JsonValue::Object(obj) => {
+                let mut res = Map::new();
+                for (k, v) in obj {
+                    res.insert(k.clone(), JobManager::convert_inference_response_to_internal_strings(v));
+                }
+                JsonValue::Object(res)
+            }
+            _ => JsonValue::String(value.to_string()),
+        }
     }
 }
 

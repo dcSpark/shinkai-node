@@ -130,8 +130,12 @@ impl ParsingHelper {
         Ok(resource)
     }
 
-    /// Removes `\n` when it's either in front or behind of a `{`, `}`, `"`, or `,`.
-    pub fn clean_json_response_line_breaks(json_string: &str) -> String {
+    /// Cleans the JSON response string using regex, including replacing `\_` with `_` and removing unnecessary line breaks.
+    pub fn clean_json_response_via_regex(json_string: &str) -> String {
+        // First, replace `\_` with `_` to avoid parsing issues.
+        let mut cleaned_string = json_string.replace("\\_", "_");
+
+        // Patterns for removing unnecessary line breaks and spaces around JSON structural characters.
         let patterns = vec![
             (r#"\n\s*\{"#, "{"),
             (r#"\{\s*\n"#, "{"),
@@ -143,7 +147,6 @@ impl ParsingHelper {
             (r#",\s*\n"#, ","),
         ];
 
-        let mut cleaned_string = json_string.to_string();
         for (pattern, replacement) in patterns {
             let re = Regex::new(pattern).unwrap();
             cleaned_string = re.replace_all(&cleaned_string, replacement).to_string();
