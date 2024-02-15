@@ -303,7 +303,8 @@ impl JobManager {
         let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
         let mut cleaned_answer = String::new();
 
-        if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
+        if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
+        {
             cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
             let re = Regex::new(r"(\\+n)").unwrap();
             cleaned_answer = re.replace_all(&cleaned_answer, "").to_string();

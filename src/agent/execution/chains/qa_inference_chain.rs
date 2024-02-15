@@ -60,7 +60,8 @@ impl JobManager {
         // Inference the agent's LLM with the prompt. If it has an answer, the chain
         // is finished and so just return the answer response as a cleaned String
         let response_json = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await?;
-        if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
+        if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
+        {
             let cleaned_answer =
                 ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(&answer_str));
             // println!("QA Chain Final Answer: {:?}", cleaned_answer);
@@ -73,7 +74,7 @@ impl JobManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (new_search_text, summary) = match &JobManager::extract_single_key_from_inference_response(
+        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response(
             agent.clone(),
             response_json.clone(),
             filled_prompt.clone(),
@@ -83,7 +84,7 @@ impl JobManager {
         .await
         {
             Ok((search_str, new_resp_json)) => {
-                let summary_str = match &JobManager::extract_single_key_from_inference_response(
+                let summary_str = match &JobManager::advanced_extract_key_from_inference_response(
                     agent.clone(),
                     new_resp_json.clone(),
                     filled_prompt.clone(),
@@ -108,7 +109,7 @@ impl JobManager {
                 summary.clone().unwrap_or_default(),
             );
             let response_json = JobManager::inference_agent(agent.clone(), retry_prompt).await?;
-            match JobManager::extract_inference_json_response(response_json, "search") {
+            match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
                 Ok(search_str) => {
                     println!("QA Chain New Search Retry Term: {:?}", search_str);
                     new_search_text = search_str;

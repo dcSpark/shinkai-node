@@ -45,7 +45,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_a() {
-        init_default_tracing(); 
+        init_default_tracing();
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<Vec<String>> =
@@ -64,7 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_b() {
-        init_default_tracing(); 
+        init_default_tracing();
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![get_zeko_description() /* add more elements here */];
@@ -88,7 +88,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_simple_prompt() {
-        init_default_tracing(); 
+        init_default_tracing();
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![
@@ -133,7 +133,7 @@ mod tests {
                 Ok(value) => {
                     eprintln!("Partial result: {:?}", value);
                     let extraction_key = "answer";
-                    let json_result = JobManager::extract_inference_json_response(value, extraction_key);
+                    let json_result = JobManager::direct_extract_key_inference_json_response(value, extraction_key);
                     assert!(json_result.is_ok());
                 }
                 Err(e) => panic!("API call failed: {:?}", e),
