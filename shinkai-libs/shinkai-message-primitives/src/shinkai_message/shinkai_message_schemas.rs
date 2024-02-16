@@ -25,6 +25,7 @@ pub enum MessageSchemaType {
     EncryptedFileContent,
     Empty,
     VecFsRetrievePathSimplifiedJson,
+    VecFsRetrieveVectorResource,
     VecFsRetrieveVectorSearchSimplifiedJson,
     VecFsCreateFolder,
     VecFsDeleteFolder,
@@ -33,6 +34,7 @@ pub enum MessageSchemaType {
     VecFsCreateItem,
     VecFsMoveItem,
     VecFsCopyItem,
+    ConvertFilesAndSaveToFolder,
 }
 
 impl MessageSchemaType {
@@ -55,6 +57,7 @@ impl MessageSchemaType {
             "APIFinishJob" => Some(Self::APIFinishJob),
             "" => Some(Self::Empty),
             "VecFsRetrievePathSimplifiedJson" => Some(Self::VecFsRetrievePathSimplifiedJson),
+            "VecFsRetrieveVectorResource" => Some(Self::VecFsRetrieveVectorResource),
             "VecFsRetrieveVectorSearchSimplifiedJson" => Some(Self::VecFsRetrieveVectorSearchSimplifiedJson),
             "VecFsCreateFolder" => Some(Self::VecFsCreateFolder),
             "VecFsDeleteFolder" => Some(Self::VecFsDeleteFolder),
@@ -63,6 +66,7 @@ impl MessageSchemaType {
             "VecFsCreateItem" => Some(Self::VecFsCreateItem),
             "VecFsMoveItem" => Some(Self::VecFsMoveItem),
             "VecFsCopyItem" => Some(Self::VecFsCopyItem),
+            "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
             _ => None,
         }
     }
@@ -85,6 +89,7 @@ impl MessageSchemaType {
             Self::EncryptedFileContent => "FileContent",
             Self::APIFinishJob => "APIFinishJob",
             Self::VecFsRetrievePathSimplifiedJson => "VecFsRetrievePathSimplifiedJson",
+            Self::VecFsRetrieveVectorResource => "VecFsRetrieveVectorResource",
             Self::VecFsRetrieveVectorSearchSimplifiedJson => "VecFsRetrieveVectorSearchSimplifiedJson",
             Self::VecFsCreateFolder => "VecFsCreateFolder",
             Self::VecFsDeleteFolder => "VecFsDeleteFolder",
@@ -93,6 +98,7 @@ impl MessageSchemaType {
             Self::VecFsCreateItem => "VecFsCreateItem",
             Self::VecFsMoveItem => "VecFsMoveItem",
             Self::VecFsCopyItem => "VecFsCopyItem",
+            Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
             Self::Empty => "",
         }
     }
@@ -226,6 +232,17 @@ pub struct APIAddAgentRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFsRetrievePathSimplifiedJson {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIConvertFilesAndSaveToFolder {
+    pub path: String,
+    pub file_inbox: String
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFSRetrieveVectorResource {
     pub path: String,
 }
 

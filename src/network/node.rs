@@ -277,7 +277,6 @@ pub enum NodeCommand {
         res: Sender<Result<String, APIError>>,
     },
     APIVecFSRetrieveVectorResource {
-        // Missing: retrieve_vector_resource(reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError>
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
@@ -285,11 +284,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     },
-    APISaveVectorResourceInFolder {
-        // Missing: save_vector_resource_in_folder(writer: &VFSWriter, resource: BaseVectorResource, source_file_map: Option<SourceFileMap>, distribution_origin: DistributionOrigin) -> Result<FSItem, VectorFSError>
-        // .vrkai? so it needs a file inbox with one file that's a vrkai
+    APIConvertFilesAndSaveToFolder {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Vec<String>, APIError>>,
     },
     APIVecFSCreateFolder {
         msg: ShinkaiMessage,

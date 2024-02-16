@@ -263,6 +263,28 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/vec_fs/retrieve_vector_resource
+    let api_convert_files_and_save_to_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "vec_fs" / "convert_files_and_save_to_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_convert_files_and_save_to_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/vec_fs/retrieve_vector_resource
+    let api_vec_fs_retrieve_vector_resource = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "vec_fs" / "retrieve_vector_resource")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_vec_fs_retrieve_vector_resource_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // GET v1/shinkai_health
     let shinkai_health = {
         let node_name = node_name.clone();
@@ -520,6 +542,8 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(api_vec_fs_copy_item)
         .or(api_vec_fs_move_folder)
         .or(api_vec_fs_copy_folder)
+        .or(api_vec_fs_retrieve_vector_resource)
+        .or(api_convert_files_and_save_to_folder)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -708,6 +732,36 @@ async fn api_vec_fs_copy_folder_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APIVecFSCopyFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_vec_fs_retrieve_vector_resource_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrieveVectorResource {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_convert_files_and_save_to_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIConvertFilesAndSaveToFolder {
             msg: message,
             res: res_sender,
         },
