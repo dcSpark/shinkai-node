@@ -1,4 +1,4 @@
-use super::vector_fs_types::{DistributionOrigin, FSEntry, FSFolder, FSItem};
+use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
@@ -7,7 +7,7 @@ use log::kv::source;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::source::SourceFileMap;
+use shinkai_vector_resources::source::{DistributionOrigin, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
 use shinkai_vector_resources::{
     embeddings::Embedding,

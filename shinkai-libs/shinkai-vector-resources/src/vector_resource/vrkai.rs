@@ -10,40 +10,57 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap/DistributionOrigin.
-/// VRKai files are saved directly as JSON
+/// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize)]
-struct VRKai {
+pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
     pub distribution_origin: Option<DistributionOrigin>,
 }
 
 impl VRKai {
-    /// Prepares the VRKai to be saved or transferred across the network as a vector of bytes.
-    pub fn prepare_for_saving_as_bytes(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionOrigin.
+    pub fn from_base_vector_resource(
+        resource: BaseVectorResource,
+        sfm: Option<SourceFileMap>,
+        distribution_origin: Option<DistributionOrigin>,
+    ) -> Self {
+        VRKai {
+            resource,
+            sfm,
+            distribution_origin,
+        }
+    }
+
+    /// Prepares the VRKai to be saved or transferred across the network as a compressed vector of bytes.
+    pub fn prepare_as_bytes(&self) -> Result<Vec<u8>, VRError> {
         let json_str = serde_json::to_string(self)?;
         let compressed_bytes = compress_prepend_size(json_str.as_bytes());
         Ok(compressed_bytes)
     }
 
-    /// Prepares the VRKai to be saved or transferred across the network as a base64 encoded string.
-    pub fn prepare_for_saving_as_base64(&self) -> Result<String, Box<dyn Error>> {
-        let compressed_bytes = self.prepare_for_saving_as_bytes()?;
+    /// Prepares the VRKai to be saved or transferred across the network as a compressed base64 encoded string.
+    pub fn prepare_as_base64(&self) -> Result<String, VRError> {
+        let compressed_bytes = self.prepare_as_bytes()?;
         let base64_encoded = encode(compressed_bytes);
         Ok(base64_encoded)
     }
 
     /// Parses a VRKai from an array of bytes.
-    pub fn from_bytes(compressed_bytes: &[u8]) -> Result<Self, Box<dyn Error>> {
-        let decompressed_bytes = decompress_size_prepended(compressed_bytes)?;
-        let json_str = String::from_utf8(decompressed_bytes)?;
-        let vrkai = serde_json::from_str(&json_str)?;
+    pub fn from_bytes(compressed_bytes: &[u8]) -> Result<Self, VRError> {
+        let decompressed_bytes = decompress_size_prepended(compressed_bytes)
+            .map_err(|e| VRError::VRKaiParsingError(format!("Decompression error: {}", e)))?;
+        let json_str = String::from_utf8(decompressed_bytes)
+            .map_err(|e| VRError::VRKaiParsingError(format!("UTF-8 conversion error: {}", e)))?;
+        let vrkai = serde_json::from_str(&json_str)
+            .map_err(|e| VRError::VRKaiParsingError(format!("JSON parsing error: {}", e)))?;
         Ok(vrkai)
     }
 
     /// Parses a VRKai from a Base64 encoded string.
-    pub fn from_base64(base64_encoded: &str) -> Result<Self, Box<dyn Error>> {
-        let bytes = decode(base64_encoded)?;
+    pub fn from_base64(base64_encoded: &str) -> Result<Self, VRError> {
+        let bytes =
+            decode(base64_encoded).map_err(|e| VRError::VRKaiParsingError(format!("Base64 decoding error: {}", e)))?;
         Self::from_bytes(&bytes)
     }
 

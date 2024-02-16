@@ -2797,6 +2797,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lz4_flex"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "912b45c753ff5f7f5208307e8ace7d2a2e30d024e26d3509f3dce546c044ce15"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4775,6 +4784,7 @@ dependencies = [
  "anyhow",
  "async-recursion",
  "async-trait",
+ "base64 0.13.1",
  "blake3",
  "byteorder",
  "chrono",
@@ -4784,6 +4794,7 @@ dependencies = [
  "hex",
  "keyphrases",
  "lazy_static",
+ "lz4_flex",
  "ordered-float 3.9.1",
  "rand 0.8.5",
  "regex",
@@ -5654,6 +5665,16 @@ dependencies = [
  "thiserror",
  "url",
  "utf-8",
+]
+
+[[package]]
+name = "twox-hash"
+version = "1.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
+dependencies = [
+ "cfg-if",
+ "static_assertions",
 ]
 
 [[package]]
