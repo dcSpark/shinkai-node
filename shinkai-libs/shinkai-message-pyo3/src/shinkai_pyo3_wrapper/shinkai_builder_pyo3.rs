@@ -9,8 +9,7 @@ use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-        JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
     },
     shinkai_utils::{
         encryption::{
@@ -1147,7 +1146,7 @@ impl PyShinkaiMessageBuilder {
             };
             let job_creation = JobCreationInfo {
                 scope: scope.inner.clone(),
-                is_hidden: Some(is_hidden)
+                is_hidden: Some(is_hidden),
             };
 
             let body = match serde_json::to_string(&job_creation) {
@@ -1329,6 +1328,470 @@ impl PyShinkaiMessageBuilder {
             let _ = builder.external_metadata(receiver, sender);
 
             builder.build_to_string()
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_create_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        folder_name: String,
+        path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsCreateFolder {
+                path: path.clone(),
+                folder_name: folder_name.clone(),
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsCreateFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_move_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsMoveFolder {
+                origin_path: origin_path.clone(),
+                destination_path: destination_path.clone(),
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsMoveFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_copy_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsCopyFolder {
+                origin_path: origin_path.clone(),
+                destination_path: destination_path.clone(),
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsCopyFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_move_item(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsMoveItem {
+                origin_path: origin_path.clone(),
+                destination_path: destination_path.clone(),
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsMoveItem,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_copy_item(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsCopyItem {
+                origin_path: origin_path,
+                destination_path: destination_path,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsCopyItem,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_create_items(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        destination_path: String,
+        file_inbox: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIConvertFilesAndSaveToFolder {
+                path: destination_path,
+                file_inbox: file_inbox,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::ConvertFilesAndSaveToFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_retrieve_resource(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFSRetrieveVectorResource { path: path };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsRetrieveVectorResource,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_retrieve_path_simplified(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        path: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsRetrievePathSimplifiedJson { path: path };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    pub fn vecfs_retrieve_vector_search_simplified(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        search: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+        receiver_subidentity: String,
+        path: Option<String>,
+        max_results: Option<usize>,
+        max_files_to_scan: Option<usize>,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
+                search: search,
+                path: path,
+                max_results: max_results,
+                max_files_to_scan: max_files_to_scan,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
         })
     }
 }

@@ -387,6 +387,41 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         self.assertEqual(result_json["external_metadata"]["other"], other)
         self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
         self.assertEqual(result_json["version"], "V1_0")
+    
+    def test_vecfs_copy_item(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        receiver_public_key = '798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679'
+        origin_path = '/origin/path'
+        destination_path = '/destination/path'
+        sender = "@@sender.shinkai"
+        receiver = "@@receiver.shinkai"
+        sender_subidentity = "main"
+        receiver_subidentity = ""
+
+        # Action
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.vecfs_copy_item(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key,
+            origin_path,
+            destination_path,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+        )
+
+        # Assert
+        result_json = json.loads(result)
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], sender)
+        self.assertEqual(result_json["external_metadata"]["recipient"], receiver)
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
+    
+    # TODO: add more tests for the remaining functions
+    # TODO: decrypt the result and check the fields of the result
 
 if __name__ == '__main__':
     unittest.main()
