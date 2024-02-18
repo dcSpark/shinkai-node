@@ -272,6 +272,42 @@ pub enum NodeCommand {
         models: Vec<String>,
         res: Sender<Result<(), String>>,
     },
+    APIVecFSRetrievePathSimplifiedJson {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSRetrieveVectorResource {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSRetrieveVectorSearchSimplifiedJson {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
+    },
+    APIConvertFilesAndSaveToFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    APIVecFSCreateFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSMoveItem {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSCopyItem {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSMoveFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSCopyFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -563,7 +599,15 @@ impl Node {
                             Some(NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
                             // Some(NodeCommand::APIRetryMessageWithInbox { inbox_name, message_hash, res }) => self.api_retry_message_with_inbox(inbox_name, message_hash, res).await,
                             // Some(NodeCommand::RetryMessageWithInbox { inbox_name, message_hash, res }) => self.local_retry_message_with_inbox(inbox_name, message_hash, res).await,
-
+                            Some(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await?,
+                            Some(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res }) => self.api_convert_files_and_save_to_folder(msg, res).await?,
+                            Some(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await?,
+                            Some(NodeCommand::APIVecFSCreateFolder { msg, res }) => self.api_vec_fs_create_folder(msg, res).await?,
+                            Some(NodeCommand::APIVecFSMoveItem { msg, res }) => self.api_vec_fs_move_item(msg, res).await?,
+                            Some(NodeCommand::APIVecFSCopyItem { msg, res }) => self.api_vec_fs_copy_item(msg, res).await?,
+                            Some(NodeCommand::APIVecFSMoveFolder { msg, res }) => self.api_vec_fs_move_folder(msg, res).await?,
+                            Some(NodeCommand::APIVecFSCopyFolder { msg, res }) => self.api_vec_fs_copy_folder(msg, res).await?,
+                            Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
                             _ => {},
                         }
                     }

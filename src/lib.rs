@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 pub mod agent;
 pub mod cron_tasks;
 pub mod crypto_identities;

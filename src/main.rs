@@ -1,4 +1,5 @@
 // main.rs
+#![recursion_limit = "256"]
 mod agent;
 mod cron_tasks;
 mod crypto_identities;

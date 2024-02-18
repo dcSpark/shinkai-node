@@ -4705,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.4.1"
+version = "0.4.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
