@@ -10,7 +10,8 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, JobMessage, MessageSchemaType
+    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+    APIVecFsRetrievePathSimplifiedJson, JobMessage, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -57,11 +58,7 @@ fn generate_message_with_payload<T: ToString>(
             "".to_string(),
             EncryptionMethod::None,
         )
-        .external_metadata_with_schedule(
-            recipient.to_string(),
-            sender.to_string(),
-            timestamp,
-        )
+        .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
         .unwrap();
     message
@@ -213,10 +210,7 @@ fn vector_fs_api_tests() {
 
                 // Send the command
                 node1_commands_sender
-                    .send(NodeCommand::APIVecFSCreateFolder {
-                        msg,
-                        res: res_sender,
-                    })
+                    .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
@@ -259,9 +253,9 @@ fn vector_fs_api_tests() {
                 let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
             }
             {
-                 // Create Folder
-                 let payload = APIConvertFilesAndSaveToFolder {
-                    path: "/test_folder".to_string(),
+                // Convert File and Save to Folder
+                let payload = APIConvertFilesAndSaveToFolder {
+                    path: "test_folder".to_string(),
                     file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
                 };
 
@@ -281,10 +275,7 @@ fn vector_fs_api_tests() {
 
                 // Send the command
                 node1_commands_sender
-                    .send(NodeCommand::APIConvertFilesAndSaveToFolder {
-                        msg,
-                        res: res_sender,
-                    })
+                    .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
@@ -312,17 +303,115 @@ fn vector_fs_api_tests() {
 
                 // Send the command
                 node1_commands_sender
-                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson {
-                        msg,
-                        res: res_sender,
-                    })
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp for current file system files: {:?}", resp);
+
+                // TODO: convert to json and then compare
+                let expected_path = "/test_folder/shinkai_intro";
+                assert!(
+                    resp.contains(expected_path),
+                    "Response does not contain the expected file path: {}",
+                    expected_path
+                );
+            }
+            // It is failing
+            // Failed to receive response: APIError { code: 500, error: "Internal Server Error",
+            // message: "Failed to move folder: Supplied path does not exist/hold any FSEntry in the VectorFS: /test_folder2" }
+            // {
+            //     // Move Folder
+            //     let payload = APIVecFsMoveFolder {
+            //         origin_path: "test_folder".to_string(),
+            //         destination_path: "test_folder2".to_string(),
+            //     };
+
+            //     let msg = generate_message_with_payload(
+            //         serde_json::to_string(&payload).unwrap(),
+            //         MessageSchemaType::VecFsMoveFolder,
+            //         node1_profile_encryption_sk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_encryption_pk.clone(),
+            //         node1_identity_name.as_str(),
+            //         node1_profile_name.as_str(),
+            //         node1_identity_name.as_str(),
+            //     );
+
+            //     // Prepare the response channel
+            //     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+            //     // Send the command
+            //     node1_commands_sender
+            //         .send(NodeCommand::APIVecFSMoveFolder { msg, res: res_sender })
+            //         .await
+            //         .unwrap();
+            //     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            //     eprintln!("resp: {:?}", resp);
+            // }
+            {
+                // Copy Item (we required creating a new folder to copy the item to)
+                {
+                    // Create Folder
+                    let payload = APIVecFsCreateFolder {
+                        path: "/".to_string(),
+                        folder_name: "test_folder3".to_string(),
+                    };
+    
+                    let msg = generate_message_with_payload(
+                        serde_json::to_string(&payload).unwrap(),
+                        MessageSchemaType::VecFsCreateFolder,
+                        node1_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk.clone(),
+                        node1_identity_name.as_str(),
+                        node1_profile_name.as_str(),
+                        node1_identity_name.as_str(),
+                    );
+    
+                    // Prepare the response channel
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+                    // Send the command
+                    node1_commands_sender
+                        .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
+                        .await
+                        .unwrap();
+                    let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                }
+                // Copy item
+                let payload = APIVecFsCopyItem {
+                    origin_path: "test_folder/shinkai_intro".to_string(),
+                    destination_path: "test_folder3".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsCopyItem,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSCopyItem { msg, res: res_sender })
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp: {:?}", resp);
             }
             {
-                // Move Folder
+                // Move item
+            }
+            {
+                // Do deep search
             }
             // let mut job_id = "".to_string();
             // let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();

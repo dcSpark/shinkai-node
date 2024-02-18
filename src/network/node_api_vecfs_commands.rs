@@ -281,31 +281,8 @@ impl Node {
         };
 
         let mut vector_fs = self.vector_fs.lock().await;
-        let folder_path = match VRPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert folder path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let folder_path = VRPath::root().push_cloned(input_payload.origin_path.clone());
+        let destination_path = VRPath::root().push_cloned(input_payload.destination_path.clone());
 
         let orig_writer = match vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()) {
             Ok(writer) => writer,
@@ -512,31 +489,8 @@ impl Node {
         };
 
         let mut vector_fs = self.vector_fs.lock().await;
-        let item_path = match VRPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let item_path = VRPath::root().push_cloned(input_payload.origin_path.clone());
+        let destination_path = VRPath::root().push_cloned(input_payload.destination_path.clone());
 
         let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
             Ok(writer) => writer,
@@ -665,7 +619,8 @@ impl Node {
             }
         };
         let mut vector_fs = self.vector_fs.lock().await;
-        let destination_path = match VRPath::from_string(&input_payload.path) {
+        let path = format!("/{}", input_payload.path);
+        let destination_path = match VRPath::from_string(&path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -695,7 +650,7 @@ impl Node {
                 }
             }
         };
-        eprintln!("Files: {:?}", files);
+        // eprintln!("Files: {:?}", files);
 
         // TODO: we also need to handle the other ones which need to be converted to vrkai
         // read files from file_inbox
@@ -704,24 +659,29 @@ impl Node {
         let vrkai_files: Vec<(String, Vec<u8>)> =
             files.into_iter().filter(|(name, _)| name.ends_with(".vrkai")).collect();
 
+        let mut success_messages = Vec::new();
+
         for vrkai_file in vrkai_files {
             // Assuming VRPath::format_to_string() gives a string representation of the path
             // and vrkai_file.0 is the filename to append.
             // Manually ensure to correctly handle the path separator.
-            let formatted_destination_path = destination_path.format_to_string();
+            let formatted_destination_path = destination_path.clone().format_to_string();
             let separator = if formatted_destination_path.ends_with('/') {
                 ""
             } else {
                 "/"
             };
-            let item_path_str = format!("{}{}{}", formatted_destination_path, separator, vrkai_file.0);
+            let filename = vrkai_file.0.split('/').last().unwrap_or_default();
+            let item_path_str = format!("{}{}{}", formatted_destination_path, separator, filename);
             eprintln!("Item path: {}", item_path_str);
 
             // If you need to convert item_path_str back to a VRPath for further operations
             let item_path = VRPath::from_string(&item_path_str).expect("Failed to create VRPath from string");
+            eprintln!("Item path: {:?}", item_path);
 
+            let first_folder_path = VRPath::root().push_cloned(input_payload.path.to_string());
             let writer = vector_fs
-                .new_writer(requester_name.clone(), item_path, requester_name.clone())
+                .new_writer(requester_name.clone(), first_folder_path, requester_name.clone())
                 .unwrap();
 
             // Convert Vec<u8> to a String to use with from_json
@@ -738,7 +698,8 @@ impl Node {
                     return Ok(());
                 }
             };
-            eprintln!("JSON String: {:?}", json_str);
+
+            // eprintln!("JSON String: {:?}", json_str);
 
             let base_vr = match BaseVectorResource::from_json(&json_str) {
                 Ok(vr) => vr,
@@ -754,26 +715,80 @@ impl Node {
                     return Ok(());
                 }
             };
-            eprintln!("BaseVectorResource: {:?}", base_vr);
+            // eprintln!("BaseVectorResource: {:?}", base_vr);
 
-            let _ = vector_fs
-                .save_vector_resource_in_folder(
-                    &writer,
-                    base_vr,
-                    None, // TODO: we could extract it if it's part of the vrkai
-                    DistributionOrigin::None, // TODO: extend the schema or read it from the vrkai
-                )
-                .unwrap();// TODO: convert to a gracefully error
+            eprintln!("Writing to vector_fs");
+            eprintln!("destination_path: {:?}", destination_path);
 
-            // TODO: Define permissions here
+            {
+                // available paths
+                let vr_path = match VRPath::from_string(&path) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to convert path to VRPath: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+                let reader = match reader {
+                    Ok(reader) => reader,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to create reader: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                let result = vector_fs.retrieve_fs_path_simplified_json(&reader);
+                let result = match result {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to retrieve fs path simplified json: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                eprintln!("Result: {:?}", result);
+            }
+
+            if let Err(e) = vector_fs.save_vector_resource_in_folder(
+                &writer,
+                base_vr,
+                None, // TODO: we could extract it if it's part of the vrkai
+                DistributionOrigin::None, // TODO: extend the schema or read it from the vrkai
+            ) {
+                // TODO: send error back
+                eprintln!("Error saving vector resource in folder: {}", e);
+            }
+
+                        // TODO: Define permissions here
             //     let perm_writer = vector_fs
             //     .new_writer(default_test_profile(), item.path.clone(), default_test_profile())
             //     .unwrap();
             // vector_fs
             //     .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
             //     .unwrap();
+
+            eprintln!("Vector resource saved in folder");
+            let success_message = format!("Vector resource '{}' saved in folder successfully.", filename);
+            success_messages.push(success_message);
+
         }
 
+        let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())
     }
 }
