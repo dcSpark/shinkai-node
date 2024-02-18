@@ -7,12 +7,10 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-        JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
     },
     shinkai_utils::{
         encryption::{
@@ -22,6 +20,9 @@ use shinkai_message_primitives::{
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         signatures::{signature_public_key_to_string, string_to_signature_secret_key},
     },
+};
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message_schemas::APIVecFsCreateFolder, shinkai_utils::job_scope::JobScope,
 };
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -214,7 +215,12 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn external_metadata_with_intra(&mut self, recipient: String, sender: String, intra_sender: String) -> Result<(), JsValue> {
+    pub fn external_metadata_with_intra(
+        &mut self,
+        recipient: String,
+        sender: String,
+        intra_sender: String,
+    ) -> Result<(), JsValue> {
         if let Some(mut inner) = self.inner.take() {
             inner = inner.external_metadata_with_intra_sender(recipient, sender, intra_sender);
             self.inner = Some(inner);
@@ -250,7 +256,7 @@ impl ShinkaiMessageBuilderWrapper {
         recipient: String,
         sender: String,
         other: String,
-        intra_sender: String
+        intra_sender: String,
     ) -> Result<(), JsValue> {
         if let Some(mut inner) = self.inner.take() {
             inner = inner.external_metadata_with_other_and_intra_sender(recipient, sender, other, intra_sender);
@@ -756,7 +762,12 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(data);
         let _ = builder.body_encryption(body_encryption);
-        let _ = builder.external_metadata_with_other_and_intra_sender(recipient, sender, other.to_string(), sender_subidentity.clone());
+        let _ = builder.external_metadata_with_other_and_intra_sender(
+            recipient,
+            sender,
+            other.to_string(),
+            sender_subidentity.clone(),
+        );
         let _ = builder.internal_metadata_with_schema(
             sender_subidentity,
             recipient_subidentity,
@@ -805,7 +816,10 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<String, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
+        let job_creation = JobCreationInfo {
+            scope,
+            is_hidden: Some(is_hidden),
+        };
         let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let mut builder =
@@ -905,9 +919,312 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg))?;
         let _ = builder.empty_non_encrypted_internal_metadata();
-        let _ = builder.body_encryption(JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str()));
+        let _ = builder.body_encryption(JsValue::from_str(
+            EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str(),
+        ));
         let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
         builder.build_to_string()
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_create_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        folder_name: String,
+        path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let folder_creation_info = APIVecFsCreateFolder { folder_name, path };
+        let body = serde_json::to_string(&folder_creation_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsCreateFolder.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_move_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let folder_move_info = APIVecFsMoveFolder {
+            origin_path,
+            destination_path,
+        };
+        let body = serde_json::to_string(&folder_move_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsMoveFolder.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_copy_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let folder_copy_info = APIVecFsCopyFolder {
+            origin_path,
+            destination_path,
+        };
+        let body = serde_json::to_string(&folder_copy_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsCopyFolder.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_move_item(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let item_move_info = APIVecFsMoveItem {
+            origin_path,
+            destination_path,
+        };
+        let body = serde_json::to_string(&item_move_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsMoveItem.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_copy_item(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        origin_path: String,
+        destination_path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let item_copy_info = APIVecFsCopyItem {
+            origin_path,
+            destination_path,
+        };
+        let body = serde_json::to_string(&item_copy_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsCopyItem.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_create_items(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        destination_path: String,
+        file_inbox: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let create_items_info = APIConvertFilesAndSaveToFolder {
+            path: destination_path,
+            file_inbox,
+        };
+        let body = serde_json::to_string(&create_items_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::ConvertFilesAndSaveToFolder.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_retrieve_resource(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let retrieve_resource_info = APIVecFSRetrieveVectorResource { path };
+        let body = serde_json::to_string(&retrieve_resource_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsRetrieveVectorResource.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_retrieve_path_simplified(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        path: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let retrieve_path_info = APIVecFsRetrievePathSimplifiedJson { path };
+        let body = serde_json::to_string(&retrieve_path_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsRetrievePathSimplifiedJson.to_str().to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn vecfs_retrieve_vector_search_simplified(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        search: String,
+        path: Option<String>,
+        max_results: Option<usize>,
+        max_files_to_scan: Option<usize>,
+        sender: ProfileName,
+        sender_subidentity: String,
+        receiver: ProfileName,
+        receiver_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let search_info = APIVecFsRetrieveVectorSearchSimplifiedJson {
+            search,
+            path,
+            max_results,
+            max_files_to_scan,
+        };
+        let body = serde_json::to_string(&search_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let schema = MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson
+            .to_str()
+            .to_string();
+        let other = "";
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            receiver,
+            receiver_subidentity,
+            other,
+            schema,
+        )
     }
 }
 

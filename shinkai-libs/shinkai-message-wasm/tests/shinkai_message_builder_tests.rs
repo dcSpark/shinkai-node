@@ -15,6 +15,7 @@ mod tests {
         EncryptionMethod,
     };
     use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
     use shinkai_message_primitives::shinkai_utils::signatures::{
         signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
     };
@@ -962,5 +963,631 @@ mod tests {
         assert_eq!(content["inbox_name"]["RegularInbox"]["identities"][0], "@@node.shinkai");
         assert_eq!(content["inbox_name"]["RegularInbox"]["identities"][0], "@@node.shinkai");
         assert_eq!(content["up_to_time"], "2023-07-02T20:53:34Z");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_create_folder() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let folder_name = "NewFolder".to_string();
+        let path = "/root/path/".to_string();
+        let sender = ProfileName::from("@@node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@node.shinkai");
+        let receiver_subidentity = "".to_string();
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_create_folder(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            folder_name.clone(),
+            path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_create_folder() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, receiver.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // log::debug!("decrypted_message: {:?}", content);
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["folder_name"], "NewFolder");
+        assert_eq!(content["path"], "/root/path/");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_move_folder() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let origin_path = "/root/origin/".to_string();
+        let destination_path = "/root/destination/".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string();
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_move_folder(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            origin_path.clone(),
+            destination_path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_move_folder() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["origin_path"], "/root/origin/");
+        assert_eq!(content["destination_path"], "/root/destination/");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_copy_folder() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let origin_path = "/root/origin/".to_string();
+        let destination_path = "/root/destination/".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string();
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_copy_folder(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            origin_path.clone(),
+            destination_path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_copy_folder() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["origin_path"], "/root/origin/");
+        assert_eq!(content["destination_path"], "/root/destination/");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_move_item() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let origin_path = "/root/origin/item".to_string();
+        let destination_path = "/root/destination/item".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string();
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_move_item(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            origin_path.clone(),
+            destination_path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_move_item() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["origin_path"], "/root/origin/item");
+        assert_eq!(content["destination_path"], "/root/destination/item");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_copy_item() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let origin_path = "/root/origin/item".to_string();
+        let destination_path = "/root/destination/item".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string(); // Updated as per instruction
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_copy_item(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            origin_path.clone(),
+            destination_path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_copy_item() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["origin_path"], "/root/origin/item");
+        assert_eq!(content["destination_path"], "/root/destination/item");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_create_items() {
+        // console_log::init_with_level(log::Level::Debug).expect("error initializing log");
+
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let destination_path = "/root/destination/".to_string();
+        let file_inbox = "inbox_for_files".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string(); // Updated as per instruction
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_create_items(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            destination_path.clone(),
+            file_inbox.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_create_items() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // log::debug!("decrypted_message: {:?}", content);
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["path"], "/root/destination/");
+        assert_eq!(content["file_inbox"], "inbox_for_files");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_retrieve_resource() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let path = "/root/resource/path".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string(); // Updated as per instruction
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_retrieve_resource(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_retrieve_resource() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["path"], "/root/resource/path");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_retrieve_path_simplified() {
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let path = "/root/simplified/path".to_string();
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string(); // Updated as per instruction
+
+        // Call the function and check the result
+        let result = ShinkaiMessageBuilderWrapper::vecfs_retrieve_path_simplified(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            path.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_retrieve_path_simplified() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["path"], "/root/simplified/path");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_vecfs_retrieve_vector_search_simplified() {
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let search = "keyword".to_string();
+        let path = Some("/root/search/path".to_string());
+        let max_results = Some(10);
+        let max_files_to_scan = Some(100);
+        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender_subidentity = "main".to_string();
+        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver_subidentity = "main".to_string(); // Updated as per instruction
+
+        let result = ShinkaiMessageBuilderWrapper::vecfs_retrieve_vector_search_simplified(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            search.clone(),
+            path.clone(),
+            max_results.clone(),
+            max_files_to_scan.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            receiver.clone(),
+            receiver_subidentity.clone(),
+        );
+
+        if let Err(e) = &result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("vecfs_retrieve_vector_search_simplified() returned an error: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        let message_result_string = result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Check internal metadata
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_subidentity);
+        assert_eq!(
+            decrypted_message.get_recipient_subidentity().unwrap(),
+            receiver_subidentity
+        );
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, sender.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+        // Further assertions based on the expected structure of the result
+        assert_eq!(content["search"], search);
+        if let Some(p) = &path {
+            assert_eq!(content["path"], *p);
+        }
+        assert_eq!(content["max_results"].as_i64(), max_results.map(|m| m as i64));
+        assert_eq!(
+            content["max_files_to_scan"].as_i64(),
+            max_files_to_scan.map(|m| m as i64)
+        );
     }
 }
