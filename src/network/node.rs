@@ -282,7 +282,7 @@ pub enum NodeCommand {
     },
     APIVecFSRetrieveVectorSearchSimplifiedJson {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
     },
     APIConvertFilesAndSaveToFolder {
         msg: ShinkaiMessage,

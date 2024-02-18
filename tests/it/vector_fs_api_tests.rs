@@ -10,8 +10,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
-    APIVecFsRetrievePathSimplifiedJson, JobMessage, MessageSchemaType,
+    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, MessageSchemaType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -219,7 +218,7 @@ fn vector_fs_api_tests() {
             {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
-                let filename = "files/shinkai_intro.vrkai";
+                let filename = "files/shinkai_intro_escaped.vrkai";
                 let file_path = Path::new(filename.clone());
 
                 // Read the file into a buffer
@@ -255,7 +254,7 @@ fn vector_fs_api_tests() {
             {
                 // Convert File and Save to Folder
                 let payload = APIConvertFilesAndSaveToFolder {
-                    path: "test_folder".to_string(),
+                    path: "/test_folder".to_string(),
                     file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
                 };
 
@@ -381,8 +380,8 @@ fn vector_fs_api_tests() {
                 }
                 // Copy item
                 let payload = APIVecFsCopyItem {
-                    origin_path: "test_folder/shinkai_intro".to_string(),
-                    destination_path: "test_folder3".to_string(),
+                    origin_path: "/test_folder/shinkai_intro".to_string(),
+                    destination_path: "/test_folder3".to_string(),
                 };
 
                 let msg = generate_message_with_payload(
@@ -405,151 +404,55 @@ fn vector_fs_api_tests() {
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp: {:?}", resp);
+                assert!(
+                    resp.contains("Item copied successfully to /test_folder3"),
+                    "Response does not contain the expected file path: /test_folder3/shinkai_intro"
+                );
             }
             {
                 // Move item
+                // For Later
+
             }
             {
                 // Do deep search
+                let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
+                    search: "who wrote Shinkai?".to_string(),
+                    path: Some("/test_folder".to_string()),
+                    max_results: Some(10),
+                    max_files_to_scan: Some(100),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+            
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+            
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                assert!(!resp.is_empty(), "Response is empty.");
+                assert_eq!(
+                    (&resp[0].0, &resp[0].1),
+                    (
+                        &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros".to_string(),
+                        &vec!["test_folder".to_string(), "shinkai_intro".to_string()]
+                    ),
+                    "The first search result does not match the expected output."
+                );
             }
-            // let mut job_id = "".to_string();
-            // let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
-            // {
-            //     // Create a Job
-            //     eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
-            //     job_id = api_create_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //     )
-            //     .await;
-            // }
-            // let job_message_content = "tell me a joke".to_string();
-            // {
-            //     // Send a Message to the Job for processing
-            //     eprintln!("\n\nSend a message for the Job");
-            //     let start = Instant::now();
-            //     api_message_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //         &job_id.clone().to_string(),
-            //         &job_message_content,
-            //         "",
-            //         "",
-            //     )
-            //     .await;
-
-            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            // }
-            // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     tokio::time::sleep(Duration::from_secs(2)).await;
-            //     let mut job_completed = false;
-            //     for _ in 0..5 {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 4,
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-            //         if node1_last_messages.len() >= 2 {
-            //             match node1_last_messages[1].get_message_content() {
-            //                 Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-            //                     Ok(job_message) => {
-            //                         eprintln!("message_content: {}", job_message.content);
-            //                         job_completed = true;
-            //                         break;
-            //                     }
-            //                     Err(_) => {
-            //                         eprintln!("error: message_content: {}", message_content);
-            //                     }
-            //                 },
-            //                 Err(_) => {
-            //                     // nothing
-            //                 }
-            //             }
-            //         }
-            //         tokio::time::sleep(Duration::from_millis(500)).await;
-            //     }
-            //     assert!(job_completed, "Job did not complete within the expected time");
-            // }
-            // let second_job_message_content = "I didn't understand the joke. Can you explain it?".to_string();
-            // {
-            //     // Sending a second message to the Job for processing
-            //     eprintln!("\n\nSend a second message for the Job");
-            //     let start = Instant::now();
-            //     api_message_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //         &job_id.clone().to_string(),
-            //         &second_job_message_content,
-            //         "",
-            //         "",
-            //     )
-            //     .await;
-
-            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            // }
-            // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     tokio::time::sleep(Duration::from_secs(2)).await;
-            //     let mut job_completed = false;
-            //     for _ in 0..5 {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 4,
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-            //         if node1_last_messages.len() >= 4 {
-            //             match node1_last_messages[3].get_message_content() {
-            //                 Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-            //                     Ok(job_message) => {
-            //                         eprintln!("message_content: {}", job_message.content);
-            //                         job_completed = true;
-            //                         break;
-            //                     }
-            //                     Err(_) => {
-            //                         eprintln!("error: message_content: {}", message_content);
-            //                     }
-            //                 },
-            //                 Err(_) => {
-            //                     // nothing
-            //                 }
-            //             }
-            //         }
-            //         tokio::time::sleep(Duration::from_millis(500)).await;
-            //     }
-            //     assert!(job_completed, "Job did not complete within the expected time");
-            // }
-
             node1_abort_handler.abort();
         })
     });

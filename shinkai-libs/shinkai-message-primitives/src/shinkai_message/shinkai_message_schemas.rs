@@ -250,6 +250,8 @@ pub struct APIVecFSRetrieveVectorResource {
 pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub search: String,
     pub path: Option<String>,
+    pub max_results: Option<usize>,
+    pub max_files_to_scan: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
