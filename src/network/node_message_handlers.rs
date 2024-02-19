@@ -206,13 +206,27 @@ pub async fn handle_default_encryption(
 ) -> Result<(), NodeError> {
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
-        Ok(content) => {
+        Ok(decrypted_message) => {
             // println!(
             //     "{} > Got message from {:?}. Sending ACK",
             //     receiver_address, unsafe_sender_address
             // );
 
-            let message = content.get_message_content();
+            // Maybe save message here instead?
+
+            // Save to db
+            {
+                Node::save_to_db(
+                    false,
+                    &decrypted_message,
+                    clone_static_secret_key(&my_encryption_secret_key),
+                    maybe_db.clone(),
+                    maybe_identity_manager.clone(),
+                )
+                .await?;
+            }
+
+            let message = decrypted_message.get_message_content();
             match message {
                 Ok(message_content) => {
                     if message_content != "ACK" {
