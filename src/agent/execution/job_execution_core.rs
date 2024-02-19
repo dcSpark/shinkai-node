@@ -43,11 +43,14 @@ impl JobManager {
             &format!("Processing job: {}", job_id),
         );
         // Fetch data we need to execute job step
-        let (mut full_job, agent_found, profile_name, user_profile) =
-            JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
+        let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
+        let (mut full_job, agent_found, profile_name, user_profile) = match fetch_data_result {
+            Ok(data) => data,
+            Err(e) => return Self::handle_error(&db, &job_id, &identity_secret_key, e).await,
+        };
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
-        let kai_found = JobManager::should_process_job_files_for_tasks_take_over(
+        let kai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
             db.clone(),
             &job_message.job_message,
             agent_found.clone(),
@@ -56,14 +59,18 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             unstructured_api.clone(),
         )
-        .await?;
+        .await;
+        let kai_found = match kai_found_result {
+            Ok(found) => found,
+            Err(e) => return Self::handle_error(&db, &job_id, &identity_secret_key, e).await,
+        };
         if kai_found {
-            return Ok(job_id.clone());
+            return Ok(job_id);
         }
 
         // Otherwise proceed forward with rest of logic.
         // Processes any files which were sent with the job message
-        JobManager::process_job_message_files_for_vector_resources(
+        let process_files_result = JobManager::process_job_message_files_for_vector_resources(
             db.clone(),
             &job_message.job_message,
             agent_found.clone(),
@@ -73,11 +80,21 @@ impl JobManager {
             generator.clone(),
             unstructured_api.clone(),
         )
-        .await?;
+        .await;
+        if let Err(e) = process_files_result {
+            return Self::handle_error(&db, &job_id, &identity_secret_key, e).await;
+        }
 
         // Ensure the user profile exists before proceeding with inference chain
-        let user_profile = &user_profile.clone().ok_or(AgentError::NoUserProfileFound)?;
-        match JobManager::process_inference_chain(
+        // Ensure the user profile exists before proceeding with inference chain
+        let user_profile = match user_profile {
+            Some(profile) => profile,
+            None => {
+                return Self::handle_error(&db, &job_id, &identity_secret_key, AgentError::NoUserProfileFound).await
+            }
+        };
+
+        let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
@@ -87,45 +104,47 @@ impl JobManager {
             user_profile.clone(),
             generator,
         )
-        .await
-        {
-            Ok(_) => (),
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    &format!("Error processing inference chain: {}", e),
-                );
-
-                let error_for_frontend = e.to_error_json();
-
-                // Prepare data to save inference response to the DB
-                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
-                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
-                    job_id.to_string(),
-                    error_for_frontend.to_string(),
-                    "".to_string(),
-                    identity_secret_key_clone,
-                    profile_name.clone(),
-                    profile_name.clone(),
-                )
-                .unwrap();
-
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
-                );
-
-                // Save response data to DB
-                let mut shinkai_db = db.lock().await;
-                shinkai_db
-                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
-                    .await?;
-            }
+        .await;
+        if let Err(e) = inference_chain_result {
+            return Self::handle_error(&db, &job_id, &identity_secret_key, e).await;
         }
 
-        return Ok(job_id.clone());
+        Ok(job_id)
+    }
+
+    /// Handle errors by sending an error message to the job inbox
+    async fn handle_error(
+        db: &Arc<Mutex<ShinkaiDB>>,
+        job_id: &str,
+        identity_secret_key: &SigningKey,
+        error: AgentError,
+    ) -> Result<String, AgentError> {
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Error,
+            &format!("Error processing job: {}", error),
+        );
+
+        let error_for_frontend = error.to_error_json();
+
+        let identity_secret_key_clone = clone_signature_secret_key(identity_secret_key);
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            job_id.to_string(),
+            error_for_frontend.to_string(),
+            "".to_string(),
+            identity_secret_key_clone,
+            "".to_string(), // Assuming profile_name is not available here
+            "".to_string(),
+        )
+        .expect("Failed to build error message");
+
+        let mut shinkai_db = db.lock().await;
+        shinkai_db
+            .add_message_to_job_inbox(job_id, &shinkai_message, None)
+            .await
+            .expect("Failed to add error message to job inbox");
+
+        Err(error)
     }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
@@ -485,11 +504,13 @@ impl JobManager {
 
         // Start processing the files
         for (filename, content) in files.into_iter() {
+            eprintln!("Processing file: {}", filename);
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
                 &format!("Processing file: {}", filename),
             );
+            // TODO: is file is different than .kai
             let resource = JobManager::parse_file_into_resource_gen_desc(
                 content.clone(),
                 &generator,
