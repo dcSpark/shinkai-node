@@ -365,6 +365,8 @@ pub struct Node {
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
     pub unstructured_api: UnstructuredAPI,
+    /// Rate Limiter
+    pub conn_limiter: Arc<ConnectionLimiter>,
 }
 
 impl Node {
@@ -446,6 +448,8 @@ impl Node {
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
 
+        let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // TODO: allow for ENV to set this
+
         Node {
             node_profile_name,
             identity_secret_key,
@@ -466,6 +470,7 @@ impl Node {
             vector_fs: vector_fs_arc,
             embedding_generator,
             unstructured_api,
+            conn_limiter,
         }
     }
 
@@ -645,32 +650,29 @@ impl Node {
         );
 
         // Initialize your connection limiter
-        let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // Adjust these numbers based on your needs
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
-            {
-                // Too many requests by IP protection
-                let ip = addr.ip().to_string();
-                let conn_limiter_clone = conn_limiter.clone();
+            // Too many requests by IP protection
+            let ip = addr.ip().to_string();
+            let conn_limiter_clone = self.conn_limiter.clone();
 
-                if !conn_limiter_clone.check_rate_limit(&ip).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Rate limit exceeded for IP: {}", ip),
-                    );
-                    continue; // Skip this connection attempt
-                }
+            if !conn_limiter_clone.check_rate_limit(&ip).await {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Rate limit exceeded for IP: {}", ip),
+                );
+                continue; // Skip this connection attempt
+            }
 
-                if !conn_limiter_clone.increment_connection(&ip).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Too many connections from IP: {}", ip),
-                    );
-                    continue; // Skip this connection attempt
-                }
+            if !conn_limiter_clone.increment_connection(&ip).await {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Too many connections from IP: {}", ip),
+                );
+                continue; // Skip this connection attempt
             }
 
             let socket = Arc::new(Mutex::new(socket));
@@ -704,7 +706,7 @@ impl Node {
                         &format!("Failed to flush the socket: {}", e),
                     );
                 }
-                // conn_limiter_clone.decrement_connection(&ip).await;
+                conn_limiter_clone.decrement_connection(&ip).await;
             });
         }
     }
