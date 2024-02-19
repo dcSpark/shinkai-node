@@ -231,7 +231,7 @@ impl FSFolder {
                 // If it's a Resource, then create a FSFolder by recursing, and push it to child_folders
                 NodeContent::Resource(inner_resource) => {
                     // Process datetimes from node
-                    let (lm_datetime) = Self::process_datetimes_from_node(&node)?;
+                    let lm_datetime = Self::process_datetimes_from_node(&node)?;
                     let new_path = resource_fs_path.push_cloned(inner_resource.as_trait_object().name().to_string());
                     child_folders.push(Self::from_vector_resource(
                         inner_resource.clone(),

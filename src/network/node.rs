@@ -5,6 +5,7 @@ use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::IdentityManager;
+use crate::network::network_limiter::ConnectionLimiter;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
@@ -638,8 +639,35 @@ impl Node {
             &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
         );
 
+        // Initialize your connection limiter
+        let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // Adjust these numbers based on your needs
+
         loop {
             let (mut socket, addr) = listener.accept().await?;
+            {
+                // Too many requests by IP protection
+                let ip = addr.ip().to_string();
+                let conn_limiter_clone = conn_limiter.clone();
+
+                if !conn_limiter_clone.check_rate_limit(&ip).await {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Rate limit exceeded for IP: {}", ip),
+                    );
+                    continue; // Skip this connection attempt
+                }
+
+                if !conn_limiter_clone.increment_connection(&ip).await {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Too many connections from IP: {}", ip),
+                    );
+                    continue; // Skip this connection attempt
+                }
+            }
+
             let socket = Arc::new(Mutex::new(socket));
             let db = Arc::clone(&self.db);
             let identity_manager = Arc::clone(&self.identity_manager);
@@ -653,7 +681,7 @@ impl Node {
                 socket.read_to_end(&mut buffer).await.unwrap();
 
                 let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                let _ = Node::handle_message(
+                let _ = Node::handle_message_internode(
                     addr,
                     destination_socket.clone(),
                     &buffer,
@@ -671,6 +699,7 @@ impl Node {
                         &format!("Failed to flush the socket: {}", e),
                     );
                 }
+                // conn_limiter_clone.decrement_connection(&ip).await;
             });
         }
     }
@@ -891,7 +920,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_message(
+    pub async fn handle_message_internode(
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,
         bytes: &[u8],
@@ -947,17 +976,17 @@ impl Node {
             &format!("{} > Verified message signature", receiver_address),
         );
 
-        // Save to db
-        {
-            Node::save_to_db(
-                false,
-                &message,
-                clone_static_secret_key(&my_encryption_secret_key),
-                maybe_db.clone(),
-                maybe_identity_manager.clone(),
-            )
-            .await?;
-        }
+        // // Save to db -- Previous
+        // {
+        //     Node::save_to_db(
+        //         false,
+        //         &message,
+        //         clone_static_secret_key(&my_encryption_secret_key),
+        //         maybe_db.clone(),
+        //         maybe_identity_manager.clone(),
+        //     )
+        //     .await?;
+        // }
 
         shinkai_log(
             ShinkaiLogOption::Node,
