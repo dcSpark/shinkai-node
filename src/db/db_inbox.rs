@@ -563,9 +563,14 @@ impl ShinkaiDB {
             };
 
             // Determine if the inbox is finished
-            let is_finished = if inbox_id.starts_with("job::") {
-                let job = self.get_job(&inbox_id)?;
-                job.is_finished
+            let is_finished = if inbox_id.starts_with("job_inbox::") {
+                match InboxName::new(inbox_id.clone())? {
+                    InboxName::JobInbox { unique_id, .. } => {
+                        let job = self.get_job(&unique_id)?;
+                        job.is_finished
+                    }
+                    _ => false,
+                }
             } else {
                 false
             };
