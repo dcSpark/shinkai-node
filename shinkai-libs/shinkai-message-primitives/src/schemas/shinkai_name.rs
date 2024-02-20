@@ -74,14 +74,20 @@ impl std::error::Error for ShinkaiNameError {}
 // @@alice.shinkai/profileName
 // @@alice.shinkai/profileName/agent/myChatGPTAgent
 // @@alice.shinkai/profileName/device/myPhone
+// @@alice.sepolia-shinkai
+// @@alice.sepolia-shinkai/profileName
 
 // Not valid examples
 // @@alice.shinkai/profileName/myPhone
 // @@al!ce.shinkai
 // @@alice.shinkai//
 // @@node1.shinkai/profile_1.shinkai
+// @@alice.sepolia--shinkai
 
 impl ShinkaiName {
+    // Define a list of valid endings
+    const VALID_ENDINGS: [&'static str; 2] = [".shinkai", ".sepolia-shinkai"];
+
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
         let raw_name = Self::correct_node_name(raw_name);
         Self::validate_name(&raw_name)?;
@@ -143,16 +149,17 @@ impl ShinkaiName {
             return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
         }
 
-        if !parts[0].starts_with("@@") || !parts[0].ends_with(".shinkai") {
+        if !parts[0].starts_with("@@") || !Self::VALID_ENDINGS.iter().any(|&ending| parts[0].ends_with(ending)) {
             shinkai_log(
                 ShinkaiLogOption::Identity,
                 ShinkaiLogLevel::Info,
                 &format!("Validation error: {}", raw_name),
             );
-            return Err("Node part of the name should start with '@@' and end with '.shinkai'.");
+            return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.sepolia-shinkai', etc.).");
         }
 
-        if !Regex::new(r"^@@[a-zA-Z0-9\_\.]+\.shinkai$").unwrap().is_match(parts[0]) {
+        let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.sepolia-shinkai)$";
+        if !Regex::new(node_name_regex).unwrap().is_match(parts[0]) {
             shinkai_log(
                 ShinkaiLogOption::Identity,
                 ShinkaiLogLevel::Info,
@@ -366,8 +373,8 @@ impl ShinkaiName {
 
     // This method checks if a name is a valid node identity name and doesn't contain subidentities
     fn is_valid_node_identity_name_and_no_subidentities(name: &String) -> bool {
-        // A node name is valid if it starts with '@@', ends with '.shinkai', and doesn't contain '/'
-        name.starts_with("@@") && name.ends_with(".shinkai") && !name.contains("/")
+        // A node name is valid if it starts with '@@', ends with a valid ending, and doesn't contain '/'
+        name.starts_with("@@") && !name.contains("/") && Self::VALID_ENDINGS.iter().any(|&ending| name.ends_with(ending))
     }
 
     pub fn contains(&self, other: &ShinkaiName) -> bool {
@@ -471,8 +478,8 @@ impl ShinkaiName {
             node_name = format!("@@{}", node_name);
         }
 
-        // Append with ".shinkai" if the node doesn't already end with ".shinkai"
-        if !node_name.ends_with(".shinkai") {
+        // Check if the node_name ends with any of the valid endings, append ".shinkai" if not
+        if !Self::VALID_ENDINGS.iter().any(|&ending| node_name.ends_with(ending)) {
             node_name = format!("{}.shinkai", node_name);
         }
 

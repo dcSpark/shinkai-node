@@ -4679,7 +4679,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4705,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
