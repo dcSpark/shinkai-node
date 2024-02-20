@@ -650,7 +650,6 @@ impl Node {
         );
 
         // Initialize your connection limiter
-
         loop {
             let (mut socket, addr) = listener.accept().await?;
             // Too many requests by IP protection
@@ -663,7 +662,7 @@ impl Node {
                     ShinkaiLogLevel::Info,
                     &format!("Rate limit exceeded for IP: {}", ip),
                 );
-                continue; // Skip this connection attempt
+                continue;
             }
 
             if !conn_limiter_clone.increment_connection(&ip).await {
@@ -672,7 +671,7 @@ impl Node {
                     ShinkaiLogLevel::Info,
                     &format!("Too many connections from IP: {}", ip),
                 );
-                continue; // Skip this connection attempt
+                continue;
             }
 
             let socket = Arc::new(Mutex::new(socket));
