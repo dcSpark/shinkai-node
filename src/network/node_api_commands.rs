@@ -1598,7 +1598,7 @@ impl Node {
                                 }
                                 Ok(None) => shinkai_log(
                                     ShinkaiLogOption::DetailedAPI,
-                                    ShinkaiLogLevel::Error,
+                                    ShinkaiLogLevel::Info,
                                     format!("No file found in the inbox").as_str(),
                                 ),
                                 Err(err) => shinkai_log(
