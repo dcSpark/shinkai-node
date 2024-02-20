@@ -73,6 +73,7 @@ pub async fn handle_based_on_message_content_and_encryption(
             // TODO: save to db to send the profile when connected
             println!("{} > Content encrypted", receiver_address);
             handle_other_cases(
+                message,
                 sender_encryption_pk,
                 sender_address,
                 sender_profile_name,
@@ -107,6 +108,7 @@ pub async fn handle_based_on_message_content_and_encryption(
         }
         (_, _) => {
             handle_other_cases(
+                message,
                 sender_encryption_pk,
                 sender_address,
                 sender_profile_name,
@@ -212,8 +214,6 @@ pub async fn handle_default_encryption(
             //     receiver_address, unsafe_sender_address
             // );
 
-            // Maybe save message here instead?
-
             // Save to db
             {
                 Node::save_to_db(
@@ -230,6 +230,9 @@ pub async fn handle_default_encryption(
             match message {
                 Ok(message_content) => {
                     if message_content != "ACK" {
+                        // TODO: add handler that checks for the Schema and decides what to do with the message
+                        // TODO: the message may be need to be added to an internal NetworkJobQueue
+                        // TODO: Create NetworkJobQueue Struct
                         let _ = send_ack(
                             (sender_address.clone(), sender_profile_name.clone()),
                             clone_static_secret_key(my_encryption_secret_key),
@@ -269,6 +272,7 @@ pub async fn handle_default_encryption(
 }
 
 pub async fn handle_other_cases(
+    message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
     sender_profile_name: String,
@@ -284,6 +288,18 @@ pub async fn handle_other_cases(
         "{} > Got message from {:?}. Sending ACK",
         receiver_address, unsafe_sender_address
     );
+    // Save to db
+    {
+        Node::save_to_db(
+            false,
+            &message,
+            clone_static_secret_key(&my_encryption_secret_key),
+            maybe_db.clone(),
+            maybe_identity_manager.clone(),
+        )
+        .await?;
+    }
+
     send_ack(
         (sender_address.clone(), sender_profile_name.clone()),
         clone_static_secret_key(my_encryption_secret_key),
