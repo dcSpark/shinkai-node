@@ -104,7 +104,17 @@ pub struct OnchainIdentity {
 impl OnchainIdentity {
     pub fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
         if let Some(first_address) = self.address_or_proxy_nodes.first() {
-            first_address.parse().map_err(ShinkaiRegistryError::from)
+            let address = first_address
+                .replace("http://", "")
+                .replace("https://", "");
+
+            let address = if address.starts_with("localhost:") {
+                address.replacen("localhost", "127.0.0.1", 1)
+            } else {
+                address.to_string()
+            };
+
+            address.parse().map_err(ShinkaiRegistryError::from)
         } else {
             Err(ShinkaiRegistryError::CustomError("No address available".to_string()))
         }
