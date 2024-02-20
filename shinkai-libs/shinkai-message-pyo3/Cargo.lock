@@ -2857,7 +2857,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2883,7 +2883,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_pyo3"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "ed25519-dalek",
  "hex",

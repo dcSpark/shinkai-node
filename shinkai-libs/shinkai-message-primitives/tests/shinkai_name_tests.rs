@@ -15,6 +15,10 @@ mod tests {
             "@@alice.shinkai/profileName",
             "@@alice.shinkai/profileName/agent/myChatGPTAgent",
             "@@alice.shinkai/profileName/device/myPhone",
+            "@@alice.sepolia-shinkai",
+            "@@alice.sepolia-shinkai/profileName",
+            "@@alice.sepolia-shinkai/profileName/agent/myChatGPTAgent",
+            "@@alice.sepolia-shinkai/profileName/device/myPhone",
         ];
 
         for name in valid_names {
@@ -33,7 +37,7 @@ mod tests {
             "@@al!ce.shinkai",
             "@@alice.shinkai//",
             "@@alice.shinkai//subidentity",
-            "@@node1.shinkai/profile_1.shinkai",
+            "@@node1.shinkai/profile_1.shinkai"
         ];
 
         for name in invalid_names {
