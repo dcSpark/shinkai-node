@@ -16,7 +16,9 @@ use shinkai_message_primitives::{
 use shinkai_node::agent::job_manager::JobManager;
 use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::ShinkaiDB;
+use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::sync::Weak;
@@ -69,6 +71,33 @@ fn generate_message_with_text(
     message
 }
 
+fn default_test_profile() -> ShinkaiName {
+    ShinkaiName::new("@@localhost.shinkai/profileName".to_string()).unwrap()
+}
+
+fn node_name() -> ShinkaiName {
+    ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
+}
+
+fn setup_default_vector_fs() -> VectorFS {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let fs_db_path = format!("db_tests/{}", "vector_fs");
+    let profile_list = vec![default_test_profile()];
+    let supported_embedding_models = vec![EmbeddingModelType::TextEmbeddingsInference(
+        TextEmbeddingsInference::AllMiniLML6v2,
+    )];
+
+    VectorFS::new(
+        generator,
+        supported_embedding_models,
+        profile_list,
+        &fs_db_path,
+        node_name(),
+    )
+    .unwrap()
+}
+
+
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
     init_default_tracing(); 
@@ -77,11 +106,13 @@ async fn test_process_job_queue_concurrency() {
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
     let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
+    let vector_fs = Arc::new(Mutex::new(setup_default_vector_fs()));
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
+                              vector_fs: Weak<Mutex<VectorFS>>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -117,6 +148,7 @@ async fn test_process_job_queue_concurrency() {
     };
 
     let db_weak = Arc::downgrade(&db);
+    let vector_fs_weak = Arc::downgrade(&vector_fs);
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
@@ -124,12 +156,13 @@ async fn test_process_job_queue_concurrency() {
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager,
         db_weak.clone(),
+        vector_fs_weak.clone(),
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db_weak.clone(), identity_sk, generator, unstructured_api)
+        move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
+            mock_processing_fn(job, db_weak.clone(), vector_fs_weak.clone(), identity_sk, generator, unstructured_api)
         },
     )
     .await;
@@ -184,11 +217,13 @@ async fn test_sequential_process_for_same_job_id() {
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
     let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
+    let vector_fs = Arc::new(Mutex::new(setup_default_vector_fs()));
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
+                              vector_fs: Weak<Mutex<VectorFS>>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -224,6 +259,7 @@ async fn test_sequential_process_for_same_job_id() {
     };
 
     let db_weak = Arc::downgrade(&db);
+    let vector_fs_weak = Arc::downgrade(&vector_fs);
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone()).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
@@ -231,12 +267,13 @@ async fn test_sequential_process_for_same_job_id() {
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager,
         db_weak.clone(),
+        vector_fs_weak.clone(),
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db_weak.clone(), identity_sk, generator, unstructured_api)
+        move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
+            mock_processing_fn(job, db_weak.clone(), vector_fs_weak.clone(), identity_sk, generator, unstructured_api)
         },
     )
     .await;

@@ -1,8 +1,10 @@
 use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
 use std::result::Result::Ok;
@@ -14,6 +16,7 @@ impl JobManager {
     /// and returns all of them in a single list ready to be used.
     pub async fn fetch_job_scope_resources(
         db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
@@ -24,14 +27,15 @@ impl JobManager {
             resources.push(local_entry.resource.clone());
         }
 
-        // TODO: Fetch resources from VectorFS
+        let mut vec_fs = vector_fs.lock().await;
+        for fs_entry in &job_scope.vector_fs {
+            let reader = vec_fs
+                .new_reader(profile.clone(), fs_entry.vector_fs_path.clone(), profile.clone())
+                .unwrap();
 
-        // Fetch DB resources and add them to the list
-        // let db = db.lock().await;
-        // for fs_entry in &job_scope.vector_fs {
-        //     resources.push(resource);
-        // }
-        // std::mem::drop(db);
+            let (ret_resource, ret_source_file_map) = vec_fs.retrieve_vr_and_source_file_map(&reader)?;
+            resources.push(ret_resource);
+        }
 
         Ok(resources)
     }
@@ -41,14 +45,19 @@ impl JobManager {
     /// RetrievedNode at the front of the returned list.
     pub async fn job_scope_vector_search(
         db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
         job_scope: &JobScope,
         query: Embedding,
         num_of_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let resources = JobManager::fetch_job_scope_resources(db, job_scope, profile).await?;
-        println!("Num of resources fetched: {}", resources.len());
+        let resources = JobManager::fetch_job_scope_resources(db, vector_fs, job_scope, profile).await?;
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("Num of resources fetched: {}", resources.len()),
+        );
 
         // Perform vector search on all resources
         let mut retrieved_nodes = Vec::new();
@@ -57,7 +66,11 @@ impl JobManager {
             retrieved_nodes.extend(results);
         }
 
-        println!("Num of nodes retrieved: {}", retrieved_nodes.len());
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("Num of nodes retrieved: {}", retrieved_nodes.len()),
+        );
 
         // Sort the retrieved nodes by score before returning
         let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
@@ -73,6 +86,7 @@ impl JobManager {
     /// RetrievedNode at the front of the returned list.
     pub async fn job_scope_syntactic_vector_search(
         db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
         job_scope: &JobScope,
         query: Embedding,
         num_of_results: u64,
@@ -80,7 +94,7 @@ impl JobManager {
         data_tag_names: &Vec<String>,
         include_description: bool,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let resources = JobManager::fetch_job_scope_resources(db, job_scope, profile).await?;
+        let resources = JobManager::fetch_job_scope_resources(db, vector_fs, job_scope, profile).await?;
 
         // Perform syntactic vector search on all resources
         let mut retrieved_nodes = Vec::new();

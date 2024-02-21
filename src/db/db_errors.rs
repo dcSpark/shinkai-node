@@ -1,4 +1,4 @@
-use crate::{agent::error::AgentError, tools::error::ToolError};
+use crate::{agent::error::AgentError, tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError};
 use core::fmt;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -50,6 +50,7 @@ pub enum ShinkaiDBError {
     ShinkaiMessageError(String),
     JobAlreadyExists(String),
     CronTaskNotFound(String),
+    VectorFSError(String)
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -108,6 +109,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ShinkaiMessageError(e) => write!(f, "ShinkaiMessage error: {}", e),
             ShinkaiDBError::JobAlreadyExists(e) => write!(f, "Job attempted to be created, but already exists: {}", e),
             ShinkaiDBError::CronTaskNotFound(e) => write!(f, "Cron task not found: {}", e),
+            ShinkaiDBError::VectorFSError(e) => write!(f, "VectorFS error: {}", e),
         }
     }
 }
@@ -166,6 +168,9 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::InboxNameError(e1), ShinkaiDBError::InboxNameError(e2)) => e1 == e2, // assuming InboxNameError implements PartialEq
             (ShinkaiDBError::ProfileNotFound(msg1), ShinkaiDBError::ProfileNotFound(msg2)) => msg1 == msg2,
             (ShinkaiDBError::InvalidPermissionsType, ShinkaiDBError::InvalidPermissionsType) => true,
+            (ShinkaiDBError::DeviceIdentityAlreadyExists(msg1), ShinkaiDBError::DeviceIdentityAlreadyExists(msg2)) => {
+                msg1 == msg2
+            }
             _ => false,
         }
     }
@@ -242,5 +247,11 @@ impl From<ShinkaiMessageError> for ShinkaiDBError {
         // Convert the ShinkaiMessageError into a ShinkaiDBError
         // You might want to add a new variant to ShinkaiDBError for this
         ShinkaiDBError::ShinkaiMessageError(err.to_string())
+    }
+}
+
+impl From<VectorFSError> for ShinkaiDBError {
+    fn from(err: VectorFSError) -> ShinkaiDBError {
+        ShinkaiDBError::VectorFSError(err.to_string())
     }
 }

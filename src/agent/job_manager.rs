@@ -86,14 +86,16 @@ impl JobManager {
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
+            vector_fs.clone(),
             NUM_THREADS,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
             unstructured_api.clone(),
-            |job, db, identity_sk, generator, unstructured_api| {
+            |job, db, vector_fs, identity_sk, generator, unstructured_api| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
+                    vector_fs,
                     identity_sk,
                     generator,
                     unstructured_api,
@@ -122,6 +124,7 @@ impl JobManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<Mutex<ShinkaiDB>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -129,6 +132,7 @@ impl JobManager {
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<Mutex<ShinkaiDB>>,
+                Weak<Mutex<VectorFS>>,
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
@@ -140,6 +144,7 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
+        let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
 
@@ -188,6 +193,7 @@ impl JobManager {
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = Arc::clone(&semaphore);
                     let db_clone_2 = db_clone.clone();
+                    let vector_fs_clone_2 = vector_fs_clone.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                     let job_processing_fn = Arc::clone(&job_processing_fn);
                     let cloned_generator = generator.clone();
@@ -210,6 +216,7 @@ impl JobManager {
                                     let result = job_processing_fn(
                                         job,
                                         db_clone_2,
+                                        vector_fs_clone_2,
                                         identity_sk_clone,
                                         cloned_generator,
                                         cloned_unstructured_api,
