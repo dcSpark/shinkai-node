@@ -48,7 +48,16 @@ impl JobManager {
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
         let (mut full_job, agent_found, profile_name, user_profile) = match fetch_data_result {
             Ok(data) => data,
-            Err(e) => return Self::handle_error(&db, &job_id, &identity_secret_key, e).await,
+            Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e).await,
+        };
+
+        // Ensure the user profile exists before proceeding with inference chain
+        let user_profile = match user_profile {
+            Some(profile) => profile,
+            None => {
+                return Self::handle_error(&db, None, &job_id, &identity_secret_key, AgentError::NoUserProfileFound)
+                    .await
+            }
         };
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
@@ -64,7 +73,7 @@ impl JobManager {
         .await;
         let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, &job_id, &identity_secret_key, e).await,
+            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await,
         };
         if jobkai_found {
             return Ok(job_id);
@@ -84,16 +93,8 @@ impl JobManager {
         )
         .await;
         if let Err(e) = process_files_result {
-            return Self::handle_error(&db, &job_id, &identity_secret_key, e).await;
+            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
         }
-
-        // Ensure the user profile exists before proceeding with inference chain
-        let user_profile = match user_profile {
-            Some(profile) => profile,
-            None => {
-                return Self::handle_error(&db, &job_id, &identity_secret_key, AgentError::NoUserProfileFound).await
-            }
-        };
 
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_fs").unwrap();
         let inference_chain_result = JobManager::process_inference_chain(
@@ -109,7 +110,7 @@ impl JobManager {
         )
         .await;
         if let Err(e) = inference_chain_result {
-            return Self::handle_error(&db, &job_id, &identity_secret_key, e).await;
+            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
         }
 
         Ok(job_id)
@@ -118,6 +119,7 @@ impl JobManager {
     /// Handle errors by sending an error message to the job inbox
     async fn handle_error(
         db: &Arc<Mutex<ShinkaiDB>>,
+        user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
         error: AgentError,
@@ -128,6 +130,10 @@ impl JobManager {
             &format!("Error processing job: {}", error),
         );
 
+        let node_name = user_profile
+            .unwrap_or_else(|| ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap())
+            .node_name;
+
         let error_for_frontend = error.to_error_json();
 
         let identity_secret_key_clone = clone_signature_secret_key(identity_secret_key);
@@ -136,8 +142,8 @@ impl JobManager {
             error_for_frontend.to_string(),
             "".to_string(),
             identity_secret_key_clone,
-            "".to_string(), // Assuming profile_name is not available here
-            "".to_string(),
+            node_name.clone(),
+            node_name.clone(),
         )
         .expect("Failed to build error message");
 
