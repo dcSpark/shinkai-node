@@ -1,14 +1,14 @@
 #!/bin/bash
 
 export NODE_IP="0.0.0.0"
-export NODE_PORT="9552"
-export NODE_WS_PORT="9551"
+export NODE_PORT="9752"
+export NODE_WS_PORT="9751"
 export NODE_API_IP="0.0.0.0"
-export NODE_API_PORT="9550"
+export NODE_API_PORT="9750"
 export IDENTITY_SECRET_KEY="fd1ca428ec1be6ae8b0b3d23ea507eba8cf7da0869578753b9781efda2b6a8ab"
 export ENCRYPTION_SECRET_KEY="e06a1c02d638d4552d733dca8ff8f023841d1126965050b2048f1140bfd82a5c"
 export PING_INTERVAL_SECS="0"
-export GLOBAL_IDENTITY_NAME="@@_my_9552.sepolia-shinkai"
+export GLOBAL_IDENTITY_NAME="@@_my_9752.sepolia-shinkai"
 export RUST_LOG=debug,error,info
 export STARTING_NUM_QR_PROFILES="1"
 export STARTING_NUM_QR_DEVICES="1"
