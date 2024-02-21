@@ -5,6 +5,7 @@ use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
+use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSScopeEntry};
@@ -31,6 +32,7 @@ impl JobManager {
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<Mutex<ShinkaiDB>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
@@ -50,7 +52,7 @@ impl JobManager {
         };
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
-        let kai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
+        let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
             db.clone(),
             &job_message.job_message,
             agent_found.clone(),
@@ -60,11 +62,11 @@ impl JobManager {
             unstructured_api.clone(),
         )
         .await;
-        let kai_found = match kai_found_result {
+        let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
             Err(e) => return Self::handle_error(&db, &job_id, &identity_secret_key, e).await,
         };
-        if kai_found {
+        if jobkai_found {
             return Ok(job_id);
         }
 
@@ -86,7 +88,6 @@ impl JobManager {
         }
 
         // Ensure the user profile exists before proceeding with inference chain
-        // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
@@ -94,8 +95,10 @@ impl JobManager {
             }
         };
 
+        let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_fs").unwrap();
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
+            vector_fs.clone(),
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
             full_job,
@@ -149,9 +152,10 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(identity_secret_key, db, generator))]
+    #[instrument(skip(identity_secret_key, db, vector_fs, generator))]
     pub async fn process_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
         full_job: Job,
@@ -179,6 +183,7 @@ impl JobManager {
         // Call the inference chain router to choose which chain to use, and call it
         let (inference_response_content, new_execution_context) = JobManager::inference_chain_router(
             db.clone(),
+            vector_fs.clone(),
             agent_found,
             full_job,
             job_message.clone(),
@@ -533,14 +538,15 @@ impl JobManager {
                 };
                 files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
             } else {
+                let source = SourceFile::new_standard_source_file(
+                    filename.clone(),
+                    SourceFileType::detect_file_type(&filename)?,
+                    content,
+                    None,
+                );
                 let local_scope_entry = LocalScopeEntry {
                     resource: resource,
-                    source: SourceFile::new_standard_source_file(
-                        filename.clone(),
-                        SourceFileType::detect_file_type(&filename)?,
-                        content,
-                        None,
-                    ),
+                    source: Some(source),
                 };
                 files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
             }

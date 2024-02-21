@@ -4,6 +4,7 @@ use crate::agent::job::Job;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
+use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -29,9 +30,10 @@ impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
     /// Returns the final String result from the inferencing, and a new execution context.
-    #[instrument(skip(generator, db))]
+    #[instrument(skip(generator, vector_fs, db))]
     pub async fn inference_chain_router(
         db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -52,6 +54,7 @@ impl JobManager {
                 if let Some(agent) = agent_found {
                     inference_response_content = JobManager::start_qa_inference_chain(
                         db,
+                        vector_fs,
                         full_job,
                         job_message_content.to_string(),
                         agent,

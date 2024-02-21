@@ -90,7 +90,7 @@ pub enum ScopeEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LocalScopeEntry {
     pub resource: BaseVectorResource,
-    pub source: SourceFile,
+    pub source: Option<SourceFile>,
 }
 
 /// A Scope Entry for a file/vector resource that is saved in the VectorFS
