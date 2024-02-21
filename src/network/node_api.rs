@@ -168,15 +168,6 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move || get_public_key_handler(node_commands_sender.clone()))
     };
 
-    // POST v1/connect
-    let connect = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "connect")
-            .and(warp::post())
-            .and(warp::body::json())
-            .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
-    };
-
     // POST v1/add_toolkit
     let add_toolkit = {
         let node_commands_sender = node_commands_sender.clone();
@@ -513,7 +504,6 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_peers)
         .or(identity_name_to_external_profile_data)
         .or(get_public_key)
-        .or(connect)
         .or(get_all_inboxes_for_profile)
         .or(get_all_smart_inboxes_for_profile)
         .or(update_smart_inbox_name)
@@ -935,22 +925,6 @@ async fn get_public_key_handler(
         signature_public_key: signature_public_key_string,
         encryption_public_key: encryption_public_key_string,
     }))
-}
-
-async fn connect_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    body: ConnectBody,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let address: SocketAddr = body.address.parse().expect("Failed to parse SocketAddr");
-    let profile_name = body.profile_name.clone();
-    let node_commands_sender = node_commands_sender.clone();
-    let _ = node_commands_sender
-        .send(NodeCommand::Connect {
-            address: address.clone(),
-            profile_name: profile_name.clone(),
-        })
-        .await;
-    Ok(warp::reply::json(&"OK".to_string()))
 }
 
 async fn get_last_messages_from_inbox_handler(

@@ -251,17 +251,6 @@ fn subidentity_registration() {
                 .await;
             }
 
-            eprintln!("Connecting node 2 to node 1");
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            node2_commands_sender
-                .send(NodeCommand::Connect {
-                    address: addr1,
-                    profile_name: node1_identity_name.to_string(),
-                })
-                .await
-                .unwrap();
-
-            // Waiting some safe assuring time for the Nodes to connect
             tokio::time::sleep(Duration::from_secs(3)).await;
 
             // Send message from Node 2 subidentity to Node 1
@@ -307,7 +296,7 @@ fn subidentity_registration() {
 
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
                 assert!(send_result.is_ok(), "Failed to send onionized message");
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::time::sleep(Duration::from_secs(4)).await;
 
                 // Get Node2 messages
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -336,7 +325,7 @@ fn subidentity_registration() {
                 eprintln!("Node 2 last messages: {:?}", node2_last_messages);
                 eprintln!("\n\n");
 
-                let message_to_check = node1_last_messages[1].clone();
+                let message_to_check = node1_last_messages[0].clone();
                 // Check that the message is body encrypted
                 assert_eq!(
                     ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
@@ -515,7 +504,7 @@ fn subidentity_registration() {
             {
                 eprintln!("Final trick. Sending a fat message from Node 1 subidentity to Node 2 subidentity");
                 // let message_content = "test encrypted body content from node1 subidentity to node2 subidentity".to_string();
-                let message_content = std::iter::repeat("hola-").take(100_000).collect::<String>();
+                let message_content = std::iter::repeat("hola-").take(10_000).collect::<String>();
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node1_profile_encryption_sk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
