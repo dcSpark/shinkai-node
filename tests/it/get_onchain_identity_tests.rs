@@ -15,26 +15,26 @@ mod tests {
         rt.block_on(async {
             let mut registry = ShinkaiRegistry::new(
                 "https://rpc.sepolia.org",
-                "0x6964241D2458f0Fd300BB37535CF0145380810E0",
+                "0xDCbBd3364a98E2078e8238508255dD4a2015DD3E",
                 "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )
             .await
             .unwrap();
 
-            let identity = "node1_test.shinkai".to_string();
+            let identity = "node1_test.sepolia-shinkai".to_string();
 
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
-                shinkai_identity: "node1_test.shinkai".to_string(),
-                bound_nft: U256::from_dec_str("29").unwrap(),
+                shinkai_identity: "node1_test.sepolia-shinkai".to_string(),
+                bound_nft: U256::from_dec_str("6").unwrap(),
                 staked_tokens: U256::from_dec_str("50000000000000000000").unwrap(),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
                 signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
                 routing: false,
                 address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
-                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705342752)),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1708468692)),
             };
             assert_eq!(record, expected_record);    
 

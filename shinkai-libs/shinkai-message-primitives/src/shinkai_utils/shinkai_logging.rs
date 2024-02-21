@@ -173,10 +173,25 @@ pub fn init_default_tracing() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         INIT.call_once(|| {
-            let filter = match std::env::var("RUST_LOG") {
-                Ok(var) => tracing_subscriber::EnvFilter::new(var),
-                Err(_) => tracing_subscriber::EnvFilter::new("info"),
+            let log_var = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+
+            // Determine the most permissive log level specified
+            let filter_level = if log_var.contains("trace") {
+                "trace"
+            } else if log_var.contains("debug") {
+                "debug"
+            } else if log_var.contains("info") {
+                "info"
+            } else if log_var.contains("warn") {
+                "warn"
+            } else if log_var.contains("error") {
+                "error"
+            } else {
+                "info" // Default to info if none specified or recognized
             };
+
+            let filter = tracing_subscriber::EnvFilter::new(filter_level);
+            eprintln!("RUST_LOG: {:?}", filter);
 
             let subscriber = tracing_subscriber::fmt::Subscriber::builder()
                 .with_env_filter(filter)

@@ -9,7 +9,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, signature_public_key_to_string, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
@@ -30,10 +30,13 @@ fn node_retrying_test() {
 
     rt.block_on(async {
         // Node 1
-        let node1_identity_name = "@@node1_test.shinkai";
+        let node1_identity_name = "@@node1_test.sepolia-shinkai";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        // eprintln!("node1_identity_pk: {:?}", signature_public_key_to_string(node1_identity_pk.clone()));
+        // eprintln!("node1_encryption_pk: {:?}", encryption_public_key_to_string(node1_encryption_pk.clone()));
+
         // let node1_encryption_sk_clone = node1_encryption_sk.clone();
         // let node1_encryption_sk_clone2 = node1_encryption_sk.clone();
 
@@ -61,11 +64,13 @@ fn node_retrying_test() {
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         // Node 2
-        let node2_identity_name = "@@node2_test.shinkai";
+        let node2_identity_name = "@@node2_test.sepolia-shinkai";
         let node2_profile_name = "main_profile_node2";
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        // eprintln!("node2_identity_pk: {:?}", signature_public_key_to_string(node2_identity_pk.clone()));
+        // eprintln!("node2_encryption_pk: {:?}", encryption_public_key_to_string(node2_encryption_pk.clone()));
 
         // let node2_encryption_sk_clone = node2_encryption_sk.clone();
         // let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);

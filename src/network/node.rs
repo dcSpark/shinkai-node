@@ -74,17 +74,6 @@ pub enum NodeCommand {
         name: String,
         res: Sender<StandardIdentity>,
     },
-    // Command to make the node connect to a new node, given the node's address and profile name.
-    Connect {
-        address: SocketAddr,
-        profile_name: String,
-    },
-    // Command to make the node connect to a new node, given the node's address and profile name.
-    APIConnect {
-        address: SocketAddr,
-        profile_name: String,
-        res: Sender<Result<bool, APIError>>,
-    },
     // Command to fetch the last 'n' messages, where 'n' is defined by `limit`. The sender will receive the messages.
     FetchLastMessages {
         limit: usize,
@@ -550,7 +539,6 @@ impl Node {
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
-                            Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
                             Some(NodeCommand::SendOnionizedMessage { msg, res }) => self.api_handle_send_onionized_message(msg, res).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
@@ -719,49 +707,6 @@ impl Node {
     // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
-    }
-
-    // Connect to a peer node.
-    pub async fn connect(&self, peer_address: &str, profile_name: String) -> Result<(), NodeError> {
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!(
-                "{} {} > Connecting to {} with profile_name: {:?}",
-                self.node_profile_name, self.listen_address, peer_address, profile_name
-            ),
-        );
-
-        let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
-        self.peers.insert((peer_address, profile_name.clone()), Utc::now());
-
-        let peer = (peer_address, profile_name.clone());
-
-        let sender = self.node_profile_name.clone().get_node_name();
-
-        let receiver_profile_identity = self
-            .identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&peer.1.clone())
-            .await
-            .unwrap();
-        let receiver = receiver_profile_identity.full_identity_name.get_node_name().to_string();
-        let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
-
-        ping_pong(
-            peer,
-            PingPong::Ping,
-            clone_static_secret_key(&self.encryption_secret_key),
-            clone_signature_secret_key(&self.identity_secret_key),
-            receiver_public_key,
-            sender,
-            receiver,
-            Arc::clone(&self.db),
-            self.identity_manager.clone(),
-        )
-        .await?;
-        Ok(())
     }
 
     // Send a message to a peer.

@@ -52,12 +52,6 @@ impl Node {
         Ok(())
     }
 
-    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), NodeError> {
-        let address_str = address.to_string();
-        self.connect(&address_str, profile_name).await?;
-        Ok(())
-    }
-
     pub async fn internal_get_last_unread_messages_from_inbox(
         &self,
         inbox_name: String,

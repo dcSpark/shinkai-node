@@ -19,6 +19,7 @@ mod tests {
             "@@alice.sepolia-shinkai/profileName",
             "@@alice.sepolia-shinkai/profileName/agent/myChatGPTAgent",
             "@@alice.sepolia-shinkai/profileName/device/myPhone",
+            "@@_my_9552.sepolia-shinkai/main"
         ];
 
         for name in valid_names {
