@@ -385,9 +385,9 @@ mod tests {
 
             // Update the parent message according to the tree structure
             if i == 1 {
-                parent_message_hash = Some(shinkai_message.calculate_message_hash());
+                parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
             } else if i == 2 {
-                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash());
+                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
             }
         }
 
@@ -507,9 +507,9 @@ mod tests {
 
             // Update the parent message according to the tree structure
             if i == 1 {
-                parent_message_hash = Some(shinkai_message.calculate_message_hash());
+                parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
             } else if i == 2 {
-                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash());
+                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
             }
         }
 
@@ -659,9 +659,9 @@ mod tests {
 
             // Update the parent message hash according to the tree structure
             if i == 1 {
-                parent_message_hash = Some(message.calculate_message_hash());
+                parent_message_hash = Some(message.calculate_message_hash_for_pagination());
             } else if i == 2 {
-                parent_message_hash_2 = Some(message.calculate_message_hash());
+                parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
             }
         }
 
@@ -792,7 +792,7 @@ mod tests {
 
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
-            let parent_hash = if *i > 0 { Some(messages[*i - 1].calculate_message_hash()) } else { None };
+            let parent_hash = if *i > 0 { Some(messages[*i - 1].calculate_message_hash_for_pagination()) } else { None };
             let result = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &messages[*i], None).await;
 
             // If we are at the third iteration (i.e., adding the third message), check that the result is an error

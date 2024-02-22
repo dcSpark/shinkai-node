@@ -1,7 +1,7 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::{
-        EncryptedShinkaiBody, ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
+        EncryptedShinkaiBody, ExternalMetadata, MessageBody, NodeApiData, ShinkaiBody, ShinkaiMessage, ShinkaiVersion
     },
     shinkai_utils::encryption::EncryptionMethod,
 };
@@ -19,6 +19,7 @@ impl PyExternalMetadata {
             signature,
             other,
             intra_sender,
+            node_api_data: None,
         };
 
         Ok(Self { inner })
@@ -107,7 +108,8 @@ impl<'source> FromPyObject<'source> for PyExternalMetadata {
                 scheduled_time,
                 signature,
                 other,
-                intra_sender
+                intra_sender,
+                node_api_data: None,
             },
         })
     }

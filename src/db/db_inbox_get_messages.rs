@@ -17,7 +17,7 @@ impl ShinkaiDB {
                 //     hash_key,
                 //     message.get_message_content()
                 // );
-                let message_hash = message.calculate_message_hash();
+                let message_hash = message.calculate_message_hash_for_pagination();
                 Ok((message, message_hash))
             }
             None => {
@@ -112,7 +112,7 @@ impl ShinkaiDB {
 
     fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
+        let hash_key = message.calculate_message_hash_for_pagination();
 
         // Clone the external_metadata first, then unwrap
         let ext_metadata = message.external_metadata.clone();
@@ -272,7 +272,7 @@ impl ShinkaiDB {
                                 let children_messages =
                                     self.fetch_children_messages(cf_children, &parent_key, messages_cf)?;
                                 for message in children_messages {
-                                    if Some(message.calculate_message_hash()) != added_message_hash_tmp {
+                                    if Some(message.calculate_message_hash_for_pagination()) != added_message_hash_tmp {
                                         path.push(message.clone());
                                         // eprintln!(
                                         //     "Child message added to path. Message content: {}",

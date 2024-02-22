@@ -270,7 +270,7 @@ impl ShinkaiDB {
             offset_key = messages
                 .last()
                 .and_then(|path| path.first())
-                .map(|message| message.calculate_message_hash());
+                .map(|message| message.calculate_message_hash_for_pagination());
         }
 
         Ok(None)

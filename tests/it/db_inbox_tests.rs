@@ -125,15 +125,15 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
         // Update the parent message according to the tree structure
         if i == 1 {
-            parent_message_hash = Some(message.calculate_message_hash());
+            parent_message_hash = Some(message.calculate_message_hash_for_pagination());
         } else if i == 2 {
-            parent_message_hash_2 = Some(message.calculate_message_hash());
+            parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
         }
 
         // Print the message hash, content, and parent hash
         println!(
             "message hash: {} message content: {} message parent hash: {}",
-            message.calculate_message_hash(),
+            message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
             parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
         );
@@ -246,15 +246,15 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
         // Update the parent message according to the tree structure
         if i == 1 {
-            parent_message_hash = Some(message.calculate_message_hash());
+            parent_message_hash = Some(message.calculate_message_hash_for_pagination());
         } else if i == 2 {
-            parent_message_hash_2 = Some(message.calculate_message_hash());
+            parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
         }
 
         // Print the message hash, content, and parent hash
         println!(
             "message hash: {} message content: {} message parent hash: {}",
-            message.calculate_message_hash(),
+            message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
             parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
         );
@@ -320,7 +320,7 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // Testing Pagination
     // Get the hash of the first message of the first element of the first array returned
-    let until_offset_key = last_messages_inbox[3][0].calculate_message_hash();
+    let until_offset_key = last_messages_inbox[3][0].calculate_message_hash_for_pagination();
 
     // Get the last 2 messages with pagination
     let paginated_messages_inbox = shinkai_db
@@ -358,26 +358,26 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // New test for get_parent_message_hash
     let parent_hash_test = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][0].calculate_message_hash())
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][0].calculate_message_hash_for_pagination())
         .unwrap();
 
     assert_eq!(
         parent_hash_test,
-        Some(last_messages_inbox[1][0].calculate_message_hash())
+        Some(last_messages_inbox[1][0].calculate_message_hash_for_pagination())
     );
 
     let parent_hash_test_2 = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][1].calculate_message_hash())
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][1].calculate_message_hash_for_pagination())
         .unwrap();
 
     assert_eq!(
         parent_hash_test_2,
-        Some(last_messages_inbox[1][0].calculate_message_hash())
+        Some(last_messages_inbox[1][0].calculate_message_hash_for_pagination())
     );
 
     // Check for the root message, which should return None as it has no parent
     let root_message_parent_hash = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[0][0].calculate_message_hash())
+        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[0][0].calculate_message_hash_for_pagination())
         .unwrap();
 
     assert_eq!(root_message_parent_hash, None);
@@ -446,21 +446,21 @@ async fn test_insert_messages_with_tree_structure() {
 
         // Update the parent message according to the tree structure
         if i == 1 {
-            parent_message_hash = Some(message.calculate_message_hash());
+            parent_message_hash = Some(message.calculate_message_hash_for_pagination());
         } else if i == 2 {
-            parent_message_hash_2 = Some(message.calculate_message_hash());
+            parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
         } else if i == 4 {
-            parent_message_hash = Some(message.calculate_message_hash());
+            parent_message_hash = Some(message.calculate_message_hash_for_pagination());
         } else if i == 7 {
-            parent_message_hash_4 = Some(message.calculate_message_hash());
+            parent_message_hash_4 = Some(message.calculate_message_hash_for_pagination());
         } else if i == 5 {
-            parent_message_hash_5 = Some(message.calculate_message_hash());
+            parent_message_hash_5 = Some(message.calculate_message_hash_for_pagination());
         }
 
         // Print the message hash, content, and parent hash
         println!(
             "message hash: {} message content: {} message parent hash: {}",
-            message.calculate_message_hash(),
+            message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
             parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
         );
@@ -558,7 +558,7 @@ async fn test_insert_messages_with_tree_structure() {
     // Print the message hash, content, and parent hash
     println!(
         "message hash: {} message content: {} message parent hash: {}",
-        message.calculate_message_hash(),
+        message.calculate_message_hash_for_pagination(),
         message.get_message_content().unwrap(),
         parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
     );
@@ -765,7 +765,7 @@ async fn db_inbox() {
         "Hello World 5".to_string()
     );
 
-    let offset = last_unread_messages_inbox[1].clone().calculate_message_hash();
+    let offset = last_unread_messages_inbox[1].clone().calculate_message_hash_for_pagination();
     println!("\n\n ### Offset: {}", offset);
     println!("Last unread messages: {:?}", last_unread_messages_inbox[1]);
     // check pagination for last unread
@@ -798,7 +798,7 @@ async fn db_inbox() {
     shinkai_db
         .mark_as_read_up_to(
             inbox_name_value.clone().to_string(),
-            last_unread_messages_inbox_page2[2][0].clone().calculate_message_hash(),
+            last_unread_messages_inbox_page2[2][0].clone().calculate_message_hash_for_pagination(),
         )
         .unwrap();
 

@@ -1,6 +1,8 @@
 use chrono::DateTime;
 use chrono::Utc;
 use rocksdb::{Error, Options, WriteBatch};
+use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
+use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
@@ -85,8 +87,6 @@ impl ShinkaiDB {
             self.create_empty_inbox(inbox_name.clone()).await?;
         }
 
-        // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
         // println!("Hash key: {}", hash_key);
 
         // Clone the external_metadata first, then unwrap
@@ -106,7 +106,7 @@ impl ShinkaiDB {
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 1, None)?;
                 if let Some(first_batch) = last_messages.first() {
                     if let Some(last_message) = first_batch.first() {
-                        Some(last_message.calculate_message_hash())
+                        Some(last_message.calculate_message_hash_for_pagination())
                     } else {
                         None
                     }
@@ -125,15 +125,31 @@ impl ShinkaiDB {
 
                 let (parent_message, _) = self.fetch_message_and_hash(&messages_cf, parent_key)?;
                 let parent_time = parent_message.external_metadata.scheduled_time;
-                let time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
-                let parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
-                if time_key < parent_time {
+                let parsed_time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
+                let parsed_parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
+                if parsed_time_key < parsed_parent_time {
                     return Err(ShinkaiDBError::SomeError(
                         "Scheduled time of the message is older than its parent".to_string(),
                     ));
                 }
             }
         }
+
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash_for_pagination();
+
+        // We update the message with some extra information api_node_data
+        let updated_message = {
+            let node_api_data = NodeApiData {
+                parent_hash: parent_key.clone().unwrap_or_default(),
+                node_message_hash: hash_key.clone(), // this is safe because hash_key doesn't use node_api_data
+                node_timestamp: time_key.clone(),
+            };
+
+            let mut updated_message = message.clone();
+            updated_message.external_metadata.node_api_data = Some(node_api_data);
+            updated_message.clone()
+        };
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
@@ -149,7 +165,7 @@ impl ShinkaiDB {
         batch.put_cf(cf_inbox, &composite_key, &hash_key);
 
         // Insert the message
-        let _ = self.insert_message_to_all(&message.clone())?;
+        let _ = self.insert_message_to_all(&updated_message.clone())?;
 
         // If this message has a parent, add this message as a child of the parent
         if let Some(parent_key) = parent_key {
@@ -294,7 +310,7 @@ impl ShinkaiDB {
         // Iterate over the messages in reverse order until you reach the message with the last_read_message
         let mut unread_messages = Vec::new();
         for message in messages.into_iter().rev() {
-            if Some(message.calculate_message_hash()) == last_read_message {
+            if Some(message.calculate_message_hash_for_pagination()) == last_read_message {
                 break;
             }
             unread_messages.push(message);
