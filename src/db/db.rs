@@ -228,7 +228,7 @@ impl ShinkaiDB {
     // (maybe)
     pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
+        let hash_key = message.calculate_message_hash_for_pagination();
 
         // Clone the external_metadata first, then unwrap
         let cloned_external_metadata = message.external_metadata.clone();
@@ -273,7 +273,7 @@ impl ShinkaiDB {
 
     pub fn schedule_message(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
+        let hash_key = message.calculate_message_hash_for_pagination();
 
         // Calculate the scheduled time or current time
         let time_key = match message.external_metadata.clone().scheduled_time.is_empty() {

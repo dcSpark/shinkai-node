@@ -1,4 +1,4 @@
-use crate::shinkai_utils::job_scope::JobScope;
+use crate::{shinkai_message::shinkai_message::NodeApiData, shinkai_utils::job_scope::JobScope};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -176,6 +176,7 @@ impl ShinkaiMessageBuilder {
         let signature = "".to_string();
         let other = "".to_string();
         let intra_sender = "".to_string();
+        let node_api_data = None;
         let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
@@ -184,6 +185,7 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
+            node_api_data,
         });
         self
     }
@@ -199,6 +201,7 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
+            node_api_data: None,
         });
         self
     }
@@ -219,6 +222,7 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
+            node_api_data: None,
         });
         self
     }
@@ -239,6 +243,7 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
+            node_api_data: None,
         });
         self
     }
@@ -259,6 +264,7 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
+            node_api_data: None,
         });
         self
     }
@@ -266,6 +272,13 @@ impl ShinkaiMessageBuilder {
     pub fn update_intra_sender(mut self, intra_sender: String) -> Self {
         if let Some(external_metadata) = &mut self.external_metadata {
             external_metadata.intra_sender = intra_sender;
+        }
+        self
+    }
+
+    pub fn update_node_api_data(mut self, node_api_data: NodeApiData) -> Self {
+        if let Some(external_metadata) = &mut self.external_metadata {
+            external_metadata.node_api_data = Some(node_api_data);
         }
         self
     }

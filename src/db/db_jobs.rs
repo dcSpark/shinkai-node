@@ -375,7 +375,7 @@ impl ShinkaiDB {
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
                 if let Some(message) = last_messages.first() {
                     if let Some(message) = message.first() {
-                        message.calculate_message_hash()
+                        message.calculate_message_hash_for_pagination()
                     } else {
                         return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
                     }
@@ -423,7 +423,7 @@ impl ShinkaiDB {
         let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
         if let Some(message_path) = last_messages.first() {
             if let Some(message) = message_path.first() {
-                let message_key = message.calculate_message_hash();
+                let message_key = message.calculate_message_hash_for_pagination();
                 let cf_name = format!("{}_{}_execution_context", job_id, message_key);
                 if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
                     // Get the last context (should be only one)
@@ -559,7 +559,7 @@ impl ShinkaiDB {
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
                 if let Some(message) = last_messages.first() {
                     if let Some(message) = message.first() {
-                        message.calculate_message_hash()
+                        message.calculate_message_hash_for_pagination()
                     } else {
                         return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
                     }
@@ -638,7 +638,7 @@ impl ShinkaiDB {
 
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
-                    let message_key = message.calculate_message_hash();
+                    let message_key = message.calculate_message_hash_for_pagination();
                     let cf_name = format!("{}_{}_step_history", job_id, message_key);
                     if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
                         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
@@ -654,7 +654,7 @@ impl ShinkaiDB {
 
             if let Some(last_message_path) = messages.last() {
                 if let Some(last_message) = last_message_path.first() {
-                    until_offset_key = Some(last_message.calculate_message_hash());
+                    until_offset_key = Some(last_message.calculate_message_hash_for_pagination());
                 } else {
                     break;
                 }

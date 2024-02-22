@@ -28,7 +28,7 @@ use tracing::instrument;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(identity_secret_key, db))]
+    #[instrument(skip(identity_secret_key, vector_fs, db))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<Mutex<ShinkaiDB>>,

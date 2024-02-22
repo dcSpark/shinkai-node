@@ -1730,7 +1730,7 @@ impl Node {
                 };
     
                 let scheduled_time = msg.external_metadata.scheduled_time;
-                let message_hash = potentially_encrypted_msg.calculate_message_hash();
+                let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
     
                 let parent_key = if !inbox_name.is_empty() {
                     let db_guard = self.db.lock().await;
@@ -2378,7 +2378,7 @@ impl Node {
             };
 
             let scheduled_time = msg.external_metadata.scheduled_time;
-            let message_hash = potentially_encrypted_msg.calculate_message_hash();
+            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
             let parent_key = if !inbox_name.is_empty() {
                 let db_guard = self.db.lock().await;

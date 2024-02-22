@@ -27,7 +27,6 @@ impl ShinkaiMessage {
             ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
         })?;
 
-        let verifying_key = secret_key.verifying_key();
         let signature = secret_key.sign(message_hash_bytes.as_slice());
         message_clone.external_metadata.signature = hex::encode(signature.to_bytes());
 
@@ -66,27 +65,33 @@ impl ShinkaiMessage {
         public_key: &ed25519_dalek::VerifyingKey,
     ) -> Result<bool, ShinkaiMessageError> {
         let hex_signature = &self.external_metadata.signature;
-    
+
         // Decode the base58 signature to bytes
         let signature_bytes = hex::decode(hex_signature)
             .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e.to_string())))?;
-    
+
         // Convert the bytes to Signature
         let signature_bytes_slice = &signature_bytes[..];
-        let signature_bytes_array: &[u8; 64] = signature_bytes_slice.try_into().map_err(|e: std::array::TryFromSliceError| {
-            ShinkaiMessageError::SigningError(format!("Failed to convert signature bytes to array: {}", e.to_string()))
-        })?;
-        
+        let signature_bytes_array: &[u8; 64] =
+            signature_bytes_slice
+                .try_into()
+                .map_err(|e: std::array::TryFromSliceError| {
+                    ShinkaiMessageError::SigningError(format!(
+                        "Failed to convert signature bytes to array: {}",
+                        e.to_string()
+                    ))
+                })?;
+
         let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
-    
+
         // Calculate the hash of the message with an empty outer signature
         let message_hash = self.calculate_message_hash_with_empty_outer_signature();
-    
+
         // Convert the hexadecimal hash back to bytes
         let message_hash_bytes = hex::decode(&message_hash).map_err(|e| {
             ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
         })?;
-    
+
         // Verify the signature against the hash of the message
         match public_key.verify(&message_hash_bytes, &signature) {
             Ok(_) => Ok(true),
@@ -107,29 +112,35 @@ impl ShinkaiMessage {
                 ))
             }
         };
-    
+
         // Get the signature from shinkai_body.internal_metadata.signature
         let signature = &shinkai_body.internal_metadata.signature;
-    
+
         // Decode the base58 signature to bytes
         let signature_bytes = hex::decode(signature)
             .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e.to_string())))?;
-    
+
         // Convert the bytes to Signature
         let signature_bytes_slice = &signature_bytes[..];
-        let signature_bytes_array: &[u8; 64] = signature_bytes_slice.try_into().map_err(|e: std::array::TryFromSliceError| {
-            ShinkaiMessageError::SigningError(format!("Failed to convert signature bytes to array: {}", e.to_string()))
-        })?;
+        let signature_bytes_array: &[u8; 64] =
+            signature_bytes_slice
+                .try_into()
+                .map_err(|e: std::array::TryFromSliceError| {
+                    ShinkaiMessageError::SigningError(format!(
+                        "Failed to convert signature bytes to array: {}",
+                        e.to_string()
+                    ))
+                })?;
         let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
-    
+
         // Calculate the hash of the ShinkaiBody with an empty inner signature
         let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
-    
+
         // Convert the hexadecimal hash back to bytes
         let shinkai_body_hash_bytes = hex::decode(&shinkai_body_hash).map_err(|e| {
             ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
         })?;
-    
+
         // Verify the signature against the hash of the ShinkaiBody
         match public_key.verify(&shinkai_body_hash_bytes, &signature) {
             Ok(_) => Ok(true),
@@ -137,13 +148,14 @@ impl ShinkaiMessage {
         }
     }
 
-    pub fn calculate_message_hash(&self) -> String {
+    pub fn calculate_message_hash_for_pagination(&self) -> String {
+        let mut temp_message = self.clone();
+        temp_message.external_metadata.node_api_data = None;
+        
         let mut hasher = Hasher::new();
+        let j = serde_json::to_string(&temp_message).unwrap_or_default();
 
-        let j = json!(self);
-        let string = j.to_string();
-
-        hasher.update(string.as_bytes());
+        hasher.update(j.as_bytes());
         let result = hasher.finalize();
 
         hex::encode(result.as_bytes())
@@ -152,6 +164,7 @@ impl ShinkaiMessage {
     pub fn calculate_message_hash_with_empty_outer_signature(&self) -> String {
         let mut message_clone = self.clone();
         message_clone.external_metadata.signature = "".to_string();
+        message_clone.external_metadata.node_api_data = None;
 
         let mut hasher = Hasher::new();
         let j = json!(message_clone);

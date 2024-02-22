@@ -22,7 +22,7 @@ impl ShinkaiDB {
         retry_time: DateTime<Utc>,
     ) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = retry_message.message.calculate_message_hash();
+        let hash_key = retry_message.message.calculate_message_hash_for_pagination();
 
         // Create a composite key by concatenating the retry_time, retry_count and the hash_key, with a separator
         let composite_key = format!(
@@ -48,7 +48,7 @@ impl ShinkaiDB {
     /// Removes a message from the MessagesToRetry column family.
     pub fn remove_message_from_retry(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
+        let hash_key = message.calculate_message_hash_for_pagination();
 
         // Retrieve the handle to the "MessagesToRetry" column family
         let messages_to_retry_cf = self.get_cf_handle(Topic::MessagesToRetry).unwrap();
