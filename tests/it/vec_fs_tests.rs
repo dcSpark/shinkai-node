@@ -5,14 +5,15 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_node::vector_fs::vector_fs_reader::VFSReader;
-use shinkai_node::vector_fs::vector_fs_types::DistributionOrigin;
 use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceFile, SourceFileMap, SourceFileType, SourceReference};
+use shinkai_vector_resources::source::{
+    DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
+};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRPath, VRSource, VectorResource, VectorResourceCore,
