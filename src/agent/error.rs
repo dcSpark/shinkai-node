@@ -59,6 +59,7 @@ pub enum AgentError {
     ShinkaiBackendInferenceLimitReached(String),
     ShinkaiBackendAIProviderError(String),
     ShinkaiBackendUnexpectedStatusCode(u64),
+    ShinkaiBackendUnexpectedError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -124,6 +125,7 @@ impl fmt::Display for AgentError {
             AgentError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference Limit Reached: {}", s),
             AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI Provider Error: {}", s),
             AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected Status Code: {}", code),
+            AgentError::ShinkaiBackendUnexpectedError(e) => write!(f, "Shinkai Backend Unexpected Error: {}", e),
      
         }
     }
@@ -180,6 +182,7 @@ impl AgentError {
             AgentError::ShinkaiBackendInferenceLimitReached(_) => "ShinkaiBackendInferenceLimitReached",
             AgentError::ShinkaiBackendAIProviderError(_) => "ShinkaiBackendAIProviderError",
             AgentError::ShinkaiBackendUnexpectedStatusCode(_) => "ShinkaiBackendUnexpectedStatusCode",
+            AgentError::ShinkaiBackendUnexpectedError(_) => "ShinkaiBackendUnexpectedError",
         };
 
         let error_message = format!("{}", self);

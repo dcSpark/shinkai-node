@@ -144,6 +144,22 @@ impl LLMProvider for ShinkaiBackend {
                                 500 => AgentError::ShinkaiBackendAIProviderError(resp_message.to_string()),
                                 _ => AgentError::ShinkaiBackendUnexpectedStatusCode(status_code),
                             });
+                        } else if let Some(error) = value.get("error") {
+                            let code = error.get("code").and_then(|c| c.as_str());
+                            let formatted_error = if let (Some(code), Some(message)) =
+                                (code, error.get("message").and_then(|m| m.as_str()))
+                            {
+                                format!("{}: {}", code, message)
+                            } else {
+                                serde_json::to_string(&error).unwrap_or_default()
+                            };
+
+                            return Err(match code {
+                                Some("rate_limit_exceeded") => {
+                                    AgentError::ShinkaiBackendInferenceLimitReached(formatted_error.to_string())
+                                }
+                                _ => AgentError::ShinkaiBackendUnexpectedError(formatted_error.to_string()),
+                            });
                         }
 
                         // TODO: refactor parsing logic so it's reusable
