@@ -32,36 +32,38 @@ impl VRKai {
         }
     }
 
-    /// Prepares the VRKai to be saved or transferred across the network as a compressed vector of bytes.
+    /// Prepares the VRKai to be saved or transferred as a compressed bytes (from the base64 String).
     pub fn prepare_as_bytes(&self) -> Result<Vec<u8>, VRError> {
-        let json_str = serde_json::to_string(self)?;
-        let compressed_bytes = compress_prepend_size(json_str.as_bytes());
-        Ok(compressed_bytes)
+        let base64_encoded = self.prepare_as_base64()?;
+        Ok(base64_encoded.into_bytes())
     }
 
     /// Prepares the VRKai to be saved or transferred across the network as a compressed base64 encoded string.
     pub fn prepare_as_base64(&self) -> Result<String, VRError> {
-        let compressed_bytes = self.prepare_as_bytes()?;
+        let json_str = serde_json::to_string(self)?;
+        let compressed_bytes = compress_prepend_size(json_str.as_bytes());
         let base64_encoded = encode(compressed_bytes);
         Ok(base64_encoded)
     }
 
-    /// Parses a VRKai from an array of bytes.
-    pub fn from_bytes(compressed_bytes: &[u8]) -> Result<Self, VRError> {
-        let decompressed_bytes = decompress_size_prepended(compressed_bytes)
-            .map_err(|e| VRError::VRKaiParsingError(format!("Decompression error: {}", e)))?;
-        let json_str = String::from_utf8(decompressed_bytes)
+    /// Parses a VRKai from an array of bytes, assuming the bytes are a Base64 encoded string.
+    pub fn from_bytes(base64_bytes: &[u8]) -> Result<Self, VRError> {
+        let base64_str = String::from_utf8(base64_bytes.to_vec())
             .map_err(|e| VRError::VRKaiParsingError(format!("UTF-8 conversion error: {}", e)))?;
-        let vrkai = serde_json::from_str(&json_str)
-            .map_err(|e| VRError::VRKaiParsingError(format!("JSON parsing error: {}", e)))?;
-        Ok(vrkai)
+        Self::from_base64(&base64_str)
     }
 
     /// Parses a VRKai from a Base64 encoded string.
     pub fn from_base64(base64_encoded: &str) -> Result<Self, VRError> {
         let bytes =
             decode(base64_encoded).map_err(|e| VRError::VRKaiParsingError(format!("Base64 decoding error: {}", e)))?;
-        Self::from_bytes(&bytes)
+        let decompressed_bytes = decompress_size_prepended(&bytes)
+            .map_err(|e| VRError::VRKaiParsingError(format!("Decompression error: {}", e)))?;
+        let json_str = String::from_utf8(decompressed_bytes)
+            .map_err(|e| VRError::VRKaiParsingError(format!("UTF-8 conversion error: {}", e)))?;
+        let vrkai = serde_json::from_str(&json_str)
+            .map_err(|e| VRError::VRKaiParsingError(format!("JSON parsing error: {}", e)))?;
+        Ok(vrkai)
     }
 
     /// Parses the VRKai into human-readable JSON (intended for readability in non-production use cases)
