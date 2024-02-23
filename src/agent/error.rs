@@ -60,6 +60,8 @@ pub enum AgentError {
     ShinkaiBackendAIProviderError(String),
     ShinkaiBackendUnexpectedStatusCode(u64),
     ShinkaiBackendUnexpectedError(String),
+    LLMProviderInferenceLimitReached(String),
+    LLMProviderUnexpectedError(String)
 }
 
 impl fmt::Display for AgentError {
@@ -126,6 +128,8 @@ impl fmt::Display for AgentError {
             AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI Provider Error: {}", s),
             AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected Status Code: {}", code),
             AgentError::ShinkaiBackendUnexpectedError(e) => write!(f, "Shinkai Backend Unexpected Error: {}", e),
+            AgentError::LLMProviderInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
+            AgentError::LLMProviderUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
      
         }
     }
@@ -183,6 +187,8 @@ impl AgentError {
             AgentError::ShinkaiBackendAIProviderError(_) => "ShinkaiBackendAIProviderError",
             AgentError::ShinkaiBackendUnexpectedStatusCode(_) => "ShinkaiBackendUnexpectedStatusCode",
             AgentError::ShinkaiBackendUnexpectedError(_) => "ShinkaiBackendUnexpectedError",
+            AgentError::LLMProviderInferenceLimitReached(_) => "LLMProviderInferenceLimitReached",
+            AgentError::LLMProviderUnexpectedError(_) => "LLMProviderUnexpectedError",
         };
 
         let error_message = format!("{}", self);

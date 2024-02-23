@@ -104,6 +104,24 @@ impl LLMProvider for OpenAI {
 
                 match data_resp {
                     Ok(value) => {
+                        if let Some(error) = value.get("error") {
+                            let code = error.get("code").and_then(|c| c.as_str());
+                            let formatted_error = if let (Some(code), Some(message)) =
+                                (code, error.get("message").and_then(|m| m.as_str()))
+                            {
+                                format!("{}: {}", code, message)
+                            } else {
+                                serde_json::to_string(&error).unwrap_or_default()
+                            };
+
+                            return Err(match code {
+                                Some("rate_limit_exceeded") => {
+                                    AgentError::LLMProviderInferenceLimitReached(formatted_error.to_string())
+                                }
+                                _ => AgentError::LLMProviderUnexpectedError(formatted_error.to_string()),
+                            });
+                        }
+
                         if self.model_type.contains("vision") {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
