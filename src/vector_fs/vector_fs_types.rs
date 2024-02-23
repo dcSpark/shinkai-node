@@ -4,6 +4,7 @@ use shinkai_message_primitives::{schemas::shinkai_name::ShinkaiName, shinkai_uti
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
+    source::DistributionOrigin,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRKeywords, VRPath},
 };
 use std::{collections::HashMap, mem::discriminant};
@@ -329,7 +330,7 @@ pub struct FSItem {
     /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
     pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
     /// The original location where the VectorResource/SourceFileMap in this FSItem were downloaded/fetched/synced from.
-    pub distribution_origin: DistributionOrigin,
+    pub distribution_origin: Option<DistributionOrigin>,
     /// The size of the Vector Resource in this FSItem
     pub vr_size: usize,
     /// The size of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
@@ -348,7 +349,7 @@ impl FSItem {
         last_read_datetime: DateTime<Utc>,
         vr_last_saved_datetime: DateTime<Utc>,
         source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
-        distribution_origin: DistributionOrigin,
+        distribution_origin: Option<DistributionOrigin>,
         vr_size: usize,
         source_file_map_size: usize,
         merkle_hash: String,
@@ -514,13 +515,16 @@ impl FSItem {
 
     /// Process the distribution origin stored in metadata in an FSItem Node from the VectorFS core resource.
     /// The node must be an FSItem for this to succeed.
-    pub fn process_distribution_origin(node: &Node) -> Result<DistributionOrigin, VectorFSError> {
-        let dist_origin_str = node
+    pub fn process_distribution_origin(node: &Node) -> Result<Option<DistributionOrigin>, VectorFSError> {
+        if let Some(dist_origin_str) = node
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get(&Self::distribution_origin_metadata_key()))
-            .ok_or(VectorFSError::InvalidMetadata(Self::distribution_origin_metadata_key()))?;
-        Ok(DistributionOrigin::from_json(dist_origin_str)?)
+        {
+            Ok(Some(DistributionOrigin::from_json(dist_origin_str)?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Returns the metadata key for the Vector Resource last saved datetime.
@@ -611,27 +615,5 @@ impl LastReadIndex {
         self.get_last_read_datetime(path)
             .cloned()
             .unwrap_or_else(|| ShinkaiTime::generate_time_now())
-    }
-}
-
-/// The origin where a VectorResource was downloaded/acquired from before it arrived
-/// in the node's VectorFS
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum DistributionOrigin {
-    Uri(String),
-    ShinkaiNode((ShinkaiName, VRPath)),
-    Other(String),
-    None,
-}
-
-impl DistributionOrigin {
-    // Converts the DistributionOrigin to a JSON string
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
-    }
-
-    // Creates a DistributionOrigin from a JSON string
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
     }
 }

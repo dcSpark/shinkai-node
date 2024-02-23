@@ -1,4 +1,4 @@
-use super::vector_fs_types::{DistributionOrigin, FSEntry, FSFolder, FSItem};
+use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
@@ -7,7 +7,7 @@ use log::kv::source;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::source::SourceFileMap;
+use shinkai_vector_resources::source::{DistributionOrigin, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
 use shinkai_vector_resources::{
     embeddings::Embedding,
@@ -465,7 +465,7 @@ impl VectorFS {
         writer: &VFSWriter,
         resource: BaseVectorResource,
         source_file_map: Option<SourceFileMap>,
-        distribution_origin: DistributionOrigin,
+        distribution_origin: Option<DistributionOrigin>,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
@@ -518,10 +518,9 @@ impl VectorFS {
                 node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
             }
             // Update distribution_origin key in metadata
-            node_metadata.insert(
-                FSItem::distribution_origin_metadata_key(),
-                distribution_origin.to_json()?,
-            );
+            if let Some(dist_orig) = distribution_origin {
+                node_metadata.insert(FSItem::distribution_origin_metadata_key(), dist_orig.to_json()?);
+            }
             // Update vr_size key in metadata
             let vr_size = resource.as_trait_object().encoded_size()?;
             node_metadata.insert(FSItem::vr_size_metadata_key(), vr_size.to_string());

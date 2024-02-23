@@ -3,6 +3,7 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::vrkai::VRKai;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
@@ -10,6 +11,69 @@ use shinkai_vector_resources::vector_resource::{
     VectorResourceCore, VectorResourceSearch,
 };
 use std::collections::HashMap;
+
+pub fn default_vector_resource_doc() -> DocumentVectorResource {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let mut doc = DocumentVectorResource::new_empty(
+        "3 Animal Facts",
+        Some("A bunch of facts about animals and wildlife"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
+    );
+
+    doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    doc.update_resource_embedding_blocking(&generator, Some(vec!["animal".to_string(), "wild life".to_string()]))
+        .unwrap();
+
+    // Prepare embeddings + data, then add it to the doc
+    let fact1 = "Dogs are creatures with 4 legs that bark.";
+    let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let fact2 = "Camels are slow animals with large humps.";
+    let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
+    let fact3 = "Seals swim in the ocean.";
+    let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+        .unwrap();
+    return doc;
+}
+
+fn default_vr_kai() -> VRKai {
+    let resource = BaseVectorResource::Document(default_vector_resource_doc());
+    VRKai::from_base_vector_resource(resource, None, None)
+}
+
+#[test]
+fn test_vr_kai_prepare_and_parse_methods() {
+    let vr_kai = default_vr_kai();
+
+    // Test prepare_as_base64 and from_base64
+    let base64_encoded = vr_kai.prepare_as_base64().expect("Failed to prepare as base64");
+    let parsed_from_base64 = VRKai::from_base64(&base64_encoded).expect("Failed to parse from base64");
+    assert_eq!(
+        serde_json::to_string(&vr_kai).unwrap(),
+        serde_json::to_string(&parsed_from_base64).unwrap()
+    );
+
+    // Test prepare_as_bytes and from_bytes
+    let bytes_encoded = vr_kai.prepare_as_bytes().expect("Failed to prepare as bytes");
+    let parsed_from_bytes = VRKai::from_bytes(&bytes_encoded).expect("Failed to parse from bytes");
+    assert_eq!(
+        serde_json::to_string(&vr_kai).unwrap(),
+        serde_json::to_string(&parsed_from_bytes).unwrap()
+    );
+
+    // Test to_json and from_json for completeness
+    let json_str = vr_kai.to_json().expect("Failed to convert to JSON");
+    let parsed_from_json = VRKai::from_json(&json_str).expect("Failed to parse from JSON");
+    assert_eq!(
+        serde_json::to_string(&vr_kai).unwrap(),
+        serde_json::to_string(&parsed_from_json).unwrap()
+    );
+}
 
 #[test]
 fn test_remote_embedding_generation() {
@@ -58,30 +122,14 @@ fn test_manual_resource_vector_search() {
     //
     // Create a first resource
     //
-    let mut doc = DocumentVectorResource::new_empty(
-        "3 Animal Facts",
-        Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com", None),
-        true,
-    );
-
-    doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding_blocking(&generator, vec!["animal".to_string(), "wild life".to_string()])
-        .unwrap();
-
-    // Prepare embeddings + data, then add it to the doc
     let fact1 = "Dogs are creatures with 4 legs that bark.";
     let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
     let fact2 = "Camels are slow animals with large humps.";
     let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
-        .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
-        .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
-        .unwrap();
+
+    let doc = default_vector_resource_doc();
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -116,7 +164,7 @@ fn test_manual_resource_vector_search() {
 
     map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
     map_resource
-        .update_resource_embedding_blocking(&generator, vec!["technology".to_string(), "phones".to_string()])
+        .update_resource_embedding_blocking(&generator, Some(vec!["technology".to_string(), "phones".to_string()]))
         .unwrap();
 
     // Prepare embeddings + data, then add it to the map resource
@@ -573,7 +621,7 @@ fn test_manual_syntactic_vector_search() {
         true,
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding_blocking(&generator, vec!["cv".to_string(), "email".to_string()])
+    doc.update_resource_embedding_blocking(&generator, Some(vec!["cv".to_string(), "email".to_string()]))
         .unwrap();
 
     // Manually create a few test tags
@@ -664,7 +712,7 @@ fn test_checking_embedding_similarity() {
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding_blocking(&generator, vec!["animal".to_string(), "wild life".to_string()])
+    doc.update_resource_embedding_blocking(&generator, Some(vec!["animal".to_string(), "wild life".to_string()]))
         .unwrap();
 
     // Prepare embeddings + data, then add it to the doc
@@ -735,7 +783,7 @@ async fn test_embeddings_coherence() {
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
+    doc.update_resource_embedding(&generator, Some(vec!["animal".to_string(), "wild life".to_string()]))
         .await
         .unwrap();
 

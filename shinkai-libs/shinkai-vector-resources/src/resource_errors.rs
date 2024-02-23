@@ -2,6 +2,8 @@ use crate::vector_resource::VRPath;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
+use lz4_flex::block::DecompressError;
+use std::string::FromUtf8Error;
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {
@@ -32,6 +34,8 @@ pub enum VRError {
     MerkleRootNotFound(String),
     MerkleHashNotFoundInNode(String),
     VectorResourceIsNotMerkelized(String),
+    VRKaiParsingError(String),
+
 }
 
 impl fmt::Display for VRError {
@@ -78,6 +82,7 @@ impl fmt::Display for VRError {
             VRError::MerkleRootNotFound(ref s) => write!(f, "The Vector Resource does not contain a merkle root: {}", s),
             VRError::MerkleHashNotFoundInNode(ref s) => write!(f, "The Node does not contain a merkle root: {}", s),
             VRError::VectorResourceIsNotMerkelized(ref s) => write!(f, "The Vector Resource is not merkelized, and thus cannot perform merkel-related functionality: {}", s),
+            VRError::VRKaiParsingError(ref s) => write!(f, "Failed to parse contents into VRKai struct: {}", s),
  
         }
     }
