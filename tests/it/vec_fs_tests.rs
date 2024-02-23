@@ -178,9 +178,10 @@ async fn test_vector_fs_saving_reading() {
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file_map) = vector_fs.retrieve_vr_and_source_file_map(&reader).unwrap();
+    let ret_vrkai = vector_fs.retrieve_vrkai(&reader).unwrap();
+    let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file_map, source_file_map);
+    assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
 
     println!("Keywords: {:?}", ret_resource.as_trait_object().keywords());
     assert!(ret_resource.as_trait_object().keywords().keyword_list.len() > 0);
@@ -189,11 +190,13 @@ async fn test_vector_fs_saving_reading() {
     let reader = vector_fs
         .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file_map) = vector_fs
-        .retrieve_vr_and_source_file_map_in_folder(&reader, resource.as_trait_object().name().to_string())
+    let ret_vrkai = vector_fs
+        .retrieve_vrkai_in_folder(&reader, resource.as_trait_object().name().to_string())
         .unwrap();
+    let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
+
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file_map, source_file_map);
+    assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
 
     //
     // Vector Search Tests

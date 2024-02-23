@@ -32,7 +32,8 @@ impl VRKai {
         }
     }
 
-    /// Prepares the VRKai to be saved or transferred as a compressed bytes (from the base64 String).
+    /// Prepares the VRKai to be saved or transferred as compressed bytes.
+    /// Of note, this is the bytes of the UTF-8 base64 string. This allows for easy compatibility between the two.
     pub fn prepare_as_bytes(&self) -> Result<Vec<u8>, VRError> {
         let base64_encoded = self.prepare_as_base64()?;
         Ok(base64_encoded.into_bytes())
