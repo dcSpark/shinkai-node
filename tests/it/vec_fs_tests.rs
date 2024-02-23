@@ -145,12 +145,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(
-            &writer,
-            resource.clone(),
-            Some(source_file_map.clone()),
-            DistributionOrigin::None,
-        )
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
         .unwrap();
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
@@ -237,7 +232,7 @@ async fn test_vector_fs_saving_reading() {
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
-            DistributionOrigin::None,
+            None,
         )
         .unwrap();
 
@@ -500,12 +495,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let first_folder_item = vector_fs
-        .save_vector_resource_in_folder(
-            &writer,
-            resource.clone(),
-            Some(source_file_map.clone()),
-            DistributionOrigin::None,
-        )
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
         .unwrap();
 
     //

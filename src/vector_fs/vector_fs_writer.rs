@@ -465,7 +465,7 @@ impl VectorFS {
         writer: &VFSWriter,
         resource: BaseVectorResource,
         source_file_map: Option<SourceFileMap>,
-        distribution_origin: DistributionOrigin,
+        distribution_origin: Option<DistributionOrigin>,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
@@ -518,10 +518,9 @@ impl VectorFS {
                 node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
             }
             // Update distribution_origin key in metadata
-            node_metadata.insert(
-                FSItem::distribution_origin_metadata_key(),
-                distribution_origin.to_json()?,
-            );
+            if let Some(dist_orig) = distribution_origin {
+                node_metadata.insert(FSItem::distribution_origin_metadata_key(), dist_orig.to_json()?);
+            }
             // Update vr_size key in metadata
             let vr_size = resource.as_trait_object().encoded_size()?;
             node_metadata.insert(FSItem::vr_size_metadata_key(), vr_size.to_string());

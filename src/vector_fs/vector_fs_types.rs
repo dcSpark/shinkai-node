@@ -330,7 +330,7 @@ pub struct FSItem {
     /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
     pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
     /// The original location where the VectorResource/SourceFileMap in this FSItem were downloaded/fetched/synced from.
-    pub distribution_origin: DistributionOrigin,
+    pub distribution_origin: Option<DistributionOrigin>,
     /// The size of the Vector Resource in this FSItem
     pub vr_size: usize,
     /// The size of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
@@ -349,7 +349,7 @@ impl FSItem {
         last_read_datetime: DateTime<Utc>,
         vr_last_saved_datetime: DateTime<Utc>,
         source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
-        distribution_origin: DistributionOrigin,
+        distribution_origin: Option<DistributionOrigin>,
         vr_size: usize,
         source_file_map_size: usize,
         merkle_hash: String,
@@ -426,7 +426,7 @@ impl FSItem {
                     last_read_datetime,
                     vr_last_saved_datetime,
                     source_file_map_last_saved,
-                    distribution_origin,
+                    Some(distribution_origin),
                     vr_size,
                     sfm_size,
                     merkle_hash,
