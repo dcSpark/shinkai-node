@@ -426,7 +426,7 @@ impl FSItem {
                     last_read_datetime,
                     vr_last_saved_datetime,
                     source_file_map_last_saved,
-                    Some(distribution_origin),
+                    distribution_origin,
                     vr_size,
                     sfm_size,
                     merkle_hash,
@@ -515,13 +515,16 @@ impl FSItem {
 
     /// Process the distribution origin stored in metadata in an FSItem Node from the VectorFS core resource.
     /// The node must be an FSItem for this to succeed.
-    pub fn process_distribution_origin(node: &Node) -> Result<DistributionOrigin, VectorFSError> {
-        let dist_origin_str = node
+    pub fn process_distribution_origin(node: &Node) -> Result<Option<DistributionOrigin>, VectorFSError> {
+        if let Some(dist_origin_str) = node
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get(&Self::distribution_origin_metadata_key()))
-            .ok_or(VectorFSError::InvalidMetadata(Self::distribution_origin_metadata_key()))?;
-        Ok(DistributionOrigin::from_json(dist_origin_str)?)
+        {
+            Ok(Some(DistributionOrigin::from_json(dist_origin_str)?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Returns the metadata key for the Vector Resource last saved datetime.
