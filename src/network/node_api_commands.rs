@@ -32,11 +32,10 @@ use shinkai_message_primitives::{
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_error::ShinkaiMessageError, shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
             MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
-        },
+        }
     },
     shinkai_utils::{
         encryption::{
@@ -561,7 +560,21 @@ impl Node {
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let sender_encryption_pk_string = msg.external_metadata.clone().other;
-        let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+        let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str());
+
+        let sender_encryption_pk = match sender_encryption_pk {
+            Ok(pk) => pk,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to parse encryption public key: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
 
         // Decrypt the message
         let message_to_decrypt = msg.clone();
@@ -578,21 +591,45 @@ impl Node {
                     message: format!("Failed to decrypt message: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Err(Box::new(e));
+                return Ok(());
             }
         };
 
         // Deserialize body.content into RegistrationCode
-        let content = decrypted_message.get_message_content()?;
+        let content = decrypted_message.get_message_content();
+        let content = match content {
+            Ok(c) => c,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to get message content: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
             format!("Registration code usage content: {}", content).as_str(),
         );
         // let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
-        let registration_code: RegistrationCode = serde_json::from_str(&content).map_err(|e| NodeError {
-            message: format!("Failed to deserialize the content: {}", e),
-        })?;
+        let registration_code: Result<RegistrationCode, serde_json::Error> = serde_json::from_str(&content);
+        let registration_code = match registration_code {
+            Ok(code) => code,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to deserialize the content: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
 
         // Extract values from the ShinkaiMessage
         let mut code = registration_code.code;
@@ -1555,7 +1592,7 @@ impl Node {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
                     let db_lock = self.db.lock().await;
-                    match db_lock.update_job_to_finished(job_id) {
+                    match db_lock.update_job_to_finished(&job_id) {
                         Ok(_) => {
                             match db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await {
                                 Ok(Some((_, kai_file_bytes))) => {

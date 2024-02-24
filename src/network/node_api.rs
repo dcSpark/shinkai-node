@@ -795,7 +795,7 @@ async fn send_msg_handler(
     match send_result {
         Ok(data) => {
             let response_body = SendResponseBody {
-                status: "Success".to_string(),
+                status: "success".to_string(),
                 message: "Message sent successfully".to_string(),
                 data: Some(data),
             };
@@ -1168,7 +1168,16 @@ async fn use_registration_code_handler(
 
     match result {
         Ok(success_response) => {
+            let data = serde_json::json!({
+                "message": success_response.message,
+                "node_name": success_response.node_name,
+                "encryption_public_key": success_response.encryption_public_key,
+                "identity_public_key": success_response.identity_public_key
+            });
             let response = serde_json::json!({
+                "status": "success",
+                "data": data,
+                // TODO: remove the below repeated data  once the Apps have updated
                 "message": success_response.message,
                 "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,

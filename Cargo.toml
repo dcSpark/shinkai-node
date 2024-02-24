@@ -66,6 +66,7 @@ tiny-bip39 = "0.8.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tiktoken-rs = "0.5.8"
+num_cpus = "1.16.0"
 
 [dependencies.opentelemetry]
 version = "0.21.0"

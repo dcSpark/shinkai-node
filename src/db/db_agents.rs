@@ -25,9 +25,7 @@ impl ShinkaiDB {
 
     pub fn add_agent(&mut self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+        let cf_opts = Self::create_cf_options();
 
         // Create ColumnFamilyDescriptors for profiles_with_access and toolkits_accessible
         let cf_name_profiles_access = format!("agent_{}_profiles_with_access", agent.id);

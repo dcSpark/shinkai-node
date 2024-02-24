@@ -4743,6 +4743,7 @@ dependencies = [
  "lazy_static",
  "log",
  "mockito",
+ "num_cpus",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",

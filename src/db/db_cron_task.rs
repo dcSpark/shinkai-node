@@ -57,9 +57,7 @@ impl ShinkaiDB {
         let cf_name_created_at = format!("{}_cron_task_created_at", profile_name);
         let cf_name_agent_id = format!("{}_cron_task_agent_id", profile_name);
 
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+        let cf_opts = Self::create_cf_options();
 
         if self.db.cf_handle(&cf_name_schedule).is_none() {
             self.db.create_cf(&cf_name_schedule, &cf_opts)?;

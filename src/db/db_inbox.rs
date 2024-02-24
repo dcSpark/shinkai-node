@@ -25,9 +25,7 @@ impl ShinkaiDB {
             &format!("Creating inbox: {}", inbox_name),
         );
         // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+        let cf_opts = Self::create_cf_options();
 
         // Create ColumnFamilyDescriptors for inbox and permission lists
         let cf_name_inbox = inbox_name.clone();
@@ -178,9 +176,7 @@ impl ShinkaiDB {
                 None => {
                     // eprintln!("Creating cf for children: {}", cf_children_name);
                     // Create Options for ColumnFamily
-                    let mut cf_opts = Options::default();
-                    cf_opts.create_if_missing(true);
-                    cf_opts.create_missing_column_families(true);
+                    let cf_opts = Self::create_cf_options();
 
                     // Create column family if it doesn't exist
                     self.db
@@ -210,9 +206,7 @@ impl ShinkaiDB {
                 Some(cf) => cf,
                 None => {
                     // Create Options for ColumnFamily
-                    let mut cf_opts = Options::default();
-                    cf_opts.create_if_missing(true);
-                    cf_opts.create_missing_column_families(true);
+                    let cf_opts = Self::create_cf_options();
 
                     // Create column family if it doesn't exist
                     self.db

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
@@ -7,153 +8,84 @@ use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-
-enum JobInfo {
-    IsFinished,
-    IsHidden,
-    DatetimeCreated,
-    ParentAgentId,
-    ConversationInboxName,
-}
-
-impl JobInfo {
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "is_finished" => Some(Self::IsFinished),
-            "is_hidden" => Some(Self::IsHidden),
-            "datetime_created" => Some(Self::DatetimeCreated),
-            "parent_agent_id" => Some(Self::ParentAgentId),
-            "conversation_inbox_name" => Some(Self::ConversationInboxName),
-            _ => None,
-        }
-    }
-
-    fn to_str(&self) -> &'static str {
-        match self {
-            Self::IsFinished => "is_finished",
-            Self::IsHidden => "is_hidden",
-            Self::DatetimeCreated => "datetime_created",
-            Self::ParentAgentId => "parent_agent_id",
-            Self::ConversationInboxName => "conversation_inbox_name",
-        }
-    }
-}
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 impl ShinkaiDB {
-    pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope, is_hidden: bool) -> Result<(), ShinkaiDBError> {
-        // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+    pub fn create_new_job(
+        &mut self,
+        job_id: String,
+        agent_id: String,
+        scope: JobScope,
+        is_hidden: bool,
+    ) -> Result<(), ShinkaiDBError> {
+        let start = std::time::Instant::now();
 
-        // Create ColumnFamilyDescriptors for inbox and permission lists
-        let cf_job_id_scope_name = format!("{}_scope", &job_id); // keyed by name and value link to bucket or document
-        let cf_agent_id_name = format!("agentid_{}", &agent_id);
-        let cf_job_id_name = format!("jobtopic_{}", &job_id);
-        let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
-        let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
-        let cf_job_id_read_list_name = format!("job_inbox::{}::false_read_list", &job_id);
-        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
-        let cf_job_id_smart_inbox_name = format!("job_inbox::{}::false_smart_inbox_name", &job_id);
-        let cf_job_id_children_name = format!("{}_children", &cf_conversation_inbox_name);
-        let cf_job_id_parents_name = format!("{}_parents", &cf_conversation_inbox_name);
-        let cf_job_id_is_hidden = format!("{}_is_hidden", &job_id);
-
-        // Check that the cf handles exist, and create them
-        if self.db.cf_handle(&cf_job_id_scope_name).is_some()
-            || self.db.cf_handle(&cf_job_id_name).is_some()
-            || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
-            || self.db.cf_handle(&cf_job_id_perms_name).is_some()
-            || self.db.cf_handle(&cf_job_id_read_list_name).is_some()
-            || self.db.cf_handle(&cf_job_id_unprocessed_messages_name).is_some()
-            || self.db.cf_handle(&cf_job_id_smart_inbox_name).is_some()
-            || self.db.cf_handle(&cf_job_id_children_name).is_some()
-            || self.db.cf_handle(&cf_job_id_parents_name).is_some()
-            || self.db.cf_handle(&cf_job_id_is_hidden).is_some()
-        {
-            return Err(ShinkaiDBError::JobAlreadyExists(cf_job_id_name.to_string()));
-        }
-
-        if self.db.cf_handle(&cf_agent_id_name).is_none() {
-            self.db.create_cf(&cf_agent_id_name, &cf_opts)?;
-        }
-        self.db.create_cf(&cf_job_id_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_scope_name, &cf_opts)?;
-        self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_read_list_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_unprocessed_messages_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_smart_inbox_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_children_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_parents_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_is_hidden, &cf_opts)?;
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
         // Start a write batch
+        let batch_write_start = Instant::now();
         let mut batch = WriteBatch::default();
 
-        // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated (presumably)
+        // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated.
         let current_time = ShinkaiStringTime::generate_time_now();
         let scope_bytes = scope.to_bytes()?;
 
-        let cf_job_id = self.cf_handle(&cf_job_id_name)?;
-        let cf_agent_id = self.cf_handle(&cf_agent_id_name)?;
-        let cf_job_id_scope = self.cf_handle(&cf_job_id_scope_name)?;
+        // Construct keys with job_id as part of the key
+        let job_scope_key = format!("jobinbox_{}_{}", job_id, "scope");
+        let jobs_by_agent_id_key = format!("jobinbox_{}_{}_{}", agent_id, current_time, job_id);
+        let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
+        let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
+        let job_parent_agentid_key = format!("jobinbox_{}_agentid", job_id);
+        let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
+        let all_jobs_time_keyed = format!("all_jobs_time_keyed_{}", current_time);
+        let job_smart_inbox_name_key = format!("jobinbox_{}_smart_inbox_name", job_id);
+        let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
 
-        batch.put_cf(cf_agent_id, current_time.as_bytes(), job_id.as_bytes());
-        batch.put_cf(cf_job_id_scope, job_id.as_bytes(), &scope_bytes);
-        batch.put_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes(), b"false");
+        // Content
+        let conversation_inbox_name = format!("job_inbox::{}::false", job_id);
+        let initial_job_name = format!("New Job: {}", job_id);
+
+        // Put Job Data into the DB
+        batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
+        batch.put_cf(cf_inbox, jobs_by_agent_id_key.as_bytes(), "".as_bytes());
+        batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
+        batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
+        batch.put_cf(cf_inbox, job_parent_agentid_key.as_bytes(), agent_id.as_bytes());
         batch.put_cf(
-            cf_job_id,
-            JobInfo::DatetimeCreated.to_str().as_bytes(),
-            current_time.as_bytes(),
+            cf_inbox,
+            job_conversation_inbox_name_key.as_bytes(),
+            conversation_inbox_name.as_bytes(),
         );
+        batch.put_cf(cf_inbox, all_jobs_time_keyed.as_bytes(), job_id.as_bytes());
         batch.put_cf(
-            cf_job_id,
-            JobInfo::ParentAgentId.to_str().as_bytes(),
-            agent_id.as_bytes(),
+            cf_inbox,
+            job_smart_inbox_name_key.as_bytes(),
+            initial_job_name.as_bytes(),
         );
-        batch.put_cf(
-            cf_job_id,
-            JobInfo::ConversationInboxName.to_str().as_bytes(),
-            cf_conversation_inbox_name.as_bytes(),
-        );
-
-        let cf_jobs = self
-            .db
-            .cf_handle(Topic::AllJobsTimeKeyed.as_str())
-            .expect("to be able to access Topic::AllJobsTimeKeyed");
-        batch.put_cf(cf_jobs, &current_time, &job_id);
-
-        // Add job inbox name to the list in the 'inbox' topic
-        let cf_inbox = self
-            .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
-        batch.put_cf(cf_inbox, &cf_conversation_inbox_name, &cf_conversation_inbox_name);
-
-        let cf_smart_inbox_name = self
-            .db
-            .cf_handle(&cf_job_id_smart_inbox_name)
-            .expect("to be able to access smart inbox name column family");
-        batch.put_cf(
-            cf_smart_inbox_name,
-            &cf_conversation_inbox_name,
-            &cf_conversation_inbox_name,
-        );
-
-        let cf_is_hidden = self
-            .db
-            .cf_handle(&cf_job_id_is_hidden)
-            .expect("to be able to access is hidden column family");
-        batch.put_cf(cf_is_hidden, &cf_conversation_inbox_name, &is_hidden.to_string());
+        batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
+        batch.put_cf(cf_inbox, conversation_inbox_name.as_bytes(), b""); // Note: this changed
 
         self.db.write(batch)?;
+
+        let batch_write_duration = batch_write_start.elapsed();
+        println!("create_new_job Batch write took: {:?}", batch_write_duration);
+
+        let duration = start.elapsed();
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                format!("create_new_job execution time: {:?}", duration).as_str(),
+            );
+        }
 
         Ok(())
     }
 
     /// Fetches a job from the DB
     pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
+        let start = std::time::Instant::now();
         let (
             scope,
             is_finished,
@@ -180,11 +112,21 @@ impl ShinkaiDB {
             execution_context,
         };
 
+        let duration = start.elapsed();
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                format!("get_job execution time: {:?}", duration).as_str(),
+            );
+        }
+
         Ok(job)
     }
 
     /// Fetches a job from the DB as a Box<dyn JobLik>
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
+        let start = std::time::Instant::now();
         let (
             scope,
             is_finished,
@@ -211,6 +153,15 @@ impl ShinkaiDB {
             execution_context,
         };
 
+        let duration = start.elapsed();
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                format!("get_job_like execution time: {:?}", duration).as_str(),
+            );
+        }
+
         Ok(Box::new(job))
     }
 
@@ -233,55 +184,47 @@ impl ShinkaiDB {
         ),
         ShinkaiDBError,
     > {
-        // Define cf names for all data we need to fetch
-        let cf_job_id_name = format!("jobtopic_{}", job_id);
-        let cf_job_id_scope_name = format!("{}_scope", job_id);
-
-        // Get the needed cf handles
-        let cf_job_id_scope = self
-            .db
-            .cf_handle(&cf_job_id_scope_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_scope_name))?;
-        let cf_job_id = self
-            .db
-            .cf_handle(&cf_job_id_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
+        // Use shared CFs
+        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
 
         // Begin fetching the data from the DB
         let scope_value = self
             .db
-            .get_cf(cf_job_id_scope, job_id)?
+            .get_cf(cf_jobs, format!("jobinbox_{}_scope", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let scope = JobScope::from_bytes(&scope_value)?;
 
         let is_finished_value = self
             .db
-            .get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?
+            .get_cf(cf_jobs, format!("jobinbox_{}_is_finished", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
 
         let datetime_created_value = self
             .db
-            .get_cf(cf_job_id, JobInfo::DatetimeCreated.to_str().as_bytes())?
+            .get_cf(cf_jobs, format!("jobinbox_{}_datetime_created", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let datetime_created = std::str::from_utf8(&datetime_created_value)?.to_string();
 
         let parent_agent_id_value = self
             .db
-            .get_cf(cf_job_id, JobInfo::ParentAgentId.to_str().as_bytes())?
+            .get_cf(cf_jobs, format!("jobinbox_{}_agentid", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
 
         let conversation_inbox_value = self
             .db
-            .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
+            .get_cf(
+                cf_jobs,
+                format!("jobinbox_{}_conversation_inbox_name", job_id).as_bytes(),
+            )?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
-        let conversation_inbox = Some(InboxName::new(inbox_name)?);
+        let conversation_inbox = InboxName::new(inbox_name)?;
 
         let is_hidden_value = self
             .db
-            .get_cf(cf_job_id, JobInfo::IsHidden.to_str().as_bytes())?
+            .get_cf(cf_jobs, format!("jobinbox_{}_is_hidden", job_id).as_bytes())?
             .unwrap_or_else(|| b"false".to_vec());
         let is_hidden = std::str::from_utf8(&is_hidden_value)?.to_string() == "true";
 
@@ -297,7 +240,7 @@ impl ShinkaiDB {
             is_hidden,
             datetime_created,
             parent_agent_id,
-            conversation_inbox.unwrap(),
+            conversation_inbox,
             step_history,
             unprocessed_messages,
             self.get_job_execution_context(job_id)?,
@@ -306,16 +249,18 @@ impl ShinkaiDB {
 
     /// Fetches all jobs
     pub fn get_all_jobs(&self) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
-        let cf_handle = self
-            .db
-            .cf_handle(Topic::AllJobsTimeKeyed.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("AllJobsTimeKeyed".to_string()))?;
+        // Use shared CFs
+        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
 
         let mut jobs = Vec::new();
-        let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+        // Create a prefix iterator for keys starting with "all_jobs_time_keyed_"
+        let prefix = b"all_jobs_time_keyed_";
+        let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
             let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            // The value is the job ID
             let job_id = std::str::from_utf8(&value)?.to_string();
+            // Fetch the job using the job ID
             let job = self.get_job_like(&job_id)?;
             jobs.push(job);
         }
@@ -324,35 +269,23 @@ impl ShinkaiDB {
 
     /// Updates the JobScope of a job given it's id
     pub fn update_job_scope(&mut self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
-        // Define cf name for the scope we need to update
-        let cf_job_id_scope_name = format!("{}_scope", &job_id);
-
-        // Get the needed cf handle
-        let cf_job_id_scope = self
-            .db
-            .cf_handle(&cf_job_id_scope_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_scope_name))?;
-
-        // Convert the new scope to bytes
+        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
         let scope_bytes = scope.to_bytes()?;
-
-        // Update the scope in the DB
-        self.db.put_cf(cf_job_id_scope, job_id.as_bytes(), &scope_bytes)?;
+        let job_scope_key = format!("jobinbox_{}_scope", &job_id);
+        self.db.put_cf(cf_jobs, job_scope_key.as_bytes(), &scope_bytes)?;
 
         Ok(())
     }
 
     /// Fetches all jobs under a specific Agent
     pub fn get_agent_jobs(&self, agent_id: String) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
-        let cf_name = format!("agentid_{}", &agent_id);
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name))?;
+        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
+        let prefix_string = format!("jobinbox_{}", agent_id);
+        let prefix = prefix_string.as_bytes();
         let mut jobs = Vec::new();
-        let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+        let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
-            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
             let job_id = std::str::from_utf8(&value)?.to_string();
             let job = self.get_job_like(&job_id)?;
             jobs.push(job);
@@ -385,6 +318,7 @@ impl ShinkaiDB {
             }
         };
 
+        // TODO: fix this
         let cf_name = format!("{}_{}_execution_context", &job_id, &message_key);
         let current_time = ShinkaiStringTime::generate_time_now();
 
@@ -397,9 +331,7 @@ impl ShinkaiDB {
             Some(cf) => cf,
             None => {
                 // Create Options for ColumnFamily
-                let mut cf_opts = Options::default();
-                cf_opts.create_if_missing(true);
-                cf_opts.create_missing_column_families(true);
+                let cf_opts = Self::create_cf_options();
 
                 // Create column family if it doesn't exist
                 self.db.create_cf(&cf_name, &cf_opts)?;
@@ -416,6 +348,7 @@ impl ShinkaiDB {
 
     /// Gets the execution context for a job
     pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, ShinkaiDBError> {
+        let start = std::time::Instant::now();
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
         let mut execution_context: HashMap<String, String> = HashMap::new();
 
@@ -424,6 +357,7 @@ impl ShinkaiDB {
         if let Some(message_path) = last_messages.first() {
             if let Some(message) = message_path.first() {
                 let message_key = message.calculate_message_hash_for_pagination();
+                // TODO: fix this
                 let cf_name = format!("{}_{}_execution_context", job_id, message_key);
                 if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
                     // Get the last context (should be only one)
@@ -442,6 +376,15 @@ impl ShinkaiDB {
                 }
             }
         }
+        let duration = start.elapsed();
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            shinkai_log(
+                ShinkaiLogOption::Database,
+                ShinkaiLogLevel::Info,
+                format!("get_job_execution_context execution time: {:?}", duration).as_str(),
+            );
+        }
+
         Ok(execution_context)
     }
 
@@ -462,6 +405,7 @@ impl ShinkaiDB {
     }
 
     /// Fetches an iterator over all unprocessed messages for a specific Job from the DB
+    // TODO: Fix this
     fn get_unprocessed_messages_iterator<'a>(
         &'a self,
         job_id: &str,
@@ -476,6 +420,7 @@ impl ShinkaiDB {
     }
 
     /// Removes the oldest unprocessed message for a specific Job from the DB
+    // TODO: Fix this
     pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
         // Get the needed cf handle
         let cf_job_id_unprocessed_messages = self._get_unprocessed_messages_handle(job_id)?;
@@ -493,6 +438,7 @@ impl ShinkaiDB {
     }
 
     /// Fetches the column family handle for unprocessed messages of a specific Job
+    // TODO: Fix this
     fn _get_unprocessed_messages_handle(&self, job_id: &str) -> Result<&rocksdb::ColumnFamily, ShinkaiDBError> {
         let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", job_id);
 
@@ -508,17 +454,17 @@ impl ShinkaiDB {
     }
 
     /// Updates the Job to being finished
-    pub fn update_job_to_finished(&self, job_id: String) -> Result<(), ShinkaiDBError> {
-        let cf_name = format!("jobtopic_{}", &job_id);
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?;
+    pub fn update_job_to_finished(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
+        // Construct key for checking if the job is finished
+        let job_is_finished_key = format!("{}_is_finished", job_id);
 
         // Check if the job is already finished
         let is_finished_value = self
             .db
-            .get_cf(cf_handle, JobInfo::IsFinished.to_str().as_bytes())?
+            .get_cf(cf_inbox, job_is_finished_key.as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
 
@@ -526,21 +472,9 @@ impl ShinkaiDB {
             return Err(ShinkaiDBError::SomeError(format!("Job {} is already finished", job_id)));
         }
 
-        let mut batch = WriteBatch::default();
-        batch.put_cf(cf_handle, JobInfo::IsFinished.to_str().as_bytes(), b"true");
-        self.db.write(batch)?;
-        Ok(())
-    }
+        // Update the job to be marked as finished
+        self.db.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"true")?;
 
-    /// Adds a message to a job's unprocessed messages list
-    pub fn add_to_unprocessed_messages_list(&self, job_id: String, message: String) -> Result<(), ShinkaiDBError> {
-        let cf_name = format!("{}_unprocessed_messages", &job_id);
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
-        let current_time = ShinkaiStringTime::generate_time_now();
-        self.db.put_cf(cf_handle, current_time.as_bytes(), message.as_bytes())?;
         Ok(())
     }
 
@@ -569,6 +503,7 @@ impl ShinkaiDB {
             }
         };
 
+        // TODO: fix this
         let cf_name = format!("{}_{}_step_history", &job_id, &message_key);
         let current_time = ShinkaiStringTime::generate_time_now();
 
@@ -588,9 +523,7 @@ impl ShinkaiDB {
             Some(cf) => cf,
             None => {
                 // Create Options for ColumnFamily
-                let mut cf_opts = Options::default();
-                cf_opts.create_if_missing(true);
-                cf_opts.create_missing_column_families(true);
+                let cf_opts = Self::create_cf_options();
 
                 // Create column family if it doesn't exist
                 self.db.create_cf(&cf_name, &cf_opts)?;
@@ -639,6 +572,7 @@ impl ShinkaiDB {
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
                     let message_key = message.calculate_message_hash_for_pagination();
+                    // TODO: fix this
                     let cf_name = format!("{}_{}_step_history", job_id, message_key);
                     if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
                         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
@@ -669,6 +603,7 @@ impl ShinkaiDB {
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, ShinkaiDBError> {
+        // TODO: fix this
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", job_id);
         let cf_handle = self
             .db

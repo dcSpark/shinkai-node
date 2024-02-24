@@ -39,9 +39,7 @@ impl ShinkaiDB {
     // TODO: Use ProfileBatching so it's associated with a specific profile
     pub fn create_files_message_inbox(&mut self, hex_blake3_has: String) -> Result<(), Error> {
         // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+        let cf_opts = Self::create_cf_options();
 
         // Create ColumnFamilyDescriptors for encrypted inbox
         let cf_name_encrypted_inbox = hex_blake3_has.clone();
