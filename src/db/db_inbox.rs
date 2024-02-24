@@ -296,10 +296,10 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.to_string()))?;
 
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let profile_indentity_key = format!("{}_profile_identity_key", profile_name.clone().to_string());
+        let profile_identity_key = format!("identity_key_of_{}", profile_name.clone().to_string());
 
         // Check if the identity exists
-        if self.db.get_cf(cf_node, profile_indentity_key.as_bytes())?.is_none() {
+        if self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_none() {
             return Err(ShinkaiDBError::IdentityNotFound(format!(
                 "Identity not found for: {}",
                 profile_name
@@ -326,7 +326,7 @@ impl ShinkaiDB {
 
         // Adjusted to use Topic::NodeAndUsers for identity existence check
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let profile_identity_key = format!("{}_profile_identity_key", profile_name);
+        let profile_identity_key = format!("identity_key_of_{}", profile_name);
 
         // Check if the identity exists
         if self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_none() {

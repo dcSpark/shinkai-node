@@ -14,26 +14,31 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 impl ShinkaiDB {
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiDBError> {
-        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
-        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
-
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+    
+        // Use a prefix based on the current Topic for the identity public key
+        let profile_key_prefix = format!("profile_from_identity_key_{}", identity_public_key);
         // Get the associated profile name for the identity public key
-        let profile_name = match self.db.get_cf(cf_identity, identity_public_key)? {
+        let profile_name = match self.db.get_cf(cf_node_and_users, profile_key_prefix.as_bytes())? {
             Some(name_bytes) => Ok(String::from_utf8_lossy(&name_bytes).to_string()),
             None => Err(ShinkaiDBError::ProfileNameNonExistent(identity_public_key.to_string())),
         }?;
-
+    
+        // Use "encryption_key_of_{}" with the profile name to get the encryption key
+        let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
         // Get the associated encryption public key for the profile name
-        match self.db.get_cf(cf_encryption, &profile_name)? {
+        match self.db.get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())? {
             Some(encryption_key_bytes) => Ok(String::from_utf8_lossy(&encryption_key_bytes).to_string()),
             None => Err(ShinkaiDBError::EncryptionKeyNonExistent),
         }
     }
 
     pub fn has_any_profile(&self) -> Result<bool, ShinkaiDBError> {
-        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
-        let mut iter = self.db.iterator_cf(cf_identity, rocksdb::IteratorMode::Start);
-
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        // Use a prefix search to find any profiles
+        let prefix = "profile_from_identity_key_";
+        let mut iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix);
+    
         match iter.next() {
             Some(_) => Ok(true),
             None => Ok(false),
