@@ -39,7 +39,7 @@ impl ShinkaiDB {
         let job_parent_agentid_key = format!("jobinbox_{}_agentid", job_id);
         let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
         let all_jobs_time_keyed = format!("all_jobs_time_keyed_{}", current_time);
-        let job_smart_inbox_name_key = format!("jobinbox_{}_smart_inbox_name", job_id);
+        let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
 
         // Content
@@ -318,30 +318,16 @@ impl ShinkaiDB {
             }
         };
 
-        // TODO: fix this
-        let cf_name = format!("{}_{}_execution_context", &job_id, &message_key);
+        let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
         let current_time = ShinkaiStringTime::generate_time_now();
+        let execution_context_key = format!("jobinbox_{}_{}_execution_context_{}", &job_id, &message_key, current_time);
 
         // Convert the context to bytes
         let context_bytes = bincode::serialize(&context).map_err(|_| {
             ShinkaiDBError::SomeError("Failed converting execution context hashmap to bytes".to_string())
         })?;
 
-        let cf_handle = match self.db.cf_handle(&cf_name) {
-            Some(cf) => cf,
-            None => {
-                // Create Options for ColumnFamily
-                let cf_opts = Self::create_cf_options();
-
-                // Create column family if it doesn't exist
-                self.db.create_cf(&cf_name, &cf_opts)?;
-                self.db
-                    .cf_handle(&cf_name)
-                    .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?
-            }
-        };
-
-        self.db.put_cf(cf_handle, current_time.as_bytes(), &context_bytes)?;
+        self.db.put_cf(cf_jobs, execution_context_key.as_bytes(), &context_bytes)?;
 
         Ok(())
     }

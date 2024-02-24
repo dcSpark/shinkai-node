@@ -18,13 +18,13 @@ pub enum Topic {
     Inbox,
     ScheduledMessage,
     AllMessages,
-    AllMessagesTimeKeyed,
     Toolkits,
     MessagesToRetry,
     TempFilesInbox,
     JobQueues,
     CronQueues,
-    NodeAndUsers
+    NodeAndUsers,
+    MessageBoxSymmetricKeys,
 }
 
 impl Topic {
@@ -33,13 +33,13 @@ impl Topic {
             Self::Inbox => "inbox",
             Self::ScheduledMessage => "scheduled_message",
             Self::AllMessages => "all_messages",
-            Self::AllMessagesTimeKeyed => "all_messages_time_keyed",
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
             Self::TempFilesInbox => "temp_files_inbox",
             Self::JobQueues => "job_queues",
             Self::CronQueues => "cron_queues",
-            Self::NodeAndUsers => "node_and_users"
+            Self::NodeAndUsers => "node_and_users",
+            Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
         }
     }
 }
@@ -49,7 +49,6 @@ impl fmt::Debug for ShinkaiDB {
         f.debug_struct("ShinkaiDB")
             .field("db", &self.db)
             .field("path", &self.path)
-            // You can decide what you want to print for ws_manager
             .field("ws_manager", &"WSUpdateHandler implementation")
             .finish()
     }
@@ -80,7 +79,7 @@ impl ShinkaiDB {
                 // Topic::DevicesPermissions.as_str().to_string(), // Merge to NodeAndUsers
                 Topic::ScheduledMessage.as_str().to_string(), // Merge with MessagesToRetry
                 Topic::AllMessages.as_str().to_string(),
-                Topic::AllMessagesTimeKeyed.as_str().to_string(), // Merge with AllMessages
+                // Topic::AllMessagesTimeKeyed.as_str().to_string(), // Merge with AllMessages
                 // Topic::OneTimeRegistrationCodes.as_str().to_string(), // Merge with NodeAndUsers
                 // Topic::ProfilesIdentityType.as_str().to_string(), // Merge with NodeAndUsers
                 // Topic::ProfilesPermission.as_str().to_string(), // Merge with NodeAndUsers
@@ -88,7 +87,7 @@ impl ShinkaiDB {
                 // Topic::ExternalNodeEncryptionKey.as_str().to_string(), // Merge with NodeAndUsers
                 // Topic::Agents.as_str().to_string(), // Merge with NodeAndUsers
                 Topic::Toolkits.as_str().to_string(),
-                // Topic::MessageBoxSymmetricKeys.as_str().to_string(),
+                Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 // Topic::MessageBoxSymmetricKeysTimes.as_str().to_string(), // Mege with MessageBoxSymmetricKeys
                 // Topic::InternalComms.as_str().to_string(), // Merge with NodeAndUsers
                 // Filtered
@@ -145,7 +144,7 @@ impl ShinkaiDB {
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
         let cache_size = 64 * 1024 * 1024; // 64 MB for Block Cache
-        // TODO: Eventually we want to make it configurable (e.g., related to a specific config or dependant on the system's memory size)
+                                           // TODO: Eventually we want to make it configurable (e.g., related to a specific config or dependant on the system's memory size)
         let block_cache = rocksdb::Cache::new_lru_cache(cache_size);
         block_based_options.set_block_cache(&block_cache);
         block_based_options.set_bloom_filter(10.0, true);
@@ -239,9 +238,9 @@ impl ShinkaiDB {
         };
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
 
-        // Define the data for AllMessagesTimeKeyed
-        let all_messages_time_keyed_cf = self.get_cf_handle(Topic::AllMessagesTimeKeyed).unwrap();
-        batch.put_cf(all_messages_time_keyed_cf, &composite_key, &hash_key);
+        // Instead of using Topic::AllMessagesTimeKeyed, use Topic::AllMessages with a prefix
+        let all_messages_time_keyed_key = format!("all_messages_time_keyed_{}", composite_key);
+        batch.put_cf(all_messages_cf, all_messages_time_keyed_key.as_bytes(), &hash_key);
 
         // Atomically apply the updates
         self.db.write(batch)?;
@@ -325,20 +324,21 @@ impl ShinkaiDB {
     }
 
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
-        let time_keyed_cf = self.get_cf_handle(Topic::AllMessagesTimeKeyed).unwrap();
         let messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
 
-        let iter = self.db.iterator_cf(time_keyed_cf, rocksdb::IteratorMode::End);
+        // Use a prefix search for keys starting with "all_messages_time_keyed_"
+        let prefix = "all_messages_time_keyed_";
+        let iter = self.db.prefix_iterator_cf(messages_cf, prefix);
 
         let mut messages = Vec::new();
         for item in iter.take(n) {
             // Handle the Result returned by the iterator
             match item {
-                Ok((_, value)) => {
-                    // The value of the AllMessagesTimeKeyed CF is the key in the AllMessages CF
+                Ok((key, value)) => {
+                    // The value is the hash key used in the AllMessages CF
                     let message_key = value.to_vec();
 
-                    // Fetch the message from the AllMessages CF
+                    // Fetch the message from the AllMessages CF using the hash key
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
                             let message = ShinkaiMessage::decode_message_result(bytes)?;

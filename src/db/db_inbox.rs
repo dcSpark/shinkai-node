@@ -18,43 +18,34 @@ use crate::schemas::{
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
-    pub async fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
+    pub async fn create_empty_inbox(&self, inbox_name: String) -> Result<(), Error> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
             &format!("Creating inbox: {}", inbox_name),
         );
-        // Create Options for ColumnFamily
-        let cf_opts = Self::create_cf_options();
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        // Create ColumnFamilyDescriptors for inbox and permission lists
-        let cf_name_inbox = inbox_name.clone();
-        let cf_name_perms = format!("{}_perms", &inbox_name);
-        let cf_name_read_list = format!("{}_read_list", &inbox_name);
-        let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_name);
-
-        // Create column families
-        self.db.create_cf(&cf_name_inbox, &cf_opts)?;
-        self.db.create_cf(&cf_name_perms, &cf_opts)?;
-        self.db.create_cf(&cf_name_read_list, &cf_opts)?;
-        self.db.create_cf(&cf_name_smart_inbox_name, &cf_opts)?;
-
-        // Start a write batch
+        // Start a write a batch
         let mut batch = WriteBatch::default();
 
-        // Add inbox name to the list in the 'inbox' topic
-        let cf_inbox = self
-            .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
-        batch.put_cf(cf_inbox, &inbox_name, &inbox_name);
+        // Construct keys with inbox_name as part of the key
+        let inbox_key = format!("inbox_{}", inbox_name);
+        let inbox_read_list_key = format!("{}_read_list", inbox_name); // ADD: this to job as well
+        let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", inbox_name);
 
-        // Add inbox name to the 'smart_inbox_name' column family
-        let cf_smart_inbox_name = self
-            .db
-            .cf_handle(&cf_name_smart_inbox_name)
-            .expect("to be able to access smart inbox name column family");
-        batch.put_cf(cf_smart_inbox_name, &inbox_name, &inbox_name);
+        // Content
+        let initial_inbox_name = format!("New Inbox: {}", inbox_name);
+
+        // Put Inbox Data into the DB
+        batch.put_cf(cf_inbox, inbox_key.as_bytes(), "".as_bytes());
+        batch.put_cf(cf_inbox, inbox_read_list_key.as_bytes(), "".as_bytes());
+        batch.put_cf(
+            cf_inbox,
+            inbox_smart_inbox_name_key.as_bytes(),
+            initial_inbox_name.as_bytes(),
+        );
 
         // Commit the write batch
         self.db.write(batch)?;
@@ -64,7 +55,7 @@ impl ShinkaiDB {
 
     // This fn doesn't validate access to the inbox (not really a responsibility of this db fn) so it's unsafe in that regard
     pub async fn unsafe_insert_inbox_message(
-        &mut self,
+        &self,
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
@@ -80,8 +71,14 @@ impl ShinkaiDB {
             return Err(ShinkaiDBError::SomeError("Inbox name is empty".to_string()));
         }
 
-        // Check if the inbox topic exists and if not, create it
-        if self.db.cf_handle(&inbox_name).is_none() {
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
+        // Construct keys with inbox_name as part of the key
+        let inbox_key = format!("inbox_{}", inbox_name);
+
+        // Check if the inbox exists and if not, create it
+        if self.db.get_cf(cf_inbox, inbox_key.as_bytes())?.is_none() {
             self.create_empty_inbox(inbox_name.clone()).await?;
         }
 
@@ -155,12 +152,8 @@ impl ShinkaiDB {
 
         let mut batch = rocksdb::WriteBatch::default();
 
-        // Add the message to the inbox
-        let cf_inbox = self
-            .db
-            .cf_handle(&inbox_name)
-            .expect("Failed to get cf handle for inbox");
-        batch.put_cf(cf_inbox, &composite_key, &hash_key);
+        // Add the message to the shared column family with a key that includes the inbox name
+        batch.put_cf(cf_inbox, composite_key.as_bytes(), &hash_key);
 
         // Insert the message
         let _ = self.insert_message_to_all(&updated_message.clone())?;
@@ -170,25 +163,14 @@ impl ShinkaiDB {
             // eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
             // eprintln!("Inbox name: {}", inbox_name);
 
-            let cf_children_name = format!("{}_children", inbox_name);
-            let cf_children = match self.db.cf_handle(&cf_children_name) {
-                Some(cf) => cf,
-                None => {
-                    // eprintln!("Creating cf for children: {}", cf_children_name);
-                    // Create Options for ColumnFamily
-                    let cf_opts = Self::create_cf_options();
+            // Construct a key for storing child messages of a parent
+            let parent_children_key = format!("{}_children_{}", inbox_key, parent_key);
 
-                    // Create column family if it doesn't exist
-                    self.db
-                        .create_cf(&cf_children_name, &cf_opts)
-                        .expect("Failed to create cf for children");
-                    self.db
-                        .cf_handle(&cf_children_name)
-                        .expect("Failed to get cf handle for children")
-                }
-            };
-
-            let existing_children_bytes = self.db.get_cf(cf_children, &parent_key)?.unwrap_or_default();
+            // Fetch existing children for the parent, if any
+            let existing_children_bytes = self
+                .db
+                .get_cf(cf_inbox, parent_children_key.as_bytes())?
+                .unwrap_or_default();
             let existing_children = String::from_utf8(existing_children_bytes)
                 .unwrap()
                 .split(',')
@@ -198,28 +180,13 @@ impl ShinkaiDB {
 
             let mut children = vec![composite_key];
             children.extend_from_slice(&existing_children);
-            batch.put_cf(cf_children, &parent_key, children.join(","));
 
-            // Create column family for parents if it doesn't exist
-            let cf_parents_name = format!("{}_parents", inbox_name);
-            let cf_parents = match self.db.cf_handle(&cf_parents_name) {
-                Some(cf) => cf,
-                None => {
-                    // Create Options for ColumnFamily
-                    let cf_opts = Self::create_cf_options();
+            batch.put_cf(cf_inbox, parent_children_key.as_bytes(), children.join(","));
 
-                    // Create column family if it doesn't exist
-                    self.db
-                        .create_cf(&cf_parents_name, &cf_opts)
-                        .expect("Failed to create cf for parents");
-                    self.db
-                        .cf_handle(&cf_parents_name)
-                        .expect("Failed to get cf handle for parents")
-                }
-            };
+            let message_parent_key = format!("{}_parent_{}", inbox_key, hash_key);
 
             // Add the parent key to the parents column family with the child key
-            batch.put_cf(cf_parents, &hash_key, parent_key);
+            self.db.put_cf(cf_inbox, message_parent_key.as_bytes(), parent_key)?;
         }
 
         {
@@ -242,47 +209,39 @@ impl ShinkaiDB {
         inbox_name: String,
         up_to_message_hash_offset: String,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_name_read_list = format!("{}_read_list", inbox_name);
-        let read_list_cf = match self.db.cf_handle(&cf_name_read_list) {
-            Some(cf) => cf,
-            None => {
-                return Err(ShinkaiDBError::InboxNotFound(format!(
-                    "Inbox not found: {}",
-                    inbox_name
-                )))
-            }
-        };
+        // Use the Inbox CF for marking messages as read
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        // Store the up_to_offset message in the read_list
-        self.db
-            .put_cf(read_list_cf, &up_to_message_hash_offset, &up_to_message_hash_offset)?;
+        // Construct the key for the read list within the Inbox CF
+        let inbox_read_list_key = format!("{}_read_list", inbox_name);
+
+        // Store the up_to_message_hash_offset as the value for the read list key
+        // This represents the last message that has been read up to
+        self.db.put_cf(
+            cf_inbox,
+            inbox_read_list_key.as_bytes(),
+            up_to_message_hash_offset.as_bytes(),
+        )?;
 
         Ok(())
     }
 
     pub fn get_last_read_message_from_inbox(&self, inbox_name: String) -> Result<Option<String>, ShinkaiDBError> {
-        let cf_name_read_list = format!("{}_read_list", inbox_name);
-        let read_list_cf = match self.db.cf_handle(&cf_name_read_list) {
-            Some(cf) => cf,
-            None => {
-                return Err(ShinkaiDBError::InboxNotFound(format!(
-                    "Inbox not found: {}",
-                    inbox_name
-                )))
-            }
-        };
+        // Use the Inbox CF for fetching the last read message
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        let mut iter = self.db.iterator_cf(read_list_cf, rocksdb::IteratorMode::End);
+        // Construct the key for the last read message within the Inbox CF
+        let inbox_read_list_key = format!("{}_read_list", inbox_name);
 
-        match iter.next() {
-            Some(Ok((key, _))) => {
-                let key_str = match String::from_utf8(key.to_vec()) {
-                    Ok(s) => s,
-                    Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
-                };
-                Ok(Some(key_str))
+        // Directly fetch the value associated with the last read message key
+        match self.db.get_cf(cf_inbox, inbox_read_list_key.as_bytes())? {
+            Some(value) => {
+                // Convert the value to a String
+                let last_read_message = String::from_utf8(value.to_vec())
+                    .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
+                Ok(Some(last_read_message))
             }
-            _ => Ok(None),
+            None => Ok(None), // If there's no value, return None
         }
     }
 
@@ -336,17 +295,11 @@ impl ShinkaiDB {
             .clone()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.to_string()))?;
 
-        // Fetch column family for identity
-        let cf_identity =
-            self.db
-                .cf_handle(Topic::ProfilesIdentityKey.as_str())
-                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
-                    "Identity not found for: {}",
-                    profile_name
-                )))?;
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let profile_indentity_key = format!("{}_profile_identity_key", profile_name.clone().to_string());
 
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, profile_name.clone().to_string())?.is_none() {
+        if self.db.get_cf(cf_node, profile_indentity_key.as_bytes())?.is_none() {
             return Err(ShinkaiDBError::IdentityNotFound(format!(
                 "Identity not found for: {}",
                 profile_name
@@ -354,16 +307,10 @@ impl ShinkaiDB {
         }
 
         // Handle the original permission addition
-        let cf_name = format!("{}_perms", inbox_name);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!(
-                "Inbox not found: {}",
-                inbox_name
-            )))?;
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
         let perm_val = perm.to_i32().to_string(); // Convert permission to i32 and then to String
-        self.db.put_cf(cf, profile_name.to_string(), perm_val)?;
+        self.db.put_cf(cf_inbox, perms_key.as_bytes(), perm_val)?;
         Ok(())
     }
 
@@ -377,33 +324,22 @@ impl ShinkaiDB {
                     identity.full_identity_name.to_string(),
                 ))?;
 
-        // Fetch column family for identity
-        let cf_identity =
-            self.db
-                .cf_handle(Topic::ProfilesIdentityKey.as_str())
-                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
-                    "Identity not found for: {}",
-                    identity.full_identity_name
-                )))?;
+        // Adjusted to use Topic::NodeAndUsers for identity existence check
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let profile_identity_key = format!("{}_profile_identity_key", profile_name);
 
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, profile_name.clone())?.is_none() {
+        if self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_none() {
             return Err(ShinkaiDBError::IdentityNotFound(format!(
                 "Identity not found for: {}",
-                identity.full_identity_name
+                profile_name
             )));
         }
 
-        // Handle the original permission removal
-        let cf_name = format!("{}_perms", inbox_name);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!(
-                "Inbox not found: {}",
-                inbox_name
-            )))?;
-        self.db.delete_cf(cf, profile_name.clone())?;
+        // Permission removal logic remains the same
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
+        self.db.delete_cf(cf_inbox, perms_key)?;
         Ok(())
     }
 
@@ -422,71 +358,32 @@ impl ShinkaiDB {
                     identity.full_identity_name.to_string(),
                 ))?;
 
-        // Fetch column family for identity
-        let cf_identity =
-            self.db
-                .cf_handle(Topic::ProfilesIdentityKey.as_str())
-                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
-                    "Identity not found for: {}",
-                    identity.full_identity_name
-                )))?;
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        // Check if the identity exists
-        if self.db.get_cf(cf_identity, profile_name.clone())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!(
-                "Identity not found for: {}",
-                identity.full_identity_name
-            )));
-        }
-
-        // Fetch column family for permissions
-        let cf_permission =
-            self.db
-                .cf_handle(Topic::ProfilesIdentityType.as_str())
-                .ok_or(ShinkaiDBError::PermissionNotFound(format!(
-                    "Permission not found for: {}",
-                    identity.full_identity_name
-                )))?;
-
-        // Get the permission type for the identity
-        let perm_type_bytes =
-            self.db
-                .get_cf(cf_permission, profile_name.clone())?
-                .ok_or(ShinkaiDBError::PermissionNotFound(format!(
-                    "Permission not found for: {}",
-                    identity.full_identity_name
-                )))?;
-        let perm_type_str = String::from_utf8(perm_type_bytes.to_vec())
-            .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
-
+        // Construct the permissions key similar to how it's done in add_permission_with_profile
         // TODO: perm_type not used?
         // TODO(?): if it's admin it should be able to access anything :?
-        let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!(
-            "Invalid identity type for: {}",
-            identity.full_identity_name
-        )))?;
+        // Construct the permissions key similar to how it's done in add_permission_with_profile
+        let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
 
-        // Handle the original permission check
-        let cf_name = format!("{}_perms", inbox_name);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!(
-                "Inbox not found: {}",
-                inbox_name
-            )))?;
-        match self.db.get_cf(cf, profile_name.clone())? {
+        // Attempt to fetch the permission value for the constructed key
+        match self.db.get_cf(cf_inbox, perms_key.as_bytes())? {
             Some(val) => {
+                // Convert the stored permission value back to an integer, then to an InboxPermission enum
                 let val_str = String::from_utf8(val.to_vec())
                     .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
-                let val_perm = InboxPermission::from_i32(
-                    val_str
-                        .parse::<i32>()
-                        .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?,
-                )?;
-                Ok(val_perm >= perm)
+                let stored_perm_val = val_str
+                    .parse::<i32>()
+                    .map_err(|_| ShinkaiDBError::SomeError("Permission value parse error".to_string()))?;
+                let stored_perm = InboxPermission::from_i32(stored_perm_val)?;
+
+                // Check if the stored permission is greater than or equal to the requested permission
+                Ok(stored_perm >= perm)
             }
-            None => Ok(false),
+            None => {
+                // If no permission is found, the identity does not have the requested permission
+                Ok(false)
+            }
         }
     }
 
@@ -560,13 +457,9 @@ impl ShinkaiDB {
                 .next()
                 .and_then(|mut v| v.pop());
 
-            // Fetch the custom name from the smart_inbox_name column family
-            let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_id);
-            let cf_smart_inbox_name = self
-                .db
-                .cf_handle(&cf_name_smart_inbox_name)
-                .expect("to be able to access smart inbox name column family");
-            let custom_name = match self.db.get_cf(cf_smart_inbox_name, &inbox_id)? {
+            let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+            let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", &inbox_id);
+            let custom_name = match self.db.get_cf(cf_inbox, inbox_smart_inbox_name_key.as_bytes())? {
                 Some(val) => String::from_utf8(val.to_vec())
                     .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?,
                 None => inbox_id.clone(), // Use the inbox_id as the default value if the custom name is not found
