@@ -80,7 +80,7 @@ impl ShinkaiDB {
 
         // Construct keys with inbox_name as part of the key
         let inbox_key = format!("inbox_{}", inbox_name);
-        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half()); 
+        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
         eprintln!("insert message> Inbox key: {}", inbox_key);
 
         // Check if the inbox exists and if not, create it
@@ -304,14 +304,20 @@ impl ShinkaiDB {
             .clone()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.to_string()))?;
 
-        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let profile_identity_key = format!("identity_key_of_{}", profile_name.clone().to_string());
-
-        // Check if the identity exists
-        if self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!(
-                "Identity not found for: {}",
+        // Check if profile exists using does_identity_exists
+        let profile_exists = self.does_identity_exists(&profile)?;
+        if !profile_exists {
+            return Err(ShinkaiDBError::ProfileNotFound(format!(
+                "Profile not found for: {}",
                 profile_name
+            )));
+        }
+
+        // Check if inbox exists
+        if !self.does_inbox_exists(inbox_name)? {
+            return Err(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found for: {}",
+                inbox_name
             )));
         }
 
@@ -319,8 +325,26 @@ impl ShinkaiDB {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
         let perm_val = perm.to_i32().to_string(); // Convert permission to i32 and then to String
-        self.db.put_cf(cf_inbox, perms_key.as_bytes(), perm_val)?;
+
+        eprintln!("Adding permission: {} to inbox: {}", perm_val, perms_key);
+        match self.db.put_cf(cf_inbox, perms_key.as_bytes(), perm_val.as_bytes()) {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("Error adding permission: {}", e);
+            }
+        }
+
+        eprintln!("Permission added: {} to inbox: {}", perm_val, perms_key);
+
         Ok(())
+    }
+
+    pub fn does_inbox_exists(&self, inbox_name: &str) -> Result<bool, ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let inbox_name_manager = InboxName::new(inbox_name.to_string()).map_err(ShinkaiDBError::from)?;
+        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
+
+        Ok(self.db.get_cf(cf_inbox, fixed_inbox_key.as_bytes())?.is_some())
     }
 
     pub fn remove_permission(&mut self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
@@ -333,15 +357,20 @@ impl ShinkaiDB {
                     identity.full_identity_name.to_string(),
                 ))?;
 
-        // Adjusted to use Topic::NodeAndUsers for identity existence check
-        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
-        let profile_identity_key = format!("identity_key_of_{}", profile_name);
-
-        // Check if the identity exists
-        if self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!(
-                "Identity not found for: {}",
+        // Check if profile exists using does_identity_exists
+        let profile_exists = self.does_identity_exists(&identity.full_identity_name)?;
+        if !profile_exists {
+            return Err(ShinkaiDBError::ProfileNotFound(format!(
+                "Profile not found for: {}",
                 profile_name
+            )));
+        }
+
+        // Check if inbox exists
+        if !self.does_inbox_exists(inbox_name)? {
+            return Err(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found for: {}",
+                inbox_name
             )));
         }
 
@@ -366,6 +395,23 @@ impl ShinkaiDB {
                 .ok_or(ShinkaiDBError::InvalidIdentityName(
                     identity.full_identity_name.to_string(),
                 ))?;
+
+        // Check if profile exists using does_identity_exists
+        let profile_exists = self.does_identity_exists(&identity.full_identity_name)?;
+        if !profile_exists {
+            return Err(ShinkaiDBError::ProfileNotFound(format!(
+                "Profile not found for: {}",
+                profile_name
+            )));
+        }
+
+        // Check if inbox exists
+        if !self.does_inbox_exists(inbox_name)? {
+            return Err(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found for: {}",
+                inbox_name
+            )));
+        }
 
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
@@ -410,6 +456,15 @@ impl ShinkaiDB {
                 )))
             }
         };
+
+        // Check if profile exists using does_identity_exists
+        let profile_exists = self.does_identity_exists(&profile_name_identity.full_identity_name)?;
+        if !profile_exists {
+            return Err(ShinkaiDBError::ProfileNotFound(format!(
+                "Profile not found for: {}",
+                profile_name_identity.full_identity_name
+            )));
+        }
 
         // Create an iterator for the 'inbox' topic
         let iter = self.db.iterator_cf(cf_inbox, rocksdb::IteratorMode::Start);
@@ -512,6 +567,7 @@ impl ShinkaiDB {
         Ok(smart_inboxes)
     }
 
+    // TODO: needs update
     pub fn update_smart_inbox_name(&mut self, inbox_id: &str, new_name: &str) -> Result<(), ShinkaiDBError> {
         // Fetch the column family for the smart_inbox_name
         let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", inbox_id);

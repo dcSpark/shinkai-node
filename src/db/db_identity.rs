@@ -221,8 +221,6 @@ impl ShinkaiDB {
             .map(encryption_public_key_to_string_ref)
             .unwrap_or_else(|| String::new());
 
-        eprintln!("### profile_name {}", profile_name);
-
         // Put the identity details into the column family with specific prefixes
         batch.put_cf(
             cf_node_and_users,
@@ -248,6 +246,7 @@ impl ShinkaiDB {
 
         // Write the batch
         self.db.write(batch)?;
+        eprintln!("### inserted profile_name {}", profile_name);
 
         shinkai_log(
             ShinkaiLogOption::Identity,
@@ -256,6 +255,18 @@ impl ShinkaiDB {
         );
 
         Ok(())
+    }
+
+    pub fn does_identity_exists(&self, profile: &ShinkaiName) -> Result<bool, ShinkaiDBError> {
+        let profile_name = profile
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(profile.full_name.to_string()))?;
+
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let profile_identity_key = format!("identity_key_of_{}", profile_name);
+
+        Ok(self.db.get_cf(cf_node, profile_identity_key.as_bytes())?.is_some())
     }
 
     pub fn get_profile_permission(&self, profile_name: ShinkaiName) -> Result<IdentityPermissions, ShinkaiDBError> {
@@ -525,7 +536,7 @@ impl ShinkaiDB {
 
         Ok(())
     }
-    
+
     pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
         let profile_name = full_identity_name
             .get_profile_name()
@@ -538,6 +549,17 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound("NodeAndUsers".to_string()))?;
 
         let identity_key_prefix = format!("identity_key_of_{}", profile_name);
+
+        // Check if the profile exists
+        let profile_exists = match self.db.get_cf(cf_node_and_users, identity_key_prefix.as_bytes()) {
+            Ok(Some(_)) => true,
+            _ => false,
+        };
+
+        if !profile_exists {
+            return Err(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()));
+        }
+
         let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
         let identity_type_key_prefix = format!("identity_type_of_{}", profile_name);
         let permission_key_prefix = format!("permissions_of_{}", profile_name);

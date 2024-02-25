@@ -436,7 +436,7 @@ impl ShinkaiDB {
             .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())?
             .ok_or(ShinkaiDBError::MissingValue(format!(
                 "Missing encryption key for node {}",
-                &my_node_identity_name
+                &node_name
             )))?
             .to_vec();
 

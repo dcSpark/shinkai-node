@@ -1,4 +1,4 @@
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::inbox_name::{InboxName, InboxNameError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
@@ -1136,6 +1136,14 @@ fn test_permission_errors() {
     let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+     // Update local node keys
+     shinkai_db.update_local_node_keys(
+        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+        node1_encryption_pk.clone(),
+        node1_identity_pk.clone(),
+    ).unwrap();
+
     let subidentity_name = "device1";
     let full_subidentity_name =
         ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
@@ -1170,31 +1178,23 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNameError(InboxNameError::InvalidFormat("nonexistent_inbox".to_string()))
     );
 
     // Test 2: Adding a permission for a nonexistent identity should result in an error
-    let result = shinkai_db.add_permission("existing_inbox", &nonexistent_identity, InboxPermission::Admin);
+    let result = shinkai_db.add_permission("job_inbox::not_existent::false", &nonexistent_identity, InboxPermission::Admin);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity
-                .clone()
-                .full_identity_name
-                .get_profile_name()
-                .unwrap()
-                .to_string()
-        ))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 
     // Test 3: Removing a permission from a nonexistent inbox should result in an error
-    let result = shinkai_db.remove_permission("nonexistent_inbox", &device1_subidentity);
+    let result = shinkai_db.remove_permission("job_inbox::not_existent::false", &device1_subidentity);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found for: job_inbox::not_existent::false".to_string())
     );
 
     // Test 4: Removing a permission for a nonexistent identity should result in an error
@@ -1202,18 +1202,17 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity.full_identity_name.clone().to_string()
+        ShinkaiDBError::ProfileNotFound(format!(
+            "Profile not found for: nonexistent_identity"
         ))
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
-    let result = shinkai_db.has_permission("nonexistent_inbox", &device1_subidentity, InboxPermission::Admin);
+    let result = shinkai_db.has_permission("job_inbox::not_existent::false", &device1_subidentity, InboxPermission::Admin);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found for: job_inbox::not_existent::false".to_string())
     );
 
     // Test 6: Checking permission for a nonexistent identity should result in an error
@@ -1221,9 +1220,6 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity.full_identity_name.clone().to_string()
-        ))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 }

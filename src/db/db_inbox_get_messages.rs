@@ -66,6 +66,7 @@ impl ShinkaiDB {
     Get the last messages from an inbox
     Note: This code is messy because the messages could be in a tree, sequential or a mix of both
      */
+    // TODO: clean up and add comments. Complex code!
     #[instrument]
     pub fn get_last_messages_from_inbox(
         &self,
