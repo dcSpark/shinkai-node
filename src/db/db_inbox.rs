@@ -79,7 +79,7 @@ impl ShinkaiDB {
 
         // Check if the inbox exists and if not, create it
         if self.db.get_cf(cf_inbox, inbox_key.as_bytes())?.is_none() {
-            self.create_empty_inbox(inbox_name.clone()).await?;
+            return Err(ShinkaiDBError::SomeError(format!("Inbox '{}' does not exist", inbox_name)));
         }
 
         // println!("Hash key: {}", hash_key);

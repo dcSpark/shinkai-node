@@ -111,7 +111,7 @@ impl ShinkaiDB {
         rng.fill_bytes(&mut random_bytes);
         let new_code = hex::encode(random_bytes);
 
-        let cf = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
+        let cf = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 
         let code_info = RegistrationCodeInfo {
             status: RegistrationCodeStatus::Unused,
@@ -119,7 +119,10 @@ impl ShinkaiDB {
             code_type,
         };
 
-        self.db.put_cf(cf, &new_code, &code_info.as_bytes())?;
+        let prefixed_new_code = format!("registration_code_{}", new_code);
+
+        self.db
+            .put_cf(cf, prefixed_new_code.as_bytes(), &code_info.as_bytes())?;
 
         Ok(new_code)
     }
@@ -153,9 +156,9 @@ impl ShinkaiDB {
         device_identity_public_key: Option<&str>,
         device_encryption_public_key: Option<&str>,
     ) -> Result<(), ShinkaiDBError> {
-        // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
-        let cf_codes = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
-        let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, registration_code)? {
+        let cf_codes = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let prefixed_registration_code = format!("registration_code_{}", registration_code);
+        let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
             Some(value) => RegistrationCodeInfo::from_slice(&value),
             None => return Err(ShinkaiDBError::CodeNonExistent),
         };
@@ -354,21 +357,27 @@ impl ShinkaiDB {
     }
 
     pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
-        let cf_codes = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
-        match self.db.get_cf(cf_codes, registration_code)? {
+        // Use Topic::NodeAndUsers with a standard prefix for retrieving the registration code info
+        let cf_codes = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let prefixed_registration_code = format!("registration_code_{}", registration_code);
+        match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
             Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
             None => Err(ShinkaiDBError::CodeNonExistent),
         }
     }
 
     pub fn check_profile_existence(&self, profile_name: &str) -> Result<(), ShinkaiDBError> {
-        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
-        if self.db.get_cf(cf_identity, profile_name)?.is_none() {
-            return Err(ShinkaiDBError::ProfileNotFound(profile_name.to_string()));
+        // Use a prefix based on the current Topic for checking profile existence
+        let profile_key_prefix = format!("profile_from_identity_key_{}", profile_name);
+
+        // Check if the profile exists by looking for its associated encryption public key
+        let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
+        match self.db.get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())? {
+            Some(_) => Ok(()),
+            None => Err(ShinkaiDBError::ProfileNotFound(profile_name.to_string())),
         }
-
-        Ok(())
     }
 
     pub fn update_local_node_keys(
@@ -379,8 +388,8 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
-        let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
-        let cf_node_identity = self.cf_handle(Topic::ExternalNodeIdentityKey.as_str())?;
+        // Use Topic::NodeAndUsers with appropriate prefixes for node keys
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -388,8 +397,20 @@ impl ShinkaiDB {
         let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
         let signature_pk_string = signature_public_key_to_string(signature_pk);
 
-        batch.put_cf(cf_node_encryption, &node_name, encryption_pk_string.as_bytes());
-        batch.put_cf(cf_node_identity, &node_name, signature_pk_string.as_bytes());
+        // Use specific prefixes for encryption and signature public keys
+        let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
+        let signature_key_prefix = format!("node_signature_key_{}", node_name);
+
+        batch.put_cf(
+            cf_node_and_users,
+            encryption_key_prefix.as_bytes(),
+            encryption_pk_string.as_bytes(),
+        );
+        batch.put_cf(
+            cf_node_and_users,
+            signature_key_prefix.as_bytes(),
+            signature_pk_string.as_bytes(),
+        );
 
         self.db.write(batch)?;
 
@@ -402,13 +423,17 @@ impl ShinkaiDB {
     ) -> Result<(EncryptionPublicKey, VerifyingKey), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
-        let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
-        let cf_node_identity = self.cf_handle(Topic::ExternalNodeIdentityKey.as_str())?;
+        // Use Topic::NodeAndUsers for both encryption and signature keys with specific prefixes
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+
+        // Prefixes for node encryption and signature keys
+        let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
+        let signature_key_prefix = format!("node_signature_key_{}", node_name);
 
         // Get the encryption key
         let encryption_pk_string = self
             .db
-            .get_cf(cf_node_encryption, &node_name)?
+            .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())?
             .ok_or(ShinkaiDBError::MissingValue(format!(
                 "Missing encryption key for node {}",
                 &my_node_identity_name
@@ -420,12 +445,13 @@ impl ShinkaiDB {
         // Get the signature key
         let signature_pk_string = self
             .db
-            .get_cf(cf_node_identity, &node_name)?
+            .get_cf(cf_node_and_users, signature_key_prefix.as_bytes())?
             .ok_or(ShinkaiDBError::MissingValue(format!(
                 "Missing signature key for node {}",
                 &my_node_identity_name
             )))?
             .to_vec();
+
         let signature_pk = string_to_signature_public_key(std::str::from_utf8(&signature_pk_string)?)?;
 
         Ok((encryption_pk, signature_pk))

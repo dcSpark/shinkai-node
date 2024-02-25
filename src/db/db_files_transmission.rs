@@ -37,37 +37,32 @@ impl ShinkaiDB {
     }
 
     // TODO: Use ProfileBatching so it's associated with a specific profile
-    pub fn create_files_message_inbox(&mut self, hex_blake3_has: String) -> Result<(), Error> {
+    pub fn create_files_message_inbox(&mut self, hex_blake3_hash: String) -> Result<(), Error> {
         // Create Options for ColumnFamily
         let cf_opts = Self::create_cf_options();
-
-        // Create ColumnFamilyDescriptors for encrypted inbox
-        let cf_name_encrypted_inbox = hex_blake3_has.clone();
-
-        // Create column families
-        self.db.create_cf(&cf_name_encrypted_inbox, &cf_opts)?;
-
+    
+        // Use Topic::MessageBoxSymmetricKeys with a prefix for encrypted inbox
+        let cf_name_encrypted_inbox = format!("encrypted_inbox_{}", hex_blake3_hash);
+    
+        // Ensure the MessageBoxSymmetricKeys column family exists
+        let cf_message_box_symmetric_keys = self
+            .db
+            .cf_handle(Topic::MessageBoxSymmetricKeys.as_str())
+            .expect("to be able to access Topic::MessageBoxSymmetricKeys");
+    
         // Start a write batch
         let mut batch = WriteBatch::default();
-
-        // Add encrypted inbox name to the list in the 'inbox' topic
-        let cf_inbox = self
-            .db
-            .cf_handle(Topic::TempFilesInbox.as_str())
-            .expect("to be able to access Topic::TempFilesInbox");
-        batch.put_cf(cf_inbox, &hex_blake3_has, &cf_name_encrypted_inbox);
-
-        // Add current time to MessageBoxSymmetricKeysTimes with public_key as the key
+    
+        // Add encrypted inbox name to the MessageBoxSymmetricKeys column family with a prefix
+        batch.put_cf(cf_message_box_symmetric_keys, cf_name_encrypted_inbox.as_bytes(), &[]);
+    
+        // Add current time to MessageBoxSymmetricKeys with the encrypted inbox name as the key
         let current_time = Utc::now().to_rfc3339();
-        let cf_times = self
-            .db
-            .cf_handle(Topic::MessageBoxSymmetricKeysTimes.as_str())
-            .expect("to be able to access Topic::MessageBoxSymmetricKeysTimes");
-        batch.put_cf(cf_times, &hex_blake3_has, current_time.as_bytes());
-
+        batch.put_cf(cf_message_box_symmetric_keys, cf_name_encrypted_inbox.as_bytes(), current_time.as_bytes());
+    
         // Commit the write batch
         self.db.write(batch)?;
-
+    
         Ok(())
     }
 
