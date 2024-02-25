@@ -153,7 +153,7 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         // Update job to finished
-        shinkai_db.update_job_to_finished(job_id.clone()).unwrap();
+        shinkai_db.update_job_to_finished(&job_id.clone()).unwrap();
 
         // Retrieve the job and check that is_finished is set to true
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
@@ -263,7 +263,7 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string(&agent_id));
         let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
-        match shinkai_db.update_job_to_finished(job_id.clone()) {
+        match shinkai_db.update_job_to_finished(&job_id.clone()) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
             Err(e) => assert_eq!(
                 e,

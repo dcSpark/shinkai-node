@@ -509,7 +509,7 @@ impl ShinkaiDB {
             Some(cf) => cf,
             None => {
                 // Create Options for ColumnFamily
-                let cf_opts = Self::create_cf_options();
+                let cf_opts = Self::create_cf_options(None);
 
                 // Create column family if it doesn't exist
                 self.db.create_cf(&cf_name, &cf_opts)?;

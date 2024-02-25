@@ -185,6 +185,16 @@ impl InboxName {
             InboxName::JobInbox { value, .. } => value.clone(),
         }
     }
+
+    /// Returns the first half of the blake3 hash of the inbox name's value
+    pub fn hash_value_first_half(&self) -> String {
+        let value = match self {
+            InboxName::RegularInbox { value, .. } => value,
+            InboxName::JobInbox { value, .. } => value,
+        };
+        let full_hash = blake3::hash(value.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
 }
 
 impl fmt::Display for InboxName {
@@ -198,7 +208,8 @@ mod tests {
     use crate::{
         shinkai_message::{
             shinkai_message::{
-                ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiVersion
+                ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData,
+                ShinkaiVersion,
             },
             shinkai_message_schemas::MessageSchemaType,
         },
@@ -321,7 +332,7 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: None
+                node_api_data: None,
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -361,7 +372,7 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: None
+                node_api_data: None,
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -477,7 +488,7 @@ mod tests {
                     parent_hash: "".into(),
                     node_message_hash: "node_message_hash".into(),
                     node_timestamp: "20230714T19363326163".into(),
-                })
+                }),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -518,7 +529,7 @@ mod tests {
                     parent_hash: "parent_hash".into(),
                     node_message_hash: "node_message_hash".into(),
                     node_timestamp: "20230714T19363326163".into(),
-                })
+                }),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,

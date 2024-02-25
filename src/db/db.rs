@@ -63,7 +63,7 @@ pub struct ShinkaiDB {
 impl ShinkaiDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
         let start = Instant::now();
-        let db_opts = Self::create_cf_options();
+        let db_opts = Self::create_cf_options(None);
 
         let cf_names = if Path::new(db_path).exists() {
             // If the database file exists, get the list of column families from the database
@@ -101,7 +101,11 @@ impl ShinkaiDB {
 
         let mut cfs = vec![];
         for cf_name in &cf_names {
-            let db_opts = Self::create_cf_options();
+            let prefix_length = match cf_name.as_str() {
+                "inbox" => Some(47), // Specify 47 bytes for the Inbox CF
+                _ => None, // No prefix extractor for other CFs
+            };
+            let db_opts = Self::create_cf_options(prefix_length);
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), db_opts);
             cfs.push(cf_desc);
         }
@@ -123,12 +127,12 @@ impl ShinkaiDB {
         let stats = db_opts.get_statistics().expect("Statistics should be enabled");
 
         // After opening the database
-        println!("RocksDB stats: {}", stats);
+        // println!("RocksDB stats: {}", stats);
 
         Ok(shinkai_db)
     }
 
-    pub fn create_cf_options() -> Options {
+    pub fn create_cf_options(prefix_length: Option<usize>) -> Options {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
@@ -144,13 +148,17 @@ impl ShinkaiDB {
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
         let cache_size = 64 * 1024 * 1024; // 64 MB for Block Cache
-                                           // TODO: Eventually we want to make it configurable (e.g., related to a specific config or dependant on the system's memory size)
         let block_cache = rocksdb::Cache::new_lru_cache(cache_size);
         block_based_options.set_block_cache(&block_cache);
         block_based_options.set_bloom_filter(10.0, true);
         cf_opts.set_block_based_table_factory(&block_based_options);
 
-        cf_opts.set_block_based_table_factory(&block_based_options);
+        if let Some(length) = prefix_length {
+            // Set the prefix_extractor for a fixed prefix length
+            let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(length);
+            cf_opts.set_prefix_extractor(prefix_extractor);
+        }
+
         cf_opts
     }
 
@@ -206,6 +214,7 @@ impl ShinkaiDB {
     pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();
+        eprintln!("insert_message_to_all> hash_key: {:?}", hash_key);
 
         // Clone the external_metadata first, then unwrap
         let cloned_external_metadata = message.external_metadata.clone();

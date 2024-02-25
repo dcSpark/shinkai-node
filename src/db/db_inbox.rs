@@ -18,7 +18,7 @@ use crate::schemas::{
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
-    pub async fn create_empty_inbox(&self, inbox_name: String) -> Result<(), Error> {
+    pub fn create_empty_inbox(&self, inbox_name: String) -> Result<(), Error> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -47,8 +47,10 @@ impl ShinkaiDB {
             initial_inbox_name.as_bytes(),
         );
 
+        eprintln!(">>> Creating inbox: {}", inbox_name);
         // Commit the write batch
         self.db.write(batch)?;
+        eprintln!(">>> Inbox created: {}", inbox_name);
 
         Ok(())
     }
@@ -59,6 +61,8 @@ impl ShinkaiDB {
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
+        eprintln!("insert message> Message: {:?}", message);
+
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
         // If the inbox name is empty, use the get_inbox_name function
@@ -76,10 +80,17 @@ impl ShinkaiDB {
 
         // Construct keys with inbox_name as part of the key
         let inbox_key = format!("inbox_{}", inbox_name);
+        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half()); 
+        eprintln!("insert message> Inbox key: {}", inbox_key);
 
         // Check if the inbox exists and if not, create it
         if self.db.get_cf(cf_inbox, inbox_key.as_bytes())?.is_none() {
-            return Err(ShinkaiDBError::SomeError(format!("Inbox '{}' does not exist", inbox_name)));
+            eprintln!("insert message> Creating inbox: {}", inbox_name);
+            if let Err(e) = self.create_empty_inbox(inbox_name.clone()) {
+                eprintln!("Error creating inbox: {}", e);
+            } else {
+                eprintln!("insert message> Inbox created: {}", inbox_name);
+            }
         }
 
         // println!("Hash key: {}", hash_key);
@@ -110,15 +121,13 @@ impl ShinkaiDB {
                 }
             }
         };
+        eprintln!("insert message> Parent key: {:?}", parent_key);
 
         // Note(Nico): We are not going to let add messages older than its parent if it's a JobInbox
         // If the inbox is of type JobInbox, fetch the parent message and compare its scheduled_time
         if let InboxName::JobInbox { .. } = inbox_name_manager {
             if let Some(parent_key) = &parent_key.clone() {
-                // Fetch the column family for all messages
-                let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
-
-                let (parent_message, _) = self.fetch_message_and_hash(&messages_cf, parent_key)?;
+                let (parent_message, _) = self.fetch_message_and_hash(parent_key)?;
                 let parent_time = parent_message.external_metadata.scheduled_time;
                 let parsed_time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
                 let parsed_parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
@@ -147,8 +156,8 @@ impl ShinkaiDB {
         };
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:::{}", time_key, hash_key);
-        // println!("Composite key: {}", composite_key);
+        let composite_key = format!("{}_message_{}:::{}", fixed_inbox_key, time_key, hash_key);
+        println!("insert message> Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -164,7 +173,7 @@ impl ShinkaiDB {
             // eprintln!("Inbox name: {}", inbox_name);
 
             // Construct a key for storing child messages of a parent
-            let parent_children_key = format!("{}_children_{}", inbox_key, parent_key);
+            let parent_children_key = format!("{}_children_{}", fixed_inbox_key, parent_key);
 
             // Fetch existing children for the parent, if any
             let existing_children_bytes = self
@@ -183,7 +192,7 @@ impl ShinkaiDB {
 
             batch.put_cf(cf_inbox, parent_children_key.as_bytes(), children.join(","));
 
-            let message_parent_key = format!("{}_parent_{}", inbox_key, hash_key);
+            let message_parent_key = format!("{}_parent_{}", fixed_inbox_key, hash_key);
 
             // Add the parent key to the parents column family with the child key
             self.db.put_cf(cf_inbox, message_parent_key.as_bytes(), parent_key)?;

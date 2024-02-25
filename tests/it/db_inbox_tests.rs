@@ -72,6 +72,119 @@ fn generate_message_with_text(
 }
 
 #[tokio::test]
+async fn test_insert_single_message_and_retrieve() {
+    init_default_tracing();
+    setup();
+
+    let node_identity_name = "@@node.shinkai";
+    let subidentity_name = "main";
+    let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
+    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+
+    // Insert a single message
+    let message = generate_message_with_text(
+        "Only Message".to_string(),
+        node_encryption_sk,
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-03T10:00:00.000Z".to_string(),
+    );
+
+    shinkai_db.unsafe_insert_inbox_message(&message, None).await.unwrap();
+
+    // Retrieve the message and check
+    let inbox_name = InboxName::from_message(&message).unwrap();
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    let messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 1, None)
+        .unwrap();
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0][0].clone().get_message_content().unwrap(),
+        "Only Message".to_string()
+    );
+}
+
+#[tokio::test]
+async fn test_insert_two_messages_and_check_order_and_parent() {
+    init_default_tracing();
+    setup();
+
+    let node_identity_name = "@@node.shinkai";
+    let subidentity_name = "main_profile_node";
+    let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
+    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+
+    // Insert first message
+    let message1 = generate_message_with_text(
+        "First Message".to_string(),
+        node_encryption_sk.clone(),
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-02T20:53:34.812Z".to_string(),
+    );
+
+    shinkai_db.unsafe_insert_inbox_message(&message1, None).await.unwrap();
+
+    // Insert second message with first message as parent
+    let message2 = generate_message_with_text(
+        "Second Message".to_string(),
+        node_encryption_sk.clone(),
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-02T20:54:34.923Z".to_string(),
+    );
+
+    let parent_message_hash = Some(message1.calculate_message_hash_for_pagination());
+
+    shinkai_db
+        .unsafe_insert_inbox_message(&message2, parent_message_hash.clone())
+        .await
+        .unwrap();
+
+    // Retrieve messages and check order
+    let inbox_name = InboxName::from_message(&message1).unwrap();
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    let messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
+        .unwrap();
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages[0][0].clone().get_message_content().unwrap(),
+        "First Message".to_string()
+    );
+    assert_eq!(
+        messages[1][0].clone().get_message_content().unwrap(),
+        "Second Message".to_string()
+    );
+
+    // Check parent of the second message
+    let expected_parent_hash = messages[0][0].external_metadata.node_api_data.as_ref().unwrap().node_message_hash.clone();
+    let actual_parent_hash = messages[1][0].external_metadata.node_api_data.as_ref().unwrap().parent_hash.clone();
+    assert_eq!(actual_parent_hash, expected_parent_hash);
+}
+
+#[tokio::test]
 async fn test_insert_messages_with_simple_tree_structure() {
     init_default_tracing();
     setup();
@@ -358,7 +471,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // New test for get_parent_message_hash
     let parent_hash_test = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][0].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[2][0].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -367,7 +483,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
     );
 
     let parent_hash_test_2 = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][1].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[2][1].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -377,7 +496,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // Check for the root message, which should return None as it has no parent
     let root_message_parent_hash = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[0][0].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[0][0].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(root_message_parent_hash, None);
@@ -765,7 +887,9 @@ async fn db_inbox() {
         "Hello World 5".to_string()
     );
 
-    let offset = last_unread_messages_inbox[1].clone().calculate_message_hash_for_pagination();
+    let offset = last_unread_messages_inbox[1]
+        .clone()
+        .calculate_message_hash_for_pagination();
     println!("\n\n ### Offset: {}", offset);
     println!("Last unread messages: {:?}", last_unread_messages_inbox[1]);
     // check pagination for last unread
@@ -798,7 +922,9 @@ async fn db_inbox() {
     shinkai_db
         .mark_as_read_up_to(
             inbox_name_value.clone().to_string(),
-            last_unread_messages_inbox_page2[2][0].clone().calculate_message_hash_for_pagination(),
+            last_unread_messages_inbox_page2[2][0]
+                .clone()
+                .calculate_message_hash_for_pagination(),
         )
         .unwrap();
 

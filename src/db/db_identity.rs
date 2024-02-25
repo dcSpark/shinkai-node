@@ -525,6 +525,7 @@ impl ShinkaiDB {
 
         Ok(())
     }
+    
     pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
         let profile_name = full_identity_name
             .get_profile_name()

@@ -1,10 +1,9 @@
-use rocksdb::{AsColumnFamilyRef, ColumnFamily, IteratorMode, DBIteratorWithThreadMode, DB, WriteBatch};
+use rocksdb::{AsColumnFamilyRef, ColumnFamily, DBIteratorWithThreadMode, IteratorMode, WriteBatch, DB};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use crate::vector_fs::vector_fs_error::VectorFSError;
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
-
 
 /// A struct that wraps rocksdb::WriteBatch and offers the same
 /// base interface, however fully profile-bounded. In other words
@@ -13,7 +12,6 @@ pub struct ProfileBoundWriteBatch {
     pub write_batch: rocksdb::WriteBatch,
     pub profile_name: String,
 }
-
 
 impl ProfileBoundWriteBatch {
     /// Create a new ProfileBoundWriteBatch with ShinkaiDBError wrapping
@@ -105,8 +103,8 @@ impl ShinkaiDB {
         for item in iter {
             let (key, _) = item.map_err(ShinkaiDBError::from)?;
             if key.starts_with(&profile_prefix) {
-                let key_str =
-                    String::from_utf8(key[profile_prefix.len() + 1..].to_vec()).map_err(|_| ShinkaiDBError::InvalidData)?;
+                let key_str = String::from_utf8(key[profile_prefix.len() + 1..].to_vec())
+                    .map_err(|_| ShinkaiDBError::InvalidData)?;
                 keys.push(key_str);
             }
         }

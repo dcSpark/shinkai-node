@@ -39,7 +39,7 @@ impl ShinkaiDB {
     // TODO: Use ProfileBatching so it's associated with a specific profile
     pub fn create_files_message_inbox(&mut self, hex_blake3_hash: String) -> Result<(), Error> {
         // Create Options for ColumnFamily
-        let cf_opts = Self::create_cf_options();
+        let cf_opts = Self::create_cf_options(None);
     
         // Use Topic::MessageBoxSymmetricKeys with a prefix for encrypted inbox
         let cf_name_encrypted_inbox = format!("encrypted_inbox_{}", hex_blake3_hash);
