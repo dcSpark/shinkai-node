@@ -12,7 +12,7 @@ impl ShinkaiDB {
         match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
             Some(bytes) => {
                 let message = ShinkaiMessage::decode_message_result(bytes)?;
-                eprintln!("fetch_message_and_hash> Message fetched: {:?}", message);
+                // eprintln!("fetch_message_and_hash> Message fetched: {:?}", message);
                 let message_hash = message.calculate_message_hash_for_pagination();
                 Ok((message, message_hash))
             }
@@ -296,7 +296,7 @@ impl ShinkaiDB {
                     tree_found = true;
                     // Update the current key to the parent key
                     current_key = Some(parent_key_str.clone());
-                    // eprintln!("Parent key fetched: {}", parent_key_str);
+                    eprintln!("Parent key fetched: {}", parent_key_str);
 
                     // Fetch the children of the parent message
                     let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
@@ -310,6 +310,8 @@ impl ShinkaiDB {
                         .filter(|s| !s.is_empty())
                         .map(String::from)
                         .collect::<Vec<String>>();
+
+                    eprintln!("Existing children: {:?}", existing_children);
 
                     // Skip fetching children for the first message
                     if !first_iteration {

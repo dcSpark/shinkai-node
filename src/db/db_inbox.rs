@@ -187,7 +187,7 @@ impl ShinkaiDB {
                 .map(String::from)
                 .collect::<Vec<String>>();
 
-            let mut children = vec![composite_key];
+            let mut children = vec![hash_key.clone()];
             children.extend_from_slice(&existing_children);
 
             batch.put_cf(cf_inbox, parent_children_key.as_bytes(), children.join(","));
