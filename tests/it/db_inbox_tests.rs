@@ -167,6 +167,7 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
     let messages = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
         .unwrap();
+    eprintln!("\n\n\n Messages: {:?}", messages);
 
     assert_eq!(messages.len(), 2);
     assert_eq!(
@@ -179,9 +180,37 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
     );
 
     // Check parent of the second message
-    let expected_parent_hash = messages[0][0].external_metadata.node_api_data.as_ref().unwrap().node_message_hash.clone();
-    let actual_parent_hash = messages[1][0].external_metadata.node_api_data.as_ref().unwrap().parent_hash.clone();
+    let expected_parent_hash = messages[0][0]
+        .external_metadata
+        .node_api_data
+        .as_ref()
+        .unwrap()
+        .node_message_hash
+        .clone();
+    let actual_parent_hash = messages[1][0]
+        .external_metadata
+        .node_api_data
+        .as_ref()
+        .unwrap()
+        .parent_hash
+        .clone();
     assert_eq!(actual_parent_hash, expected_parent_hash);
+
+    // Retrieve messages with pagination using the last message's hash
+    let pagination_hash = messages[1][0].calculate_message_hash_for_pagination();
+    eprintln!("Pagination hash: {}", pagination_hash);
+    let paginated_messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, Some(pagination_hash))
+        .unwrap();
+
+    eprintln!("Paginated messages: {:?}", paginated_messages);
+
+    // Expecting to get only 1 message back due to pagination
+    assert_eq!(paginated_messages.len(), 1);
+    assert_eq!(
+        paginated_messages[0][0].clone().get_message_content().unwrap(),
+        "First Message".to_string()
+    );
 }
 
 #[tokio::test]
