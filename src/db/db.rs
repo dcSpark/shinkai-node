@@ -36,7 +36,7 @@ impl Topic {
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
             Self::TempFilesInbox => "temp_files_inbox",
-            Self::JobQueues => "job_queues",
+            Self::JobQueues => "jobs",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
@@ -102,7 +102,7 @@ impl ShinkaiDB {
         let mut cfs = vec![];
         for cf_name in &cf_names {
             let prefix_length = match cf_name.as_str() {
-                "inbox" => Some(47), // Specify 47 bytes for the Inbox CF
+                "inbox" => Some(47),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);

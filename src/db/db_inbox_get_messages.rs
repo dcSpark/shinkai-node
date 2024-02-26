@@ -153,6 +153,8 @@ impl ShinkaiDB {
         // eprintln!("n: {}", n);
         let total_elements = until_offset_hash_key.is_some().then(|| n + 1).unwrap_or(n);
         eprintln!("total_elements: {:?}", total_elements);
+        let keys = keys.clone().into_iter().rev().collect::<Vec<String>>();
+        
         for i in 0..total_elements {
             // eprintln!("\n\n------\niteration: {}", i);
             let mut path = Vec::new();
@@ -248,7 +250,6 @@ impl ShinkaiDB {
             // We check if no parent was found, which means we reached the root of the path
             // If so, let's check if there is a solitary message if not then break
             if current_key.clone().is_none() {
-                let keys = keys.clone().into_iter().rev().collect::<Vec<String>>();
                 eprintln!("current key is None. Key: {:?}", key);
                 eprintln!("current key: {:?}", current_key);
                 // Move the iterator forward until it matches the current key

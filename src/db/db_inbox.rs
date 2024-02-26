@@ -32,7 +32,7 @@ impl ShinkaiDB {
 
         // Construct keys with inbox_name as part of the key
         let inbox_key = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", inbox_name);
-        let inbox_read_list_key = format!("{}_read_list", inbox_name); // ADD: this to job as well
+        let inbox_read_list_key = format!("{}_read_list", inbox_name);
         let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", inbox_name);
 
         // Content
@@ -47,11 +47,8 @@ impl ShinkaiDB {
             initial_inbox_name.as_bytes(),
         );
 
-        eprintln!(">>> Creating inbox: {}", inbox_name);
         // Commit the write batch
         self.db.write(batch)?;
-        eprintln!(">>> Inbox created: {}", inbox_name);
-
         Ok(())
     }
 
@@ -80,17 +77,13 @@ impl ShinkaiDB {
 
         // Construct keys with inbox_name as part of the key
         let inbox_key = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", inbox_name);
-        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
         eprintln!("insert message> Inbox key: {}", inbox_key);
+        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
+        eprintln!("insert message> fixed inbox key: {}", fixed_inbox_key);
 
         // Check if the inbox exists and if not, create it
         if self.db.get_cf(cf_inbox, inbox_key.as_bytes())?.is_none() {
-            eprintln!("insert message> Creating inbox: {}", inbox_name);
-            if let Err(e) = self.create_empty_inbox(inbox_name.clone()) {
-                eprintln!("Error creating inbox: {}", e);
-            } else {
-                eprintln!("insert message> Inbox created: {}", inbox_name);
-            }
+            self.create_empty_inbox(inbox_name.clone())?;
         }
 
         // println!("Hash key: {}", hash_key);

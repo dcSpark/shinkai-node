@@ -32,18 +32,22 @@ impl ShinkaiDB {
         let scope_bytes = scope.to_bytes()?;
 
         // Construct keys with job_id as part of the key
-        let job_scope_key = format!("jobinbox_{}_{}", job_id, "scope");
-        let jobs_by_agent_id_key = format!("jobinbox_{}_{}_{}", agent_id, current_time, job_id);
+        let job_scope_key = format!("jobinbox_{}_scope", job_id);
+        let jobs_by_agent_id_key = format!("jobinbox_{}_{}_{}", agent_id, current_time, job_id); // Note: It won't work with prefix search. Unnecesary?
         let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
         let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
-        let job_parent_agentid_key = format!("jobinbox_{}_agentid", job_id);
+        let job_parent_agentid = format!("jobinbox_{}_agentid", job_id);
+        let job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::agent_id_to_hash(&agent_id), job_id); // needs to be 47 characters for prefix search to work
+        let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
         let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
-        let all_jobs_time_keyed = format!("all_jobs_time_keyed_{}", current_time);
+        let all_jobs_time_keyed = format!("all_jobs_time_keyed_placeholder_to_fit_prefix__{}", current_time);
         let job_smart_inbox_name_key = format!("{}_smart_inbox_name", job_id);
         let job_is_hidden_key = format!("jobinbox_{}_is_hidden", job_id);
+        let job_read_list_key = format!("jobinbox_{}_read_list", job_id);
 
         // Content
-        let conversation_inbox_name = format!("job_inbox::{}::false", job_id);
+        let conversation_inbox_prefix = format!("inbox_{}", Self::job_id_to_hash(&job_id)); // 47 characters so prefix works
+        let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
         let initial_job_name = format!("New Job: {}", job_id);
 
         // Put Job Data into the DB
@@ -51,11 +55,17 @@ impl ShinkaiDB {
         batch.put_cf(cf_inbox, jobs_by_agent_id_key.as_bytes(), "".as_bytes());
         batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
         batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
-        batch.put_cf(cf_inbox, job_parent_agentid_key.as_bytes(), agent_id.as_bytes());
+        batch.put_cf(cf_inbox, job_parent_agentid.as_bytes(), agent_id.as_bytes());
+        batch.put_cf(cf_inbox, job_parent_agentid_key.as_bytes(), job_id.as_bytes());
         batch.put_cf(
             cf_inbox,
             job_conversation_inbox_name_key.as_bytes(),
-            conversation_inbox_name.as_bytes(),
+            conversation_inbox_prefix.as_bytes(),
+        );
+        batch.put_cf(
+            cf_inbox,
+            job_inbox_name.as_bytes(),
+            job_inbox_name_content.as_bytes(),
         );
         batch.put_cf(cf_inbox, all_jobs_time_keyed.as_bytes(), job_id.as_bytes());
         batch.put_cf(
@@ -64,7 +74,7 @@ impl ShinkaiDB {
             initial_job_name.as_bytes(),
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
-        batch.put_cf(cf_inbox, conversation_inbox_name.as_bytes(), b""); // Note: this changed
+        batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "".to_string());
 
         self.db.write(batch)?;
 
@@ -81,6 +91,19 @@ impl ShinkaiDB {
         }
 
         Ok(())
+    }
+
+    /// Returns the the first half of the blake3 hash of the agent id value
+    pub fn agent_id_to_hash(agent_id: &str) -> String {
+        let full_hash = blake3::hash(agent_id.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
+    /// Returns the first half of the blake3 hash of the job id value
+    pub fn job_id_to_hash(job_id: &str) -> String {
+        let input = &format!("job_inbox::{}::false", job_id);
+        let full_hash = blake3::hash(input.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
     }
 
     /// Fetches a job from the DB
@@ -212,14 +235,14 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
 
-        let conversation_inbox_value = self
+        let job_inbox_name = self
             .db
             .get_cf(
                 cf_jobs,
-                format!("jobinbox_{}_conversation_inbox_name", job_id).as_bytes(),
+                format!("jobinbox_{}_inboxname", job_id).as_bytes(),
             )?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
+        let inbox_name = std::str::from_utf8(&job_inbox_name)?.to_string();
         let conversation_inbox = InboxName::new(inbox_name)?;
 
         let is_hidden_value = self
@@ -254,12 +277,13 @@ impl ShinkaiDB {
 
         let mut jobs = Vec::new();
         // Create a prefix iterator for keys starting with "all_jobs_time_keyed_"
-        let prefix = b"all_jobs_time_keyed_";
+        let prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
         let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
             let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
             // The value is the job ID
             let job_id = std::str::from_utf8(&value)?.to_string();
+            eprintln!("Job ID: {}", job_id);
             // Fetch the job using the job ID
             let job = self.get_job_like(&job_id)?;
             jobs.push(job);
@@ -280,13 +304,14 @@ impl ShinkaiDB {
     /// Fetches all jobs under a specific Agent
     pub fn get_agent_jobs(&self, agent_id: String) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
-        let prefix_string = format!("jobinbox_{}", agent_id);
+        let prefix_string = format!("jobinbox_agent_{}", Self::agent_id_to_hash(&agent_id));
         let prefix = prefix_string.as_bytes();
         let mut jobs = Vec::new();
         let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
             let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
             let job_id = std::str::from_utf8(&value)?.to_string();
+            eprintln!("Job ID: {}", job_id);
             let job = self.get_job_like(&job_id)?;
             jobs.push(job);
         }
@@ -320,14 +345,18 @@ impl ShinkaiDB {
 
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
         let current_time = ShinkaiStringTime::generate_time_now();
-        let execution_context_key = format!("jobinbox_{}_{}_execution_context_{}", &job_id, &message_key, current_time);
+        let execution_context_key = format!(
+            "jobinbox_{}_{}_execution_context_{}",
+            &job_id, &message_key, current_time
+        );
 
         // Convert the context to bytes
         let context_bytes = bincode::serialize(&context).map_err(|_| {
             ShinkaiDBError::SomeError("Failed converting execution context hashmap to bytes".to_string())
         })?;
 
-        self.db.put_cf(cf_jobs, execution_context_key.as_bytes(), &context_bytes)?;
+        self.db
+            .put_cf(cf_jobs, execution_context_key.as_bytes(), &context_bytes)?;
 
         Ok(())
     }
@@ -376,11 +405,11 @@ impl ShinkaiDB {
 
     /// Fetches all unprocessed messages for a specific Job from the DB
     fn get_unprocessed_messages(&self, job_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
-        // Get the iterator
-        let iter = self.get_unprocessed_messages_iterator(job_id)?;
-
-        // Reads all of the unprocessed messages by iterating
+        let prefix = format!("{}_unprocess_", job_id);
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let mut unprocessed_messages: Vec<String> = Vec::new();
+
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
             let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
             let message = std::str::from_utf8(&value)?.to_string();
@@ -390,53 +419,17 @@ impl ShinkaiDB {
         Ok(unprocessed_messages)
     }
 
-    /// Fetches an iterator over all unprocessed messages for a specific Job from the DB
-    // TODO: Fix this
-    fn get_unprocessed_messages_iterator<'a>(
-        &'a self,
-        job_id: &str,
-    ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, ShinkaiDBError> {
-        // Get the needed cf handle
-        let cf_job_id_unprocessed_messages = self._get_unprocessed_messages_handle(job_id)?;
-
-        // Get the iterator
-        let iter = self.db.iterator_cf(cf_job_id_unprocessed_messages, IteratorMode::Start);
-
-        Ok(iter)
-    }
-
     /// Removes the oldest unprocessed message for a specific Job from the DB
-    // TODO: Fix this
     pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
-        // Get the needed cf handle
-        let cf_job_id_unprocessed_messages = self._get_unprocessed_messages_handle(job_id)?;
+        let prefix = format!("{}_unprocess_", job_id);
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        // Get the iterator
-        let mut iter = self.get_unprocessed_messages_iterator(job_id)?;
-
-        // Get the oldest message (first item in the iterator)
+        let mut iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         if let Some(Ok((key, _))) = iter.next() {
-            // Remove the oldest message from the DB
-            self.db.delete_cf(cf_job_id_unprocessed_messages, key)?;
+            self.db.delete_cf(cf_inbox, &key)?;
         }
 
         Ok(())
-    }
-
-    /// Fetches the column family handle for unprocessed messages of a specific Job
-    // TODO: Fix this
-    fn _get_unprocessed_messages_handle(&self, job_id: &str) -> Result<&rocksdb::ColumnFamily, ShinkaiDBError> {
-        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", job_id);
-
-        // Get the needed cf handle
-        let cf_job_id_unprocessed_messages =
-            self.db
-                .cf_handle(&cf_job_id_unprocessed_messages_name)
-                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                    cf_job_id_unprocessed_messages_name,
-                ))?;
-
-        Ok(cf_job_id_unprocessed_messages)
     }
 
     /// Updates the Job to being finished
@@ -445,7 +438,7 @@ impl ShinkaiDB {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
         // Construct key for checking if the job is finished
-        let job_is_finished_key = format!("{}_is_finished", job_id);
+        let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
 
         // Check if the job is already finished
         let is_finished_value = self
@@ -489,8 +482,7 @@ impl ShinkaiDB {
             }
         };
 
-        // TODO: fix this
-        let cf_name = format!("{}_{}_step_history", &job_id, &message_key);
+        let key = format!("{}_{}_step_history", &job_id, &message_key);
         let current_time = ShinkaiStringTime::generate_time_now();
 
         // Create prompt & JobStepResult
@@ -505,28 +497,13 @@ impl ShinkaiDB {
             .to_json()
             .map_err(|e| ShinkaiDBError::DataConversionError(e.to_string()))?;
 
-        let cf_handle = match self.db.cf_handle(&cf_name) {
-            Some(cf) => cf,
-            None => {
-                // Create Options for ColumnFamily
-                let cf_opts = Self::create_cf_options(None);
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
-                // Create column family if it doesn't exist
-                self.db.create_cf(&cf_name, &cf_opts)?;
-                self.db
-                    .cf_handle(&cf_name)
-                    .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?
-            }
-        };
+        // Construct the key with the current time to ensure uniqueness
+        let unique_key = format!("{}_{}", key, current_time);
 
-        self.db.put_cf(cf_handle, current_time.as_bytes(), json.as_bytes())?;
-
-        // After adding the step to the history, fetch the updated step history
-        // let step_history = self.get_step_history(&job_id, true)?;
-
-        // You can print the step history or do something else with it here
-        // eprintln!("Updated step history: {:?}", step_history);
-        // eprintln!("\n\n");
+        self.db.put_cf(cf_inbox, unique_key.as_bytes(), json.as_bytes())?;
 
         Ok(())
     }
@@ -544,10 +521,13 @@ impl ShinkaiDB {
         let mut step_history: Vec<JobStepResult> = Vec::new();
         let mut until_offset_key: Option<String> = None;
 
+        // Use shared CFs
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
         loop {
             // Note(Nico): changing n to 2 helps a lot to debug potential pagination problems
             let mut messages =
-                self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
+                self.get_last_messages_from_inbox(inbox_name.to_string(), 20, until_offset_key.clone())?;
 
             if messages.is_empty() {
                 break;
@@ -558,16 +538,11 @@ impl ShinkaiDB {
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
                     let message_key = message.calculate_message_hash_for_pagination();
-                    // TODO: fix this
-                    let cf_name = format!("{}_{}_step_history", job_id, message_key);
-                    if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
-                        let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-                        for item in iter {
-                            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-                            let step_json_string = std::str::from_utf8(&value)?.to_string();
-                            let step_res = JobStepResult::from_json(&step_json_string)?;
-                            step_history.push(step_res);
-                        }
+                    let key = format!("{}_{}_step_history", job_id, message_key);
+                    if let Ok(Some(value)) = self.db.get_cf(cf_inbox, key.as_bytes()) {
+                        let step_json_string = std::str::from_utf8(&value)?.to_string();
+                        let step_res = JobStepResult::from_json(&step_json_string)?;
+                        step_history.push(step_res);
                     }
                 }
             }
@@ -589,14 +564,34 @@ impl ShinkaiDB {
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, ShinkaiDBError> {
-        // TODO: fix this
-        let cf_conversation_inbox_name = format!("job_inbox::{}::false", job_id);
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_conversation_inbox_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name.clone()))?;
+        eprintln!("jod_id is: {}", job_id);
+        let hashed_job_id = Self::job_id_to_hash(job_id);
+        let conversation_inbox_prefix = format!("inbox_{}_message_", hashed_job_id); // 47 characters so prefix works
+        eprintln!("Conversation inbox prefix: {}", conversation_inbox_prefix);
+        let cf_handle = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+        let mut iter = self
+            .db
+            .prefix_iterator_cf(cf_handle, conversation_inbox_prefix.as_bytes());
+
+        // Correctly handle the Result type yielded by the iterator
+        for item in iter {
+            match item {
+                Ok((key, _value)) => {
+                    println!("Key: {:?}", std::str::from_utf8(&key).unwrap_or("[Invalid UTF-8]"));
+                }
+                Err(e) => {
+                    println!("Error reading from iterator: {:?}", e);
+                    return Err(ShinkaiDBError::from(e)); // Assuming ShinkaiDBError can be constructed from rocksdb::Error
+                }
+            }
+        }
+
+        // Restart the iterator for the actual check
+        let mut iter = self
+            .db
+            .prefix_iterator_cf(cf_handle, conversation_inbox_prefix.as_bytes());
+
         Ok(iter.next().is_none())
     }
 

@@ -114,15 +114,12 @@ mod tests {
         // Create new jobs for the agent
         for i in 1..=5 {
             let job_id = format!("job{}", i);
-            let inbox_name =
-                InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
-                    .unwrap();
-            let inbox_names = vec![inbox_name];
-            // let documents = vec!["document1".to_string(), "document2".to_string()];
-
+            eprintln!("job_id: {}", job_id.clone());
             let scope = JobScope::new_default();
             create_new_job(&mut shinkai_db, job_id, agent_id.clone(), scope);
         }
+
+        eprintln!("agent_id: {}", agent_id.clone());
 
         // Get all jobs for the agent
         let jobs = shinkai_db.get_agent_jobs(agent_id.clone()).unwrap();
@@ -226,7 +223,7 @@ mod tests {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
             Err(e) => assert_eq!(
                 e,
-                ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())
+                ShinkaiDBError::DataNotFound
             ),
         }
     }
@@ -267,7 +264,7 @@ mod tests {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
             Err(e) => assert_eq!(
                 e,
-                ShinkaiDBError::ProfileNameNonExistent(format!("jobtopic_{}", job_id))
+                ShinkaiDBError::DataNotFound
             ),
         }
     }
