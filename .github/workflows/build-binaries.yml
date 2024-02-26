@@ -42,4 +42,4 @@ jobs:
           uses: actions/upload-artifact@v4
           with:
             name: shinkai-node-${{ matrix.arch }}
-            path: ./target/release/shinkai_node
+            path: target/release/shinkai_node
