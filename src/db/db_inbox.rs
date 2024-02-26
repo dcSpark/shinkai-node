@@ -31,7 +31,7 @@ impl ShinkaiDB {
         let mut batch = WriteBatch::default();
 
         // Construct keys with inbox_name as part of the key
-        let inbox_key = format!("inbox_{}", inbox_name);
+        let inbox_key = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", inbox_name);
         let inbox_read_list_key = format!("{}_read_list", inbox_name); // ADD: this to job as well
         let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", inbox_name);
 
@@ -79,7 +79,7 @@ impl ShinkaiDB {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
         // Construct keys with inbox_name as part of the key
-        let inbox_key = format!("inbox_{}", inbox_name);
+        let inbox_key = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", inbox_name);
         let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
         eprintln!("insert message> Inbox key: {}", inbox_key);
 
@@ -342,7 +342,11 @@ impl ShinkaiDB {
     pub fn does_inbox_exists(&self, inbox_name: &str) -> Result<bool, ShinkaiDBError> {
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let inbox_name_manager = InboxName::new(inbox_name.to_string()).map_err(ShinkaiDBError::from)?;
-        let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
+        // let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
+        let fixed_inbox_key = format!(
+            "inbox_placeholder_value_to_match_prefix_abcdef_{}",
+            inbox_name_manager.get_value()
+        );
 
         Ok(self.db.get_cf(cf_inbox, fixed_inbox_key.as_bytes())?.is_some())
     }
@@ -421,6 +425,7 @@ impl ShinkaiDB {
         // Construct the permissions key similar to how it's done in add_permission_with_profile
         let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
 
+        eprintln!("Checking permission for: {}", perms_key);
         // Attempt to fetch the permission value for the constructed key
         match self.db.get_cf(cf_inbox, perms_key.as_bytes())? {
             Some(val) => {
@@ -466,27 +471,51 @@ impl ShinkaiDB {
             )));
         }
 
-        // Create an iterator for the 'inbox' topic
-        let iter = self.db.iterator_cf(cf_inbox, rocksdb::IteratorMode::Start);
+        // Debugging: Print out ALL keys in the Inbox column family
+        let all_keys_iter = self.db.iterator_cf(cf_inbox, rocksdb::IteratorMode::Start);
+        for item in all_keys_iter {
+            match item {
+                Ok((key, _)) => {
+                    let key_str = String::from_utf8_lossy(&key);
+                    eprintln!("All Inbox keys: {}", key_str);
+                }
+                Err(e) => eprintln!("Error iterating over all keys: {}", e),
+            }
+        }
+
+        // Create ReadOptions and set the prefix_sa
+        let prefix = "inbox_placeholder_value_to_match_prefix_abcdef_"; // Define the prefix for the iterator
+
+        // Create an iterator for the 'inbox' topic with the specified prefix
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
 
         let mut inboxes = Vec::new();
+        eprintln!("Iterating over inboxes");
         for item in iter {
             // Handle the Result returned by the iterator
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8_lossy(&key);
-                    if key_str.contains(&profile_name_identity.full_identity_name.to_string()) {
-                        inboxes.push(key_str.to_string());
-                    } else {
-                        // Check if the identity has read permission for the inbox
-                        match self.has_permission(&key_str, &profile_name_identity, InboxPermission::Read) {
-                            Ok(has_perm) => {
+                    eprintln!("Inbox result key: {}", key_str);
+
+                    // Attempt to strip the prefix from the key_str
+                    if let Some(stripped_key_str) = key_str.strip_prefix(prefix) {
+                        eprintln!("Stripped Inbox key: {}", stripped_key_str);
+                        if stripped_key_str.contains(&profile_name_identity.full_identity_name.to_string()) {
+                            inboxes.push(stripped_key_str.to_string());
+                        } else {
+                            // Check if the identity has read permission for the inbox
+                            eprintln!("Checking permission for: {}", stripped_key_str);
+                            if let Ok(has_perm) =
+                                self.has_permission(stripped_key_str, &profile_name_identity, InboxPermission::Read)
+                            {
                                 if has_perm {
-                                    inboxes.push(key_str.to_string());
+                                    inboxes.push(stripped_key_str.to_string());
                                 }
                             }
-                            Err(e) => return Err(e),
                         }
+                    } else {
+                        // nothing to do here. not expected
                     }
                 }
                 Err(e) => return Err(e.into()),
@@ -567,17 +596,16 @@ impl ShinkaiDB {
         Ok(smart_inboxes)
     }
 
-    // TODO: needs update
     pub fn update_smart_inbox_name(&mut self, inbox_id: &str, new_name: &str) -> Result<(), ShinkaiDBError> {
-        // Fetch the column family for the smart_inbox_name
-        let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", inbox_id);
-        let cf_smart_inbox_name = self
-            .db
-            .cf_handle(&cf_name_smart_inbox_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_id)))?;
+        // Fetch the column family for the Inbox topic
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
+        // The current CF name is used as a key
+        let inbox_smart_inbox_name_key = format!("{}_smart_inbox_name", inbox_id);
 
         // Update the name in the column family
-        self.db.put_cf(cf_smart_inbox_name, inbox_id, new_name)?;
+        self.db
+            .put_cf(cf_inbox, inbox_smart_inbox_name_key.as_bytes(), new_name.as_bytes())?;
 
         Ok(())
     }

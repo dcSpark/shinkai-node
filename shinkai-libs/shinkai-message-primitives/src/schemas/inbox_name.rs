@@ -195,6 +195,15 @@ impl InboxName {
         let full_hash = blake3::hash(value.as_bytes()).to_hex().to_string();
         full_hash[..full_hash.len() / 2].to_string()
     }
+
+    /// Returns the value field of the inbox no matter if it's a regular or job inbox
+    pub fn get_value(&self) -> String {
+        let value = match self {
+            InboxName::RegularInbox { value, .. } => value,
+            InboxName::JobInbox { value, .. } => value,
+        };
+        value.clone()
+    }
 }
 
 impl fmt::Display for InboxName {

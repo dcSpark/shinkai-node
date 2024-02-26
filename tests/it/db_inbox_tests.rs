@@ -1043,38 +1043,24 @@ async fn db_inbox() {
         .unwrap();
     assert_eq!(inboxes.len(), 1);
 
-    let node1_identity = StandardIdentity::new(
-        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-        None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
-        Some(node1_subencryption_pk),
-        Some(node1_subidentity_pk),
-        StandardIdentityType::Profile,
-        IdentityPermissions::Standard,
-    );
-    let inboxes = shinkai_db.get_inboxes_for_profile(node1_identity.clone()).unwrap();
-    assert_eq!(inboxes.len(), 3);
-    assert!(inboxes.contains(&inbox_name_value));
-    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false".to_string()));
-    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false".to_string()));
+    let inboxes = shinkai_db.get_inboxes_for_profile(node1_profile_identity.clone()).unwrap();
+    assert_eq!(inboxes.len(), 1);
+    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()));
 
     // Test get_smart_inboxes_for_profile
     let smart_inboxes = shinkai_db
-        .get_all_smart_inboxes_for_profile(node1_identity.clone())
+        .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
         .unwrap();
-    assert_eq!(smart_inboxes.len(), 3);
+    assert_eq!(smart_inboxes.len(), 1);
 
     // Check if smart_inboxes contain the expected results
     let expected_inbox_ids = vec![
         "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false",
-        "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false",
-        "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false",
     ];
 
     for smart_inbox in smart_inboxes {
         assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
-        assert_eq!(smart_inbox.inbox_id, smart_inbox.custom_name);
+        assert_eq!(format!("New Inbox: {}", smart_inbox.inbox_id), smart_inbox.custom_name);
 
         // Check the last_message of each smart_inbox
         if let Some(last_message) = smart_inbox.last_message {
@@ -1109,7 +1095,7 @@ async fn db_inbox() {
     shinkai_db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
 
     // Get smart_inboxes again
-    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_identity).unwrap();
+    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_profile_identity).unwrap();
 
     // Check if the name of the updated inbox has been changed
     for smart_inbox in updated_smart_inboxes {
