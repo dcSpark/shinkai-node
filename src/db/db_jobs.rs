@@ -4,6 +4,7 @@ use std::time::Instant;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
 use crate::agent::job::{Job, JobLike, JobStepResult};
+use async_std::eprint;
 use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -62,11 +63,7 @@ impl ShinkaiDB {
             job_conversation_inbox_name_key.as_bytes(),
             conversation_inbox_prefix.as_bytes(),
         );
-        batch.put_cf(
-            cf_inbox,
-            job_inbox_name.as_bytes(),
-            job_inbox_name_content.as_bytes(),
-        );
+        batch.put_cf(cf_inbox, job_inbox_name.as_bytes(), job_inbox_name_content.as_bytes());
         batch.put_cf(cf_inbox, all_jobs_time_keyed.as_bytes(), job_id.as_bytes());
         batch.put_cf(
             cf_inbox,
@@ -103,6 +100,12 @@ impl ShinkaiDB {
     pub fn job_id_to_hash(job_id: &str) -> String {
         let input = &format!("job_inbox::{}::false", job_id);
         let full_hash = blake3::hash(input.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
+    /// Returns the first half of the blake3 hash of the message key value
+    pub fn message_key_to_hash(message_key: String) -> String {
+        let full_hash = blake3::hash(message_key.as_bytes()).to_hex().to_string();
         full_hash[..full_hash.len() / 2].to_string()
     }
 
@@ -237,10 +240,7 @@ impl ShinkaiDB {
 
         let job_inbox_name = self
             .db
-            .get_cf(
-                cf_jobs,
-                format!("jobinbox_{}_inboxname", job_id).as_bytes(),
-            )?
+            .get_cf(cf_jobs, format!("jobinbox_{}_inboxname", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let inbox_name = std::str::from_utf8(&job_inbox_name)?.to_string();
         let conversation_inbox = InboxName::new(inbox_name)?;
@@ -464,6 +464,9 @@ impl ShinkaiDB {
         agent_response: String,
         message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
+        eprintln!("Adding step history");
+        
+
         let message_key = match message_key {
             Some(key) => key,
             None => {
@@ -482,7 +485,10 @@ impl ShinkaiDB {
             }
         };
 
-        let key = format!("{}_{}_step_history", &job_id, &message_key);
+        let hash_key = Self::job_id_to_hash(&job_id);
+        let hash_message_key = Self::message_key_to_hash(message_key);
+        let key = format!("step_history__{}_{}", hash_message_key, hash_key);
+        eprintln!("Adding step history Key: {}", key);
         let current_time = ShinkaiStringTime::generate_time_now();
 
         // Create prompt & JobStepResult
@@ -502,6 +508,7 @@ impl ShinkaiDB {
 
         // Construct the key with the current time to ensure uniqueness
         let unique_key = format!("{}_{}", key, current_time);
+        eprintln!("Adding step history Unique key: {}", unique_key);
 
         self.db.put_cf(cf_inbox, unique_key.as_bytes(), json.as_bytes())?;
 
@@ -514,6 +521,7 @@ impl ShinkaiDB {
         fetch_step_history: bool,
     ) -> Result<Option<Vec<JobStepResult>>, ShinkaiDBError> {
         if !fetch_step_history {
+            eprintln!("Not fetching step history");
             return Ok(None);
         }
 
@@ -527,7 +535,7 @@ impl ShinkaiDB {
         loop {
             // Note(Nico): changing n to 2 helps a lot to debug potential pagination problems
             let mut messages =
-                self.get_last_messages_from_inbox(inbox_name.to_string(), 20, until_offset_key.clone())?;
+                self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
 
             if messages.is_empty() {
                 break;
@@ -537,12 +545,49 @@ impl ShinkaiDB {
 
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
+                    eprintln!("## >> Message: {:?}", message);
+                    {
+                        // Use shared CFs
+                        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
+                        // Use a full iterator to go through all keys in the cf_inbox column family
+                        let mut iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
+
+                        for item in iter {
+                            let (key, _value) = match item {
+                                Ok(kv) => kv,
+                                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
+                            };
+
+                            // Print the key here
+                            let key_str = std::str::from_utf8(&key).unwrap_or("[Invalid UTF-8]");
+                            eprintln!("Printing Everything Key: {}", key_str);
+                        }
+                    }
                     let message_key = message.calculate_message_hash_for_pagination();
-                    let key = format!("{}_{}_step_history", job_id, message_key);
-                    if let Ok(Some(value)) = self.db.get_cf(cf_inbox, key.as_bytes()) {
-                        let step_json_string = std::str::from_utf8(&value)?.to_string();
-                        let step_res = JobStepResult::from_json(&step_json_string)?;
-                        step_history.push(step_res);
+                    let hash_message_key = Self::message_key_to_hash(message_key);
+
+                    let prefix = format!("step_history__{}_", hash_message_key);
+                    let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+
+                    for item in iter {
+                        match item {
+                            Ok((_, value)) => {
+                                // let key_str = String::from_utf8(key.to_vec())
+                                //     .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
+
+                                let step_json_string = std::str::from_utf8(&value)?.to_string();
+                                eprintln!("Step JSON string: {}", step_json_string);
+                                match JobStepResult::from_json(&step_json_string) {
+                                    Ok(step_res) => step_history.push(step_res),
+                                    Err(e) => eprintln!("Error converting from JSON: {}", e),
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error iterating step history: {:?}", e);
+                                return Err(ShinkaiDBError::RocksDBError(e));
+                            },
+                        }
                     }
                 }
             }
@@ -558,6 +603,7 @@ impl ShinkaiDB {
             }
         }
 
+        eprintln!("\n\n printing Step history: {:?}", step_history);
         // Reverse the step history before returning
         step_history.reverse();
         Ok(Some(step_history))
@@ -570,7 +616,7 @@ impl ShinkaiDB {
         eprintln!("Conversation inbox prefix: {}", conversation_inbox_prefix);
         let cf_handle = self.get_cf_handle(Topic::Inbox).unwrap();
 
-        let mut iter = self
+        let iter = self
             .db
             .prefix_iterator_cf(cf_handle, conversation_inbox_prefix.as_bytes());
 
