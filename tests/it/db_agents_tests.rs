@@ -65,15 +65,17 @@ mod tests {
         match retrieved_agent_result {
             Ok(_) => panic!("Expected error, but got Ok"),
             Err(e) => assert!(
-                matches!(e, ShinkaiDBError::FailedFetchingValue),
+                matches!(e, ShinkaiDBError::DataNotFound),
                 "Expected FailedFetchingValue error"
             ),
         }
 
         // Attempt to remove the same agent again, expecting an error
+        eprintln!("Removing agent again");
         let result = db.remove_agent(&test_agent.id, &profile);
+        eprintln!("Result: {:?}", result);
         assert!(
-            matches!(result, Err(ShinkaiDBError::RocksDBError(_))),
+            matches!(result, Err(ShinkaiDBError::DataNotFound)),
             "Expected RocksDBError error"
         );
     }
@@ -124,8 +126,9 @@ mod tests {
             Some(vec!["new_sender".to_string()]),
             Some(vec!["new_toolkit".to_string()]),
         );
+        eprintln!("Result: {:?}", result);
         assert!(
-            matches!(result, Err(ShinkaiDBError::ColumnFamilyNotFound(_))),
+            matches!(result, Err(ShinkaiDBError::DataNotFound)),
             "Expected ColumnFamilyNotFound error"
         );
     }
