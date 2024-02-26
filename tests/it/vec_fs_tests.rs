@@ -16,7 +16,7 @@ use shinkai_vector_resources::source::{
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, DocumentVectorResource, VRPath, VRSource, VectorResource, VectorResourceCore,
+    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
 };
 use std::collections::HashMap;
@@ -93,6 +93,21 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 
     resource
 }
+
+// Test to be used to used once to re-generate the VRKai file whenever breaking changes take place.
+// #[tokio::test]
+// async fn test_gen_vrkai() {
+//     setup();
+//     let generator = RemoteEmbeddingGenerator::new_default();
+//     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+//     let resource = BaseVectorResource::Document(doc_resource);
+//     // With source file map
+//     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
+//     // Without source file map
+//     let vrkai = VRKai::from_base_vector_resource(resource, None, None);
+//     let vrkai_bytes = vrkai.prepare_as_bytes().expect("Failed to prepare VRKai bytes");
+//     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
+// }
 
 #[tokio::test]
 async fn test_vector_fs_initializes_new_profile_automatically() {
