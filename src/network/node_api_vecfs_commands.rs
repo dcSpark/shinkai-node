@@ -1,5 +1,5 @@
 use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::{schemas::identity::Identity, vector_fs::vector_fs_types::DistributionOrigin};
+use crate::schemas::identity::Identity;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -17,6 +17,7 @@ use shinkai_message_primitives::{
         },
     },
 };
+use shinkai_vector_resources::source::{DistributionOrigin, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 
 impl Node {
@@ -174,7 +175,12 @@ impl Node {
         let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
         let max_results = input_payload.max_results.unwrap_or(100) as u64;
         let search_results = match vector_fs
-            .deep_vector_search(&reader, input_payload.search.clone(), max_resources_to_search, max_results)
+            .deep_vector_search(
+                &reader,
+                input_payload.search.clone(),
+                max_resources_to_search,
+                max_results,
+            )
             .await
         {
             Ok(results) => results,
@@ -733,7 +739,6 @@ impl Node {
                 }
             };
 
-
             let base_vr = match BaseVectorResource::from_json(&json_str) {
                 Ok(vr) => vr,
                 Err(err) => {
@@ -756,19 +761,17 @@ impl Node {
             };
 
             if let Err(e) = vector_fs.save_vector_resource_in_folder(
-                &writer,
-                base_vr,
-                None,       // TODO: we could extract it if it's part of the vrkai
-                DistributionOrigin::None,   // TODO: extend the schema or read it from the vrkai
+                &writer, base_vr, None, // TODO: we could extract it if it's part of the vrkai
+                None, // TODO: extend the schema or read it from the vrkai
             ) {
                 let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Error saving vector resource in folder: {}", e),
-                        }))
-                        .await;
-                    return Ok(());
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error saving vector resource in folder: {}", e),
+                    }))
+                    .await;
+                return Ok(());
             }
 
             // TODO: Define permissions here

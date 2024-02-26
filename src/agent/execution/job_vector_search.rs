@@ -33,7 +33,8 @@ impl JobManager {
                 .new_reader(profile.clone(), fs_entry.vector_fs_path.clone(), profile.clone())
                 .unwrap();
 
-            let (ret_resource, ret_source_file_map) = vec_fs.retrieve_vr_and_source_file_map(&reader)?;
+            let ret_vrkai = vec_fs.retrieve_vrkai(&reader).unwrap();
+            let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
             resources.push(ret_resource);
         }
 
