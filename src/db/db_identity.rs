@@ -246,7 +246,6 @@ impl ShinkaiDB {
 
         // Write the batch
         self.db.write(batch)?;
-        eprintln!("### inserted profile_name {}", profile_name);
 
         shinkai_log(
             ShinkaiLogOption::Identity,
@@ -278,7 +277,7 @@ impl ShinkaiDB {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
         // Attempt to get the permission value for the profile name with the specific prefix
-        let profile_permission_key = format!("profile_permissions_of_{}", profile_name);
+        let profile_permission_key = format!("permissions_of_{}", profile_name);
         match self.db.get_cf(cf_node_and_users, profile_permission_key.as_bytes())? {
             Some(value) => {
                 // Convert the byte value into a string, and then try to parse it into IdentityPermissions
@@ -557,7 +556,8 @@ impl ShinkaiDB {
         };
 
         if !profile_exists {
-            return Err(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()));
+            return Ok(None);
+            // return Err(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()));
         }
 
         let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);

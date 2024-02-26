@@ -79,7 +79,7 @@ impl ShinkaiDB {
         println!("n: {:?}", n);
 
         // Fetch the column family for Inbox
-        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+        let cf_inbox = self.db.cf_handle(Topic::Inbox.as_str()).unwrap();
         let inbox_hash = InboxName::new(inbox_name.clone())?.hash_value_first_half();
 
         // Create an iterator for the specified inbox, using a key prefix to filter messages

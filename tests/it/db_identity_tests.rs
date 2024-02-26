@@ -125,7 +125,6 @@ fn test_generate_and_use_registration_code_for_device() {
         Some(&encryption_public_key_to_string(device_encryption_pk)),
     );
 
-    println!("profile_result: {:?}", profile_result);
     // registration code for device
     let registration_code = shinkai_db
         .generate_registration_new_code(
@@ -471,14 +470,8 @@ fn test_new_insert_profile() {
         encryption_in_db,
         encryption_public_key_to_string(subencryption_pk).as_bytes()
     );
-    assert_eq!(
-        permission_in_db,
-        identity.permission_type.to_string().as_bytes()
-    );
-    assert_eq!(
-        identity_type_in_db,
-        identity.identity_type.to_string().as_bytes()
-    );
+    assert_eq!(permission_in_db, identity.permission_type.to_string().as_bytes());
+    assert_eq!(identity_type_in_db, identity.identity_type.to_string().as_bytes());
 }
 
 #[test]

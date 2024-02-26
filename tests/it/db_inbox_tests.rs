@@ -980,6 +980,7 @@ async fn db_inbox() {
 
     let _ = shinkai_db.insert_profile(device1_subidentity.clone());
     println!("Inserted profile");
+    eprintln!("inbox name: {}", inbox_name_value);
 
     shinkai_db
         .add_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)

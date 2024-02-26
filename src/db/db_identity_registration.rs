@@ -111,7 +111,12 @@ impl ShinkaiDB {
         rng.fill_bytes(&mut random_bytes);
         let new_code = hex::encode(random_bytes);
 
-        let cf = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let cf = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
 
         let code_info = RegistrationCodeInfo {
             status: RegistrationCodeStatus::Unused,
@@ -156,12 +161,18 @@ impl ShinkaiDB {
         device_identity_public_key: Option<&str>,
         device_encryption_public_key: Option<&str>,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_codes = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let cf_codes = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
         let prefixed_registration_code = format!("registration_code_{}", registration_code);
         let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
             Some(value) => RegistrationCodeInfo::from_slice(&value),
             None => return Err(ShinkaiDBError::CodeNonExistent),
         };
+        eprintln!("Code info: {:?}", code_info);
 
         if code_info.status != RegistrationCodeStatus::Unused {
             return Err(ShinkaiDBError::CodeAlreadyUsed);
@@ -213,6 +224,8 @@ impl ShinkaiDB {
                             permission_type: code_info.permission.clone(),
                         };
 
+                        eprintln!("Profile: {:?}", profile);
+
                         self.insert_profile(profile)?;
                     }
                     Some(_) => {
@@ -262,7 +275,6 @@ impl ShinkaiDB {
                             permission_type: IdentityPermissions::Admin,
                         };
 
-                        println!("main profile: {}", main_profile);
                         self.insert_profile(main_profile.clone())?;
                         main_profile
                     }
@@ -357,8 +369,13 @@ impl ShinkaiDB {
     }
 
     pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
-        // Use Topic::NodeAndUsers with a standard prefix for retrieving the registration code info
-        let cf_codes = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let cf_codes = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
+
         let prefixed_registration_code = format!("registration_code_{}", registration_code);
         match self.db.get_cf(cf_codes, prefixed_registration_code.as_bytes())? {
             Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
@@ -367,10 +384,12 @@ impl ShinkaiDB {
     }
 
     pub fn check_profile_existence(&self, profile_name: &str) -> Result<(), ShinkaiDBError> {
-        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-
-        // Use a prefix based on the current Topic for checking profile existence
-        let profile_key_prefix = format!("profile_from_identity_key_{}", profile_name);
+        let cf_node_and_users = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
 
         // Check if the profile exists by looking for its associated encryption public key
         let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
@@ -389,7 +408,12 @@ impl ShinkaiDB {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
         // Use Topic::NodeAndUsers with appropriate prefixes for node keys
-        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let cf_node_and_users = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -424,7 +448,12 @@ impl ShinkaiDB {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
         // Use Topic::NodeAndUsers for both encryption and signature keys with specific prefixes
-        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let cf_node_and_users = self
+            .db
+            .cf_handle(Topic::NodeAndUsers.as_str())
+            .ok_or(ShinkaiDBError::SomeError(
+                "Column family NodeAndUsers not found".to_string(),
+            ))?;
 
         // Prefixes for node encryption and signature keys
         let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
