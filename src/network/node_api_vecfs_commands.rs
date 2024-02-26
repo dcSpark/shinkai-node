@@ -126,6 +126,7 @@ impl Node {
         Ok(())
     }
 
+    // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -198,6 +199,9 @@ impl Node {
             }
         };
 
+        // TODO: Change path to be a single output string.
+        // - Also return the source metadata, potentially using the format output method
+        // that is used for showing search results to LLMs
         let results: Vec<(String, Vec<String>, f32)> = search_results
             .into_iter()
             .map(|res| {
@@ -710,6 +714,7 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
+        // TODO: Switch to using JobManager::process_files_into_vrkai
         let (vrkai_files, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
             files.into_iter().partition(|(name, _)| name.ends_with(".vrkai"));
         let mut success_messages = Vec::new();
