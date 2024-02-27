@@ -21,6 +21,7 @@ impl ShinkaiDB {
         retry_message: &RetryMessage,
         retry_time: DateTime<Utc>,
     ) -> Result<(), ShinkaiDBError> {
+        eprintln!("retry_message: {:?}", retry_message);
         // Calculate the hash of the message for the key
         let hash_key = retry_message.message.calculate_message_hash_for_pagination();
 
@@ -31,6 +32,7 @@ impl ShinkaiDB {
             retry_message.retry_count,
             hash_key
         );
+        eprintln!("composite_key: {:?}", composite_key);
 
         // Serialize RetryMessage into bytes for storage
         let retry_message_bytes = bincode::serialize(retry_message).map_err(|_| ShinkaiDBError::InvalidData)?;
@@ -47,6 +49,8 @@ impl ShinkaiDB {
 
     /// Removes a message from the MessagesToRetry column family.
     pub fn remove_message_from_retry(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
+        eprintln!("remove_message_from_retry");
+        eprintln!("message: {:?}", message);
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();
 
@@ -110,17 +114,11 @@ impl ShinkaiDB {
             // Split the composite key to get the time component, retry count and hash key
             let mut parts = key_str.split(":::");
             let time_key_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
-            // let retry_count_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
 
             // Parse the time_key into a DateTime object
             let time_key = DateTime::parse_from_rfc3339(time_key_str)
                 .map_err(|_| ShinkaiDBError::InvalidData)?
                 .with_timezone(&Utc);
-
-            // // Parse the retry_count into a u32
-            // let retry_count = retry_count_str
-            //     .parse::<u32>()
-            //     .map_err(|_| ShinkaiDBError::InvalidData)?;
 
             // Compare the time key with the up_to_time
             if time_key > up_to_time {
