@@ -1,4 +1,3 @@
-use super::db_profile_bound::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

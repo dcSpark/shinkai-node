@@ -103,6 +103,8 @@ impl ShinkaiDB {
         for cf_name in &cf_names {
             let prefix_length = match cf_name.as_str() {
                 "inbox" => Some(47),
+                "node_and_users" => Some(47),
+                "all_messages" => Some(47),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);
@@ -248,8 +250,37 @@ impl ShinkaiDB {
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
 
         // Instead of using Topic::AllMessagesTimeKeyed, use Topic::AllMessages with a prefix
-        let all_messages_time_keyed_key = format!("all_messages_time_keyed_{}", composite_key);
+        let all_messages_time_keyed_key = format!("all_messages_time_keyed_PLACEHOLDER_TEXT_ABCDE_{}", composite_key);
         batch.put_cf(all_messages_cf, all_messages_time_keyed_key.as_bytes(), &hash_key);
+
+        // Reversed timekeyed
+        // Convert time_key to DateTime<Utc>
+        let time_key_date = DateTime::parse_from_rfc3339(&time_key)
+            .map_err(|_| ShinkaiDBError::InvalidData)?
+            .with_timezone(&Utc);
+
+        // Convert time_key_date to Unix time
+        let time_key_unix = time_key_date.timestamp();
+
+        // Calculate reverse time key by subtracting from Unix time of 2100-01-01
+        let future_time = DateTime::parse_from_rfc3339("2420-01-01T00:00:00Z")
+            .unwrap()
+            .timestamp();
+        let reverse_time_key = future_time - time_key_unix;
+
+        // Create a reverse composite key for reverse chronological order
+        let reverse_composite_key = format!("{}:::{}", reverse_time_key, hash_key);
+
+        // Use the new reversed time-keyed prefix
+        let all_messages_reversed_time_keyed_key = format!(
+            "all_messages_reversed_time_keyed__PLACEHOLDER__{}",
+            reverse_composite_key
+        );
+        batch.put_cf(
+            all_messages_cf,
+            all_messages_reversed_time_keyed_key.as_bytes(),
+            &hash_key,
+        );
 
         // Atomically apply the updates
         self.db.write(batch)?;
@@ -332,11 +363,36 @@ impl ShinkaiDB {
         Ok(messages)
     }
 
+    pub fn debug_print_all_message_keys(&self) -> Result<(), ShinkaiDBError> {
+        eprintln!("### DEBUG PRINTING ALL MESSAGE KEYS ###");
+        let messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
+
+        // Get an iterator over the column family from the start
+        let iter = self.db.iterator_cf(messages_cf, IteratorMode::Start);
+
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    // Convert the Vec<u8> key into a string and print it
+                    match std::str::from_utf8(&key) {
+                        Ok(key_str) => println!("Key: {}", key_str),
+                        Err(e) => eprintln!("Error decoding key: {:?}", e),
+                    }
+                }
+                Err(e) => eprintln!("Iterator error: {:?}", e),
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         let messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
 
+        self.debug_print_all_message_keys();
+
         // Use a prefix search for keys starting with "all_messages_time_keyed_"
-        let prefix = "all_messages_time_keyed_";
+        let prefix = "all_messages_reversed_time_keyed__PLACEHOLDER__";
         let iter = self.db.prefix_iterator_cf(messages_cf, prefix);
 
         let mut messages = Vec::new();
@@ -359,7 +415,6 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-
         Ok(messages)
     }
 }

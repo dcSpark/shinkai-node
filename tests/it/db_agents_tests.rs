@@ -18,7 +18,7 @@ mod tests {
             agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             shinkai_name::ShinkaiName,
         },
-        shinkai_utils::{utils::hash_string, shinkai_logging::init_default_tracing},
+        shinkai_utils::{shinkai_logging::init_default_tracing, utils::hash_string},
     };
     use shinkai_node::agent::{agent::Agent, error::AgentError, execution::job_prompts::JobPromptGenerator};
 
@@ -26,7 +26,7 @@ mod tests {
 
     #[test]
     fn test_add_and_remove_agent() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -56,6 +56,22 @@ mod tests {
         let retrieved_agent = db.get_agent(&test_agent.id, &profile).expect("Failed to get agent");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
+        // Call get_all_agents and check that it returns the right agent
+        let all_agents = db.get_all_agents().expect("Failed to get all agents");
+        assert!(
+            all_agents.contains(&test_agent),
+            "get_all_agents did not return the added agent"
+        );
+
+        // Call get_agents_for_profile and check that it returns the right agent for the profile
+        let agents_for_profile = db
+            .get_agents_for_profile(profile.clone())
+            .expect("Failed to get agents for profile");
+        assert!(
+            agents_for_profile.contains(&test_agent),
+            "get_agents_for_profile did not return the added agent"
+        );
+
         // Remove the agent
         let result = db.remove_agent(&test_agent.id, &profile);
         assert!(result.is_ok(), "Failed to remove agent");
@@ -71,9 +87,7 @@ mod tests {
         }
 
         // Attempt to remove the same agent again, expecting an error
-        eprintln!("Removing agent again");
         let result = db.remove_agent(&test_agent.id, &profile);
-        eprintln!("Result: {:?}", result);
         assert!(
             matches!(result, Err(ShinkaiDBError::DataNotFound)),
             "Expected RocksDBError error"
@@ -82,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_update_agent_access() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -135,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_profiles_and_toolkits() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
@@ -164,7 +178,7 @@ mod tests {
         // Get agent profiles with access
         let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
-        assert_eq!(vec!["sender1", "sender2"], profiles.unwrap());
+        assert_eq!(vec!["profilename", "sender1", "sender2"], profiles.unwrap());
 
         // Get agent toolkits accessible
         let toolkits = db.get_agent_toolkits_accessible(&test_agent.id, &profile);
@@ -174,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_remove_profile_and_toolkit_from_agent_access() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
@@ -205,7 +219,7 @@ mod tests {
         let result = db.remove_profile_from_agent_access(&test_agent.id, "sender1", &profile);
         assert!(result.is_ok(), "Failed to remove profile from agent access");
         let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile).unwrap();
-        assert_eq!(vec!["sender2"], profiles);
+        assert_eq!(vec!["profilename", "sender2"], profiles);
 
         // Remove a toolkit from agent access
         let result = db.remove_toolkit_from_agent_access(&test_agent.id, "toolkit1", &profile);
@@ -216,7 +230,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_call_external_api_openai() {
-        init_default_tracing(); 
+        init_default_tracing();
         let mut server = Server::new();
         let _m = server
             .mock("POST", "/v1/chat/completions")

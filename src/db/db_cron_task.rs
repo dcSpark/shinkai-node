@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use super::{db_errors::ShinkaiDBError, db_profile_bound::ProfileBoundWriteBatch, ShinkaiDB, Topic};
+use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 use rocksdb::{IteratorMode, Options};
 use serde::{Deserialize, Serialize};

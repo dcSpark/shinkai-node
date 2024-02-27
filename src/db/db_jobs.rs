@@ -51,6 +51,8 @@ impl ShinkaiDB {
         let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
         let initial_job_name = format!("New Job: {}", job_id);
 
+        let inbox_searchable = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", job_inbox_name_content);
+
         // Put Job Data into the DB
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
         batch.put_cf(cf_inbox, jobs_by_agent_id_key.as_bytes(), "".as_bytes());
@@ -65,6 +67,7 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_inbox_name.as_bytes(), job_inbox_name_content.as_bytes());
         batch.put_cf(cf_inbox, all_jobs_time_keyed.as_bytes(), job_id.as_bytes());
+        batch.put_cf(cf_inbox, inbox_searchable.as_bytes(), conversation_inbox_prefix.as_bytes());
         batch.put_cf(
             cf_inbox,
             job_smart_inbox_name_key.as_bytes(),
@@ -88,12 +91,6 @@ impl ShinkaiDB {
         }
 
         Ok(())
-    }
-
-    /// Returns the the first half of the blake3 hash of the agent id value
-    pub fn agent_id_to_hash(agent_id: &str) -> String {
-        let full_hash = blake3::hash(agent_id.as_bytes()).to_hex().to_string();
-        full_hash[..full_hash.len() / 2].to_string()
     }
 
     /// Returns the first half of the blake3 hash of the job id value
@@ -405,12 +402,14 @@ impl ShinkaiDB {
 
     /// Fetches all unprocessed messages for a specific Job from the DB
     fn get_unprocessed_messages(&self, job_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
-        let prefix = format!("{}_unprocess_", job_id);
+        let job_hash = Self::job_id_to_hash(job_id);
+        let prefix = format!("job_unprocess_{}_", job_hash);
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
         let mut unprocessed_messages: Vec<String> = Vec::new();
 
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
+            // HERE
             let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
             let message = std::str::from_utf8(&value)?.to_string();
             unprocessed_messages.push(message);
@@ -421,7 +420,8 @@ impl ShinkaiDB {
 
     /// Removes the oldest unprocessed message for a specific Job from the DB
     pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
-        let prefix = format!("{}_unprocess_", job_id);
+        let job_hash = Self::job_id_to_hash(job_id);
+        let prefix = format!("job_unprocess_{}_", job_hash);;
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
         let mut iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
