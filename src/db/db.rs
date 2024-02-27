@@ -2,7 +2,8 @@ use super::db_errors::ShinkaiDBError;
 use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
 use chrono::{DateTime, Utc};
 use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode, LogLevel, Options, SingleThreaded, WriteBatch, DB
+    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
+    LogLevel, Options, SingleThreaded, WriteBatch, DB,
 };
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
@@ -97,23 +98,23 @@ impl ShinkaiDB {
         }
 
         let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
-        let elapsed = start.elapsed(); // Check how much time has elapsed
-        println!("### RocksDB loaded in: {:?}", elapsed); // Print or log the elapsed time
+
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            let elapsed = start.elapsed();
+            println!("### RocksDB loaded in: {:?}", elapsed);
+
+            // Assuming db_opts is configured and used to open the database
+            let stats = db_opts.get_statistics().expect("Statistics should be enabled");
+
+            // After opening the database
+            println!("RocksDB stats: {}", stats);
+        }
 
         let shinkai_db = ShinkaiDB {
             db,
             path: db_path.to_string(),
             ws_manager: None,
         };
-
-        // let result = shinkai_db.compact_db();
-        // eprintln!("Compact DB result: {:?}", result);
-
-        // Assuming db_opts is configured and used to open the database
-        let stats = db_opts.get_statistics().expect("Statistics should be enabled");
-
-        // After opening the database
-        println!("RocksDB stats: {}", stats);
 
         Ok(shinkai_db)
     }
@@ -122,7 +123,6 @@ impl ShinkaiDB {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
-        cf_opts.set_db_log_dir("./rocksdb_logs");
         cf_opts.set_log_level(LogLevel::Debug);
 
         cf_opts.set_allow_concurrent_memtable_write(true);
@@ -147,6 +147,10 @@ impl ShinkaiDB {
             cf_opts.set_prefix_extractor(prefix_extractor);
         }
 
+        if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
+            cf_opts.set_db_log_dir("./rocksdb_logs");
+        }
+
         cf_opts
     }
 
@@ -156,9 +160,7 @@ impl ShinkaiDB {
         match self.db.get_cf(cf, b"needs_reset") {
             Ok(Some(value)) => Ok(value == b"true"),
             Ok(None) => Ok(false),
-            Err(e) => {
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 
@@ -236,9 +238,7 @@ impl ShinkaiDB {
         // Reversed timekeyed
         // Convert time_key to DateTime<Utc>
         let time_key_date = DateTime::parse_from_rfc3339(&time_key)
-            .map_err(|e| {
-                ShinkaiDBError::InvalidData
-            })?
+            .map_err(|e| ShinkaiDBError::InvalidData)?
             .with_timezone(&Utc);
 
         // Convert time_key_date to Unix time
