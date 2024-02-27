@@ -98,3 +98,16 @@ pub struct VectorFSScopeEntry {
     pub resource_header: VRHeader,
     pub vector_fs_path: VRPath,
 }
+
+// /// A Scope Entry for a file/vector resource that is saved in the VectorFS
+// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+// pub struct VectorFSItemEntry {
+//     pub item: FSItem
+// }
+
+// /// A Scope Entry for a file/vector resource that is saved in the VectorFS
+// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+// pub struct VectorFSFolderEntry {
+//     pub folder: FSFolder
+//     pub item: FSItem
+// }

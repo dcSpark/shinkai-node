@@ -10,13 +10,13 @@ mod it {
     mod db_tests;
     mod encrypted_files_tests;
     mod get_onchain_identity_tests;
+    mod job_branchs_retries_tests;
+    mod job_concurrency_in_seq_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
-    mod job_branchs_retries_tests;
     mod job_multi_page_cron_tests;
     mod job_one_page_cron_tests;
     mod model_capabilities_manager_tests;
-    mod job_concurrency_in_seq_tests;
     mod node_integration_tests;
     mod node_retrying_tests;
     mod node_simple_ux_tests;
@@ -27,7 +27,7 @@ mod it {
     mod prompt_tests;
     mod toolkit_tests;
     mod utils;
-    mod vec_fs_tests;
-    mod websocket_tests;
     mod vector_fs_api_tests;
+    mod vector_fs_tests;
+    mod websocket_tests;
 }

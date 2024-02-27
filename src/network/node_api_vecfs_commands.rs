@@ -1,5 +1,5 @@
 use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::schemas::identity::Identity;
+use crate::{agent::job_manager::JobManager, schemas::identity::Identity};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -682,7 +682,6 @@ impl Node {
                 return Ok(());
             }
         };
-        let mut vector_fs = self.vector_fs.lock().await;
         let destination_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -714,35 +713,33 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
-        // TODO: Switch to using JobManager::process_files_into_vrkai
-        let (vrkai_files, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
-            files.into_iter().partition(|(name, _)| name.ends_with(".vrkai"));
-        let mut success_messages = Vec::new();
+        // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
+        let processed_vrkais =
+            JobManager::process_files_into_vrkai(files, &self.embedding_generator, None, self.unstructured_api.clone())
+                .await?;
 
-        // Parse & save the VRKai files
-        for vrkai_file in vrkai_files {
+        // Save the vrkais into VectorFS
+        let mut success_messages = Vec::new();
+        let mut vector_fs = self.vector_fs.lock().await;
+        for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
             eprintln!("folder_path: {:?}", folder_path);
             let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
 
-            let vrkai = VRKai::from_bytes(&vrkai_file.1)?;
             if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: format!("Error saving '{}' in folder: {}", vrkai_file.0, e),
+                        message: format!("Error saving '{}' in folder: {}", filename, e),
                     }))
                     .await;
                 return Ok(());
             }
 
-            let success_message = format!("Vector Resource '{}' saved in folder successfully.", vrkai_file.0);
+            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
             success_messages.push(success_message);
         }
-
-        // TODO: Implement parsing non vr-kai files.
-        for file in other_files {}
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())
