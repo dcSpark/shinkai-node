@@ -415,6 +415,13 @@ fn test_new_insert_profile() {
     let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
+    // Check if any profile exists before insertion
+    assert_eq!(
+        shinkai_db.has_any_profile().unwrap(),
+        false,
+        "No profiles should exist before insertion"
+    );
+
     let subidentity_name = "subidentity_1";
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -432,6 +439,13 @@ fn test_new_insert_profile() {
 
     // Test insert_profile
     shinkai_db.insert_profile(identity.clone()).unwrap();
+
+    // Check if any profile exists after insertion
+    assert_eq!(
+        shinkai_db.has_any_profile().unwrap(),
+        true,
+        "A profile should exist after insertion"
+    );
 
     // Update to use the new context for checking in db
     let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();

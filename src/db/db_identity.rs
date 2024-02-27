@@ -34,14 +34,24 @@ impl ShinkaiDB {
 
     pub fn has_any_profile(&self) -> Result<bool, ShinkaiDBError> {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        // Use a prefix search to find any profiles
-        let prefix = "profile_from_identity_key_";
-        let mut iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix);
-
-        match iter.next() {
-            Some(_) => Ok(true),
-            None => Ok(false),
+        // Use Topic::NodeAndUsers for profiles related information with specific prefixes
+        let iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
+    
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    let key_str = String::from_utf8(key.to_vec()).unwrap();
+                    eprintln!("key_str: {}", key_str);
+                    // Check if the key starts with the specific prefix for profiles
+                    if key_str.starts_with("identity_key_of_") {
+                        return Ok(true); // Return true upon finding the first profile
+                    }
+                },
+                Err(_) => continue, // Optionally handle the error, for example, by continuing to the next item
+            }
         }
+    
+        Ok(false) // Return false if no profiles are found
     }
 
     pub fn get_all_profiles(&self, my_node_identity: ShinkaiName) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {

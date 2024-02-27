@@ -120,9 +120,6 @@ impl ShinkaiDB {
 
         // Get an iterator over the column family with a prefix search
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
-
-        // Get an iterator over the column family with a prefix search
-        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
             match item {
                 Ok((key, value)) => {
@@ -147,18 +144,18 @@ impl ShinkaiDB {
 
     pub fn get_all_filenames_from_inbox(&self, hex_blake3_hash: String) -> Result<Vec<String>, ShinkaiDBError> {
         let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-    
+
         // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
         let prefix = format!("encyptedinbox_{}_", encrypted_inbox_id);
-    
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-    
+
         let mut filenames = Vec::new();
-    
+
         // Get an iterator over the column family with a prefix search
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
@@ -172,29 +169,29 @@ impl ShinkaiDB {
                             } else {
                                 eprintln!("Error: Key does not start with the expected prefix.");
                             }
-                        },
+                        }
                         Err(e) => eprintln!("Error decoding key from UTF-8: {}", e),
                     }
-                },
+                }
                 Err(e) => eprintln!("Error reading from database: {}", e),
             }
         }
-    
+
         Ok(filenames)
     }
 
     pub fn get_file_from_inbox(&self, hex_blake3_hash: String, file_name: String) -> Result<Vec<u8>, ShinkaiDBError> {
         let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
-    
+
         // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
         let prefix = format!("encyptedinbox_{}_{}", encrypted_inbox_id, file_name);
-    
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-    
+
         // Get the file content directly using the constructed key
         match self.db.get_cf(cf_inbox, prefix.as_bytes()) {
             Ok(Some(file_content)) => Ok(file_content),
