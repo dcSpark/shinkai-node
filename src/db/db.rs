@@ -232,9 +232,6 @@ impl ShinkaiDB {
         // separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
 
-        // Create a write batch
-        let mut batch = rocksdb::WriteBatch::default();
-
         // Define the data for AllMessages
         let all_messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
         let message_bytes = match message.encode_message() {
@@ -247,6 +244,10 @@ impl ShinkaiDB {
                 )));
             }
         };
+
+        // Create a write batch
+        let mut batch = rocksdb::WriteBatch::default();
+
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
 
         // Instead of using Topic::AllMessagesTimeKeyed, use Topic::AllMessages with a prefix
@@ -255,18 +256,23 @@ impl ShinkaiDB {
 
         // Reversed timekeyed
         // Convert time_key to DateTime<Utc>
+        eprintln!("insert_message_to_all> time_key: {:?}", time_key);
         let time_key_date = DateTime::parse_from_rfc3339(&time_key)
-            .map_err(|_| ShinkaiDBError::InvalidData)?
+            .map_err(|e| {
+                eprintln!("DateTime parsing error: {:?}", e);
+                ShinkaiDBError::InvalidData
+            })?
             .with_timezone(&Utc);
 
         // Convert time_key_date to Unix time
-        let time_key_unix = time_key_date.timestamp();
+        let time_key_unix_millis = time_key_date.timestamp_millis();
+        eprintln!("insert_message_to_all> time_key_unix: {:?}", time_key_unix_millis);
 
         // Calculate reverse time key by subtracting from Unix time of 2100-01-01
         let future_time = DateTime::parse_from_rfc3339("2420-01-01T00:00:00Z")
             .unwrap()
-            .timestamp();
-        let reverse_time_key = future_time - time_key_unix;
+            .timestamp_millis();
+        let reverse_time_key = future_time - time_key_unix_millis;
 
         // Create a reverse composite key for reverse chronological order
         let reverse_composite_key = format!("{}:::{}", reverse_time_key, hash_key);
