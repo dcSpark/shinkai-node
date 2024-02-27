@@ -51,7 +51,10 @@ impl ShinkaiDB {
         let job_inbox_name_content = format!("job_inbox::{}::false", job_id);
         let initial_job_name = format!("New Job: {}", job_id);
 
-        let inbox_searchable = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", job_inbox_name_content);
+        let inbox_searchable = format!(
+            "inbox_placeholder_value_to_match_prefix_abcdef_{}",
+            job_inbox_name_content
+        );
 
         // Put Job Data into the DB
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
@@ -67,7 +70,11 @@ impl ShinkaiDB {
         );
         batch.put_cf(cf_inbox, job_inbox_name.as_bytes(), job_inbox_name_content.as_bytes());
         batch.put_cf(cf_inbox, all_jobs_time_keyed.as_bytes(), job_id.as_bytes());
-        batch.put_cf(cf_inbox, inbox_searchable.as_bytes(), conversation_inbox_prefix.as_bytes());
+        batch.put_cf(
+            cf_inbox,
+            inbox_searchable.as_bytes(),
+            conversation_inbox_prefix.as_bytes(),
+        );
         batch.put_cf(
             cf_inbox,
             job_smart_inbox_name_key.as_bytes(),
@@ -341,11 +348,13 @@ impl ShinkaiDB {
         };
 
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
-        let current_time = ShinkaiStringTime::generate_time_now();
+        let job_id_hash = Self::job_id_to_hash(&job_id);
         let execution_context_key = format!(
-            "jobinbox_{}_{}_execution_context_{}",
-            &job_id, &message_key, current_time
+            "jobinbox_{}_ctxt_{}",
+            &job_id_hash, &message_key
         );
+        eprintln!("Execution context key: {}", execution_context_key);
+        eprintln!("Context: {:?}", context);
 
         // Convert the context to bytes
         let context_bytes = bincode::serialize(&context).map_err(|_| {
@@ -369,22 +378,19 @@ impl ShinkaiDB {
         if let Some(message_path) = last_messages.first() {
             if let Some(message) = message_path.first() {
                 let message_key = message.calculate_message_hash_for_pagination();
-                // TODO: fix this
-                let cf_name = format!("{}_{}_execution_context", job_id, message_key);
-                if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
-                    // Get the last context (should be only one)
-                    let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
-                    if let Some(Ok((_, value))) = iter.next() {
-                        let context: Result<HashMap<String, String>, ShinkaiDBError> = bincode::deserialize(&value)
-                            .map_err(|_| {
-                                ShinkaiDBError::SomeError(
-                                    "Failed converting execution context bytes to hashmap".to_string(),
-                                )
-                            });
-                        if let Ok(context) = context {
-                            execution_context = context;
-                        }
-                    }
+                let job_id_hash = Self::job_id_to_hash(&job_id);
+                // Construct the key for fetching the execution context
+                let execution_context_key = format!("jobinbox_{}_ctxt_{}", job_id_hash, message_key);
+                // eprintln!("get job >> Execution context key: {}", execution_context_key);
+
+                // Use shared CFs
+                let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
+
+                // Fetch the execution context using the constructed key
+                if let Some(value) = self.db.get_cf(cf_jobs, execution_context_key.as_bytes())? {
+                    execution_context = bincode::deserialize(&value).map_err(|_| {
+                        ShinkaiDBError::SomeError("Failed converting execution context bytes to hashmap".to_string())
+                    })?;
                 }
             }
         }
@@ -421,7 +427,7 @@ impl ShinkaiDB {
     /// Removes the oldest unprocessed message for a specific Job from the DB
     pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
         let job_hash = Self::job_id_to_hash(job_id);
-        let prefix = format!("job_unprocess_{}_", job_hash);;
+        let prefix = format!("job_unprocess_{}_", job_hash);
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
         let mut iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
@@ -464,8 +470,7 @@ impl ShinkaiDB {
         agent_response: String,
         message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        eprintln!("Adding step history");
-        
+        // eprintln!("Adding step history");
 
         let message_key = match message_key {
             Some(key) => key,
@@ -488,7 +493,7 @@ impl ShinkaiDB {
         let hash_key = Self::job_id_to_hash(&job_id);
         let hash_message_key = Self::message_key_to_hash(message_key);
         let key = format!("step_history__{}_{}", hash_message_key, hash_key);
-        eprintln!("Adding step history Key: {}", key);
+        // eprintln!("Adding step history Key: {}", key);
         let current_time = ShinkaiStringTime::generate_time_now();
 
         // Create prompt & JobStepResult
@@ -508,7 +513,7 @@ impl ShinkaiDB {
 
         // Construct the key with the current time to ensure uniqueness
         let unique_key = format!("{}_{}", key, current_time);
-        eprintln!("Adding step history Unique key: {}", unique_key);
+        // eprintln!("Adding step history Unique key: {}", unique_key);
 
         self.db.put_cf(cf_inbox, unique_key.as_bytes(), json.as_bytes())?;
 
@@ -586,7 +591,7 @@ impl ShinkaiDB {
                             Err(e) => {
                                 eprintln!("Error iterating step history: {:?}", e);
                                 return Err(ShinkaiDBError::RocksDBError(e));
-                            },
+                            }
                         }
                     }
                 }

@@ -556,6 +556,7 @@ mod tests {
 
         // Check the step history and execution context
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
+        eprintln!("job execution context: {:?}", job.execution_context);
 
         // Check the execution context
         assert_eq!(
