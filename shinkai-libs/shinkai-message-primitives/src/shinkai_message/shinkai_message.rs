@@ -33,8 +33,6 @@ pub struct ExternalMetadata {
     pub signature: String,
     pub intra_sender: String,
     pub other: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_api_data: Option<NodeApiData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

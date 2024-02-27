@@ -19,7 +19,6 @@ impl PyExternalMetadata {
             signature,
             other,
             intra_sender,
-            node_api_data: None,
         };
 
         Ok(Self { inner })
@@ -109,7 +108,6 @@ impl<'source> FromPyObject<'source> for PyExternalMetadata {
                 signature,
                 other,
                 intra_sender,
-                node_api_data: None,
             },
         })
     }

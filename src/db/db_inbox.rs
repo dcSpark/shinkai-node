@@ -133,14 +133,7 @@ impl ShinkaiDB {
 
         // We update the message with some extra information api_node_data
         let updated_message = {
-            let node_api_data = NodeApiData {
-                parent_hash: parent_key.clone().unwrap_or_default(),
-                node_message_hash: hash_key.clone(), // this is safe because hash_key doesn't use node_api_data
-                node_timestamp: time_key.clone(),
-            };
-
             let mut updated_message = message.clone();
-            updated_message.external_metadata.node_api_data = Some(node_api_data);
             updated_message.clone()
         };
 

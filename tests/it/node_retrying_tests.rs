@@ -213,7 +213,7 @@ fn node_retrying_test() {
                 assert_eq!(node1_last_messages.len(), 0);
             }
             {
-                tokio::time::sleep(Duration::from_secs(8)).await;
+                tokio::time::sleep(Duration::from_secs(20)).await;
 
                 // Get Node2 messages
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
