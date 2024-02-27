@@ -482,7 +482,7 @@ impl JobManager {
     }
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
-    /// If save_to_db_directly == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
+    /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
@@ -513,46 +513,25 @@ impl JobManager {
             }
         };
 
-        // Start processing the files
-        for (filename, content) in files.into_iter() {
-            eprintln!("Processing file: {}", filename);
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                &format!("Processing file: {}", filename),
-            );
-            // TODO: Switch to using JobManager::process_files_into_vrkai
-            let resource = JobManager::parse_file_into_resource_gen_desc(
-                content.clone(),
-                &generator,
-                filename.clone(),
-                &vec![],
-                agent.clone(),
-                400,
-                unstructured_api.clone(),
-            )
-            .await?;
+        let processed_vrkais =
+            JobManager::process_files_into_vrkai(files, &generator, agent.clone(), unstructured_api.clone()).await?;
 
+        // Start processing the files
+        for (filename, vrkai) in processed_vrkais {
             // Now create Local/VectorFSScopeEntry depending on setting
-            let text_chunking_strategy = TextChunkingStrategy::V1;
             if let Some(folder_path) = &save_to_vector_fs_folder {
-                let resource_header = resource.as_trait_object().generate_resource_header();
+                let resource_header = vrkai.resource.as_trait_object().generate_resource_header();
                 let fs_scope_entry = VectorFSScopeEntry {
                     resource_header: resource_header,
                     vector_fs_path: folder_path.clone(),
                 };
+
+                // TODO: Save to the vector_fs
+                // let vector_fs = self.v
+
                 files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
             } else {
-                let source = SourceFile::new_standard_source_file(
-                    filename.clone(),
-                    SourceFileType::detect_file_type(&filename)?,
-                    content,
-                    None,
-                );
-                let local_scope_entry = LocalScopeEntry {
-                    resource: resource,
-                    source: Some(source),
-                };
+                let local_scope_entry = LocalScopeEntry { vrkai: vrkai };
                 files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
             }
         }

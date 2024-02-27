@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
 use shinkai_vector_resources::{
     source::{SourceFile, VRSource},
@@ -59,7 +59,7 @@ impl fmt::Debug for JobScope {
         let local_ids: Vec<String> = self
             .local
             .iter()
-            .map(|entry| match &entry.resource {
+            .map(|entry| match &entry.vrkai.resource {
                 BaseVectorResource::Document(doc) => doc.resource_id().to_string(),
                 BaseVectorResource::Map(map) => map.resource_id().to_string(),
             })
@@ -89,8 +89,7 @@ pub enum ScopeEntry {
 /// Job's scope (not in the DB proper/not available to other jobs)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LocalScopeEntry {
-    pub resource: BaseVectorResource,
-    pub source: Option<SourceFile>,
+    pub vrkai: VRKai,
 }
 
 /// A Scope Entry for a file/vector resource that is saved in the VectorFS

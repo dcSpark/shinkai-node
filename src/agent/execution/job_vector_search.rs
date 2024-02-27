@@ -24,7 +24,7 @@ impl JobManager {
 
         // Add local resources to the list
         for local_entry in &job_scope.local {
-            resources.push(local_entry.resource.clone());
+            resources.push(local_entry.vrkai.resource.clone());
         }
 
         let mut vec_fs = vector_fs.lock().await;
