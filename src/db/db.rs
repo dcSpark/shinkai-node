@@ -2,8 +2,7 @@ use super::db_errors::ShinkaiDBError;
 use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
 use chrono::{DateTime, Utc};
 use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
-    Options, SingleThreaded, WriteBatch, DB,
+    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode, LogLevel, Options, SingleThreaded, WriteBatch, DB
 };
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
@@ -71,26 +70,11 @@ impl ShinkaiDB {
         } else {
             // If the database file does not exist, use the default list of column families
             vec![
-                Topic::Inbox.as_str().to_string(), // Merge with Jobs (!)
-                // Topic::ProfilesEncryptionKey.as_str().to_string(), // Merge to NodeAndUsers
-                // Topic::ProfilesIdentityKey.as_str().to_string(), // Merge to NodeAndUsers
-                // Topic::DevicesEncryptionKey.as_str().to_string(), // Merge to NodeAndUsers
-                // Topic::DevicesIdentityKey.as_str().to_string(), // Merge to NodeAndUsers
-                // Topic::DevicesPermissions.as_str().to_string(), // Merge to NodeAndUsers
-                Topic::ScheduledMessage.as_str().to_string(), // Merge with MessagesToRetry
+                Topic::Inbox.as_str().to_string(),
+                Topic::ScheduledMessage.as_str().to_string(),
                 Topic::AllMessages.as_str().to_string(),
-                // Topic::AllMessagesTimeKeyed.as_str().to_string(), // Merge with AllMessages
-                // Topic::OneTimeRegistrationCodes.as_str().to_string(), // Merge with NodeAndUsers
-                // Topic::ProfilesIdentityType.as_str().to_string(), // Merge with NodeAndUsers
-                // Topic::ProfilesPermission.as_str().to_string(), // Merge with NodeAndUsers
-                // Topic::ExternalNodeIdentityKey.as_str().to_string(), // Merge with NodeAndUsers
-                // Topic::ExternalNodeEncryptionKey.as_str().to_string(), // Merge with NodeAndUsers
-                // Topic::Agents.as_str().to_string(), // Merge with NodeAndUsers
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
-                // Topic::MessageBoxSymmetricKeysTimes.as_str().to_string(), // Mege with MessageBoxSymmetricKeys
-                // Topic::InternalComms.as_str().to_string(), // Merge with NodeAndUsers
-                // Filtered
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::TempFilesInbox.as_str().to_string(),
                 Topic::JobQueues.as_str().to_string(),
@@ -129,7 +113,7 @@ impl ShinkaiDB {
         let stats = db_opts.get_statistics().expect("Statistics should be enabled");
 
         // After opening the database
-        // println!("RocksDB stats: {}", stats);
+        println!("RocksDB stats: {}", stats);
 
         Ok(shinkai_db)
     }
@@ -138,6 +122,8 @@ impl ShinkaiDB {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
+        cf_opts.set_db_log_dir("./rocksdb_logs");
+        cf_opts.set_log_level(LogLevel::Debug);
 
         cf_opts.set_allow_concurrent_memtable_write(true);
         cf_opts.set_enable_write_thread_adaptive_yield(true);
@@ -162,11 +148,6 @@ impl ShinkaiDB {
         }
 
         cf_opts
-    }
-
-    pub fn compact_db(&self) -> Result<(), Error> {
-        self.db.compact_range(None::<&[u8]>, None::<&[u8]>); // Compact the entire database
-        Ok(())
     }
 
     /// Required for intra-communications between node UI and node
