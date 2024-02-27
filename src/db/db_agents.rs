@@ -82,7 +82,6 @@ impl ShinkaiDB {
 
         // Prefix used to identify all keys related to the agent
         let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
-        eprintln!("agent_id_for_db during remove: {}", agent_id_for_db);
         let agent_prefix = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
 
         // Check if the agent exists
@@ -102,7 +101,6 @@ impl ShinkaiDB {
                     // Convert the key from bytes to a UTF-8 string
                     let key_str = String::from_utf8(key.to_vec())
                         .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
-                    eprintln!("key for removing: {:?}", key_str);
                     batch.delete_cf(cf_node_and_users, &key_str);
                 }
                 Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
@@ -181,7 +179,6 @@ impl ShinkaiDB {
 
     pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
         let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
-        eprintln!("agent_id_for_db: {}", agent_id_for_db);
 
         // Fetch the agent's bytes by their prefixed id from the NodeAndUsers topic
         let prefixed_id = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
@@ -191,7 +188,6 @@ impl ShinkaiDB {
         // If the agent was found, deserialize the bytes into an agent object and return it
         if let Some(bytes) = agent_bytes {
             let agent: SerializedAgent = from_slice(&bytes)?;
-            eprintln!("agent: {:?}", agent);
             Ok(Some(agent))
         } else {
             Err(ShinkaiDBError::DataNotFound)
@@ -307,7 +303,6 @@ impl ShinkaiDB {
 
         // Assuming get_all_agents fetches all agents from the NodeAndUsers topic
         let all_agents = self.get_all_agents()?;
-        eprintln!("\n\n all_agents: {:?}", all_agents);
 
         // Iterate over all agents
         for agent in all_agents {
@@ -327,7 +322,6 @@ impl ShinkaiDB {
                         // Extract profile name from the key
                         let key_str = String::from_utf8(key.to_vec())
                             .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
-                        eprintln!("key_str: {:?}", key_str);
                         // Check if the extracted profile name matches the input profile name
                         if key_str.ends_with(&format!("_{}", profile)) {
                             has_access = true;

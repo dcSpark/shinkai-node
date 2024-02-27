@@ -172,7 +172,6 @@ impl ShinkaiDB {
             Some(value) => RegistrationCodeInfo::from_slice(&value),
             None => return Err(ShinkaiDBError::CodeNonExistent),
         };
-        eprintln!("Code info: {:?}", code_info);
 
         if code_info.status != RegistrationCodeStatus::Unused {
             return Err(ShinkaiDBError::CodeAlreadyUsed);
@@ -223,8 +222,6 @@ impl ShinkaiDB {
                             identity_type: StandardIdentityType::Profile,
                             permission_type: code_info.permission.clone(),
                         };
-
-                        eprintln!("Profile: {:?}", profile);
 
                         self.insert_profile(profile)?;
                     }

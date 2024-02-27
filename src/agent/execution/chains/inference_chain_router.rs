@@ -116,7 +116,6 @@ impl JobManager {
                         None,
                     )
                     .await?;
-                    eprintln!("Inference response content: {:?}", inference_response_content);
 
                     new_execution_context.insert(
                         "previous_step_response".to_string(),
@@ -174,7 +173,6 @@ impl JobManager {
                     )
                     .await?;
                     inference_response_content = response.summary;
-                    eprintln!("Inference response content: {:?}", inference_response_content);
 
                     new_execution_context
                         .insert("previous_step_response".to_string(), inference_response_content.clone());
@@ -196,8 +194,6 @@ impl JobManager {
                         6, // TODO: Make this configurable
                     )
                     .await?;
-
-                    eprintln!("Inference response content: {:?}", inference_response_content);
 
                     new_execution_context
                         .insert("previous_step_response".to_string(), inference_response_content.clone());

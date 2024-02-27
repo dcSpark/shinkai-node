@@ -515,7 +515,6 @@ impl JobManager {
 
         // Start processing the files
         for (filename, content) in files.into_iter() {
-            eprintln!("Processing file: {}", filename);
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,

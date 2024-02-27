@@ -224,8 +224,6 @@ impl IdentityManager {
         {
             Ok(identity_network_manager) => match identity_network_manager.first_address() {
                 Ok(first_address) => {
-                    eprintln!("first_address: {:?}", first_address);
-                    eprintln!("identity_network_manager: {:?}", identity_network_manager);
                     let encryption_key = match identity_network_manager.encryption_public_key() {
                         Ok(key) => key,
                         Err(e) => return Err(format!("Failed to get encryption public key: {}", e.to_string())),

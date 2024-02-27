@@ -176,7 +176,6 @@ impl ShinkaiDB {
             Ok(Some(value)) => Ok(value == b"true"),
             Ok(None) => Ok(false),
             Err(e) => {
-                eprintln!("Error reading needs_reset: {:?}", e);
                 Err(e)
             }
         }
@@ -216,7 +215,6 @@ impl ShinkaiDB {
     pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();
-        eprintln!("insert_message_to_all> hash_key: {:?}", hash_key);
 
         // Clone the external_metadata first, then unwrap
         let cloned_external_metadata = message.external_metadata.clone();
@@ -256,17 +254,14 @@ impl ShinkaiDB {
 
         // Reversed timekeyed
         // Convert time_key to DateTime<Utc>
-        eprintln!("insert_message_to_all> time_key: {:?}", time_key);
         let time_key_date = DateTime::parse_from_rfc3339(&time_key)
             .map_err(|e| {
-                eprintln!("DateTime parsing error: {:?}", e);
                 ShinkaiDBError::InvalidData
             })?
             .with_timezone(&Utc);
 
         // Convert time_key_date to Unix time
         let time_key_unix_millis = time_key_date.timestamp_millis();
-        eprintln!("insert_message_to_all> time_key_unix: {:?}", time_key_unix_millis);
 
         // Calculate reverse time key by subtracting from Unix time of 2100-01-01
         let future_time = DateTime::parse_from_rfc3339("2420-01-01T00:00:00Z")
@@ -394,8 +389,6 @@ impl ShinkaiDB {
 
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         let messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
-
-        self.debug_print_all_message_keys();
 
         // Use a prefix search for keys starting with "all_messages_time_keyed_"
         let prefix = "all_messages_reversed_time_keyed__PLACEHOLDER__";

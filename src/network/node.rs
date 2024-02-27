@@ -722,7 +722,6 @@ impl Node {
         save_to_db_flag: bool,
         retry: Option<u32>,
     ) {
-        eprintln!("Sending message to peer: {:?}", peer);
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,

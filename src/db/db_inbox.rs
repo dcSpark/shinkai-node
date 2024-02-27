@@ -58,7 +58,6 @@ impl ShinkaiDB {
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        eprintln!("insert message> Message: {:?}", message);
 
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
@@ -77,9 +76,7 @@ impl ShinkaiDB {
 
         // Construct keys with inbox_name as part of the key
         let inbox_key = format!("inbox_placeholder_value_to_match_prefix_abcdef_{}", inbox_name);
-        eprintln!("insert message> Inbox key: {}", inbox_key);
         let fixed_inbox_key = format!("inbox_{}", inbox_name_manager.hash_value_first_half());
-        eprintln!("insert message> fixed inbox key: {}", fixed_inbox_key);
 
         // Check if the inbox exists and if not, create it
         if self.db.get_cf(cf_inbox, inbox_key.as_bytes())?.is_none() {
@@ -114,7 +111,6 @@ impl ShinkaiDB {
                 }
             }
         };
-        eprintln!("insert message> Parent key: {:?}", parent_key);
 
         // Note(Nico): We are not going to let add messages older than its parent if it's a JobInbox
         // If the inbox is of type JobInbox, fetch the parent message and compare its scheduled_time
@@ -150,7 +146,6 @@ impl ShinkaiDB {
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}_message_{}:::{}", fixed_inbox_key, time_key, hash_key);
-        println!("insert message> Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -162,9 +157,6 @@ impl ShinkaiDB {
 
         // If this message has a parent, add this message as a child of the parent
         if let Some(parent_key) = parent_key {
-            // eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
-            // eprintln!("Inbox name: {}", inbox_name);
-
             // Construct a key for storing child messages of a parent
             let parent_children_key = format!("{}_children_{}", fixed_inbox_key, parent_key);
 
@@ -319,15 +311,12 @@ impl ShinkaiDB {
         let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
         let perm_val = perm.to_i32().to_string(); // Convert permission to i32 and then to String
 
-        eprintln!("Adding permission: {} to inbox: {}", perm_val, perms_key);
         match self.db.put_cf(cf_inbox, perms_key.as_bytes(), perm_val.as_bytes()) {
             Ok(_) => (),
             Err(e) => {
                 eprintln!("Error adding permission: {}", e);
             }
         }
-
-        eprintln!("Permission added: {} to inbox: {}", perm_val, perms_key);
 
         Ok(())
     }
@@ -418,7 +407,6 @@ impl ShinkaiDB {
         // Construct the permissions key similar to how it's done in add_permission_with_profile
         let perms_key = format!("{}_perms_{}", inbox_name, profile_name);
 
-        eprintln!("Checking permission for: {}", perms_key);
         // Attempt to fetch the permission value for the constructed key
         match self.db.get_cf(cf_inbox, perms_key.as_bytes())? {
             Some(val) => {
@@ -464,18 +452,6 @@ impl ShinkaiDB {
             )));
         }
 
-        // Debugging: Print out ALL keys in the Inbox column family
-        let all_keys_iter = self.db.iterator_cf(cf_inbox, rocksdb::IteratorMode::Start);
-        for item in all_keys_iter {
-            match item {
-                Ok((key, _)) => {
-                    let key_str = String::from_utf8_lossy(&key);
-                    eprintln!("All Inbox keys: {}", key_str);
-                }
-                Err(e) => eprintln!("Error iterating over all keys: {}", e),
-            }
-        }
-
         // Create ReadOptions and set the prefix_sa
         let prefix = "inbox_placeholder_value_to_match_prefix_abcdef_"; // Define the prefix for the iterator
 
@@ -483,22 +459,18 @@ impl ShinkaiDB {
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
 
         let mut inboxes = Vec::new();
-        eprintln!("Iterating over inboxes");
         for item in iter {
             // Handle the Result returned by the iterator
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8_lossy(&key);
-                    eprintln!("Inbox result key: {}", key_str);
 
                     // Attempt to strip the prefix from the key_str
                     if let Some(stripped_key_str) = key_str.strip_prefix(prefix) {
-                        eprintln!("Stripped Inbox key: {}", stripped_key_str);
                         if stripped_key_str.contains(&profile_name_identity.full_identity_name.to_string()) {
                             inboxes.push(stripped_key_str.to_string());
                         } else {
                             // Check if the identity has read permission for the inbox
-                            eprintln!("Checking permission for: {}", stripped_key_str);
                             if let Ok(has_perm) =
                                 self.has_permission(stripped_key_str, &profile_name_identity, InboxPermission::Read)
                             {

@@ -191,7 +191,6 @@ pub fn init_default_tracing() {
             };
 
             let filter = tracing_subscriber::EnvFilter::new(filter_level);
-            eprintln!("RUST_LOG: {:?}", filter);
 
             let subscriber = tracing_subscriber::fmt::Subscriber::builder()
                 .with_env_filter(filter)

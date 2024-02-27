@@ -41,7 +41,6 @@ impl ShinkaiDB {
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8(key.to_vec()).unwrap();
-                    eprintln!("key_str: {}", key_str);
                     // Check if the key starts with the specific prefix for profiles
                     if key_str.starts_with("identity_key_of_") {
                         return Ok(true); // Return true upon finding the first profile
@@ -310,7 +309,6 @@ impl ShinkaiDB {
         let device_name = device_name
             .get_fullname_without_node_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(device_name.to_string()))?;
-        eprintln!("device_name: {}", device_name);
 
         // Use Topic::NodeAndUsers with specific prefixes to access device permissions
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;

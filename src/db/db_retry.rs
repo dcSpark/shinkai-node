@@ -21,7 +21,6 @@ impl ShinkaiDB {
         retry_message: &RetryMessage,
         retry_time: DateTime<Utc>,
     ) -> Result<(), ShinkaiDBError> {
-        eprintln!("retry_message: {:?}", retry_message);
         // Calculate the hash of the message for the key
         let hash_key = retry_message.message.calculate_message_hash_for_pagination();
 
@@ -32,7 +31,6 @@ impl ShinkaiDB {
             retry_message.retry_count,
             hash_key
         );
-        eprintln!("composite_key: {:?}", composite_key);
 
         // Serialize RetryMessage into bytes for storage
         let retry_message_bytes = bincode::serialize(retry_message).map_err(|_| ShinkaiDBError::InvalidData)?;
@@ -49,8 +47,6 @@ impl ShinkaiDB {
 
     /// Removes a message from the MessagesToRetry column family.
     pub fn remove_message_from_retry(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
-        eprintln!("remove_message_from_retry");
-        eprintln!("message: {:?}", message);
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();
 
