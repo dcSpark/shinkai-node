@@ -45,7 +45,7 @@ impl JobManager {
     pub async fn process_files_into_vrkai(
         files: Vec<(String, Vec<u8>)>,
         generator: &dyn EmbeddingGenerator,
-        agent: SerializedAgent,
+        agent: Option<SerializedAgent>,
         unstructured_api: UnstructuredAPI,
     ) -> Result<Vec<(String, VRKai)>, AgentError> {
         let (vrkai_files, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
@@ -102,20 +102,31 @@ impl JobManager {
 
     ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
     ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
-    ///  and returns a finalized BaseVectorResource.
+    ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
     /// Note: The file name must include the extension ie. `*.pdf`
     pub async fn parse_file_into_resource_gen_desc(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         parsing_tags: &Vec<DataTag>,
-        agent: SerializedAgent,
+        agent: Option<SerializedAgent>,
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
         let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
-        let desc = Self::generate_description(&elements, agent).await?;
+        let mut desc = String::new();
+        if let Some(actual_agent) = agent {
+            desc = Self::generate_description(&elements, actual_agent).await?;
+        } else {
+            desc = elements
+                .iter()
+                .take_while(|e| desc.len() + e.text.len() <= max_node_size as usize)
+                .map(|e| e.text.as_str())
+                .collect::<Vec<&str>>()
+                .join(" ");
+        }
+
         ParsingHelper::parse_elements_into_resource(
             elements,
             generator,

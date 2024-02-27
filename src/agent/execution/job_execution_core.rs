@@ -493,12 +493,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
-        // Handle the None case if the agent is not found
-        let agent = match agent {
-            Some(agent) => agent,
-            None => return Err(AgentError::AgentNotFound),
-        };
-
         // Create the RemoteEmbeddingGenerator instance
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
@@ -516,7 +510,7 @@ impl JobManager {
         let processed_vrkais =
             JobManager::process_files_into_vrkai(files, &generator, agent.clone(), unstructured_api.clone()).await?;
 
-        // Start processing the files
+        // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {
             // Now create Local/VectorFSScopeEntry depending on setting
             if let Some(folder_path) = &save_to_vector_fs_folder {
