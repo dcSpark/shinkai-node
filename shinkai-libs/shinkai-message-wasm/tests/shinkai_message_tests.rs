@@ -81,7 +81,7 @@ mod tests {
         // Check if the original and deserialized messages are the same
         assert_eq!(
             message_wrapper.calculate_blake3_hash(),
-            deserialized_message.calculate_message_hash()
+            deserialized_message.calculate_message_hash_for_pagination()
         );
     }
 

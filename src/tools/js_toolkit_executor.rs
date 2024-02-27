@@ -133,7 +133,6 @@ impl JSToolkitExecutor {
 
     // Submits a get request to the JS Toolkit Executor
     async fn submit_get_request(&self, endpoint: &str) -> Result<JsonValue, ToolError> {
-        eprintln!("Submitting GET request to: {}", endpoint);
         let client = reqwest::Client::new();
         let address = match self {
             JSToolkitExecutor::Local(process) => &process.address,
@@ -142,7 +141,6 @@ impl JSToolkitExecutor {
 
         let response = client.get(&format!("{}{}", address, endpoint)).send().await?;
 
-        eprintln!("Response: {:?}", response);
         Ok(response.json().await?)
     }
 

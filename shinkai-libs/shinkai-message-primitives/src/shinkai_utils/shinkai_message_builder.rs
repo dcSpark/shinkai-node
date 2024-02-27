@@ -1,4 +1,4 @@
-use crate::shinkai_utils::job_scope::JobScope;
+use crate::{shinkai_message::shinkai_message::NodeApiData, shinkai_utils::job_scope::JobScope};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

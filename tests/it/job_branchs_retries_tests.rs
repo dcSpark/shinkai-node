@@ -24,7 +24,7 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
         .await
         .unwrap();
     let node1_last_messages = res1_receiver.recv().await.unwrap();
-    let msg_hash = node1_last_messages[0].calculate_message_hash();
+    let msg_hash = node1_last_messages[0].calculate_message_hash_for_pagination();
 
     let start = Instant::now();
     loop {
@@ -38,10 +38,10 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
             .unwrap();
         let node1_last_messages = res1_receiver.recv().await.unwrap();
         // eprintln!("node1_last_messages: {:?}", node1_last_messages);
-        // eprintln!("node1_last_messages[0] hash: {:?}", node1_last_messages[0].calculate_message_hash());
-        // eprintln!("node1_last_messages[1] hash: {:?}", node1_last_messages[1].calculate_message_hash());
+        // eprintln!("node1_last_messages[0] hash: {:?}", node1_last_messages[0].calculate_message_hash_for_pagination());
+        // eprintln!("node1_last_messages[1] hash: {:?}", node1_last_messages[1].calculate_message_hash_for_pagination());
 
-        if node1_last_messages.len() == 2 && node1_last_messages[1].calculate_message_hash() == msg_hash {
+        if node1_last_messages.len() == 2 && node1_last_messages[1].calculate_message_hash_for_pagination() == msg_hash {
             break;
         }
 
@@ -262,7 +262,7 @@ fn job_branchs_retries_tests() {
                             .unwrap()
                             .contains("hello are u there? (3)")
                     {
-                        message2_hash = Some(node1_last_messages[2].calculate_message_hash());
+                        message2_hash = Some(node1_last_messages[2].calculate_message_hash_for_pagination());
                         inbox_name = Some(node1_last_messages[2].get_message_inbox().unwrap());
                         break;
                     }

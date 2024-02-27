@@ -49,7 +49,6 @@ impl LLMProvider for ShinkaiBackend {
             if let Some(key) = api_key {
                 let messages_json = match self.model_type.as_str() {
                     "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
-                        eprintln!("openai type");
                         let open_ai = OpenAI {
                             model_type: self.model_type.clone(),
                         };
@@ -93,8 +92,6 @@ impl LLMProvider for ShinkaiBackend {
                 let payload_string =
                     serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
 
-                eprintln!("Calling LLM: {:?}", payload_string);
-
                 // eprintln!("Curl command:");
                 // eprintln!("curl -X POST \\");
                 // eprintln!("  -H 'Content-Type: application/json' \\");
@@ -113,8 +110,6 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Request Details: {:?}", request).as_str(),
                 );
-                eprintln!("Request Details: {:?}", request);
-
                 let res = request.send().await?;
 
                 shinkai_log(
@@ -129,7 +124,6 @@ impl LLMProvider for ShinkaiBackend {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-                eprintln!("Call API Response Text: {:?}", response_text);
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
