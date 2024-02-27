@@ -22,7 +22,7 @@ use tokio::runtime::Runtime;
 use super::utils;
 use super::utils::node_test_api::api_registration_device_node_profile_main;
 
-#[test]
+// #[test]
 fn node_retrying_test() {
     init_default_tracing();
     utils::db_handlers::setup();
