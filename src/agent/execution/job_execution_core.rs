@@ -18,7 +18,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -521,7 +521,7 @@ impl JobManager {
                 ShinkaiLogLevel::Debug,
                 &format!("Processing file: {}", filename),
             );
-            // TODO: is file is different than .kai
+            // TODO: Switch to using JobManager::process_files_into_vrkai
             let resource = JobManager::parse_file_into_resource_gen_desc(
                 content.clone(),
                 &generator,
@@ -536,7 +536,6 @@ impl JobManager {
             // Now create Local/VectorFSScopeEntry depending on setting
             let text_chunking_strategy = TextChunkingStrategy::V1;
             if let Some(folder_path) = &save_to_vector_fs_folder {
-                // TODO: Save to VectorFS
                 let resource_header = resource.as_trait_object().generate_resource_header();
                 let fs_scope_entry = VectorFSScopeEntry {
                     resource_header: resource_header,

@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::{DistributionOrigin, SourceFileMap};
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSource, VectorResourceCore},
@@ -404,7 +404,7 @@ impl VectorFS {
         Ok(new_folder)
     }
 
-    /// Creates a new FSFolder at the writer's path.
+    /// Creates a new FSFolder underneath the writer's path.
     pub fn create_new_folder(&mut self, writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
         let current_datetime = ShinkaiTime::generate_time_now();
@@ -455,6 +455,13 @@ impl VectorFS {
         self.db.write_pb(write_batch)?;
 
         Ok(new_folder)
+    }
+
+    /// Saves a VRKai into an FSItem, underneath the FSFolder at the writer's path.
+    /// If a FSItem with the same name (as the VR) already exists underneath the current path, then updates(overwrites) it.
+    /// Does not support saving into VecFS root.
+    pub fn save_vrkai_in_folder(&mut self, writer: &VFSWriter, vrkai: VRKai) -> Result<FSItem, VectorFSError> {
+        self.save_vector_resource_in_folder(writer, vrkai.resource, vrkai.sfm, vrkai.distribution_origin)
     }
 
     /// Saves a Vector Resource and optional SourceFile into an FSItem, underneath the FSFolder at the writer's path.

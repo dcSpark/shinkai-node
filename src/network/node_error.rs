@@ -1,8 +1,12 @@
-use crate::{agent::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError};
+use crate::{
+    agent::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
+    vector_fs::vector_fs_error::VectorFSError,
+};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_vector_resources::resource_errors::VRError;
 
 #[derive(Debug)]
 pub struct NodeError {
@@ -27,6 +31,22 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
 
 impl From<std::io::Error> for NodeError {
     fn from(err: std::io::Error) -> NodeError {
+        NodeError {
+            message: format!("{}", err),
+        }
+    }
+}
+
+impl From<VectorFSError> for NodeError {
+    fn from(err: VectorFSError) -> NodeError {
+        NodeError {
+            message: format!("{}", err),
+        }
+    }
+}
+
+impl From<VRError> for NodeError {
+    fn from(err: VRError) -> NodeError {
         NodeError {
             message: format!("{}", err),
         }

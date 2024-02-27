@@ -8,12 +8,13 @@ use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::TextChunkingStrategy;
+use shinkai_vector_resources::source::{SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType};
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
+use std::collections::HashMap;
 use std::io::Cursor;
 
 impl JobManager {
@@ -37,6 +38,47 @@ impl JobManager {
         eprintln!("LLM Generated File Description: {:?}", desc);
         Ok(desc.unwrap_or_else(|| "".to_string()))
     }
+
+    // TODO: Make this work by updating inputs and being generic
+    // /// Processes the list of files into VRKai structs ready to be used/saved/etc.
+    // /// Supports both `.vrkai` files, and standard doc/html/etc which get generated into VRs.
+    // async fn process_files_into_vrkai(files: Vec<(String, Vec<u8>)>) -> Result<Vec<VRKai>, AgentError> {
+    //     let (vrkai_files, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+    //         files.into_iter().partition(|(name, _)| name.ends_with(".vrkai"));
+    //     let mut success_messages = Vec::new();
+    //     let mut processed_vrkais = vec![];
+
+    //     // Parse & save the VRKai files
+    //     for vrkai_file in vrkai_files {
+    //         processed_vrkais.push(VRKai::from_bytes(&vrkai_file.1)?)
+    //     }
+
+    //     // TODO: Implement parsing non vr-kai files.
+    //     for file in other_files {
+    //         let content = file.1;
+    //         let filename = file.0;
+
+    //         let resource = JobManager::parse_file_into_resource_gen_desc(
+    //             content.clone(),
+    //             &generator,
+    //             filename.clone(),
+    //             &vec![],
+    //             agent.clone(),
+    //             400,
+    //             unstructured_api.clone(),
+    //         )
+    //         .await?;
+
+    //         let file_type = SourceFileType::detect_file_type(&file.0)?;
+    //         let source = SourceFile::new_standard_source_file(file.0, file_type, file.1, None);
+    //         let mut source_map = SourceFileMap::new(HashMap::new());
+    //         source_map.add_source_file(VRPath::root(), source);
+
+    //         let vrkai = VRKai::from_base_vector_resource(resource, Some(source_map), None);
+    //     }
+
+    //     Ok(processed_vrkais)
+    // }
 
     ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
     ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
