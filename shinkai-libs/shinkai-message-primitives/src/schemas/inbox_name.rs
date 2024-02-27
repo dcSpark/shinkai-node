@@ -198,7 +198,8 @@ mod tests {
     use crate::{
         shinkai_message::{
             shinkai_message::{
-                ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiVersion
+                ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData,
+                ShinkaiVersion,
             },
             shinkai_message_schemas::MessageSchemaType,
         },
@@ -311,6 +312,7 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -321,7 +323,6 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: None
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -351,6 +352,7 @@ mod tests {
                     inbox: "1nb0x::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::truee".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -361,7 +363,6 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: None
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -463,6 +464,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -473,11 +479,6 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: Some(NodeApiData {
-                    parent_hash: "".into(),
-                    node_message_hash: "node_message_hash".into(),
-                    node_timestamp: "20230714T19363326163".into(),
-                })
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -504,6 +505,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "parent_hash".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -514,11 +520,6 @@ mod tests {
                     .into(),
                 other: "".into(),
                 intra_sender: "".into(),
-                node_api_data: Some(NodeApiData {
-                    parent_hash: "parent_hash".into(),
-                    node_message_hash: "node_message_hash".into(),
-                    node_timestamp: "20230714T19363326163".into(),
-                })
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
