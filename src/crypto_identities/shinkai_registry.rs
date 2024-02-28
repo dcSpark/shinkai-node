@@ -158,8 +158,17 @@ impl ShinkaiRegistry {
             ShinkaiRegistryError::AbiError(ethers::abi::Error::InvalidData)
         })?;
 
-        let abi = fs::read_to_string(abi_path).map_err(ShinkaiRegistryError::IoError)?;
-        let abi: Abi = serde_json::from_str(&abi).map_err(ShinkaiRegistryError::JsonError)?;
+        let mut abi_json = include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string();
+        if !abi_path.is_empty() {
+            abi_json = fs::read_to_string(abi_path).map_err(ShinkaiRegistryError::IoError)?;
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::CryptoIdentity,
+                ShinkaiLogLevel::Info,
+                "Using default ABI",
+            );
+        }
+        let abi: Abi = serde_json::from_str(&abi_json).map_err(ShinkaiRegistryError::JsonError)?;
 
         let contract = Contract::new(contract_address, abi, Arc::new(provider));
         Ok(Self {
