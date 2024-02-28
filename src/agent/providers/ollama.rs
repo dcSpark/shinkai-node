@@ -2,7 +2,6 @@ use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::shared::ollama::OllamaAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -37,115 +36,111 @@ impl LLMProvider for Ollama {
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
-            if let Some(_) = api_key {
-                let url = format!("{}{}", base_url, "/api/generate");
-                let ollama = Ollama {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::Ollama(ollama);
-                let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
-                let (messages_string, asset_content) = match messages_result.value {
-                    PromptResultEnum::Text(v) => (v, None),
-                    PromptResultEnum::ImageAnalysis(v, i) => (v, Some(i)),
-                    _ => {
-                        return Err(AgentError::UnexpectedPromptResultVariant(
-                            "Expected Value variant in PromptResultEnum".to_string(),
-                        ))
-                    }
-                };
-
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Info,
-                    format!("Messages JSON: {:?}", messages_string).as_str(),
-                );
-
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "prompt": messages_string,
-                    "format": "json",
-                    "stream": true, // Yeah let's go wild and stream the response
-                    // Include any other optional parameters as needed
-                    // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
-                });
-
-                if let Some(asset_content) = asset_content {
-                    let asset_content_str = asset_content.to_string();
-                    payload["images"] = json!([asset_content_str]);
+            let url = format!("{}{}", base_url, "/api/generate");
+            let ollama = Ollama {
+                model_type: self.model_type.clone(),
+            };
+            let model = AgentLLMInterface::Ollama(ollama);
+            let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
+            let (messages_string, asset_content) = match messages_result.value {
+                PromptResultEnum::Text(v) => (v, None),
+                PromptResultEnum::ImageAnalysis(v, i) => (v, Some(i)),
+                _ => {
+                    return Err(AgentError::UnexpectedPromptResultVariant(
+                        "Expected Value variant in PromptResultEnum".to_string(),
+                    ))
                 }
+            };
 
-                let mut payload_log = payload.clone();
-                truncate_image_content_in_payload(&mut payload_log);
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Info,
+                format!("Messages JSON: {:?}", messages_string).as_str(),
+            );
 
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", payload_log).as_str(),
-                );
+            let mut payload = json!({
+                "model": self.model_type,
+                "prompt": messages_string,
+                "format": "json",
+                "stream": true, // Yeah let's go wild and stream the response
+                // Include any other optional parameters as needed
+                // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
+            });
 
-                let res = client.post(url).json(&payload).send().await?;
+            if let Some(asset_content) = asset_content {
+                let asset_content_str = asset_content.to_string();
+                payload["images"] = json!([asset_content_str]);
+            }
 
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Call API Status: {:?}", res.status()).as_str(),
-                );
+            let mut payload_log = payload.clone();
+            truncate_image_content_in_payload(&mut payload_log);
 
-                let mut stream = res.bytes_stream();
-                let mut response_text = String::new();
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Call API Body: {:?}", payload_log).as_str(),
+            );
 
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(chunk) => {
-                            let chunk_str = String::from_utf8_lossy(&chunk);
-                            let chunk_str = chunk_str.chars().filter(|c| !c.is_control()).collect::<String>();
-                            let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
-                            match data_resp {
-                                Ok(data) => {
-                                    if let Some(response) = data.response.as_str() {
-                                        response_text.push_str(response);
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to parse line: {:?}", e);
-                                    // Handle JSON parsing error here...
+            let res = client.post(url).json(&payload).send().await?;
+
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Call API Status: {:?}", res.status()).as_str(),
+            );
+
+            let mut stream = res.bytes_stream();
+            let mut response_text = String::new();
+
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(chunk) => {
+                        let chunk_str = String::from_utf8_lossy(&chunk);
+                        let chunk_str = chunk_str.chars().filter(|c| !c.is_control()).collect::<String>();
+                        let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
+                        match data_resp {
+                            Ok(data) => {
+                                if let Some(response) = data.response.as_str() {
+                                    response_text.push_str(response);
                                 }
                             }
+                            Err(e) => {
+                                eprintln!("Failed to parse line: {:?}", e);
+                                // Handle JSON parsing error here...
+                            }
                         }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source())
-                                    .as_str(),
-                            );
-                            return Err(AgentError::NetworkError(e.to_string()));
-                        }
-                    }
-                }
-
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Info,
-                    format!("Call API Response Text: {:?}", response_text).as_str(),
-                );
-
-                match serde_json::from_str::<JsonValue>(&response_text) {
-                    Ok(deserialized_json) => {
-                        let response_string = deserialized_json.to_string();
-                        Self::extract_first_json_object(&response_string)
                     }
                     Err(e) => {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Failed to deserialize response: {:?}", e).as_str(),
+                            format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source())
+                                .as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        return Err(AgentError::NetworkError(e.to_string()));
                     }
                 }
-            } else {
-                Err(AgentError::ApiKeyNotSet)
+            }
+
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Info,
+                format!("Call API Response Text: {:?}", response_text).as_str(),
+            );
+
+            match serde_json::from_str::<JsonValue>(&response_text) {
+                Ok(deserialized_json) => {
+                    let response_string = deserialized_json.to_string();
+                    Self::extract_first_json_object(&response_string)
+                }
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        format!("Failed to deserialize response: {:?}", e).as_str(),
+                    );
+                    Err(AgentError::SerdeError(e))
+                }
             }
         } else {
             Err(AgentError::UrlNotSet)
