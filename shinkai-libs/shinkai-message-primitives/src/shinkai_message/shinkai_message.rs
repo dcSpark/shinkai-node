@@ -36,6 +36,13 @@ pub struct ExternalMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NodeApiData {
+    pub parent_hash: String,
+    pub node_message_hash: String,
+    pub node_timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EncryptedShinkaiBody {
     pub content: String,
 }

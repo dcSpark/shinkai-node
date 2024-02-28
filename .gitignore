@@ -42,3 +42,5 @@ db/.secret
 vector_fs_db
 storage
 .vscode/*
+rocksdb_logs
+perf_testing_storage.zip

@@ -96,7 +96,7 @@ impl ShinkaiMessageWrapper {
 
     #[wasm_bindgen]
     pub fn calculate_blake3_hash(&self) -> String {
-        self.inner.calculate_message_hash()
+        self.inner.calculate_message_hash_for_pagination()
     }
 
     #[wasm_bindgen]

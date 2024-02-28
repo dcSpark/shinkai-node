@@ -46,8 +46,8 @@ mod tests {
 
         // Check if the original and decoded messages are the same
         assert_eq!(
-            message.calculate_message_hash(),
-            decoded_message.calculate_message_hash()
+            message.calculate_message_hash_for_pagination(),
+            decoded_message.calculate_message_hash_for_pagination()
         );
     }
 
@@ -88,8 +88,8 @@ mod tests {
 
         // Check if the original and deserialized messages are the same
         assert_eq!(
-            message.calculate_message_hash(),
-            deserialized_message.calculate_message_hash()
+            message.calculate_message_hash_for_pagination(),
+            deserialized_message.calculate_message_hash_for_pagination()
         );
     }
 
@@ -133,8 +133,8 @@ mod tests {
 
         // Check if the original and deserialized messages are the same
         assert_eq!(
-            message.calculate_message_hash(),
-            deserialized_message.calculate_message_hash()
+            message.calculate_message_hash_for_pagination(),
+            deserialized_message.calculate_message_hash_for_pagination()
         );
     }
 }

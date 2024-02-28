@@ -394,13 +394,10 @@ mod tests {
 
                 // Dequeue from the queue inside the subscriber thread
                 if let Ok(Some(message)) = manager_clone.dequeue("my_queue").await {
-                    println!("Dequeued (from subscriber): {:?}", message);
-
                     // Assert that the subscriber dequeued the correct message
                     assert_eq!(message, msg, "Dequeued message does not match received message");
                 }
 
-                eprintln!("Dequeued (from subscriber): {:?}", msg);
                 // Assert that the queue is now empty
                 match manager_clone.dequeue("my_queue").await {
                     Ok(None) => (),
