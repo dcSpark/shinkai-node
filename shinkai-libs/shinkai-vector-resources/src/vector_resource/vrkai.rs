@@ -26,7 +26,7 @@ impl VRKaiVersion {
 
 /// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap/DistributionOrigin.
 /// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
