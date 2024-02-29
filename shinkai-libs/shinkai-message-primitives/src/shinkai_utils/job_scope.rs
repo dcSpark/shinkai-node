@@ -8,30 +8,44 @@ use shinkai_vector_resources::{
 };
 use std::fmt;
 
+use crate::schemas::shinkai_name::ShinkaiName;
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 /// Job's scope which includes both Local entries (source/vector resource stored locally only in job)
 /// and VecFS entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
     pub local: Vec<LocalScopeEntry>,
-    pub vector_fs: Vec<VectorFSScopeEntry>,
+    pub vector_fs_items: Vec<VectorFSItemScopeEntry>,
+    pub vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
 }
 
 impl JobScope {}
 impl JobScope {
-    pub fn new(local: Vec<LocalScopeEntry>, vector_fs: Vec<VectorFSScopeEntry>) -> Self {
-        Self { local, vector_fs }
-    }
-
-    pub fn new_default() -> Self {
+    /// Create a new JobScope
+    pub fn new(
+        local: Vec<LocalScopeEntry>,
+        vector_fs_items: Vec<VectorFSItemScopeEntry>,
+        vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
+    ) -> Self {
         Self {
-            local: Vec::new(),
-            vector_fs: Vec::new(),
+            local,
+            vector_fs_items,
+            vector_fs_folders,
         }
     }
 
-    /// Checks if the Job Scope is empty (has no entries pointing to VRs)
+    /// Create a new JobScope with empty defaults
+    pub fn new_default() -> Self {
+        Self {
+            local: Vec::new(),
+            vector_fs_items: Vec::new(),
+            vector_fs_folders: Vec::new(),
+        }
+    }
+
+    /// Checks if the Job Scope is empty (has no entries)
     pub fn is_empty(&self) -> bool {
-        self.local.is_empty() && self.vector_fs.is_empty()
+        self.local.is_empty() && self.vector_fs_items.is_empty() && self.vector_fs_folders.is_empty()
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
@@ -65,15 +79,22 @@ impl fmt::Debug for JobScope {
             })
             .collect();
 
-        let vector_fs_ids: Vec<String> = self
-            .vector_fs
+        let vector_fs_item_paths: Vec<String> = self
+            .vector_fs_items
             .iter()
-            .map(|entry| entry.resource_header.reference_string())
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let vector_fs_folder_paths: Vec<String> = self
+            .vector_fs_folders
+            .iter()
+            .map(|entry| entry.path.to_string())
             .collect();
 
         f.debug_struct("JobScope")
             .field("local", &format_args!("{:?}", local_ids))
-            .field("vector_fs", &format_args!("{:?}", vector_fs_ids))
+            .field("vector_fs_items", &format_args!("{:?}", vector_fs_item_paths))
+            .field("vector_fs_folders", &format_args!("{:?}", vector_fs_folder_paths))
             .finish()
     }
 }
@@ -82,32 +103,38 @@ impl fmt::Debug for JobScope {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ScopeEntry {
     Local(LocalScopeEntry),
-    VectorFS(VectorFSScopeEntry),
+    VectorFSItem(VectorFSItemScopeEntry),
+    VectorFSFolder(VectorFSFolderScopeEntry),
+    NetworkFolder(NetworkFolderScopeEntry),
 }
 
-/// A Scope Entry for a local file/vector resource that only lives in the
-/// Job's scope (not in the DB proper/not available to other jobs)
+/// A Scope Entry for a local VRKai that only lives in the
+/// Job's scope (not in the VectorFS & thus not available to other jobs)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LocalScopeEntry {
     pub vrkai: VRKai,
 }
 
-/// A Scope Entry for a file/vector resource that is saved in the VectorFS
+/// A Scope Entry for a FSItem saved in the VectorFS.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct VectorFSScopeEntry {
-    pub resource_header: VRHeader,
-    pub vector_fs_path: VRPath,
+pub struct VectorFSItemScopeEntry {
+    pub name: String,
+    pub path: VRPath,
+    pub source: VRSource,
 }
 
-// /// A Scope Entry for a file/vector resource that is saved in the VectorFS
-// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-// pub struct VectorFSItemEntry {
-//     pub item: FSItem
-// }
+/// A Scope Entry for a FSFolder saved in the VectorFS.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct VectorFSFolderScopeEntry {
+    pub name: String,
+    pub path: VRPath,
+}
 
-// /// A Scope Entry for a file/vector resource that is saved in the VectorFS
-// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-// pub struct VectorFSFolderEntry {
-//     pub folder: FSFolder
-//     pub item: FSItem
-// }
+/// A Scope Entry for a FSFolder that (potentially) exists on another node's VectorFS (if your node has perms).
+/// Unsupported currently, struct added for future compatibility.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct NetworkFolderScopeEntry {
+    pub name: String,
+    pub external_node: ShinkaiName,
+    pub path: VRPath,
+}

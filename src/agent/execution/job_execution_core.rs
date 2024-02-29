@@ -8,7 +8,7 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSItemScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -451,9 +451,20 @@ impl JobManager {
                                     );
                                 }
                             }
-                            ScopeEntry::VectorFS(fs_entry) => {
-                                if !full_job.scope.vector_fs.contains(&fs_entry) {
-                                    full_job.scope.vector_fs.push(fs_entry);
+                            ScopeEntry::VectorFSItem(fs_entry) => {
+                                if !full_job.scope.vector_fs_items.contains(&fs_entry) {
+                                    full_job.scope.vector_fs_items.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
+                            }
+                            ScopeEntry::VectorFSFolder(fs_entry) => {
+                                if !full_job.scope.vector_fs_folders.contains(&fs_entry) {
+                                    full_job.scope.vector_fs_folders.push(fs_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
@@ -514,16 +525,16 @@ impl JobManager {
         for (filename, vrkai) in processed_vrkais {
             // Now create Local/VectorFSScopeEntry depending on setting
             if let Some(folder_path) = &save_to_vector_fs_folder {
-                let resource_header = vrkai.resource.as_trait_object().generate_resource_header();
-                let fs_scope_entry = VectorFSScopeEntry {
-                    resource_header: resource_header,
-                    vector_fs_path: folder_path.clone(),
+                let fs_scope_entry = VectorFSItemScopeEntry {
+                    name: vrkai.resource.as_trait_object().name().to_string(),
+                    path: folder_path.clone(),
+                    source: vrkai.resource.as_trait_object().source().clone(),
                 };
 
-                // TODO: Save to the vector_fs
+                // TODO: Save to the vector_fs if not None
                 // let vector_fs = self.v
 
-                files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
+                files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
             } else {
                 let local_scope_entry = LocalScopeEntry { vrkai: vrkai };
                 files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
