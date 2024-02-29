@@ -31,9 +31,7 @@ impl JobManager {
 
         let mut vec_fs = vector_fs.lock().await;
         for fs_item in &job_scope.vector_fs_items {
-            let reader = vec_fs
-                .new_reader(profile.clone(), fs_item.path.clone(), profile.clone())
-                .unwrap();
+            let reader = vec_fs.new_reader(profile.clone(), fs_item.path.clone(), profile.clone())?;
 
             let ret_resource = vec_fs.retrieve_vector_resource(&reader)?;
             resources.push(ret_resource);
@@ -50,11 +48,30 @@ impl JobManager {
         vector_fs: Arc<Mutex<VectorFS>>,
         job_scope: &JobScope,
         query: Embedding,
+        query_text: String,
         num_of_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        // TODO: perform deep vector search on folders and only manual search here in the VRs directly
+        let mut retrieved_nodes = Vec::new();
+
+        // Folder deep vector search
+        {
+            let mut vec_fs = vector_fs.lock().await;
+            for folder in &job_scope.vector_fs_folders {
+                let reader = vec_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone())?;
+
+                let ret_fs_nodes = vec_fs
+                    .deep_vector_search(&reader, query_text.clone(), 10, num_of_results)
+                    .await?;
+
+                for fs_node in ret_fs_nodes {
+                    retrieved_nodes.push(fs_node.resource_retrieved_node);
+                }
+            }
+        }
+
+        // Fetch rest of VRs directly
         let resources = JobManager::fetch_job_scope_direct_resources(db, vector_fs, job_scope, profile).await?;
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -63,7 +80,6 @@ impl JobManager {
         );
 
         // Perform vector search on all resources
-        let mut retrieved_nodes = Vec::new();
         for resource in &resources {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
             retrieved_nodes.extend(results);
@@ -75,7 +91,6 @@ impl JobManager {
             &format!("Num of nodes retrieved: {}", retrieved_nodes.len()),
         );
 
-        // TODO: Add the results from the deep search in the folders
         // Sort the retrieved nodes by score before returning
         let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
         let updated_nodes =
