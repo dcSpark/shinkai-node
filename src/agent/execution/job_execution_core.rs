@@ -473,6 +473,17 @@ impl JobManager {
                                     );
                                 }
                             }
+                            ScopeEntry::NetworkFolder(nf_entry) => {
+                                if !full_job.scope.network_folders.contains(&nf_entry) {
+                                    full_job.scope.network_folders.push(nf_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
+                            }
                         }
                     }
                     let mut shinkai_db = db.lock().await;

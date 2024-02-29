@@ -11,12 +11,13 @@ use std::fmt;
 use crate::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
-/// Job's scope which includes both Local entries (source/vector resource stored locally only in job)
-/// and VecFS entries (source/vector resource stored in the DB, accessible to all jobs)
+/// Job's scope which includes both Local entries (vrkai stored locally only in job)
+/// and VecFS entries (source/vector resource stored in the FS, accessible to all jobs)
 pub struct JobScope {
     pub local: Vec<LocalScopeEntry>,
     pub vector_fs_items: Vec<VectorFSItemScopeEntry>,
     pub vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
+    pub network_folders: Vec<NetworkFolderScopeEntry>,
 }
 
 impl JobScope {}
@@ -26,11 +27,13 @@ impl JobScope {
         local: Vec<LocalScopeEntry>,
         vector_fs_items: Vec<VectorFSItemScopeEntry>,
         vector_fs_folders: Vec<VectorFSFolderScopeEntry>,
+        network_folders: Vec<NetworkFolderScopeEntry>,
     ) -> Self {
         Self {
             local,
             vector_fs_items,
             vector_fs_folders,
+            network_folders,
         }
     }
 
@@ -40,12 +43,16 @@ impl JobScope {
             local: Vec::new(),
             vector_fs_items: Vec::new(),
             vector_fs_folders: Vec::new(),
+            network_folders: Vec::new(),
         }
     }
 
     /// Checks if the Job Scope is empty (has no entries)
     pub fn is_empty(&self) -> bool {
-        self.local.is_empty() && self.vector_fs_items.is_empty() && self.vector_fs_folders.is_empty()
+        self.local.is_empty()
+            && self.vector_fs_items.is_empty()
+            && self.vector_fs_folders.is_empty()
+            && self.network_folders.is_empty()
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
@@ -135,6 +142,7 @@ pub struct VectorFSFolderScopeEntry {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct NetworkFolderScopeEntry {
     pub name: String,
-    pub external_node: ShinkaiName,
+    /// This should be the profile on the external node where the folder is stored
+    pub external_identity: ShinkaiName,
     pub path: VRPath,
 }
