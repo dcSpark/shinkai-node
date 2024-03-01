@@ -13,8 +13,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: x86_64-unknown-linux-gnu
-            os: ubuntu-22.04
+          # - arch: x86_64-unknown-linux-gnu
+          #   os: ubuntu-22.04
           - arch: aarch64-apple-darwin
             os: macos-14
           - arch: x86_64-pc-windows-msvc
@@ -48,6 +48,12 @@ jobs:
         #     tag: ${{ github.ref }}
         #     overwrite: true
 
+        - name: Build
+          run: |
+            mkdir files-to-r2
+            cp target/release/shinkai_node files-to-r2/shinkai-node-0.4.7
+            cp target/release/shinkai_node files-to-r2/shinkai-node-latest
+
         - name: Upload binaries to R2 bucket
           uses: ryand56/r2-upload-action@latest
           with:
@@ -55,16 +61,6 @@ jobs:
             r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
             r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             r2-bucket: shinkai-download
-            source-dir: target/release/shinkai_node
+            source-dir: files-to-r2
             # destination-dir: ./shinkai-node/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}
-            destination-dir: ./shinkai-node/${{ matrix.arch }}/shinkai-node-0.4.7
-
-        - name: Override latest binary in R2 Bucket
-          uses: ryand56/r2-upload-action@latest
-          with:
-            r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-            r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-            r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-            r2-bucket: shinkai-download
-            source-dir: target/release/shinkai_node
-            destination-dir: ./shinkai-node/${{ matrix.arch }}/shinkai-node-latest
+            destination-dir: ./shinkai-node/${{ matrix.arch }}/
