@@ -2,10 +2,8 @@ name: Build shinkai-node binaries
 
 on:
   push:
-    # tags:
-    #   - 'v[0-9]+.[0-9]+.[0-9]+'
-    branches:
-      - 'agallardol/extend-ci-binaries'
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   build:
@@ -13,12 +11,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # - arch: x86_64-unknown-linux-gnu
-          #   os: ubuntu-22.04
+          - arch: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
           - arch: aarch64-apple-darwin
             os: macos-14
-          - arch: x86_64-pc-windows-msvc
-            os: windows-2022
+          # - arch: x86_64-pc-windows-msvc
+          #   os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
         - name: Checkout sources
@@ -39,20 +37,20 @@ jobs:
         - name: Build
           run: cargo build --release
 
-        # - name: Upload binaries to release
-        #   uses: svenstaro/upload-release-action@v2
-        #   with:
-        #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-        #     file: target/release/shinkai_node
-        #     asset_name: shinkai-node-${{ matrix.arch }}
-        #     tag: ${{ github.ref }}
-        #     overwrite: true
+        - name: Upload binaries to release
+          uses: svenstaro/upload-release-action@v2
+          with:
+            repo_token: ${{ secrets.GITHUB_TOKEN }}
+            file: target/release/shinkai_node
+            asset_name: shinkai-node-${{ matrix.arch }}
+            tag: ${{ github.ref }}
+            overwrite: true
 
         - name: Build
           run: |
-            mkdir files-to-r2
-            cp target/release/shinkai_node files-to-r2/shinkai-node-0.4.7
-            cp target/release/shinkai_node files-to-r2/shinkai-node-latest
+            mkdir files-to-r2/${{ matrix.arch }}
+            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}
+            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-latest
 
         - name: Upload binaries to R2 bucket
           uses: ryand56/r2-upload-action@latest
@@ -61,6 +59,5 @@ jobs:
             r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
             r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             r2-bucket: shinkai-download
-            source-dir: files-to-r2
-            # destination-dir: ./shinkai-node/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}
-            destination-dir: ./shinkai-node/${{ matrix.arch }}/
+            source-dir: files-to-r2/${{ matrix.arch }}
+            destination-dir: ./shinkai-node/binaries/${{ matrix.arch }}/
