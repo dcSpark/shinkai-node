@@ -150,8 +150,6 @@ impl ShinkaiMessage {
 
     pub fn calculate_message_hash_for_pagination(&self) -> String {
         let mut temp_message = self.clone();
-        temp_message.external_metadata.node_api_data = None;
-        
         let mut hasher = Hasher::new();
         let j = serde_json::to_string(&temp_message).unwrap_or_default();
 
@@ -164,7 +162,6 @@ impl ShinkaiMessage {
     pub fn calculate_message_hash_with_empty_outer_signature(&self) -> String {
         let mut message_clone = self.clone();
         message_clone.external_metadata.signature = "".to_string();
-        message_clone.external_metadata.node_api_data = None;
 
         let mut hasher = Hasher::new();
         let j = json!(message_clone);

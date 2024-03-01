@@ -98,6 +98,7 @@ impl ShinkaiMessageBuilder {
         sender_subidentity: String,
         recipient_subidentity: String,
         encryption: EncryptionMethod,
+        node_api_data: Option<NodeApiData>,
     ) -> Self {
         let signature = "".to_string();
         self.internal_metadata = Some(InternalMetadata {
@@ -106,6 +107,7 @@ impl ShinkaiMessageBuilder {
             inbox: "".to_string(),
             signature,
             encryption,
+            node_api_data,
         });
         self
     }
@@ -116,6 +118,7 @@ impl ShinkaiMessageBuilder {
         recipient_subidentity: String,
         inbox: String,
         encryption: EncryptionMethod,
+        node_api_data: Option<NodeApiData>,
     ) -> Self {
         let signature = "".to_string();
         self.internal_metadata = Some(InternalMetadata {
@@ -124,6 +127,7 @@ impl ShinkaiMessageBuilder {
             inbox,
             signature,
             encryption,
+            node_api_data,
         });
         self
     }
@@ -135,6 +139,7 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         message_schema: MessageSchemaType,
         encryption: EncryptionMethod,
+        node_api_data: Option<NodeApiData>,
     ) -> Self {
         let signature = "".to_string();
         self.message_content_schema = message_schema.clone();
@@ -144,6 +149,7 @@ impl ShinkaiMessageBuilder {
             inbox,
             signature,
             encryption,
+            node_api_data,
         });
         self
     }
@@ -156,6 +162,7 @@ impl ShinkaiMessageBuilder {
             inbox: String::new(),
             signature,
             encryption: EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            node_api_data: None,
         });
         self
     }
@@ -168,6 +175,7 @@ impl ShinkaiMessageBuilder {
             inbox: String::new(),
             signature,
             encryption: EncryptionMethod::None,
+            node_api_data: None,
         });
         self
     }
@@ -176,7 +184,6 @@ impl ShinkaiMessageBuilder {
         let signature = "".to_string();
         let other = "".to_string();
         let intra_sender = "".to_string();
-        let node_api_data = None;
         let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
@@ -185,7 +192,6 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
-            node_api_data,
         });
         self
     }
@@ -201,7 +207,6 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
-            node_api_data: None,
         });
         self
     }
@@ -222,7 +227,6 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
-            node_api_data: None,
         });
         self
     }
@@ -243,7 +247,6 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
-            node_api_data: None,
         });
         self
     }
@@ -264,7 +267,6 @@ impl ShinkaiMessageBuilder {
             signature,
             other,
             intra_sender,
-            node_api_data: None,
         });
         self
     }
@@ -277,8 +279,8 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn update_node_api_data(mut self, node_api_data: NodeApiData) -> Self {
-        if let Some(external_metadata) = &mut self.external_metadata {
-            external_metadata.node_api_data = Some(node_api_data);
+        if let Some(internal_metadata) = &mut self.internal_metadata {
+            internal_metadata.node_api_data = Some(node_api_data);
         }
         self
     }
