@@ -60,6 +60,7 @@ fn generate_message_with_text(
             recipient_subidentity_name.clone().to_string(),
             inbox_name_value,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),
@@ -358,7 +359,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // New test for get_parent_message_hash
     let parent_hash_test = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][0].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[2][0].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -367,7 +371,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
     );
 
     let parent_hash_test_2 = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[2][1].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[2][1].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -377,7 +384,10 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     // Check for the root message, which should return None as it has no parent
     let root_message_parent_hash = shinkai_db
-        .get_parent_message_hash(&inbox_name_value, &last_messages_inbox[0][0].calculate_message_hash_for_pagination())
+        .get_parent_message_hash(
+            &inbox_name_value,
+            &last_messages_inbox[0][0].calculate_message_hash_for_pagination(),
+        )
         .unwrap();
 
     assert_eq!(root_message_parent_hash, None);
@@ -765,7 +775,9 @@ async fn db_inbox() {
         "Hello World 5".to_string()
     );
 
-    let offset = last_unread_messages_inbox[1].clone().calculate_message_hash_for_pagination();
+    let offset = last_unread_messages_inbox[1]
+        .clone()
+        .calculate_message_hash_for_pagination();
     println!("\n\n ### Offset: {}", offset);
     println!("Last unread messages: {:?}", last_unread_messages_inbox[1]);
     // check pagination for last unread
@@ -798,7 +810,9 @@ async fn db_inbox() {
     shinkai_db
         .mark_as_read_up_to(
             inbox_name_value.clone().to_string(),
-            last_unread_messages_inbox_page2[2][0].clone().calculate_message_hash_for_pagination(),
+            last_unread_messages_inbox_page2[2][0]
+                .clone()
+                .calculate_message_hash_for_pagination(),
         )
         .unwrap();
 

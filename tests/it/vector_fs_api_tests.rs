@@ -10,7 +10,8 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, MessageSchemaType
+    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+    APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -56,6 +57,7 @@ fn generate_message_with_payload<T: ToString>(
             "".to_string(),
             "".to_string(),
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
@@ -356,7 +358,7 @@ fn vector_fs_api_tests() {
                         path: "/".to_string(),
                         folder_name: "test_folder3".to_string(),
                     };
-    
+
                     let msg = generate_message_with_payload(
                         serde_json::to_string(&payload).unwrap(),
                         MessageSchemaType::VecFsCreateFolder,
@@ -367,10 +369,10 @@ fn vector_fs_api_tests() {
                         node1_profile_name.as_str(),
                         node1_identity_name.as_str(),
                     );
-    
+
                     // Prepare the response channel
                     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
                     // Send the command
                     node1_commands_sender
                         .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
@@ -412,7 +414,6 @@ fn vector_fs_api_tests() {
             {
                 // Move item
                 // For Later
-
             }
             {
                 // Do deep search
@@ -433,10 +434,10 @@ fn vector_fs_api_tests() {
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
                 );
-            
+
                 // Prepare the response channel
                 let (res_sender, res_receiver) = async_channel::bounded(1);
-            
+
                 // Send the command
                 node1_commands_sender
                     .send(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res: res_sender })
@@ -447,7 +448,8 @@ fn vector_fs_api_tests() {
                 assert_eq!(
                     (&resp[0].0, &resp[0].1),
                     (
-                        &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros".to_string(),
+                        &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
+                            .to_string(),
                         &vec!["test_folder".to_string(), "shinkai_intro".to_string()]
                     ),
                     "The first search result does not match the expected output."

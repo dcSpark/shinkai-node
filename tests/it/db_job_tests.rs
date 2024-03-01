@@ -48,6 +48,7 @@ fn generate_message_with_text(
             recipient_subidentity_name.clone().to_string(),
             inbox_name_value,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),
@@ -68,7 +69,8 @@ mod tests {
         shinkai_message::shinkai_message_schemas::JobMessage,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope,
-            shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair, shinkai_logging::init_default_tracing,
+            shinkai_logging::init_default_tracing, shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::unsafe_deterministic_signature_keypair,
         },
         shinkai_utils::{signatures::clone_signature_secret_key, utils::hash_string},
     };
@@ -78,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_create_new_job() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
@@ -105,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let agent_id = "agent2".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -138,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_update_job_to_finished() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job3".to_string();
         let agent_id = "agent3".to_string();
@@ -162,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_step_history() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "test_job".to_string();
         let agent_id = "agent4".to_string();
@@ -191,10 +193,7 @@ mod tests {
         );
 
         // Insert the ShinkaiMessage into the database
-        shinkai_db
-            .unsafe_insert_inbox_message(&message, None)
-            .await
-            .unwrap();
+        shinkai_db.unsafe_insert_inbox_message(&message, None).await.unwrap();
 
         // Update step history
         shinkai_db
@@ -215,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_get_non_existent_job() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
@@ -233,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs_none_exist() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let agent_id = "agent_without_jobs".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -256,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_update_non_existent_job() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
@@ -274,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs_multiple_jobs() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let agent_id = "agent5".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -306,7 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_empty() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -332,7 +331,9 @@ mod tests {
         .unwrap();
 
         // Add a message to the job
-        let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await;
+        let _ = shinkai_db
+            .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+            .await;
 
         // Check if the job inbox is not empty after adding a message
         assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
@@ -340,7 +341,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -381,7 +382,9 @@ mod tests {
             };
 
             // Add a message to the job
-            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone()).await;
+            let _ = shinkai_db
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone())
+                .await;
 
             // Update the parent message according to the tree structure
             if i == 1 {
@@ -433,7 +436,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -482,7 +485,9 @@ mod tests {
             };
 
             // Add a message to the job
-            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone()).await;
+            let _ = shinkai_db
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone())
+                .await;
 
             // Add a step history
             let result = format!("Result {}", i);
@@ -596,7 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_steps_with_simple_tree_structure() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
 
         let node1_identity_name = "@@node1.shinkai";
@@ -753,7 +758,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure_with_invalid_date() {
-        init_default_tracing(); 
+        init_default_tracing();
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -792,8 +797,14 @@ mod tests {
 
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
-            let parent_hash = if *i > 0 { Some(messages[*i - 1].calculate_message_hash_for_pagination()) } else { None };
-            let result = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &messages[*i], None).await;
+            let parent_hash = if *i > 0 {
+                Some(messages[*i - 1].calculate_message_hash_for_pagination())
+            } else {
+                None
+            };
+            let result = shinkai_db
+                .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None)
+                .await;
 
             // If we are at the third iteration (i.e., adding the third message), check that the result is an error
             if *i == 1 {

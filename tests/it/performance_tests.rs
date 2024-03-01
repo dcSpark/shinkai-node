@@ -1,4 +1,4 @@
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -33,6 +33,7 @@ fn create_message(
         "".to_string(),
         "".to_string(),
         EncryptionMethod::DiffieHellmanChaChaPoly1305,
+        None,
     )
     .external_metadata_with_other(
         node_identity_name.to_string().clone(),
@@ -54,7 +55,7 @@ fn test_big_file_performance() {
     let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
     let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-    {        
+    {
         let start = Instant::now();
         let take_size = 1048; // 1kb
         let _ = create_message(
@@ -65,10 +66,14 @@ fn test_big_file_performance() {
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();
-        println!("Time elapsed in message creation for {}kb is: {:?}", (take_size / 1000), duration);
+        println!(
+            "Time elapsed in message creation for {}kb is: {:?}",
+            (take_size / 1000),
+            duration
+        );
     }
 
-    {        
+    {
         let start = Instant::now();
         let take_size = 50000; // 50kb
         let _ = create_message(
@@ -79,10 +84,14 @@ fn test_big_file_performance() {
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();
-        println!("Time elapsed in message creation for {}kb is: {:?}", (take_size / 1000), duration);
+        println!(
+            "Time elapsed in message creation for {}kb is: {:?}",
+            (take_size / 1000),
+            duration
+        );
     }
 
-    {        
+    {
         let start = Instant::now();
         let take_size = 10_000_000; // 10mb
         let _ = create_message(
@@ -93,10 +102,14 @@ fn test_big_file_performance() {
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();
-        println!("Time elapsed in message creation for {}kb is: {:?}", (take_size / 1000), duration);
+        println!(
+            "Time elapsed in message creation for {}kb is: {:?}",
+            (take_size / 1000),
+            duration
+        );
     }
 
-    // {        
+    // {
     //     let start = Instant::now();
     //     let take_size = 1_000_000_000; // 1gb
     //     let _ = create_message(

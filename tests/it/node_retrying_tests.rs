@@ -9,7 +9,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, signature_public_key_to_string, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
@@ -174,6 +174,7 @@ fn node_retrying_test() {
                     node1_profile_name.to_string().clone(),
                     "".to_string(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                    None,
                 )
                 .external_metadata_with_other(
                     node2_identity_name.to_string(),

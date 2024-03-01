@@ -471,6 +471,7 @@ fn node_agent_registration() {
                     "".to_string(),
                     inbox_name.to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .build();
 
@@ -482,7 +483,7 @@ fn node_agent_registration() {
         let result = tokio::try_join!(node1_handler, interactions_handler);
 
         match result {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
