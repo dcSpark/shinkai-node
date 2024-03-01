@@ -80,6 +80,8 @@ pub struct JobQueueManager<T: Debug> {
     db: Weak<Mutex<ShinkaiDB>>,
 }
 
+static BUFFER_SIZE: usize = 10;
+
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
     pub async fn new(db: Weak<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
         // Lock the db for safe access
@@ -129,19 +131,26 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db = db_arc.lock().await;
         db.persist_queue(key, &guarded_queue)?;
+        drop(db);
 
         // Notify subscribers
         let subscribers = self.subscribers.lock().await;
         if let Some(subs) = subscribers.get(key) {
             for sub in subs.iter() {
-                let _ = sub.send(value.clone()).await;
+                if sub.capacity() > 0 {
+                    // Check if there's space in the buffer
+                    let _ = sub.send(value.clone()).await;
+                }
             }
         }
 
         // Notify subscribers to all keys
         let all_subscribers = self.all_subscribers.lock().await;
         for sub in all_subscribers.iter() {
-            let _ = sub.send(value.clone()).await;
+            if sub.capacity() > 0 {
+                // Check if there's space in the buffer
+                let _ = sub.send(value.clone()).await;
+            }
         }
         Ok(())
     }
@@ -220,14 +229,14 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     }
 
     pub async fn subscribe(&self, key: &str) -> mpsc::Receiver<T> {
-        let (tx, rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(BUFFER_SIZE);
         let mut subscribers = self.subscribers.lock().await;
         subscribers.entry(key.to_string()).or_insert_with(Vec::new).push(tx);
         rx
     }
 
     pub async fn subscribe_to_all(&self) -> mpsc::Receiver<T> {
-        let (tx, rx) = mpsc::channel(100);
+        let (tx, rx) = mpsc::channel(BUFFER_SIZE);
         let mut all_subscribers = self.all_subscribers.lock().await;
         all_subscribers.push(tx);
         rx
