@@ -63,7 +63,6 @@ impl ShinkaiDB {
             // Return None if the key does not have the expected prefix length
             None
         }
-        Ok(children_messages)
     }
 
     fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
@@ -154,7 +153,6 @@ impl ShinkaiDB {
             return Ok(paths);
         }
 
-
         // Loop through the messages
         // This loop is for fetching 'n' messages
         let mut first_iteration = true;
@@ -162,7 +160,7 @@ impl ShinkaiDB {
         // eprintln!("n: {}", n);
         let total_elements = until_offset_hash_key.is_some().then(|| n + 1).unwrap_or(n);
         let keys = keys.clone().into_iter().rev().collect::<Vec<String>>();
-        
+
         for i in 0..total_elements {
             let mut path = Vec::new();
 
@@ -191,60 +189,36 @@ impl ShinkaiDB {
                 Err(e) => return Err(e),
             }
 
-            // Fetch the parent message key from the parents CF
-            if let Some(cf_parents) = &cf_parents {
-                if let Some(parent_key) = self.fetch_parent_message(cf_parents, &hash_key)? {
-                    if !parent_key.is_empty() {
-                        tree_found = true;
-                        // Update the current key to the parent key
-                        current_key = Some(parent_key.clone());
-                        // eprintln!("Parent key fetched: {}", parent_key);
+            // Fetch the parent message key from the Inbox CF using the specific prefix
+            let message_parent_key = format!("inbox_{}_parent_{}", inbox_hash, hash_key);
+            if let Some(parent_key) = self.db.get_cf(cf_inbox, message_parent_key.as_bytes())? {
+                let parent_key_str = String::from_utf8(parent_key.to_vec()).unwrap();
+                if !parent_key_str.is_empty() {
+                    tree_found = true;
+                    // Update the current key to the parent key
+                    current_key = Some(parent_key_str.clone());
 
-                        // Fetch the children of the parent message
-                        if let Some(cf_children) = &cf_children {
-                            // eprintln!("first_iteration? {:?}", first_iteration);
-                            // Skip fetching children for the first message
-                            if !first_iteration {
-                                let children_messages =
-                                    self.fetch_children_messages(cf_children, &parent_key, messages_cf)?;
-                                for message in children_messages {
-                                    if Some(message.calculate_message_hash_for_pagination()) != added_message_hash_tmp {
-                                        path.push(message.clone());
-                                        // eprintln!(
-                                        //     "Child message added to path. Message content: {}",
-                                        //     message.clone().get_message_content().unwrap()
-                                        // );
-                                    }
-//             Old: // Fetch the parent message key from the Inbox CF using the specific prefix
-//             let message_parent_key = format!("inbox_{}_parent_{}", inbox_hash, hash_key);
-//             if let Some(parent_key) = self.db.get_cf(cf_inbox, message_parent_key.as_bytes())? {
-//                 let parent_key_str = String::from_utf8(parent_key.to_vec()).unwrap();
-//                 if !parent_key_str.is_empty() {
-//                     tree_found = true;
-//                     // Update the current key to the parent key
-//                     current_key = Some(parent_key_str.clone());
+                    // Fetch the children of the parent message
+                    let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
+                    let existing_children_bytes = self
+                        .db
+                        .get_cf(cf_inbox, parent_children_key.as_bytes())?
+                        .unwrap_or_default();
+                    let existing_children = String::from_utf8(existing_children_bytes)
+                        .unwrap()
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect::<Vec<String>>();
 
-//                     // Fetch the children of the parent message
-//                     let parent_children_key = format!("inbox_{}_children_{}", inbox_hash, parent_key_str);
-//                     let existing_children_bytes = self
-//                         .db
-//                         .get_cf(cf_inbox, parent_children_key.as_bytes())?
-//                         .unwrap_or_default();
-//                     let existing_children = String::from_utf8(existing_children_bytes)
-//                         .unwrap()
-//                         .split(',')
-//                         .filter(|s| !s.is_empty())
-//                         .map(String::from)
-//                         .collect::<Vec<String>>();
-
-//                     // Skip fetching children for the first message
-//                     if !first_iteration {
-//                         for child_key in existing_children {
-//                             // Fetch and add the child message to the path
-//                             if let Ok((child_message, _)) = self.fetch_message_and_hash(&child_key) {
-//                                 if Some(child_message.calculate_message_hash_for_pagination()) != added_message_hash_tmp
-//                                 {
-//                                     path.push(child_message);
+                    // Skip fetching children for the first message
+                    if !first_iteration {
+                        for child_key in existing_children {
+                            // Fetch and add the child message to the path
+                            if let Ok((child_message, _)) = self.fetch_message_and_hash(&child_key) {
+                                if Some(child_message.calculate_message_hash_for_pagination()) != added_message_hash_tmp
+                                {
+                                    path.push(child_message);
                                 }
                             }
                         }
