@@ -142,7 +142,6 @@ impl JobManager {
             + 'static,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
-        let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
         let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
@@ -268,6 +267,7 @@ impl JobManager {
                 }
 
                 // Receive new jobs
+                let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
                 if let Some(new_job) = receiver.recv().await {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
