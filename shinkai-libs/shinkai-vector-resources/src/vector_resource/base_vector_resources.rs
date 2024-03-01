@@ -1,5 +1,5 @@
 use super::vector_resource::VectorResource;
-use super::{DocumentVectorResource, MapVectorResource};
+use super::{DocumentVectorResource, MapVectorResource, VRKai};
 use crate::resource_errors::VRError;
 use crate::vector_resource::OrderedVectorResource;
 use serde_json::Value as JsonValue;
@@ -44,6 +44,11 @@ impl BaseVectorResource {
     /// the Resource does not support the OrderedVectorResource trait.
     pub fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
         self.as_trait_object_mut().as_ordered_vector_resource_mut()
+    }
+
+    /// Converts the BaseVectorResource into a VRKai instance using the previously defined from_base_vector_resource method.
+    pub fn to_vrkai(self) -> VRKai {
+        VRKai::from_base_vector_resource(self, None, None)
     }
 
     /// Converts the BaseVectorResource into a JSON string (without the enum wrapping JSON)

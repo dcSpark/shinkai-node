@@ -5,7 +5,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
+    BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader, VRKai,
 };
 use shinkai_vector_resources::{
     embeddings::Embedding,
@@ -184,21 +184,21 @@ impl VectorFS {
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
-    /// returning the retrieved (BaseVectorResource, SourceFileMap) pairs of the most similar FSItems.
+    /// returning the retrieved VRKai of the most similar FSItems.
     /// Ignores FSItem results which the requester_name does not have permission to read.
-    pub fn vector_search_vr_and_source_file_map(
+    pub fn vector_search_vrkai(
         &mut self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
-    ) -> Result<Vec<(BaseVectorResource, SourceFileMap)>, VectorFSError> {
+    ) -> Result<Vec<VRKai>, VectorFSError> {
         let items = self.vector_search_fs_item(reader, query, num_of_results)?;
         let mut results = vec![];
 
         // If all perms pass, push
         for item in items {
             if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
-                if let Ok(res) = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name()) {
+                if let Ok(res) = self.retrieve_vrkai_in_folder(&new_reader, item.name()) {
                     results.push(res);
                 }
             }

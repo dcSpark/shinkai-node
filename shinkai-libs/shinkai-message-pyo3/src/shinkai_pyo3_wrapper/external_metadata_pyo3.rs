@@ -1,7 +1,7 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::{
-        EncryptedShinkaiBody, ExternalMetadata, MessageBody, NodeApiData, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
+        EncryptedShinkaiBody, ExternalMetadata, MessageBody, NodeApiData, ShinkaiBody, ShinkaiMessage, ShinkaiVersion
     },
     shinkai_utils::encryption::EncryptionMethod,
 };

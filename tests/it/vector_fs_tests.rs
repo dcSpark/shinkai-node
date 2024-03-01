@@ -5,17 +5,18 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use shinkai_node::vector_fs::vector_fs_reader::VFSReader;
-use shinkai_node::vector_fs::vector_fs_types::DistributionOrigin;
 use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceFile, SourceFileMap, SourceFileType, SourceReference};
+use shinkai_vector_resources::source::{
+    DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
+};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, DocumentVectorResource, VRPath, VRSource, VectorResource, VectorResourceCore,
+    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
 };
 use std::collections::HashMap;
@@ -93,6 +94,21 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
     resource
 }
 
+// // Test to be used to used once to re-generate the VRKai file whenever breaking changes take place.
+// #[tokio::test]
+// async fn test_gen_vrkai() {
+//     setup();
+//     let generator = RemoteEmbeddingGenerator::new_default();
+//     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+//     let resource = BaseVectorResource::Document(doc_resource);
+//     // With source file map
+//     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
+//     // Without source file map
+//     let vrkai = VRKai::from_base_vector_resource(resource, None, None);
+//     let vrkai_bytes = vrkai.prepare_as_bytes().expect("Failed to prepare VRKai bytes");
+//     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
+// }
+
 #[tokio::test]
 async fn test_vector_fs_initializes_new_profile_automatically() {
     setup();
@@ -144,12 +160,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(
-            &writer,
-            resource.clone(),
-            Some(source_file_map.clone()),
-            DistributionOrigin::None,
-        )
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
         .unwrap();
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
@@ -182,9 +193,10 @@ async fn test_vector_fs_saving_reading() {
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file_map) = vector_fs.retrieve_vr_and_source_file_map(&reader).unwrap();
+    let ret_vrkai = vector_fs.retrieve_vrkai(&reader).unwrap();
+    let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file_map, source_file_map);
+    assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
 
     println!("Keywords: {:?}", ret_resource.as_trait_object().keywords());
     assert!(ret_resource.as_trait_object().keywords().keyword_list.len() > 0);
@@ -193,11 +205,13 @@ async fn test_vector_fs_saving_reading() {
     let reader = vector_fs
         .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file_map) = vector_fs
-        .retrieve_vr_and_source_file_map_in_folder(&reader, resource.as_trait_object().name().to_string())
+    let ret_vrkai = vector_fs
+        .retrieve_vrkai_in_folder(&reader, resource.as_trait_object().name().to_string())
         .unwrap();
+    let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
+
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file_map, source_file_map);
+    assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
 
     //
     // Vector Search Tests
@@ -236,7 +250,7 @@ async fn test_vector_fs_saving_reading() {
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
-            DistributionOrigin::None,
+            None,
         )
         .unwrap();
 
@@ -499,12 +513,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let first_folder_item = vector_fs
-        .save_vector_resource_in_folder(
-            &writer,
-            resource.clone(),
-            Some(source_file_map.clone()),
-            DistributionOrigin::None,
-        )
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
         .unwrap();
 
     //

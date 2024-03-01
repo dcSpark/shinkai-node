@@ -36,36 +36,42 @@ impl ShinkaiDB {
         }
     }
 
-    // TODO: Use ProfileBatching so it's associated with a specific profile
-    pub fn create_files_message_inbox(&mut self, hex_blake3_has: String) -> Result<(), Error> {
-        // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+    /// Returns the first half of the blake3 hash of the hex blake3 inbox id
+    pub fn hex_blake3_to_half_hash(hex_blake3_hash: &str) -> String {
+        let full_hash = blake3::hash(hex_blake3_hash.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
 
-        // Create ColumnFamilyDescriptors for encrypted inbox
-        let cf_name_encrypted_inbox = hex_blake3_has.clone();
+    pub fn create_files_message_inbox(&mut self, hex_blake3_hash: String) -> Result<(), Error> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
 
-        // Create column families
-        self.db.create_cf(&cf_name_encrypted_inbox, &cf_opts)?;
+        // Use Topic::MessageBoxSymmetricKeys with a prefix for encrypted inbox
+        let cf_name_encrypted_inbox = format!("encyptedinbox_{}_", encrypted_inbox_id);
+
+        // Ensure the MessageBoxSymmetricKeys column family exists
+        let cf_message_box_symmetric_keys = self
+            .db
+            .cf_handle(Topic::MessageBoxSymmetricKeys.as_str())
+            .expect("to be able to access Topic::MessageBoxSymmetricKeys");
 
         // Start a write batch
         let mut batch = WriteBatch::default();
 
-        // Add encrypted inbox name to the list in the 'inbox' topic
-        let cf_inbox = self
-            .db
-            .cf_handle(Topic::TempFilesInbox.as_str())
-            .expect("to be able to access Topic::TempFilesInbox");
-        batch.put_cf(cf_inbox, &hex_blake3_has, &cf_name_encrypted_inbox);
+        // Add encrypted inbox name to the MessageBoxSymmetricKeys column family with a prefix
+        batch.put_cf(cf_message_box_symmetric_keys, cf_name_encrypted_inbox.as_bytes(), &[]);
 
-        // Add current time to MessageBoxSymmetricKeysTimes with public_key as the key
+        // Add current time to MessageBoxSymmetricKeys with the encrypted inbox name as the key
         let current_time = Utc::now().to_rfc3339();
-        let cf_times = self
-            .db
-            .cf_handle(Topic::MessageBoxSymmetricKeysTimes.as_str())
-            .expect("to be able to access Topic::MessageBoxSymmetricKeysTimes");
-        batch.put_cf(cf_times, &hex_blake3_has, current_time.as_bytes());
+
+        let cf_name_encrypted_inbox_time = format!(
+            "encyptedinbox_sorted_by_time_extraplaceholder__{}_{}",
+            current_time, encrypted_inbox_id
+        );
+        batch.put_cf(
+            cf_message_box_symmetric_keys,
+            cf_name_encrypted_inbox_time.as_bytes(),
+            current_time.as_bytes(),
+        );
 
         // Commit the write batch
         self.db.write(batch)?;
@@ -79,135 +85,119 @@ impl ShinkaiDB {
         file_name: String,
         file_content: Vec<u8>,
     ) -> Result<(), ShinkaiDBError> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
+
+        // Use Topic::MessageBoxSymmetricKeys with a prefix for encrypted inbox
+        let cf_name_encrypted_inbox = format!("encyptedinbox_{}_{}", encrypted_inbox_id, file_name);
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-        let cf_name_encrypted_inbox = self
-            .db
-            .get_cf(cf_inbox, &hex_blake3_hash)?
-            .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
 
-        // Check if the column family exists
-        let cf_name_encrypted_inbox_str =
-            std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
-
-        if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
-            return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
-        }
-
-        // Start a write batch
-        let mut batch = WriteBatch::default();
-
-        // Add the file to the encrypted inbox
-        let cf_encrypted_inbox = self
-            .db
-            .cf_handle(&cf_name_encrypted_inbox_str)
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
-        batch.put_cf(cf_encrypted_inbox, &file_name, &file_content);
-
-        // Commit the write batch
-        self.db.write(batch).map_err(|_| ShinkaiDBError::FailedFetchingValue)?;
+        // Directly put the file content into the column family without using a write batch
+        self.db
+            .put_cf(cf_inbox, &cf_name_encrypted_inbox.as_bytes(), &file_content)
+            .map_err(|_| ShinkaiDBError::FailedFetchingValue)?;
 
         Ok(())
     }
 
     pub fn get_all_files_from_inbox(&self, hex_blake3_hash: String) -> Result<Vec<(String, Vec<u8>)>, ShinkaiDBError> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
+
+        // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
+        let prefix = format!("encyptedinbox_{}_", encrypted_inbox_id);
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-        let cf_name_encrypted_inbox = self
-            .db
-            .get_cf(cf_inbox, &hex_blake3_hash)?
-            .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
 
-        // Check if the column family exists
-        let cf_name_encrypted_inbox_str =
-            std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
+        let mut files = Vec::new();
 
-        if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
-            return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
+        // Get an iterator over the column family with a prefix search
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+        for item in iter {
+            match item {
+                Ok((key, value)) => {
+                    // Attempt to convert the key to a String and strip the prefix
+                    match String::from_utf8(key.to_vec()) {
+                        Ok(key_str) => {
+                            if let Some(file_name) = key_str.strip_prefix(&prefix) {
+                                files.push((file_name.to_string(), value.to_vec()));
+                            } else {
+                                eprintln!("Error: Key does not start with the expected prefix.");
+                            }
+                        }
+                        Err(e) => eprintln!("Error decoding key from UTF-8: {}", e),
+                    }
+                }
+                Err(e) => eprintln!("Error reading from database: {}", e),
+            }
         }
 
-        // Get an iterator over the column family
-        let cf_encrypted_inbox = self
-            .db
-            .cf_handle(&cf_name_encrypted_inbox_str)
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
-        let iter = self.db.iterator_cf(cf_encrypted_inbox, IteratorMode::Start);
-
-        // Collect all key-value pairs in the column family
-        let files: Result<Vec<(String, Vec<u8>)>, _> = iter
-            .map(|res| res.map(|(key, value)| (String::from_utf8(key.to_vec()).unwrap(), value.to_vec())))
-            .collect();
-
-        files.map_err(|_| ShinkaiDBError::FailedFetchingValue)
+        Ok(files)
     }
 
     pub fn get_all_filenames_from_inbox(&self, hex_blake3_hash: String) -> Result<Vec<String>, ShinkaiDBError> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
+
+        // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
+        let prefix = format!("encyptedinbox_{}_", encrypted_inbox_id);
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-        let cf_name_encrypted_inbox = self
-            .db
-            .get_cf(cf_inbox, &hex_blake3_hash)?
-            .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
 
-        // Check if the column family exists
-        let cf_name_encrypted_inbox_str =
-            std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
+        let mut filenames = Vec::new();
 
-        if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
-            return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
+        // Get an iterator over the column family with a prefix search
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+        for item in iter {
+            match item {
+                Ok((key, _value)) => {
+                    // Attempt to convert the key to a String and strip the prefix
+                    match String::from_utf8(key.to_vec()) {
+                        Ok(key_str) => {
+                            if let Some(file_name) = key_str.strip_prefix(&prefix) {
+                                filenames.push(file_name.to_string());
+                            } else {
+                                eprintln!("Error: Key does not start with the expected prefix.");
+                            }
+                        }
+                        Err(e) => eprintln!("Error decoding key from UTF-8: {}", e),
+                    }
+                }
+                Err(e) => eprintln!("Error reading from database: {}", e),
+            }
         }
 
-        // Get an iterator over the column family
-        let cf_encrypted_inbox = self
-            .db
-            .cf_handle(&cf_name_encrypted_inbox_str)
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
-        let iter = self.db.iterator_cf(cf_encrypted_inbox, IteratorMode::Start);
-
-        // Collect all keys (filenames) in the column family
-        let filenames: Result<Vec<String>, _> = iter
-            .map(|res| res.map(|(key, _)| String::from_utf8(key.to_vec()).unwrap()))
-            .collect();
-
-        filenames.map_err(|_| ShinkaiDBError::FailedFetchingValue)
+        Ok(filenames)
     }
 
     pub fn get_file_from_inbox(&self, hex_blake3_hash: String, file_name: String) -> Result<Vec<u8>, ShinkaiDBError> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
+
+        // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
+        let prefix = format!("encyptedinbox_{}_{}", encrypted_inbox_id, file_name);
+
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::TempFilesInbox.as_str())
             .expect("to be able to access Topic::TempFilesInbox");
-        let cf_name_encrypted_inbox = self
-            .db
-            .get_cf(cf_inbox, &hex_blake3_hash)?
-            .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
 
-        // Check if the column family exists
-        let cf_name_encrypted_inbox_str =
-            std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
-
-        if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
-            return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
+        // Get the file content directly using the constructed key
+        match self.db.get_cf(cf_inbox, prefix.as_bytes()) {
+            Ok(Some(file_content)) => Ok(file_content),
+            Ok(None) => Err(ShinkaiDBError::DataNotFound),
+            Err(_) => Err(ShinkaiDBError::FailedFetchingValue),
         }
-
-        // Get the file from the column family
-        let cf_encrypted_inbox = self
-            .db
-            .cf_handle(&cf_name_encrypted_inbox_str)
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
-        let file_content = self.db.get_cf(cf_encrypted_inbox, file_name)?;
-
-        file_content.ok_or(ShinkaiDBError::DataNotFound)
     }
 
     pub async fn get_kai_file_from_inbox(

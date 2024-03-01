@@ -1,4 +1,4 @@
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::inbox_name::{InboxName, InboxNameError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
@@ -70,6 +70,149 @@ fn generate_message_with_text(
         .build()
         .unwrap();
     message
+}
+
+#[tokio::test]
+async fn test_insert_single_message_and_retrieve() {
+    init_default_tracing();
+    setup();
+
+    let node_identity_name = "@@node.shinkai";
+    let subidentity_name = "main";
+    let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
+    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+
+    // Insert a single message
+    let message = generate_message_with_text(
+        "Only Message".to_string(),
+        node_encryption_sk,
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-03T10:00:00.000Z".to_string(),
+    );
+
+    shinkai_db.unsafe_insert_inbox_message(&message, None).await.unwrap();
+
+    // Retrieve the message and check
+    let inbox_name = InboxName::from_message(&message).unwrap();
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    let messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 1, None)
+        .unwrap();
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0][0].clone().get_message_content().unwrap(),
+        "Only Message".to_string()
+    );
+}
+
+#[tokio::test]
+async fn test_insert_two_messages_and_check_order_and_parent() {
+    init_default_tracing();
+    setup();
+
+    let node_identity_name = "@@node.shinkai";
+    let subidentity_name = "main_profile_node";
+    let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
+    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+
+    // Insert first message
+    let message1 = generate_message_with_text(
+        "First Message".to_string(),
+        node_encryption_sk.clone(),
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-02T20:53:34.812Z".to_string(),
+    );
+
+    shinkai_db.unsafe_insert_inbox_message(&message1, None).await.unwrap();
+
+    // Insert second message with first message as parent
+    let message2 = generate_message_with_text(
+        "Second Message".to_string(),
+        node_encryption_sk.clone(),
+        clone_signature_secret_key(&node_identity_sk),
+        node_encryption_pk,
+        subidentity_name.to_string(),
+        node_identity_name.to_string(),
+        "2023-07-02T20:54:34.923Z".to_string(),
+    );
+
+    let parent_message_hash = Some(message1.calculate_message_hash_for_pagination());
+
+    shinkai_db
+        .unsafe_insert_inbox_message(&message2, parent_message_hash.clone())
+        .await
+        .unwrap();
+
+    // Retrieve messages and check order
+    let inbox_name = InboxName::from_message(&message1).unwrap();
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    let messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
+        .unwrap();
+    eprintln!("\n\n\n Messages: {:?}", messages);
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(
+        messages[0][0].clone().get_message_content().unwrap(),
+        "First Message".to_string()
+    );
+    assert_eq!(
+        messages[1][0].clone().get_message_content().unwrap(),
+        "Second Message".to_string()
+    );
+
+    // Check parent of the second message
+    // TODO: add back when we have node_api_data
+    // let expected_parent_hash = messages[0][0]
+    //     .external_metadata
+    //     .node_api_data
+    //     .as_ref()
+    //     .unwrap()
+    //     .node_message_hash
+    //     .clone();
+    // let actual_parent_hash = messages[1][0]
+    //     .external_metadata
+    //     .node_api_data
+    //     .as_ref()
+    //     .unwrap()
+    //     .parent_hash
+    //     .clone();
+    // assert_eq!(actual_parent_hash, expected_parent_hash);
+
+    // Retrieve messages with pagination using the last message's hash
+    let pagination_hash = messages[1][0].calculate_message_hash_for_pagination();
+    eprintln!("Pagination hash: {}", pagination_hash);
+    let paginated_messages = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, Some(pagination_hash))
+        .unwrap();
+
+    eprintln!("Paginated messages: {:?}", paginated_messages);
+
+    // Expecting to get only 1 message back due to pagination
+    assert_eq!(paginated_messages.len(), 1);
+    assert_eq!(
+        paginated_messages[0][0].clone().get_message_content().unwrap(),
+        "First Message".to_string()
+    );
 }
 
 #[tokio::test]
@@ -839,6 +982,7 @@ async fn db_inbox() {
 
     let _ = shinkai_db.insert_profile(device1_subidentity.clone());
     println!("Inserted profile");
+    eprintln!("inbox name: {}", inbox_name_value);
 
     shinkai_db
         .add_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
@@ -901,38 +1045,24 @@ async fn db_inbox() {
         .unwrap();
     assert_eq!(inboxes.len(), 1);
 
-    let node1_identity = StandardIdentity::new(
-        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-        None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
-        Some(node1_subencryption_pk),
-        Some(node1_subidentity_pk),
-        StandardIdentityType::Profile,
-        IdentityPermissions::Standard,
-    );
-    let inboxes = shinkai_db.get_inboxes_for_profile(node1_identity.clone()).unwrap();
-    assert_eq!(inboxes.len(), 3);
-    assert!(inboxes.contains(&inbox_name_value));
-    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false".to_string()));
-    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false".to_string()));
+    let inboxes = shinkai_db.get_inboxes_for_profile(node1_profile_identity.clone()).unwrap();
+    assert_eq!(inboxes.len(), 1);
+    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()));
 
     // Test get_smart_inboxes_for_profile
     let smart_inboxes = shinkai_db
-        .get_all_smart_inboxes_for_profile(node1_identity.clone())
+        .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
         .unwrap();
-    assert_eq!(smart_inboxes.len(), 3);
+    assert_eq!(smart_inboxes.len(), 1);
 
     // Check if smart_inboxes contain the expected results
     let expected_inbox_ids = vec![
         "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false",
-        "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false",
-        "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false",
     ];
 
     for smart_inbox in smart_inboxes {
         assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
-        assert_eq!(smart_inbox.inbox_id, smart_inbox.custom_name);
+        assert_eq!(format!("New Inbox: {}", smart_inbox.inbox_id), smart_inbox.custom_name);
 
         // Check the last_message of each smart_inbox
         if let Some(last_message) = smart_inbox.last_message {
@@ -967,7 +1097,7 @@ async fn db_inbox() {
     shinkai_db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
 
     // Get smart_inboxes again
-    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_identity).unwrap();
+    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_profile_identity).unwrap();
 
     // Check if the name of the updated inbox has been changed
     for smart_inbox in updated_smart_inboxes {
@@ -995,6 +1125,14 @@ fn test_permission_errors() {
     let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+     // Update local node keys
+     shinkai_db.update_local_node_keys(
+        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+        node1_encryption_pk.clone(),
+        node1_identity_pk.clone(),
+    ).unwrap();
+
     let subidentity_name = "device1";
     let full_subidentity_name =
         ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
@@ -1029,31 +1167,23 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNameError(InboxNameError::InvalidFormat("nonexistent_inbox".to_string()))
     );
 
     // Test 2: Adding a permission for a nonexistent identity should result in an error
-    let result = shinkai_db.add_permission("existing_inbox", &nonexistent_identity, InboxPermission::Admin);
+    let result = shinkai_db.add_permission("job_inbox::not_existent::false", &nonexistent_identity, InboxPermission::Admin);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity
-                .clone()
-                .full_identity_name
-                .get_profile_name()
-                .unwrap()
-                .to_string()
-        ))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 
     // Test 3: Removing a permission from a nonexistent inbox should result in an error
-    let result = shinkai_db.remove_permission("nonexistent_inbox", &device1_subidentity);
+    let result = shinkai_db.remove_permission("job_inbox::not_existent::false", &device1_subidentity);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found for: job_inbox::not_existent::false".to_string())
     );
 
     // Test 4: Removing a permission for a nonexistent identity should result in an error
@@ -1061,18 +1191,17 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity.full_identity_name.clone().to_string()
+        ShinkaiDBError::ProfileNotFound(format!(
+            "Profile not found for: nonexistent_identity"
         ))
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
-    let result = shinkai_db.has_permission("nonexistent_inbox", &device1_subidentity, InboxPermission::Admin);
+    let result = shinkai_db.has_permission("job_inbox::not_existent::false", &device1_subidentity, InboxPermission::Admin);
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found for: job_inbox::not_existent::false".to_string())
     );
 
     // Test 6: Checking permission for a nonexistent identity should result in an error
@@ -1080,9 +1209,6 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(format!(
-            "Identity not found for: {}",
-            nonexistent_identity.full_identity_name.clone().to_string()
-        ))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 }

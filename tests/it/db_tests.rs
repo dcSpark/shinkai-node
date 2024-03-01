@@ -79,7 +79,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34.450Z".to_string(),
     );
 
     // Create the DB and insert the message to all
@@ -101,7 +101,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34.450Z".to_string(),
     );
     let message_before = generate_message_with_text(
         "Hello All before".to_string(),
@@ -110,7 +110,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481344".to_string(),
+        "2023-07-02T20:53:34.440Z".to_string(),
     );
     let message_after = generate_message_with_text(
         "Hello All after".to_string(),
@@ -119,7 +119,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481346".to_string(),
+        "2023-07-02T20:53:34.460Z".to_string(),
     );
 
     assert!(shinkai_db.insert_message_to_all(&message2).is_ok());

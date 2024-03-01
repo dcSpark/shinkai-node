@@ -60,7 +60,7 @@ pub async fn execute_transaction(
 ) -> Result<(), PaymentManagerError> {
     let provider = Provider::<Http>::try_from(provider_url).unwrap();
     let chain_id = provider.get_chainid().await.unwrap().low_u64();
-    eprintln!("Chain ID (from provider): {}", chain_id);
+    // eprintln!("Chain ID (from provider): {}", chain_id);
 
     // Parse the private key from the wallet
     let secret_key_bytes = hex::decode(&from_wallet.unsafe_private_key).unwrap();
@@ -107,20 +107,20 @@ pub async fn execute_transaction(
     tx.from = Some(from_address);
     tx.nonce = Some(nonce);
 
-    eprintln!("Sending transaction: {:?}", tx);
+    // eprintln!("Sending transaction: {:?}", tx);
 
     // Send the transaction and wait for one confirmation
     let pending_tx = client
         .send_transaction(tx, None)
         .await
         .map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
-    eprintln!("Pending transaction: {:?}", pending_tx);
+    // eprintln!("Pending transaction: {:?}", pending_tx);
 
     let receipt = pending_tx
         .confirmations(1)
         .await
         .map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
-    eprintln!("Transaction receipt: {:?}", receipt);
+    // eprintln!("Transaction receipt: {:?}", receipt);
 
     Ok(())
 }

@@ -220,7 +220,110 @@ fn vector_fs_api_tests() {
             {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
-                let filename = "files/shinkai_intro_escaped.vrkai";
+                let filename = "files/shinkai_intro.vrkai";
+                let file_path = Path::new(filename.clone());
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(&file_path)
+                    .map_err(|_| VRError::FailedPDFParsing)
+                    .unwrap();
+
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                        filename: filename.to_string(),
+                        file: ciphertext,
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+            }
+            {
+                // Convert File and Save to Folder
+                let payload = APIConvertFilesAndSaveToFolder {
+                    path: "/test_folder".to_string(),
+                    file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::ConvertFilesAndSaveToFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            let mut retrieved_fs_json = String::new();
+            {
+                // Recover file from path using APIVecFSRetrievePathSimplifiedJson
+                let payload = APIVecFsRetrievePathSimplifiedJson {
+                    path: "/test_folder/shinkai_intro".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp for current file system files: {:?}", resp);
+
+                // TODO: convert to json and then compare
+                let expected_path = "/test_folder/shinkai_intro";
+                assert!(
+                    resp.contains(expected_path),
+                    "Response does not contain the expected file path: {}",
+                    expected_path
+                );
+                retrieved_fs_json = resp;
+            }
+            {
+                // Upload .pdf file to inbox
+                // Prepare the file to be read
+                let filename = "files/shinkai_intro.pdf";
                 let file_path = Path::new(filename.clone());
 
                 // Read the file into a buffer
@@ -317,7 +420,11 @@ fn vector_fs_api_tests() {
                     "Response does not contain the expected file path: {}",
                     expected_path
                 );
+                // Assert that after updating the fs item with a new VR generated from the PDF (overwriting the one from the .vrkai),
+                // the filesystem json is different (because different timestamps/id on the item).
+                assert_ne!(resp, retrieved_fs_json);
             }
+
             // It is failing
             // Failed to receive response: APIError { code: 500, error: "Internal Server Error",
             // message: "Failed to move folder: Supplied path does not exist/hold any FSEntry in the VectorFS: /test_folder2" }

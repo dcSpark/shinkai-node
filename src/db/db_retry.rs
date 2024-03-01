@@ -110,17 +110,11 @@ impl ShinkaiDB {
             // Split the composite key to get the time component, retry count and hash key
             let mut parts = key_str.split(":::");
             let time_key_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
-            // let retry_count_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
 
             // Parse the time_key into a DateTime object
             let time_key = DateTime::parse_from_rfc3339(time_key_str)
                 .map_err(|_| ShinkaiDBError::InvalidData)?
                 .with_timezone(&Utc);
-
-            // // Parse the retry_count into a u32
-            // let retry_count = retry_count_str
-            //     .parse::<u32>()
-            //     .map_err(|_| ShinkaiDBError::InvalidData)?;
 
             // Compare the time key with the up_to_time
             if time_key > up_to_time {

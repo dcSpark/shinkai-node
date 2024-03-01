@@ -8,7 +8,7 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSItemScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -18,7 +18,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -28,7 +28,7 @@ use tracing::instrument;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(identity_secret_key, vector_fs, db))]
+    #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<Mutex<ShinkaiDB>>,
@@ -451,9 +451,31 @@ impl JobManager {
                                     );
                                 }
                             }
-                            ScopeEntry::VectorFS(fs_entry) => {
-                                if !full_job.scope.vector_fs.contains(&fs_entry) {
-                                    full_job.scope.vector_fs.push(fs_entry);
+                            ScopeEntry::VectorFSItem(fs_entry) => {
+                                if !full_job.scope.vector_fs_items.contains(&fs_entry) {
+                                    full_job.scope.vector_fs_items.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
+                            }
+                            ScopeEntry::VectorFSFolder(fs_entry) => {
+                                if !full_job.scope.vector_fs_folders.contains(&fs_entry) {
+                                    full_job.scope.vector_fs_folders.push(fs_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate VectorFSScopeEntry detected",
+                                    );
+                                }
+                            }
+                            ScopeEntry::NetworkFolder(nf_entry) => {
+                                if !full_job.scope.network_folders.contains(&nf_entry) {
+                                    full_job.scope.network_folders.push(nf_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
@@ -482,7 +504,7 @@ impl JobManager {
     }
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
-    /// If save_to_db_directly == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
+    /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
@@ -493,12 +515,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
-        // Handle the None case if the agent is not found
-        let agent = match agent {
-            Some(agent) => agent,
-            None => return Err(AgentError::AgentNotFound),
-        };
-
         // Create the RemoteEmbeddingGenerator instance
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
@@ -513,47 +529,25 @@ impl JobManager {
             }
         };
 
-        // Start processing the files
-        for (filename, content) in files.into_iter() {
-            eprintln!("Processing file: {}", filename);
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                &format!("Processing file: {}", filename),
-            );
-            // TODO: is file is different than .kai
-            let resource = JobManager::parse_file_into_resource_gen_desc(
-                content.clone(),
-                &generator,
-                filename.clone(),
-                &vec![],
-                agent.clone(),
-                400,
-                unstructured_api.clone(),
-            )
-            .await?;
+        let processed_vrkais =
+            JobManager::process_files_into_vrkai(files, &generator, agent.clone(), unstructured_api.clone()).await?;
 
+        // Save the vrkai into scope (and potentially VectorFS)
+        for (filename, vrkai) in processed_vrkais {
             // Now create Local/VectorFSScopeEntry depending on setting
-            let text_chunking_strategy = TextChunkingStrategy::V1;
             if let Some(folder_path) = &save_to_vector_fs_folder {
-                // TODO: Save to VectorFS
-                let resource_header = resource.as_trait_object().generate_resource_header();
-                let fs_scope_entry = VectorFSScopeEntry {
-                    resource_header: resource_header,
-                    vector_fs_path: folder_path.clone(),
+                let fs_scope_entry = VectorFSItemScopeEntry {
+                    name: vrkai.resource.as_trait_object().name().to_string(),
+                    path: folder_path.clone(),
+                    source: vrkai.resource.as_trait_object().source().clone(),
                 };
-                files_map.insert(filename, ScopeEntry::VectorFS(fs_scope_entry));
+
+                // TODO: Save to the vector_fs if not None
+                // let vector_fs = self.v
+
+                files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
             } else {
-                let source = SourceFile::new_standard_source_file(
-                    filename.clone(),
-                    SourceFileType::detect_file_type(&filename)?,
-                    content,
-                    None,
-                );
-                let local_scope_entry = LocalScopeEntry {
-                    resource: resource,
-                    source: Some(source),
-                };
+                let local_scope_entry = LocalScopeEntry { vrkai: vrkai };
                 files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
             }
         }

@@ -9,7 +9,7 @@ use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::{SourceFile, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
+    BaseVectorResource, NodeContent, RetrievedNode, VRKai, VectorResource, VectorResourceCore, VectorResourceSearch,
 };
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};
 
@@ -138,15 +138,17 @@ impl VectorFS {
         self.db.get_source_file_map_by_fs_item(&fs_item, &reader.profile)
     }
 
-    /// Attempts to retrieve a VectorResource and its SourceFileMap at the path specified in reader. If either is not available
-    /// an error will be returned.
-    pub fn retrieve_vr_and_source_file_map(
-        &mut self,
-        reader: &VFSReader,
-    ) -> Result<(BaseVectorResource, SourceFileMap), VectorFSError> {
-        let vr = self.retrieve_vector_resource(reader)?;
-        let sfm = self.retrieve_source_file_map(reader)?;
-        Ok((vr, sfm))
+    /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
+    pub fn retrieve_vrkai(&mut self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
+        let fs_item = self.retrieve_fs_entry(reader)?.as_item()?;
+        let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
+        let sfm = self.retrieve_source_file_map(reader).ok();
+
+        Ok(VRKai::from_base_vector_resource(
+            resource,
+            sfm,
+            fs_item.distribution_origin,
+        ))
     }
 
     /// Attempts to retrieve a VectorResource from inside an FSItem within the folder specified at reader path.
@@ -172,15 +174,11 @@ impl VectorFS {
         self.retrieve_source_file_map(&new_reader)
     }
 
-    /// Attempts to retrieve a VectorResource and its SourceFileMap from inside an FSItem within the folder specified at reader path.
-    /// If either is not available, an error will be returned.
-    pub fn retrieve_vr_and_source_file_map_in_folder(
-        &mut self,
-        reader: &VFSReader,
-        item_name: String,
-    ) -> Result<(BaseVectorResource, SourceFileMap), VectorFSError> {
+    /// Attempts to retrieve a VRKai from inside an FSItem within the folder specified at reader path.
+    /// If a VectorResource is not saved at this path, an error will be returned.
+    pub fn retrieve_vrkai_in_folder(&mut self, reader: &VFSReader, item_name: String) -> Result<VRKai, VectorFSError> {
         let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
-        self.retrieve_vr_and_source_file_map(&new_reader)
+        self.retrieve_vrkai(&new_reader)
     }
 
     /// Retrieves a node at a given path from the VectorFS core resource under a profile

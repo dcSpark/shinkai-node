@@ -668,6 +668,7 @@ impl Node {
     async fn retry_messages(&self) -> Result<(), NodeError> {
         let db_lock = self.db.lock().await;
         let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
+        drop(db_lock);
 
         for retry_message in messages_to_retry {
             let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
@@ -675,8 +676,10 @@ impl Node {
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
+            let db_lock = self.db.lock().await;
             db_lock.remove_message_from_retry(&retry_message.message).unwrap();
-
+            drop(db_lock);
+            
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,
@@ -751,6 +754,7 @@ impl Node {
                     }
                 }
                 Err(e) => {
+                    eprintln!("Failed to connect to {}: {}", address, e);
                     shinkai_log(
                         ShinkaiLogOption::Node,
                         ShinkaiLogLevel::Error,

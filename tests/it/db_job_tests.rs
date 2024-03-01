@@ -116,15 +116,12 @@ mod tests {
         // Create new jobs for the agent
         for i in 1..=5 {
             let job_id = format!("job{}", i);
-            let inbox_name =
-                InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
-                    .unwrap();
-            let inbox_names = vec![inbox_name];
-            // let documents = vec!["document1".to_string(), "document2".to_string()];
-
+            eprintln!("job_id: {}", job_id.clone());
             let scope = JobScope::new_default();
             create_new_job(&mut shinkai_db, job_id, agent_id.clone(), scope);
         }
+
+        eprintln!("agent_id: {}", agent_id.clone());
 
         // Get all jobs for the agent
         let jobs = shinkai_db.get_agent_jobs(agent_id.clone()).unwrap();
@@ -155,7 +152,7 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         // Update job to finished
-        shinkai_db.update_job_to_finished(job_id.clone()).unwrap();
+        shinkai_db.update_job_to_finished(&job_id.clone()).unwrap();
 
         // Retrieve the job and check that is_finished is set to true
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
@@ -204,12 +201,19 @@ mod tests {
                 None,
             )
             .unwrap();
+        sleep(Duration::from_millis(10)).await;
+        shinkai_db
+            .add_step_history(
+                job_id.clone(),
+                "2) What is 10 + 25".to_string(),
+                "2) The answer is 35".to_string(),
+                None,
+            )
+            .unwrap();
 
         // Retrieve the job and check that step history is updated
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-        let last_step = job.step_history.last().unwrap();
-        println!("{:?}", last_step);
-        assert_eq!(last_step.step_revisions.len(), 1);
+        assert_eq!(job.step_history.len(), 2);
     }
 
     #[test]
@@ -223,10 +227,7 @@ mod tests {
 
         match shinkai_db.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
-            Err(e) => assert_eq!(
-                e,
-                ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())
-            ),
+            Err(e) => assert_eq!(e, ShinkaiDBError::DataNotFound),
         }
     }
 
@@ -262,12 +263,9 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string(&agent_id));
         let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
-        match shinkai_db.update_job_to_finished(job_id.clone()) {
+        match shinkai_db.update_job_to_finished(&job_id.clone()) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
-            Err(e) => assert_eq!(
-                e,
-                ShinkaiDBError::ProfileNameNonExistent(format!("jobtopic_{}", job_id))
-            ),
+            Err(e) => assert_eq!(e, ShinkaiDBError::DataNotFound),
         }
     }
 
@@ -559,6 +557,7 @@ mod tests {
 
         // Check the step history and execution context
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
+        eprintln!("job execution context: {:?}", job.execution_context);
 
         // Check the execution context
         assert_eq!(

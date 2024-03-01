@@ -1,5 +1,5 @@
 use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::{schemas::identity::Identity, vector_fs::vector_fs_types::DistributionOrigin};
+use crate::{agent::job_manager::JobManager, schemas::identity::Identity};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -18,6 +18,10 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
+use shinkai_vector_resources::{
+    source::{DistributionOrigin, SourceFileMap},
+    vector_resource::VRKai,
+};
 
 impl Node {
     async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -122,6 +126,7 @@ impl Node {
         Ok(())
     }
 
+    // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -174,7 +179,12 @@ impl Node {
         let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
         let max_results = input_payload.max_results.unwrap_or(100) as u64;
         let search_results = match vector_fs
-            .deep_vector_search(&reader, input_payload.search.clone(), max_resources_to_search, max_results)
+            .deep_vector_search(
+                &reader,
+                input_payload.search.clone(),
+                max_resources_to_search,
+                max_results,
+            )
             .await
         {
             Ok(results) => results,
@@ -189,6 +199,9 @@ impl Node {
             }
         };
 
+        // TODO: Change path to be a single output string.
+        // - Also return the source metadata, potentially using the format output method
+        // that is used for showing search results to LLMs
         let results: Vec<(String, Vec<String>, f32)> = search_results
             .into_iter()
             .map(|res| {
@@ -669,7 +682,6 @@ impl Node {
                 return Ok(());
             }
         };
-        let mut vector_fs = self.vector_fs.lock().await;
         let destination_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -683,7 +695,6 @@ impl Node {
             }
         };
 
-        // For now just check for .vrkai files and store them
         let files = {
             let db_lock = self.db.lock().await;
             match db_lock.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
@@ -702,84 +713,31 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
-        // TODO(Rob): we also need to handle the other ones which need to be converted to vrkai
-        // read files from file_inbox
-        // write .vrkai directly
-        // convert other files to .vrkai
-        let vrkai_files: Vec<(String, Vec<u8>)> =
-            files.into_iter().filter(|(name, _)| name.ends_with(".vrkai")).collect();
+        // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
+        let processed_vrkais =
+            JobManager::process_files_into_vrkai(files, &self.embedding_generator, None, self.unstructured_api.clone())
+                .await?;
 
+        // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();
+        let mut vector_fs = self.vector_fs.lock().await;
+        for (filename, vrkai) in processed_vrkais {
+            let folder_path = destination_path.clone();
+            eprintln!("folder_path: {:?}", folder_path);
+            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
 
-        for vrkai_file in vrkai_files {
-            let first_folder_path = destination_path.clone();
-            eprintln!("first_folder_path: {:?}", first_folder_path);
-            let writer = vector_fs
-                .new_writer(requester_name.clone(), first_folder_path, requester_name.clone())
-                .unwrap();
-
-            // Convert Vec<u8> to a String to use with from_json
-            let json_str = match String::from_utf8(vrkai_file.1.clone()) {
-                Ok(str) => str,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to convert Vec<u8> to String: {}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            };
-
-
-            let base_vr = match BaseVectorResource::from_json(&json_str) {
-                Ok(vr) => vr,
-                Err(err) => {
-                    // Attempt to unescape the JSON string and retry parsing
-                    let unescaped_json_str = json_str.replace("\\\"", "\"");
-                    match BaseVectorResource::from_json(&unescaped_json_str) {
-                        Ok(vr) => vr,
-                        Err(_) => {
-                            let _ = res
-                                .send(Err(APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to parse JSON to BaseVectorResource: {}", err),
-                                }))
-                                .await;
-                            return Ok(());
-                        }
-                    }
-                }
-            };
-
-            if let Err(e) = vector_fs.save_vector_resource_in_folder(
-                &writer,
-                base_vr,
-                None,       // TODO: we could extract it if it's part of the vrkai
-                DistributionOrigin::None,   // TODO: extend the schema or read it from the vrkai
-            ) {
+            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
                 let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Error saving vector resource in folder: {}", e),
-                        }))
-                        .await;
-                    return Ok(());
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error saving '{}' in folder: {}", filename, e),
+                    }))
+                    .await;
+                return Ok(());
             }
 
-            // TODO: Define permissions here
-            //     let perm_writer = vector_fs
-            //     .new_writer(default_test_profile(), item.path.clone(), default_test_profile())
-            //     .unwrap();
-            // vector_fs
-            //     .set_path_permission(&perm_writer, ReadPermission::Private, WritePermission::Private)
-            //     .unwrap();
-
-            let success_message = format!("Vector resource '{}' saved in folder successfully.", vrkai_file.0);
+            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
             success_messages.push(success_message);
         }
 

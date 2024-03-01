@@ -76,7 +76,7 @@ pub async fn tauri_initialize_node() -> Result<
             Ok((node_local_commands, api_server, node_task, ws_server, node))
         }
         Err(e) => {
-            eprintln!("Error running node: {}", e);
+            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Error running node: {}", e).as_str());
             Err(NodeRunnerError { source: e })
         }
     }
@@ -313,7 +313,7 @@ pub async fn run_node_tasks(
 
     match tokio::try_join!(api_server, node_task, ws_server) {
         Ok(_) => {
-            eprintln!("All tasks completed");
+            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "All tasks completed");
             Ok(())
         }
         Err(e) => {
