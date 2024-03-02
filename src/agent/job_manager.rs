@@ -28,7 +28,7 @@ use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
 
-const NUM_THREADS: usize = 4;
+const NUM_THREADS: usize = 1;
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
