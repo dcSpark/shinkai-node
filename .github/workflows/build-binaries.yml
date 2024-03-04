@@ -15,8 +15,8 @@ jobs:
             os: ubuntu-22.04
           - arch: aarch64-apple-darwin
             os: macos-14
-          # - arch: x86_64-pc-windows-msvc
-          #   os: windows-2022
+          - arch: x86_64-pc-windows-msvc
+            os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
         - name: Checkout sources
@@ -39,25 +39,29 @@ jobs:
 
         - name: Upload binaries to release
           uses: svenstaro/upload-release-action@v2
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           with:
             repo_token: ${{ secrets.GITHUB_TOKEN }}
             file: target/release/shinkai_node
-            asset_name: shinkai-node-${{ matrix.arch }}
+            asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
             tag: ${{ github.ref }}
             overwrite: true
 
-        - name: Build
+        - name: Prepare binary files
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
             mkdir files-to-r2/${{ matrix.arch }}
-            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}
-            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-latest
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-latest${{ env.EXTENSION }}
 
         - name: Upload binaries to R2 bucket
-          uses: ryand56/r2-upload-action@latest
+          uses: shallwefootball/s3-upload-action@master
           with:
-            r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-            r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-            r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-            r2-bucket: shinkai-download
-            source-dir: files-to-r2/${{ matrix.arch }}
-            destination-dir: ./shinkai-node/binaries/${{ matrix.arch }}/
+            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
+            aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+            aws_bucket: shinkai-download
+            source_dir: files-to-r2/${{ matrix.arch }}
+            destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
