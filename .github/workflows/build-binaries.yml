@@ -61,7 +61,7 @@ jobs:
         - name: Upload binaries to R2 bucket
           uses: shallwefootball/s3-upload-action@master
           with:
-            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai-download
+            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
             aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
             aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             aws_bucket: shinkai-download
