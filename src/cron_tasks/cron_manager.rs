@@ -94,8 +94,6 @@ impl From<InboxNameError> for CronManagerError {
     }
 }
 
-const NUM_THREADS: usize = 1;
-
 impl CronManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
