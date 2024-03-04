@@ -189,6 +189,34 @@ impl VectorFS {
         }
     }
 
+    /// Deletes the FSItem at the writer's path.
+    pub fn delete_item(&mut self, writer: &VFSWriter) -> Result<(), VectorFSError> {
+        // Start a new write batch for the deletion operation
+        let mut write_batch = writer.new_write_batch()?;
+
+        // The wb_delete_item method returns the updated write batch
+        write_batch = self.wb_delete_item(writer, write_batch)?;
+
+        // Commit the changes in the write batch to the database
+        self.db.write_pb(write_batch)?;
+
+        Ok(())
+    }
+
+    /// Deletes the item at writer's path, within a write batch.
+    fn wb_delete_item(
+        &mut self,
+        writer: &VFSWriter,
+        mut write_batch: ProfileBoundWriteBatch,
+    ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
+        self.validate_path_points_to_item(writer.path.clone(), &writer.profile)?;
+        let (item_node, _) = self._remove_node_from_core_resource(writer)?;
+        let ref_string = item_node.get_vr_header_content()?.reference_string();
+
+        self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
+        return Ok(write_batch);
+    }
+
     /// Copies the FSItem from the writer's path into being held underneath the destination_path.
     /// Does not support copying into VecFS root.
     pub fn copy_item(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSItem, VectorFSError> {
@@ -198,7 +226,7 @@ impl VectorFS {
         Ok(new_item)
     }
 
-    /// Internal method to copy the FSItem from the writer's path into being held underneath the destination_path.
+    /// Copy the FSItem from the writer's path into being held underneath the destination_path.
     /// Does not support copying into VecFS root.
     fn wb_copy_item(
         &mut self,
@@ -850,6 +878,7 @@ impl VectorFS {
     fn _remove_node_from_core_resource(&mut self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals(&writer.profile)?;
         let result = internals.fs_core_resource.remove_node_at_path(writer.path.clone())?;
+        internals.permissions_index.remove_path_permission(writer.path.clone());
         Ok(result)
     }
 

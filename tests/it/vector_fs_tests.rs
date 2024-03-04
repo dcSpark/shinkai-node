@@ -642,36 +642,54 @@ async fn test_vector_fs_operations() {
     assert!(copy_result.is_err());
 
     //
-    // Move Tests
+    // Move/Deletion Tests
     //
 
     // Moving item from one folder to another means previous path is empty & file is in new location
-    // let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
-    // let destination_folder_path = second_folder_path.clone();
-    // let orig_writer = vector_fs
-    //     .new_writer(
-    //         default_test_profile(),
-    //         item_to_move_path.clone(),
-    //         default_test_profile(),
-    //     )
-    //     .unwrap();
-    // vector_fs
-    //     .move_item(&orig_writer, destination_folder_path.clone())
-    //     .unwrap();
+    let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
+    let destination_folder_path = second_folder_path.clone();
+    let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            item_to_move_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // let orig_location_check = vector_fs
-    //     .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
-    //     .is_err();
-    // assert!(
-    //     orig_location_check,
-    //     "The item should no longer exist in the original location."
-    // );
+    let dest_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_location_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
-    // let new_location_check = vector_fs
-    //     .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
-    //     .is_ok();
-    // assert!(new_location_check, "The item should now exist in the new location.");
+    // Validate item deletion works
+    vector_fs.delete_item(&dest_writer).unwrap();
+
+    let new_location_check = vector_fs
+        .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(new_location_check, "The item should now not exist.");
+
+    // Validate item moving works
+    vector_fs
+        .move_item(&orig_writer, destination_folder_path.clone())
+        .unwrap();
+
+    let orig_location_check = vector_fs
+        .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(
+        orig_location_check,
+        "The item should no longer exist in the original location."
+    );
+
+    let new_location_check = vector_fs
+        .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+        .is_ok();
+    assert!(new_location_check, "The item should now exist in the new location.");
 
     // Moving Folder from one location to another means previous path is empty
 }
