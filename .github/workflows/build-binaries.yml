@@ -15,6 +15,8 @@ jobs:
             os: ubuntu-22.04
           - arch: aarch64-apple-darwin
             os: macos-14
+          # - arch: x86_64-pc-windows-msvc
+          #   os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
         - name: Checkout sources
@@ -35,12 +37,6 @@ jobs:
         - name: Build
           run: cargo build --release
 
-        - name: Upload ${{ matrix.arch }} artifact
-          uses: actions/upload-artifact@v4
-          with:
-            name: shinkai-node-${{ matrix.arch }}
-            path: target/release/shinkai_node
-
         - name: Upload binaries to release
           uses: svenstaro/upload-release-action@v2
           with:
@@ -49,3 +45,19 @@ jobs:
             asset_name: shinkai-node-${{ matrix.arch }}
             tag: ${{ github.ref }}
             overwrite: true
+
+        - name: Build
+          run: |
+            mkdir files-to-r2/${{ matrix.arch }}
+            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}
+            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-latest
+
+        - name: Upload binaries to R2 bucket
+          uses: ryand56/r2-upload-action@latest
+          with:
+            r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
+            r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+            r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+            r2-bucket: shinkai-download
+            source-dir: files-to-r2/${{ matrix.arch }}
+            destination-dir: ./shinkai-node/binaries/${{ matrix.arch }}/
