@@ -41,18 +41,22 @@ jobs:
 
         # - name: Upload binaries to release
         #   uses: svenstaro/upload-release-action@v2
+        #   env:
+        #     EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
         #   with:
         #     repo_token: ${{ secrets.GITHUB_TOKEN }}
         #     file: target/release/shinkai_node
-        #     asset_name: shinkai-node-${{ matrix.arch }}
+        #     asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
         #     tag: ${{ github.ref }}
         #     overwrite: true
 
-        - name: Build
+        - name: Prepare binary files
+          env:
+            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
             mkdir files-to-r2/${{ matrix.arch }}
-            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-0.4.7
-            cp target/release/shinkai_node files-to-r2/${{ matrix.arch }}/shinkai-node-latest
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-0.4.7${{ env.EXTENSION }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-latest${{ env.EXTENSION }}
 
         - name: Upload binaries to R2 bucket
           uses: ryand56/r2-upload-action@latest
