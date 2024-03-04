@@ -59,11 +59,11 @@ jobs:
             cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-latest${{ env.EXTENSION }}
 
         - name: Upload binaries to R2 bucket
-          uses: ryand56/r2-upload-action@latest
+          uses: shallwefootball/s3-upload-action@master
           with:
-            r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
-            r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-            r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-            r2-bucket: shinkai-download
-            source-dir: files-to-r2/${{ matrix.arch }}
-            destination-dir: ./shinkai-node/binaries/${{ matrix.arch }}/
+            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com/shinkai-download
+            aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+            aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+            aws_bucket: shinkai-download
+            source_dir: files-to-r2/${{ matrix.arch }}
+            destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
