@@ -124,10 +124,10 @@ impl ShinkaiMessage {
     }
 
     /// Attempts to update the node_api_data inside of the inner metadata. Errors if the message is encrypted.
-    pub fn update_node_api_data(mut self, node_api_data: NodeApiData) -> Result<Self, ShinkaiMessageError> {
+    pub fn update_node_api_data(mut self, node_api_data: Option<NodeApiData>) -> Result<Self, ShinkaiMessageError> {
         match &mut self.body {
             MessageBody::Unencrypted(body) => {
-                body.internal_metadata.node_api_data = Some(node_api_data);
+                body.internal_metadata.node_api_data = node_api_data;
                 Ok(self)
             }
             MessageBody::Encrypted(_) => Err(ShinkaiMessageError::AlreadyEncrypted(

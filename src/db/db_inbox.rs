@@ -139,8 +139,8 @@ impl ShinkaiDB {
                 node_timestamp: time_key.clone(),
             };
 
-            let mut updated_message = message.clone();
-            updated_message.update_node_api_data(node_api_data)?
+            let updated_message = message.clone();
+            updated_message.update_node_api_data(Some(node_api_data))?
         };
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
