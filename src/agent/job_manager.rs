@@ -21,11 +21,11 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
-use std::mem;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
+use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 4;
@@ -82,12 +82,17 @@ impl JobManager {
         let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
+        let thread_number = env::var("JOB_MANAGER_THREADS")
+            .unwrap_or(NUM_THREADS.to_string())
+            .parse::<usize>()
+            .unwrap_or(NUM_THREADS);
+
         // Start processing the job queue
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
-            NUM_THREADS,
+            thread_number,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
             unstructured_api.clone(),
