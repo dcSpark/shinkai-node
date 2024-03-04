@@ -371,22 +371,6 @@ impl ShinkaiDB {
         if let Some(message_path) = last_messages.first() {
             if let Some(message) = message_path.first() {
                 let message_key = message.calculate_message_hash_for_pagination();
-// Old:
-//                 let cf_name = format!("{}_{}_execution_context", job_id, message_key);
-//                 if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
-//                     // Get the last context (should be only one)
-//                     let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
-//                     if let Some(Ok((_, value))) = iter.next() {
-//                         let context: Result<HashMap<String, String>, ShinkaiDBError> = bincode::deserialize(&value)
-//                             .map_err(|_| {
-//                                 ShinkaiDBError::SomeError(
-//                                     "Failed converting execution context bytes to hashmap".to_string(),
-//                                 )
-//                             });
-//                         if let Ok(context) = context {
-//                             execution_context = context;
-//                         }
-//                     }
                 let job_id_hash = Self::job_id_to_hash(&job_id);
                 // Construct the key for fetching the execution context
                 let execution_context_key = format!("jobinbox_{}_ctxt_{}", job_id_hash, message_key);
@@ -556,27 +540,18 @@ impl ShinkaiDB {
 
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
-// Old:
-//                     let message_key = message.calculate_message_hash_for_pagination();
-//                     let cf_name = format!("{}_{}_step_history", job_id, message_key);
-//                     if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
-//                         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-
                     {
                         // Use shared CFs
                         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
                         // Use a full iterator to go through all keys in the cf_inbox column family
-                        let mut iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
+                        let iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
 
                         for item in iter {
-                            let (key, _value) = match item {
+                            let (_, _value) = match item {
                                 Ok(kv) => kv,
                                 Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
                             };
-
-                            // Print the key here
-                            let key_str = std::str::from_utf8(&key).unwrap_or("[Invalid UTF-8]");
                         }
                     }
                     let message_key = message.calculate_message_hash_for_pagination();

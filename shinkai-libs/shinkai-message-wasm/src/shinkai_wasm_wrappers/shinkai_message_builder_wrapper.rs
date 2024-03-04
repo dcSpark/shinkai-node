@@ -10,7 +10,10 @@ use serde_wasm_bindgen::{from_value, to_value};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
+        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
+        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+        APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions,
+        JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
     },
     shinkai_utils::{
         encryption::{
@@ -115,7 +118,7 @@ impl ShinkaiMessageBuilderWrapper {
         let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
 
         if let Some(mut inner) = self.inner.take() {
-            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, encryption);
+            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, encryption, None);
             self.inner = Some(inner);
             Ok(())
         } else {
@@ -136,7 +139,8 @@ impl ShinkaiMessageBuilderWrapper {
         let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
 
         if let Some(mut inner) = self.inner.take() {
-            inner = inner.internal_metadata_with_inbox(sender_subidentity, recipient_subidentity, inbox, encryption);
+            inner =
+                inner.internal_metadata_with_inbox(sender_subidentity, recipient_subidentity, inbox, encryption, None);
             self.inner = Some(inner);
             Ok(())
         } else {
@@ -165,6 +169,7 @@ impl ShinkaiMessageBuilderWrapper {
                 inbox,
                 message_schema,
                 encryption,
+                None,
             );
             self.inner = Some(inner);
             Ok(())

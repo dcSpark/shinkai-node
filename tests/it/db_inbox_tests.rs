@@ -181,22 +181,29 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
     );
 
     // Check parent of the second message
-    // TODO: add back when we have node_api_data
-    // let expected_parent_hash = messages[0][0]
-    //     .external_metadata
-    //     .node_api_data
-    //     .as_ref()
-    //     .unwrap()
-    //     .node_message_hash
-    //     .clone();
-    // let actual_parent_hash = messages[1][0]
-    //     .external_metadata
-    //     .node_api_data
-    //     .as_ref()
-    //     .unwrap()
-    //     .parent_hash
-    //     .clone();
-    // assert_eq!(actual_parent_hash, expected_parent_hash);
+    let expected_parent_hash = if let MessageBody::Unencrypted(shinkai_body) = &messages[0][0].body {
+        shinkai_body
+            .internal_metadata
+            .node_api_data
+            .as_ref()
+            .map(|data| data.node_message_hash.clone())
+    } else {
+        None
+    };
+
+    let actual_parent_hash = if let MessageBody::Unencrypted(shinkai_body) = &messages[1][0].body {
+        shinkai_body
+            .internal_metadata
+            .node_api_data
+            .as_ref()
+            .map(|data| data.parent_hash.clone())
+    } else {
+        None
+    };
+
+    // eprintln!("Expected parent hash: {:?}", expected_parent_hash);
+    // eprintln!("Actual parent hash: {:?}", actual_parent_hash);
+    assert_eq!(actual_parent_hash, expected_parent_hash);
 
     // Retrieve messages with pagination using the last message's hash
     let pagination_hash = messages[1][0].calculate_message_hash_for_pagination();
@@ -1045,7 +1052,9 @@ async fn db_inbox() {
         .unwrap();
     assert_eq!(inboxes.len(), 1);
 
-    let inboxes = shinkai_db.get_inboxes_for_profile(node1_profile_identity.clone()).unwrap();
+    let inboxes = shinkai_db
+        .get_inboxes_for_profile(node1_profile_identity.clone())
+        .unwrap();
     assert_eq!(inboxes.len(), 1);
     assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()));
 
@@ -1056,9 +1065,7 @@ async fn db_inbox() {
     assert_eq!(smart_inboxes.len(), 1);
 
     // Check if smart_inboxes contain the expected results
-    let expected_inbox_ids = vec![
-        "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false",
-    ];
+    let expected_inbox_ids = vec!["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
 
     for smart_inbox in smart_inboxes {
         assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
@@ -1097,7 +1104,9 @@ async fn db_inbox() {
     shinkai_db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
 
     // Get smart_inboxes again
-    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_profile_identity).unwrap();
+    let updated_smart_inboxes = shinkai_db
+        .get_all_smart_inboxes_for_profile(node1_profile_identity)
+        .unwrap();
 
     // Check if the name of the updated inbox has been changed
     for smart_inbox in updated_smart_inboxes {
@@ -1126,12 +1135,14 @@ fn test_permission_errors() {
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
-     // Update local node keys
-     shinkai_db.update_local_node_keys(
-        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
-    ).unwrap();
+    // Update local node keys
+    shinkai_db
+        .update_local_node_keys(
+            ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+            node1_encryption_pk.clone(),
+            node1_identity_pk.clone(),
+        )
+        .unwrap();
 
     let subidentity_name = "device1";
     let full_subidentity_name =
@@ -1171,7 +1182,11 @@ fn test_permission_errors() {
     );
 
     // Test 2: Adding a permission for a nonexistent identity should result in an error
-    let result = shinkai_db.add_permission("job_inbox::not_existent::false", &nonexistent_identity, InboxPermission::Admin);
+    let result = shinkai_db.add_permission(
+        "job_inbox::not_existent::false",
+        &nonexistent_identity,
+        InboxPermission::Admin,
+    );
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
@@ -1191,13 +1206,15 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::ProfileNotFound(format!(
-            "Profile not found for: nonexistent_identity"
-        ))
+        ShinkaiDBError::ProfileNotFound(format!("Profile not found for: nonexistent_identity"))
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
-    let result = shinkai_db.has_permission("job_inbox::not_existent::false", &device1_subidentity, InboxPermission::Admin);
+    let result = shinkai_db.has_permission(
+        "job_inbox::not_existent::false",
+        &device1_subidentity,
+        InboxPermission::Admin,
+    );
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
