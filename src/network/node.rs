@@ -297,6 +297,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIVecFSDeleteFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIVecFSDeleteItem {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -596,6 +604,8 @@ impl Node {
                             Some(NodeCommand::APIVecFSMoveFolder { msg, res }) => self.api_vec_fs_move_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSCopyFolder { msg, res }) => self.api_vec_fs_copy_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
+                            Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
+                            Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
                             _ => {},
                         }
                     }
@@ -679,7 +689,7 @@ impl Node {
             let db_lock = self.db.lock().await;
             db_lock.remove_message_from_retry(&retry_message.message).unwrap();
             drop(db_lock);
-            
+
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,

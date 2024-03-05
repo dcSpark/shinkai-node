@@ -36,6 +36,23 @@ impl VectorFSDB {
         Ok((bytes, cf))
     }
 
+    /// Deletes the `VectorResource` from the Resources topic.
+    /// Note: this is only to be used internally, as this simply removes the resource from the FSDB,
+    /// and does absolutely nothing else related to the VectorFS.
+    pub fn wb_delete_resource(
+        &self,
+        reference_string: &str,
+        batch: &mut ProfileBoundWriteBatch,
+    ) -> Result<(), VectorFSError> {
+        // Retrieve the handle for the "VectorResources" column family
+        let cf = self.get_cf_handle(FSTopic::VectorResources)?;
+
+        // Delete from the "VectorResources" column family
+        batch.pb_delete_cf(cf, reference_string);
+
+        Ok(())
+    }
+
     /// Fetches the BaseVectorResource from the DB using a VRHeader
     pub fn get_resource_by_header(
         &self,

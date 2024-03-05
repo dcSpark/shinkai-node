@@ -99,14 +99,12 @@ impl VectorFS {
         let current_datetime = ShinkaiTime::generate_time_now();
         let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
 
-        println!("0");
         // Ensure paths are valid before proceeding
         self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
         if &destination_path != &VRPath::root() {
             self.validate_path_points_to_folder(destination_path.clone(), &writer.profile)?;
         }
         let destination_child_path = destination_path.push_cloned(writer.path.last_path_id()?);
-        println!("1");
         if self
             .validate_path_points_to_entry(destination_child_path.clone(), &writer.profile)
             .is_ok()
@@ -114,21 +112,16 @@ impl VectorFS {
             return Err(VectorFSError::CannotOverwriteFSEntry(destination_child_path.clone()));
         }
 
-        println!("2");
         // Get the existing folder
         let (folder_ret_node, embedding) = self._get_node_from_core_resource(writer)?;
         let metadata = folder_ret_node.node.metadata.clone();
         let mut folder_resource = folder_ret_node.node.get_vector_resource_content()?.clone();
-        println!("3");
         // Backup tag index, remove nodes/embeddings, and then reapply tag index
         let cloned_tag_index = folder_resource.as_trait_object().get_data_tag_index().clone();
         let nodes_embeddings = folder_resource.as_trait_object_mut().remove_root_nodes()?;
         folder_resource
             .as_trait_object_mut()
             .set_data_tag_index(cloned_tag_index);
-        println!("4");
-
-        println!("\n\nFolder resource: {:?}\n\n", folder_resource);
 
         // We insert the emptied folder resource into the destination path, and copy permissions
         self._add_existing_vr_to_core_resource(
@@ -138,16 +131,12 @@ impl VectorFS {
             metadata,
             current_datetime,
         )?;
-        println!("5");
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
                 .permissions_index
                 .copy_path_permission(writer.path.clone(), destination_path.clone())?;
         }
-        println!("6");
-
-        self.print_profile_vector_fs_resource(writer.profile.clone());
 
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
         for (node, _) in nodes_embeddings {
@@ -155,38 +144,112 @@ impl VectorFS {
             let dest_path = destination_child_path.clone();
             match node.content {
                 NodeContent::Resource(_) => {
-                    println!("found resource node");
                     let (batch, _) = self.wb_copy_folder(&origin_writer, dest_path, write_batch)?;
-                    println!("done resource node");
                     write_batch = batch;
                 }
                 NodeContent::VRHeader(_) => {
-                    println!("found vrheader node");
                     let (batch, _) = self.wb_copy_item(&origin_writer, dest_path, write_batch)?;
-                    println!("done vrheader node");
                     write_batch = batch;
                 }
                 _ => continue,
             }
         }
-        println!("7");
 
         // Re-add saving fs internals to the write batch one last time to guarantee it gets updated fully
         let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
         self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
 
-        println!("8");
-
         // Fetch the new FSFolder after everything has been copied over in fs internals
         let reader = destination_writer.new_reader_copied_data(destination_child_path.clone(), self)?;
         let fs_entry = self.retrieve_fs_entry(&reader)?;
-
-        println!("9");
 
         match fs_entry {
             FSEntry::Folder(new_folder) => Ok((write_batch, new_folder)),
             _ => Err(VectorFSError::PathDoesNotPointAtFolder(destination_child_path)),
         }
+    }
+
+    /// Deletes the folder at writer's path, including all items and subfolders within.
+    pub fn delete_folder(&mut self, writer: &VFSWriter) -> Result<(), VectorFSError> {
+        let mut write_batch = writer.new_write_batch()?;
+        write_batch = self.internal_wb_delete_folder(writer, write_batch, false)?;
+        self.db.write_pb(write_batch)?;
+        Ok(())
+    }
+
+    /// Deletes the folder at writer's path, including all items and subfolders within, using a write batch.
+    fn internal_wb_delete_folder(
+        &mut self,
+        writer: &VFSWriter,
+        mut write_batch: ProfileBoundWriteBatch,
+        is_recursive_call: bool,
+    ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
+        self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
+
+        // Read the folder node first without removing it
+        let (folder_node, _) = self._get_node_from_core_resource(&writer)?;
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+        let folder =
+            FSFolder::from_vector_resource_node(folder_node.node, writer.path.clone(), &internals.last_read_index)?;
+
+        // Iterate over items in the folder and delete each
+        for item in folder.child_items {
+            let item_writer = VFSWriter {
+                requester_name: writer.requester_name.clone(),
+                path: writer.path.push_cloned(item.name.clone()),
+                profile: writer.profile.clone(),
+            };
+            write_batch = self.wb_delete_item(&item_writer, write_batch)?;
+        }
+
+        // Recursively delete subfolders
+        for subfolder in folder.child_folders {
+            let folder_writer = VFSWriter {
+                requester_name: writer.requester_name.clone(),
+                path: writer.path.push_cloned(subfolder.name.clone()),
+                profile: writer.profile.clone(),
+            };
+            write_batch = self.internal_wb_delete_folder(&folder_writer, write_batch, true)?;
+        }
+
+        // Now remove the folder node from the core resource
+        let (_removed_folder_node, _) = self._remove_node_from_core_resource(writer)?;
+
+        // Only commit updating the fs internals once at the top level, efficiency improvement
+        if !is_recursive_call {
+            let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+            self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        }
+
+        Ok(write_batch)
+    }
+
+    /// Deletes the FSItem at the writer's path.
+    pub fn delete_item(&mut self, writer: &VFSWriter) -> Result<(), VectorFSError> {
+        let mut write_batch = writer.new_write_batch()?;
+        write_batch = self.wb_delete_item(writer, write_batch)?;
+        self.db.write_pb(write_batch)?;
+        Ok(())
+    }
+
+    /// Deletes the item at writer's path, within a write batch.
+    fn wb_delete_item(
+        &mut self,
+        writer: &VFSWriter,
+        mut write_batch: ProfileBoundWriteBatch,
+    ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
+        self.validate_path_points_to_item(writer.path.clone(), &writer.profile)?;
+        let (item_node, _) = self._remove_node_from_core_resource(writer)?;
+        let ref_string = item_node.get_vr_header_content()?.reference_string();
+
+        {
+            let internals = self.get_profile_fs_internals(&writer.profile)?;
+            internals.permissions_index.remove_path_permission(writer.path.clone());
+        }
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+        self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        return Ok(write_batch);
     }
 
     /// Copies the FSItem from the writer's path into being held underneath the destination_path.
@@ -198,7 +261,7 @@ impl VectorFS {
         Ok(new_item)
     }
 
-    /// Internal method to copy the FSItem from the writer's path into being held underneath the destination_path.
+    /// Copy the FSItem from the writer's path into being held underneath the destination_path.
     /// Does not support copying into VecFS root.
     fn wb_copy_item(
         &mut self,
@@ -330,12 +393,18 @@ impl VectorFS {
         if &destination_path != &VRPath::root() {
             self.validate_path_points_to_folder(destination_path.clone(), &writer.profile)?;
         }
+
         let destination_child_path = destination_path.push_cloned(writer.path.last_path_id()?);
         if self
             .validate_path_points_to_entry(destination_child_path.clone(), &writer.profile)
             .is_ok()
         {
             return Err(VectorFSError::CannotOverwriteFSEntry(destination_child_path.clone()));
+        }
+
+        // Make sure we don't partially copy the folder into itself before failing
+        if writer.path.is_descendant_path(&destination_child_path) {
+            return Err(VectorFSError::CannotMoveFolderIntoItself(writer.path.clone()));
         }
 
         // If the folder was moved successfully in memory, then commit to the DB
@@ -361,15 +430,20 @@ impl VectorFS {
         destination_writer: &VFSWriter,
         current_datetime: DateTime<Utc>,
     ) -> Result<FSFolder, VectorFSError> {
-        // Remove the existing folder
-        self._remove_node_from_core_resource(writer)?;
-
         // Copy the folder to the new destination
         let new_folder = self.internal_copy_folder(writer, destination_writer, current_datetime)?;
 
-        // Remove the original folder's permissions
+        // Remove the existing folder
+        println!("Deleting node from core resource.");
+        self._remove_node_from_core_resource(writer)?;
+        println!("Deleted.");
+
+        // Copy over/Remove the original folder's permissions
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
+            internals
+                .permissions_index
+                .copy_path_permission(writer.path.clone(), new_folder.path.clone())?;
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
         Ok(new_folder)

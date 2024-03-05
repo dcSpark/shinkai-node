@@ -451,6 +451,9 @@ pub trait VectorResourceCore: Send + Sync {
         if !deconstructed_nodes.is_empty() {
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
             self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+        } else {
+            // Else remove the node directly if deleting at the root level
+            self.remove_node_dt_specified(removed_node.0, Some(current_time))?;
         }
 
         Ok((removed_node.1, removed_node.2))

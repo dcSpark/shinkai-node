@@ -238,7 +238,7 @@ pub struct APIVecFsRetrievePathSimplifiedJson {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIConvertFilesAndSaveToFolder {
     pub path: String,
-    pub file_inbox: String
+    pub file_inbox: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -257,13 +257,17 @@ pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFsCreateFolder {
     pub path: String,
-    pub folder_name: String
+    pub folder_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFsDeleteFolder {
     pub path: String,
-    pub folder_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsDeleteItem {
+    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

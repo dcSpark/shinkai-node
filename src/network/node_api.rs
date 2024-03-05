@@ -654,6 +654,36 @@ async fn api_vec_fs_retrieve_vector_search_simplified_json_handler(
     .await
 }
 
+async fn api_vec_fs_delete_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_vec_fs_delete_item_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteItem {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 async fn api_vec_fs_create_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

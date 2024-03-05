@@ -642,36 +642,127 @@ async fn test_vector_fs_operations() {
     assert!(copy_result.is_err());
 
     //
-    // Move Tests
+    // Move/Deletion Tests For Items
     //
 
     // Moving item from one folder to another means previous path is empty & file is in new location
-    // let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
-    // let destination_folder_path = second_folder_path.clone();
-    // let orig_writer = vector_fs
-    //     .new_writer(
-    //         default_test_profile(),
-    //         item_to_move_path.clone(),
-    //         default_test_profile(),
-    //     )
-    //     .unwrap();
-    // vector_fs
-    //     .move_item(&orig_writer, destination_folder_path.clone())
-    //     .unwrap();
+    let item_to_move_path = first_folder_path.push_cloned(resource_name.to_string());
+    let destination_folder_path = second_folder_path.clone();
+    let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
+    let orig_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            item_to_move_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // let orig_location_check = vector_fs
-    //     .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
-    //     .is_err();
-    // assert!(
-    //     orig_location_check,
-    //     "The item should no longer exist in the original location."
-    // );
+    let dest_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_location_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // let new_location_path = destination_folder_path.push_cloned(resource_name.to_string());
-    // let new_location_check = vector_fs
-    //     .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
-    //     .is_ok();
-    // assert!(new_location_check, "The item should now exist in the new location.");
+    // Validate item deletion works
+    vector_fs.delete_item(&dest_writer).unwrap();
 
-    // Moving Folder from one location to another means previous path is empty
+    let new_location_check = vector_fs
+        .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(new_location_check, "The item should now not exist.");
+
+    // Validate item moving works
+    vector_fs
+        .move_item(&orig_writer, destination_folder_path.clone())
+        .unwrap();
+
+    let orig_location_check = vector_fs
+        .validate_path_points_to_entry(item_to_move_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(
+        orig_location_check,
+        "The item should no longer exist in the original location."
+    );
+
+    let new_location_check = vector_fs
+        .validate_path_points_to_entry(new_location_path.clone(), &default_test_profile())
+        .is_ok();
+    assert!(new_location_check, "The item should now exist in the new location.");
+
+    //
+    // Move/Deletion Tests for Folders
+    //
+
+    // Moving a folder from one location to another means the previous path is empty & the folder is in the new location
+    let folder_name = "new_root_folder".to_string();
+    let folder_to_move_path = VRPath::root().push_cloned(folder_name.to_string());
+    let destination_folder_path = second_folder_path.clone();
+    let new_folder_location_path = destination_folder_path.push_cloned(folder_name.to_string());
+
+    let orig_folder_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            folder_to_move_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+
+    // Validate folder moving works
+
+    vector_fs
+        .move_folder(&orig_folder_writer, destination_folder_path.clone())
+        .unwrap();
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    let orig_folder_location_check = vector_fs
+        .validate_path_points_to_entry(folder_to_move_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(
+        orig_folder_location_check,
+        "The folder should no longer exist in the original location."
+    );
+
+    let new_folder_location_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_ok();
+    assert!(
+        new_folder_location_check,
+        "The folder should now exist in the new location."
+    );
+
+    // Validate folder deletion works
+    let folder_to_delete_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_folder_location_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+
+    vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
+
+    let folder_deletion_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(folder_deletion_check, "The folder should now not exist.");
+
+    //
+    // Validate that after everything, in-memory state == fsdb state
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let writer = orig_writer
+        .new_writer_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let current_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    vector_fs
+        .revert_internals_to_last_db_save(&writer.profile, &writer.profile)
+        .unwrap();
+    let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+
+    assert_eq!(current_state, new_state);
 }

@@ -11,9 +11,9 @@ use shinkai_message_primitives::{
         shinkai_message_schemas::{
             APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
             APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-            APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, MessageSchemaType,
-            RegistrationCodeRequest, RegistrationCodeType,
+            APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions,
+            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
 };
@@ -429,6 +429,134 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to copy folder: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_vec_fs_delete_item(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match self
+            .validate_and_extract_payload::<APIVecFsDeleteItem>(
+                potentially_encrypted_msg,
+                MessageSchemaType::VecFsMoveItem,
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut vector_fs = self.vector_fs.lock().await;
+        let item_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert item path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+            Ok(writer) => writer,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create writer for item: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match vector_fs.delete_item(&orig_writer) {
+            Ok(_) => {
+                let success_message = format!("Item successfully deleted: {}", input_payload.path);
+                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to move item: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_vec_fs_delete_folder(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match self
+            .validate_and_extract_payload::<APIVecFsDeleteFolder>(
+                potentially_encrypted_msg,
+                MessageSchemaType::VecFsMoveItem,
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut vector_fs = self.vector_fs.lock().await;
+        let item_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert folder path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+            Ok(writer) => writer,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create writer for item: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match vector_fs.delete_folder(&orig_writer) {
+            Ok(_) => {
+                let success_message = format!("Folder successfully deleted: {}", input_payload.path);
+                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to move item: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

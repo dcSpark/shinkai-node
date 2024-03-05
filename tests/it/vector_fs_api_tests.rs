@@ -218,6 +218,35 @@ fn vector_fs_api_tests() {
                 eprintln!("resp: {:?}", resp);
             }
             {
+                // Create Folder
+                let payload = APIVecFsCreateFolder {
+                    path: "/".to_string(),
+                    folder_name: "test_folder2".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsCreateFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
                 let filename = "files/shinkai_intro.vrkai";
@@ -425,38 +454,6 @@ fn vector_fs_api_tests() {
                 assert_ne!(resp, retrieved_fs_json);
             }
 
-            // It is failing
-            // Failed to receive response: APIError { code: 500, error: "Internal Server Error",
-            // message: "Failed to move folder: Supplied path does not exist/hold any FSEntry in the VectorFS: /test_folder2" }
-            // {
-            //     // Move Folder
-            //     let payload = APIVecFsMoveFolder {
-            //         origin_path: "test_folder".to_string(),
-            //         destination_path: "test_folder2".to_string(),
-            //     };
-
-            //     let msg = generate_message_with_payload(
-            //         serde_json::to_string(&payload).unwrap(),
-            //         MessageSchemaType::VecFsMoveFolder,
-            //         node1_profile_encryption_sk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_encryption_pk.clone(),
-            //         node1_identity_name.as_str(),
-            //         node1_profile_name.as_str(),
-            //         node1_identity_name.as_str(),
-            //     );
-
-            //     // Prepare the response channel
-            //     let (res_sender, res_receiver) = async_channel::bounded(1);
-
-            //     // Send the command
-            //     node1_commands_sender
-            //         .send(NodeCommand::APIVecFSMoveFolder { msg, res: res_sender })
-            //         .await
-            //         .unwrap();
-            //     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-            //     eprintln!("resp: {:?}", resp);
-            // }
             {
                 // Copy Item (we required creating a new folder to copy the item to)
                 {
@@ -523,6 +520,35 @@ fn vector_fs_api_tests() {
                 // For Later
             }
             {
+                // Move Folder
+                let payload = APIVecFsMoveFolder {
+                    origin_path: "/test_folder".to_string(),
+                    destination_path: "/test_folder2".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsMoveFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSMoveFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+            }
+            {
                 // Do deep search
                 let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
                     search: "who wrote Shinkai?".to_string(),
@@ -557,7 +583,11 @@ fn vector_fs_api_tests() {
                     (
                         &"Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros"
                             .to_string(),
-                        &vec!["test_folder".to_string(), "shinkai_intro".to_string()]
+                        &vec![
+                            "test_folder2".to_string(),
+                            "test_folder".to_string(),
+                            "shinkai_intro".to_string()
+                        ]
                     ),
                     "The first search result does not match the expected output."
                 );

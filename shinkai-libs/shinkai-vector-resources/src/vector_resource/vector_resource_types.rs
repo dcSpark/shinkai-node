@@ -726,13 +726,6 @@ pub struct KeywordEmbedding {
     pub model_used: EmbeddingModelType,
 }
 
-/// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
-/// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VRPath {
-    pub path_ids: Vec<String>,
-}
-
 impl KeywordEmbedding {
     /// Creates a new instance of KeywordEmbedding.
     pub fn new(embedding: Embedding, model_used: EmbeddingModelType) -> Self {
@@ -744,6 +737,13 @@ impl KeywordEmbedding {
         self.embedding = embedding;
         self.model_used = model_type;
     }
+}
+
+/// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
+/// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VRPath {
+    pub path_ids: Vec<String>,
 }
 
 impl VRPath {
@@ -825,6 +825,37 @@ impl VRPath {
     /// Ie. For path "/a/b/c", this will return "/a/b".
     pub fn parent_path(&self) -> Self {
         self.pop_cloned()
+    }
+
+    /// Checks if the given path is the immediate parent of self.
+    pub fn is_parent_path(&self, path: &VRPath) -> bool {
+        self.parent_path() == *path
+    }
+
+    /// Checks if the input path is a descendant of self.
+    /// A descendant path is one that starts with the same ids as self but is longer.
+    pub fn is_descendant_path(&self, path: &VRPath) -> bool {
+        if path.path_ids.len() <= self.path_ids.len() {
+            return false;
+        }
+
+        self.path_ids
+            .iter()
+            .zip(&path.path_ids)
+            .all(|(self_id, path_id)| self_id == path_id)
+    }
+
+    /// Checks if the input path is an ancestor of self.
+    /// An ancestor path is one that is a prefix of self but is shorter.
+    pub fn is_ancestor_path(&self, path: &VRPath) -> bool {
+        if path.path_ids.len() >= self.path_ids.len() {
+            return false;
+        }
+
+        path.path_ids
+            .iter()
+            .zip(&self.path_ids)
+            .all(|(path_id, self_id)| path_id == self_id)
     }
 
     /// Create a VRPath from a path string
