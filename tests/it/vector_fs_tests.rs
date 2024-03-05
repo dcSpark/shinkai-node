@@ -642,7 +642,7 @@ async fn test_vector_fs_operations() {
     assert!(copy_result.is_err());
 
     //
-    // Move/Deletion Tests
+    // Move/Deletion Tests For Items
     //
 
     // Moving item from one folder to another means previous path is empty & file is in new location
@@ -691,5 +691,61 @@ async fn test_vector_fs_operations() {
         .is_ok();
     assert!(new_location_check, "The item should now exist in the new location.");
 
-    // Moving Folder from one location to another means previous path is empty
+    //
+    // Move/Deletion Tests for Folders
+    //
+
+    // Moving a folder from one location to another means the previous path is empty & the folder is in the new location
+    let folder_name = "new_root_folder".to_string();
+    let folder_to_move_path = VRPath::root().push_cloned(folder_name.to_string());
+    let destination_folder_path = second_folder_path.clone();
+    let new_folder_location_path = destination_folder_path.push_cloned(folder_name.to_string());
+
+    let orig_folder_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            folder_to_move_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+
+    // Validate folder moving works
+
+    vector_fs
+        .move_folder(&orig_folder_writer, destination_folder_path.clone())
+        .unwrap();
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    let orig_folder_location_check = vector_fs
+        .validate_path_points_to_entry(folder_to_move_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(
+        orig_folder_location_check,
+        "The folder should no longer exist in the original location."
+    );
+
+    let new_folder_location_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_ok();
+    assert!(
+        new_folder_location_check,
+        "The folder should now exist in the new location."
+    );
+
+    // // Validate folder deletion works"new_root_folder".to_string(i
+    // let folder_to_delete_writer = vector_fs
+    //     .new_writer(
+    //         default_test_profile(),
+    //         new_folder_location_path.clone(),
+    //         default_test_profile(),
+    //     )
+    //     .unwrap();
+
+    // vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
+
+    // let folder_deletion_check = vector_fs
+    //     .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+    //     .is_err();
+    // assert!(folder_deletion_check, "The folder should now not exist.");
 }

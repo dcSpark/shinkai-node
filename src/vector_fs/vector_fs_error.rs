@@ -53,6 +53,7 @@ pub enum VectorFSError {
     EntryAlreadyExistsAtPath(VRPath),
     DateTimeParseError(String),
     FailedGettingFSPathOfRetrievedNode(String),
+    CannotMoveFolderIntoItself(VRPath),
 }
 
 impl fmt::Display for VectorFSError {
@@ -156,6 +157,7 @@ impl fmt::Display for VectorFSError {
                 write!(f, "{} does not have write permissions for path: {}", n, p)
             }
             VectorFSError::FailedGettingFSPathOfRetrievedNode(s) => write!(f, "While performing 2-tier 'deep' vector search, unable to get VectorFS path of the VR the retrieved node was from: {}", s),
+            VectorFSError::CannotMoveFolderIntoItself(e) => write!(f, "Cannot move folder into itself at a deeper level: {}", e),
         }
     }
 }

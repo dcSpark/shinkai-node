@@ -440,8 +440,6 @@ pub trait VectorResourceCore: Send + Sync {
         let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
-        println!("Removed node: {:?}", removed_node);
-        println!("Number of nodes left on path: {:?}", deconstructed_nodes.len());
 
         // Update last written time for all nodes
         for node in deconstructed_nodes.iter_mut() {

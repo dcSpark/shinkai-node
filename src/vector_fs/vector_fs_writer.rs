@@ -343,12 +343,18 @@ impl VectorFS {
         if &destination_path != &VRPath::root() {
             self.validate_path_points_to_folder(destination_path.clone(), &writer.profile)?;
         }
+
         let destination_child_path = destination_path.push_cloned(writer.path.last_path_id()?);
         if self
             .validate_path_points_to_entry(destination_child_path.clone(), &writer.profile)
             .is_ok()
         {
             return Err(VectorFSError::CannotOverwriteFSEntry(destination_child_path.clone()));
+        }
+
+        // Make sure we don't partially copy the folder into itself before failing
+        if writer.path.is_descendant_path(&destination_child_path) {
+            return Err(VectorFSError::CannotMoveFolderIntoItself(writer.path.clone()));
         }
 
         // If the folder was moved successfully in memory, then commit to the DB
@@ -378,9 +384,11 @@ impl VectorFS {
         let new_folder = self.internal_copy_folder(writer, destination_writer, current_datetime)?;
 
         // Remove the existing folder
+        println!("Deleting node from core resource.");
         self._remove_node_from_core_resource(writer)?;
+        println!("Deleted.");
 
-        // Remove the original folder's permissions
+        // Copy over/Remove the original folder's permissions
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals
@@ -865,6 +873,7 @@ impl VectorFS {
     /// Errors if no node exists at path.
     fn _remove_node_from_core_resource(&mut self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals(&writer.profile)?;
+        println!("\nRemoving {}\n", writer.path.clone());
         let result = internals.fs_core_resource.remove_node_at_path(writer.path.clone())?;
         Ok(result)
     }
