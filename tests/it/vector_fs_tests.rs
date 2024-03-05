@@ -748,4 +748,21 @@ async fn test_vector_fs_operations() {
         .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
         .is_err();
     assert!(folder_deletion_check, "The folder should now not exist.");
+
+    //
+    // Validate that after everything, in-memory state == fsdb state
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let writer = orig_writer
+        .new_writer_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let current_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    vector_fs
+        .revert_internals_to_last_db_save(&writer.profile, &writer.profile)
+        .unwrap();
+    let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+
+    assert_eq!(current_state, new_state);
 }
