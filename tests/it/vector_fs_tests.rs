@@ -733,19 +733,19 @@ async fn test_vector_fs_operations() {
         "The folder should now exist in the new location."
     );
 
-    // // Validate folder deletion works"new_root_folder".to_string(i
-    // let folder_to_delete_writer = vector_fs
-    //     .new_writer(
-    //         default_test_profile(),
-    //         new_folder_location_path.clone(),
-    //         default_test_profile(),
-    //     )
-    //     .unwrap();
+    // Validate folder deletion works
+    let folder_to_delete_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_folder_location_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
+    vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
 
-    // let folder_deletion_check = vector_fs
-    //     .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
-    //     .is_err();
-    // assert!(folder_deletion_check, "The folder should now not exist.");
+    let folder_deletion_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(folder_deletion_check, "The folder should now not exist.");
 }

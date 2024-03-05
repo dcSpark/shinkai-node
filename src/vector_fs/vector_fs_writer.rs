@@ -169,17 +169,66 @@ impl VectorFS {
         }
     }
 
+    /// Deletes the folder at writer's path, including all items and subfolders within.
+    pub fn delete_folder(&mut self, writer: &VFSWriter) -> Result<(), VectorFSError> {
+        let mut write_batch = writer.new_write_batch()?;
+        write_batch = self.internal_wb_delete_folder(writer, write_batch, false)?;
+        self.db.write_pb(write_batch)?;
+        Ok(())
+    }
+
+    /// Deletes the folder at writer's path, including all items and subfolders within, using a write batch.
+    fn internal_wb_delete_folder(
+        &mut self,
+        writer: &VFSWriter,
+        mut write_batch: ProfileBoundWriteBatch,
+        is_recursive_call: bool,
+    ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
+        self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
+
+        // Read the folder node first without removing it
+        let (folder_node, _) = self._get_node_from_core_resource(&writer)?;
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+        let folder =
+            FSFolder::from_vector_resource_node(folder_node.node, writer.path.clone(), &internals.last_read_index)?;
+
+        // Iterate over items in the folder and delete each
+        for item in folder.child_items {
+            let item_writer = VFSWriter {
+                requester_name: writer.requester_name.clone(),
+                path: writer.path.push_cloned(item.name.clone()),
+                profile: writer.profile.clone(),
+            };
+            write_batch = self.wb_delete_item(&item_writer, write_batch)?;
+        }
+
+        // Recursively delete subfolders
+        for subfolder in folder.child_folders {
+            let folder_writer = VFSWriter {
+                requester_name: writer.requester_name.clone(),
+                path: writer.path.push_cloned(subfolder.name.clone()),
+                profile: writer.profile.clone(),
+            };
+            write_batch = self.internal_wb_delete_folder(&folder_writer, write_batch, true)?;
+        }
+
+        // Now remove the folder node from the core resource
+        let (_removed_folder_node, _) = self._remove_node_from_core_resource(writer)?;
+
+        // Only commit updating the fs internals once at the top level, efficiency improvement
+        if !is_recursive_call {
+            let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+            self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        }
+
+        Ok(write_batch)
+    }
+
     /// Deletes the FSItem at the writer's path.
     pub fn delete_item(&mut self, writer: &VFSWriter) -> Result<(), VectorFSError> {
-        // Start a new write batch for the deletion operation
         let mut write_batch = writer.new_write_batch()?;
-
-        // The wb_delete_item method returns the updated write batch
         write_batch = self.wb_delete_item(writer, write_batch)?;
-
-        // Commit the changes in the write batch to the database
         self.db.write_pb(write_batch)?;
-
         Ok(())
     }
 
@@ -197,8 +246,9 @@ impl VectorFS {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
-
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
         self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
         return Ok(write_batch);
     }
 
@@ -873,7 +923,6 @@ impl VectorFS {
     /// Errors if no node exists at path.
     fn _remove_node_from_core_resource(&mut self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals(&writer.profile)?;
-        println!("\nRemoving {}\n", writer.path.clone());
         let result = internals.fs_core_resource.remove_node_at_path(writer.path.clone())?;
         Ok(result)
     }
