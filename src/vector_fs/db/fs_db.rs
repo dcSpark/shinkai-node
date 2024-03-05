@@ -37,6 +37,7 @@ pub struct VectorFSDB {
 
 impl VectorFSDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
+        // ShinkaiDB::opti
         let mut db_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
@@ -60,6 +61,7 @@ impl VectorFSDB {
         let mut cfs = vec![];
         for cf_name in &cf_names {
             let mut cf_opts = Options::default();
+            // ShinkaiDB::opti
             cf_opts.create_if_missing(true);
             cf_opts.create_missing_column_families(true);
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
