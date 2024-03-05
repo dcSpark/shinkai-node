@@ -545,16 +545,13 @@ impl ShinkaiDB {
                         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 
                         // Use a full iterator to go through all keys in the cf_inbox column family
-                        let mut iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
+                        let iter = self.db.iterator_cf(cf_inbox, IteratorMode::Start);
 
                         for item in iter {
-                            let (key, _value) = match item {
+                            let (_, _value) = match item {
                                 Ok(kv) => kv,
                                 Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
                             };
-
-                            // Print the key here
-                            let key_str = std::str::from_utf8(&key).unwrap_or("[Invalid UTF-8]");
                         }
                     }
                     let message_key = message.calculate_message_hash_for_pagination();

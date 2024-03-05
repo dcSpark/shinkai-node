@@ -25,7 +25,9 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair}, shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder}, signatures::{clone_signature_secret_key, signature_secret_key_to_string}
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
+    shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+    signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
 impl ShinkaiMessageBuilder {
@@ -74,7 +76,10 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let job_creation = JobCreationInfo { scope, is_hidden: Some(is_hidden) };
+        let job_creation = JobCreationInfo {
+            scope,
+            is_hidden: Some(is_hidden),
+        };
         let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
@@ -85,6 +90,7 @@ impl ShinkaiMessageBuilder {
                 "".to_string(),
                 MessageSchemaType::JobCreationSchema,
                 EncryptionMethod::None,
+                None,
             )
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
@@ -125,6 +131,7 @@ impl ShinkaiMessageBuilder {
                 inbox,
                 MessageSchemaType::JobMessageSchema,
                 EncryptionMethod::None,
+                None,
             )
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
@@ -167,6 +174,7 @@ impl ShinkaiMessageBuilder {
             inbox,
             MessageSchemaType::JobMessageSchema,
             EncryptionMethod::None,
+            None,
         )
         .body_encryption(EncryptionMethod::None)
         .external_metadata(node_receiver, node_sender)
@@ -334,6 +342,7 @@ impl ShinkaiMessageBuilder {
                 "".to_string(),
                 MessageSchemaType::UseRegistrationCode,
                 EncryptionMethod::None,
+                None,
             )
             .external_metadata_with_other(receiver.clone(), sender, other)
             .build()
@@ -362,6 +371,7 @@ impl ShinkaiMessageBuilder {
             inbox.to_string(),
             MessageSchemaType::SymmetricKeyExchange,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_intra_sender(receiver.clone(), sender, sender_subidentity)
         .build()
@@ -388,6 +398,7 @@ impl ShinkaiMessageBuilder {
             "".to_string(),
             MessageSchemaType::TextContent,
             EncryptionMethod::None,
+            None,
         )
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .external_metadata_with_intra_sender(receiver, sender, sender_subidentity)
@@ -529,6 +540,7 @@ impl ShinkaiMessageBuilder {
             "".to_string(),
             schema,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_other(receiver.clone(), sender, other)
         .build()

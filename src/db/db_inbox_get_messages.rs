@@ -11,6 +11,11 @@ impl ShinkaiDB {
         match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
             Some(bytes) => {
                 let message = ShinkaiMessage::decode_message_result(bytes)?;
+                // eprintln!(
+                //     "Found for hash key: {:?} Message: {:?} \n",
+                //     hash_key,
+                //     message.get_message_content()
+                // );
                 let message_hash = message.calculate_message_hash_for_pagination();
                 Ok((message, message_hash))
             }
@@ -58,6 +63,25 @@ impl ShinkaiDB {
             // Return None if the key does not have the expected prefix length
             None
         }
+    }
+
+    fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash_for_pagination();
+
+        // Clone the external_metadata first, then unwrap
+        let ext_metadata = message.external_metadata.clone();
+
+        // Get the scheduled time or calculate current time
+        let time_key = match ext_metadata.scheduled_time.is_empty() {
+            true => ShinkaiStringTime::generate_time_now(),
+            false => ext_metadata.scheduled_time.clone(),
+        };
+
+        // Create the composite key by concatenating the time_key and the hash_key, with a separator
+        let composite_key = format!("{}:::{}", time_key, hash_key);
+
+        Ok(composite_key)
     }
 
     /*
@@ -129,7 +153,6 @@ impl ShinkaiDB {
             return Ok(paths);
         }
 
-
         // Loop through the messages
         // This loop is for fetching 'n' messages
         let mut first_iteration = true;
@@ -137,7 +160,7 @@ impl ShinkaiDB {
         // eprintln!("n: {}", n);
         let total_elements = until_offset_hash_key.is_some().then(|| n + 1).unwrap_or(n);
         let keys = keys.clone().into_iter().rev().collect::<Vec<String>>();
-        
+
         for i in 0..total_elements {
             let mut path = Vec::new();
 

@@ -3,8 +3,8 @@ mod tests {
     use serde_json::to_value;
     use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
     use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-    use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+    use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
     use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
     use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
@@ -29,6 +29,7 @@ mod tests {
             "main_profile_node1".to_string(),
             "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             "@@node1.shinkai".to_string(),
@@ -71,6 +72,7 @@ mod tests {
             "main_profile_node1".to_string(),
             "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             "@@node1.shinkai".to_string(),
@@ -113,6 +115,7 @@ mod tests {
             "main_profile_node1".to_string(),
             "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
             EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            None,
         )
         .external_metadata_with_schedule(
             "@@node1.shinkai".to_string(),

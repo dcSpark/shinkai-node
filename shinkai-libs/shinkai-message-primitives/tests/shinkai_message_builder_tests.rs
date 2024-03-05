@@ -5,17 +5,19 @@ mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
     use shinkai_message_primitives::{
-        schemas::registration_code::RegistrationCode, shinkai_message::{
+        schemas::registration_code::RegistrationCode,
+        shinkai_message::{
             shinkai_message::{MessageBody, MessageData},
             shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},
-        }, shinkai_utils::{
+        },
+        shinkai_utils::{
             encryption::{
                 string_to_encryption_public_key, string_to_encryption_static_key,
                 unsafe_deterministic_encryption_keypair, EncryptionMethod,
             },
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{string_to_signature_secret_key, unsafe_deterministic_signature_keypair},
-        }
+        },
     };
     use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -86,7 +88,7 @@ mod tests {
             .message_raw_content("body content".to_string())
             .body_encryption(EncryptionMethod::None)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None)
+            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None, None)
             .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
             .build();
 
@@ -130,7 +132,7 @@ mod tests {
             .message_raw_content("body content".to_string())
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None)
+            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None, None)
             .external_metadata(recipient, sender.clone())
             .build();
 
@@ -185,6 +187,7 @@ mod tests {
                 "".to_string(),
                 "".to_string(),
                 EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                None,
             )
             .external_metadata(recipient, sender.clone())
             .build();

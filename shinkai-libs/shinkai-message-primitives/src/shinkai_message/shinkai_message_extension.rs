@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::shinkai_message::shinkai_message::ShinkaiVersion;
 
 use super::{
-    shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+    shinkai_message::{MessageBody, MessageData, NodeApiData, ShinkaiMessage},
     shinkai_message_error::ShinkaiMessageError,
     shinkai_message_schemas::{JobMessage, MessageSchemaType},
 };
@@ -41,8 +41,10 @@ impl ShinkaiMessage {
             MessageBody::Unencrypted(body) => match &body.message_data {
                 MessageData::Unencrypted(data) => {
                     if data.message_content_schema == MessageSchemaType::JobMessageSchema {
-                        let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
-                            .map_err(|_| ShinkaiMessageError::InvalidMessageSchemaType("Failed to parse JobMessage".into()))?;
+                        let job_message: JobMessage =
+                            serde_json::from_str(&data.message_raw_content).map_err(|_| {
+                                ShinkaiMessageError::InvalidMessageSchemaType("Failed to parse JobMessage".into())
+                            })?;
                         Ok(job_message.parent.unwrap_or_default())
                     } else {
                         Err(ShinkaiMessageError::InvalidMessageSchemaType(
@@ -78,7 +80,7 @@ impl ShinkaiMessage {
                 } else {
                     Some(body.internal_metadata.sender_subidentity.clone())
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -95,7 +97,7 @@ impl ShinkaiMessage {
                 } else {
                     Some(body.internal_metadata.recipient_subidentity.clone())
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -121,6 +123,19 @@ impl ShinkaiMessage {
         }
     }
 
+    /// Attempts to update the node_api_data inside of the inner metadata. Errors if the message is encrypted.
+    pub fn update_node_api_data(mut self, node_api_data: Option<NodeApiData>) -> Result<Self, ShinkaiMessageError> {
+        match &mut self.body {
+            MessageBody::Unencrypted(body) => {
+                body.internal_metadata.node_api_data = node_api_data;
+                Ok(self)
+            }
+            MessageBody::Encrypted(_) => Err(ShinkaiMessageError::AlreadyEncrypted(
+                "Cannot update node_api_data of encrypted message.".to_string(),
+            )),
+        }
+    }
+
     pub fn encode_message(&self) -> Result<Vec<u8>, ShinkaiMessageError> {
         serde_json::to_vec(&self).map_err(|err| ShinkaiMessageError::SerializationError(err.to_string()))
     }
@@ -134,9 +149,11 @@ impl ShinkaiMessage {
                 }
             }
         }
-    
+
         // If JSON deserialization failed, return an error
-        Err(ShinkaiMessageError::DecryptionError("Failed to decode message".to_string()))
+        Err(ShinkaiMessageError::DecryptionError(
+            "Failed to decode message".to_string(),
+        ))
     }
 
     pub fn to_string(&self) -> Result<String, ShinkaiMessageError> {

@@ -133,8 +133,14 @@ impl ShinkaiDB {
 
         // We update the message with some extra information api_node_data
         let updated_message = {
-            let mut updated_message = message.clone();
-            updated_message.clone()
+            let node_api_data = NodeApiData {
+                parent_hash: parent_key.clone().unwrap_or_default(),
+                node_message_hash: hash_key.clone(), // this is safe because hash_key doesn't use node_api_data
+                node_timestamp: time_key.clone(),
+            };
+
+            let updated_message = message.clone();
+            updated_message.update_node_api_data(Some(node_api_data))?
         };
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator

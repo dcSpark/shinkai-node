@@ -45,6 +45,7 @@ impl InternalMetadataMethods for InternalMetadata {
             signature,
             inbox,
             encryption,
+            node_api_data: None,
         })
     }
 }

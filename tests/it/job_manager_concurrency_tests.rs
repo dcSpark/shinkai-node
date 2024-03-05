@@ -3,7 +3,9 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_default_tracing};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
+    init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
+};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -60,6 +62,7 @@ fn generate_message_with_text(
             recipient_subidentity_name.clone().to_string(),
             inbox_name_value,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),
@@ -97,10 +100,9 @@ fn setup_default_vector_fs() -> VectorFS {
     .unwrap()
 }
 
-
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
-    init_default_tracing(); 
+    init_default_tracing();
     utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
@@ -162,7 +164,14 @@ async fn test_process_job_queue_concurrency() {
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
         move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db_weak.clone(), vector_fs_weak.clone(), identity_sk, generator, unstructured_api)
+            mock_processing_fn(
+                job,
+                db_weak.clone(),
+                vector_fs_weak.clone(),
+                identity_sk,
+                generator,
+                unstructured_api,
+            )
         },
     )
     .await;
@@ -211,7 +220,7 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequential_process_for_same_job_id() {
-    init_default_tracing(); 
+    init_default_tracing();
     super::utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
@@ -273,7 +282,14 @@ async fn test_sequential_process_for_same_job_id() {
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
         move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
-            mock_processing_fn(job, db_weak.clone(), vector_fs_weak.clone(), identity_sk, generator, unstructured_api)
+            mock_processing_fn(
+                job,
+                db_weak.clone(),
+                vector_fs_weak.clone(),
+                identity_sk,
+                generator,
+                unstructured_api,
+            )
         },
     )
     .await;

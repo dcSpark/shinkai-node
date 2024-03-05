@@ -1,3 +1,4 @@
+use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -34,7 +35,6 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 use std::{env, fs};
 use std::{net::SocketAddr, time::Duration};
-use super::utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
@@ -76,7 +76,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
 #[test]
 #[ignore]
 fn planner_integration_test() {
-    init_default_tracing(); 
+    init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -284,6 +284,7 @@ fn planner_integration_test() {
                     node1_profile_name.to_string().clone(),
                     "".to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .external_metadata_with_intra_sender(
                     node1_identity_name.to_string(),
@@ -421,6 +422,7 @@ fn planner_integration_test() {
                     "".to_string(),
                     inbox_name.to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .external_metadata_with_intra_sender(
                     node1_identity_name.to_string(),

@@ -48,6 +48,7 @@ fn generate_message_with_text(
             recipient_subidentity_name.clone().to_string(),
             inbox_name_value,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),

@@ -331,6 +331,7 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -370,6 +371,7 @@ mod tests {
                     inbox: "1nb0x::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::truee".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -481,6 +483,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -517,6 +524,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "parent_hash".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {

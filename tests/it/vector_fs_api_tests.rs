@@ -57,6 +57,7 @@ fn generate_message_with_payload<T: ToString>(
             "".to_string(),
             "".to_string(),
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()

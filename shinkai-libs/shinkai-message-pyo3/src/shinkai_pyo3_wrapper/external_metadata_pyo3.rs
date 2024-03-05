@@ -11,7 +11,14 @@ use super::shinkai_message_pyo3::PyExternalMetadata;
 #[pymethods]
 impl PyExternalMetadata {
     #[new]
-    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String, intra_sender: String) -> PyResult<Self> {
+    fn new(
+        sender: String,
+        recipient: String,
+        scheduled_time: String,
+        signature: String,
+        other: String,
+        intra_sender: String,
+    ) -> PyResult<Self> {
         let inner = ExternalMetadata {
             sender,
             recipient,
