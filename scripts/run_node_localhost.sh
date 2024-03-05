@@ -17,9 +17,9 @@ export NO_SECRET_FILE="true"
 export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
 export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com/x-unstructured-api/"
 
-export INITIAL_AGENT_NAMES="o_mixtral,o_llava"
-export INITIAL_AGENT_URLS="http://localhost:11434,http://localhost:11435"
-export INITIAL_AGENT_MODELS="ollama:mixtral:8x7b-instruct-v0.1-q4_1,ollama:llava"
+export INITIAL_AGENT_NAMES="o_llava,o_mixtral"
+export INITIAL_AGENT_URLS="http://localhost:11435,http://localhost:11434"
+export INITIAL_AGENT_MODELS="ollama:llava,ollama:mixtral:8x7b-instruct-v0.1-q4_1"
 export INITIAL_AGENT_API_KEYS=","
 
 # Add these lines to enable all log options
