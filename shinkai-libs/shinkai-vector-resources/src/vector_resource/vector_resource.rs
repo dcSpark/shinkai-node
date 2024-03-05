@@ -440,6 +440,8 @@ pub trait VectorResourceCore: Send + Sync {
         let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
+        println!("Removed node: {:?}", removed_node);
+        println!("Number of nodes left on path: {:?}", deconstructed_nodes.len());
 
         // Update last written time for all nodes
         for node in deconstructed_nodes.iter_mut() {
@@ -451,6 +453,9 @@ pub trait VectorResourceCore: Send + Sync {
         if !deconstructed_nodes.is_empty() {
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
             self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+        } else {
+            // Else remove the node directly if deleting at the root level
+            self.remove_node_dt_specified(removed_node.0, Some(current_time))?;
         }
 
         Ok((removed_node.1, removed_node.2))
