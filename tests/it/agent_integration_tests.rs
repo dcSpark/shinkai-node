@@ -366,7 +366,7 @@ fn node_agent_registration() {
                 let prev_message_content_user: JobMessage =
                     serde_json::from_str(&shinkai_message_content_user).unwrap();
 
-                let offset = node2_last_messages[1].calculate_message_hash();
+                let offset = node2_last_messages[1].calculate_message_hash_for_pagination();
                 let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -471,6 +471,7 @@ fn node_agent_registration() {
                     "".to_string(),
                     inbox_name.to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .build();
 
@@ -482,7 +483,7 @@ fn node_agent_registration() {
         let result = tokio::try_join!(node1_handler, interactions_handler);
 
         match result {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {

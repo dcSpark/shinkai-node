@@ -132,6 +132,7 @@ fn generate_message_with_text(
             "".to_string(),
             inbox_name,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),

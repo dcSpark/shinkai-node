@@ -1,15 +1,22 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB, db_profile_bound::ProfileBoundWriteBatch};
+use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use rocksdb::{Error, Options};
 use serde_json::{from_slice, to_vec};
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
+    /// Returns the the first half of the blake3 hash of the agent id value
+    pub fn agent_id_to_hash(agent_id: &str) -> String {
+        let full_hash = blake3::hash(agent_id.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
     // Fetches all agents from the Agents topic
     pub fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
-        let cf = self.cf_handle(Topic::Agents.as_str())?;
+        let cf = self.cf_handle(Topic::NodeAndUsers.as_str())?;
         let mut result = Vec::new();
+        let prefix = b"agent_placeholder_value_to_match_prefix_abcdef_";
 
-        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
+        let iter = self.db.prefix_iterator_cf(cf, prefix);
         for item in iter {
             match item {
                 Ok((_, value)) => {
@@ -23,68 +30,85 @@ impl ShinkaiDB {
         Ok(result)
     }
 
+    pub fn db_agent_id(agent_id: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
+        let profile_name = profile
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(profile.full_name.to_string()))?;
+
+        Ok(format!("{}:::{}", agent_id, profile_name))
+    }
+
     pub fn add_agent(&mut self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
-        // Create Options for ColumnFamily
-        let mut cf_opts = Options::default();
-        cf_opts.create_if_missing(true);
-        cf_opts.create_missing_column_families(true);
+        // Serialize the agent to bytes
+        let bytes = to_vec(&agent).unwrap();
 
-        // Create ColumnFamilyDescriptors for profiles_with_access and toolkits_accessible
-        let cf_name_profiles_access = format!("agent_{}_profiles_with_access", agent.id);
-        let cf_name_toolkits_accessible = format!("agent_{}_toolkits_accessible", agent.id);
+        // Get handle to the NodeAndUsers topic
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
-        // Create column families
-        self.db.create_cf(&cf_name_profiles_access, &cf_opts)?;
-        self.db.create_cf(&cf_name_toolkits_accessible, &cf_opts)?;
+        let agent_id_for_db = Self::db_agent_id(&agent.id, profile)?;
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
 
-        // Start write batch for atomic operation
-        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
+        // Create a new RocksDB WriteBatch
+        let mut batch = rocksdb::WriteBatch::default();
 
-        // Get handles to the newly created column families
-        let cf_profiles_access = self.cf_handle(&cf_name_profiles_access)?;
-        let cf_toolkits_accessible = self.cf_handle(&cf_name_toolkits_accessible)?;
+        // Prefix the agent ID and write it to the NodeAndUsers topic
+        let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", &agent_id_for_db);
+        batch.put_cf(cf_node_and_users, agent_key.as_bytes(), &bytes);
 
-        // Write profiles_with_access and toolkits_accessible to respective columns
+        let profile_key = format!("agent_{}_profile_{}", &agent_id_for_db_hash, profile.get_profile_name().unwrap_or_default());
+        batch.put_cf(cf_node_and_users, profile_key.as_bytes(), &[]);
+
+        // Additionally, for each allowed message sender and toolkit permission,
+        // you can store them with a specific prefix to indicate their relationship to the agent.
         for profile in &agent.allowed_message_senders {
-            // TODO: this doesnt add up
-            pb_batch.pb_put_cf(cf_profiles_access, &profile, "".as_bytes());
+            let profile_key = format!("agent_{}_profile_{}", &agent_id_for_db_hash, profile);
+            batch.put_cf(cf_node_and_users, profile_key.as_bytes(), &[]);
         }
         for toolkit in &agent.toolkit_permissions {
-            pb_batch.pb_put_cf(cf_toolkits_accessible, &toolkit, "".as_bytes());
+            let toolkit_key = format!("agent_{}_toolkit_{}", &agent_id_for_db_hash, toolkit);
+            batch.put_cf(cf_node_and_users, toolkit_key.as_bytes(), &[]);
         }
 
-        // Serialize the agent to bytes and write it to the Agents topic
-        let bytes = to_vec(&agent).unwrap();
-        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
-        pb_batch.pb_put_cf(cf_agents, &agent.id, &bytes);
-
         // Write the batch
-        self.write_pb(pb_batch)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
 
     pub fn remove_agent(&mut self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
-        // Define the unique column family names
-        let cf_name_profiles_access = format!("agent_{}_profiles_with_access", agent_id);
-        let cf_name_toolkits_accessible = format!("agent_{}_toolkits_accessible", agent_id);
+        // Get cf handle for NodeAndUsers topic
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
-        // Get cf handle for Agents topic
-        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
+        // Prefix used to identify all keys related to the agent
+        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_prefix = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
 
-        // Start write batch for atomic operation
-        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
+        // Check if the agent exists
+        let agent_exists = self.db.get_cf(cf_node_and_users, agent_prefix.as_bytes())?.is_some();
+        if !agent_exists {
+            return Err(ShinkaiDBError::DataNotFound);
+        }
 
-        // Remove the agent from the Agents topic
-        pb_batch.pb_delete_cf(cf_agents, &agent_id);
+        // Create a new RocksDB WriteBatch
+        let mut batch = rocksdb::WriteBatch::default();
 
-        // Remove the agent's access profiles and toolkits
-        // This involves deleting the column families entirely
-        self.db.drop_cf(&cf_name_profiles_access)?;
-        self.db.drop_cf(&cf_name_toolkits_accessible)?;
+        // Iterate over all keys with the agent prefix to remove them
+        let iter = self.db.prefix_iterator_cf(cf_node_and_users, agent_prefix.as_bytes());
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    // Convert the key from bytes to a UTF-8 string
+                    let key_str = String::from_utf8(key.to_vec())
+                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
+                    batch.delete_cf(cf_node_and_users, &key_str);
+                }
+                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
+            }
+        }
 
         // Write the batch
-        self.write_pb(pb_batch)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
@@ -96,56 +120,78 @@ impl ShinkaiDB {
         new_profiles_with_access: Option<Vec<String>>,
         new_toolkits_accessible: Option<Vec<String>>,
     ) -> Result<(), ShinkaiDBError> {
-        // Define the unique column family names
-        let cf_name_profiles_access = format!("agent_{}_profiles_with_access", agent_id);
-        let cf_name_toolkits_access = format!("agent_{}_toolkits_accessible", agent_id);
+        // Get handle to the NodeAndUsers topic
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
-        // Get the column families. They should have been created when the agent was added.
-        let cf_profiles_access =
-            self.db
-                .cf_handle(&cf_name_profiles_access)
-                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                    "Column family not found for: {}",
-                    cf_name_profiles_access
-                )))?;
-        let cf_toolkits_access =
-            self.db
-                .cf_handle(&cf_name_toolkits_access)
-                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                    "Column family not found for: {}",
-                    cf_name_toolkits_access
-                )))?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
 
-        // Start write batch for atomic operation
-        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
+        // Check if the agent exists
+        let agent_exists = self.db.get_cf(cf_node_and_users, agent_key.as_bytes())?.is_some();
+        if !agent_exists {
+            return Err(ShinkaiDBError::DataNotFound);
+        }
 
-        // Update profiles_with_access if new_profiles_with_access is provided
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
+
+        // Create a new RocksDB WriteBatch
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Directly update profiles_with_access if provided
         if let Some(profiles) = new_profiles_with_access {
-            for profile in profiles {
-                pb_batch.pb_put_cf(cf_profiles_access, profile.as_str(), "".as_bytes());
+            // Clear existing profiles for this agent and profile
+            let existing_profiles_prefix = format!(
+                "agent_{}_profile_{}",
+                agent_id_for_db_hash,
+                profile.get_profile_name().unwrap_or_default()
+            );
+            batch.delete_cf(cf_node_and_users, &existing_profiles_prefix);
+
+            // Add new profiles access
+            for profile_access in profiles {
+                let profile_key = format!("agent_{}_profile_{}", agent_id_for_db_hash, profile_access);
+                batch.put_cf(cf_node_and_users, &profile_key, "".as_bytes());
             }
         }
 
-        // Update toolkits_accessible if new_toolkits_accessible is provided
+        // Directly update toolkits_accessible if provided
         if let Some(toolkits) = new_toolkits_accessible {
-            for toolkit in toolkits {
-                pb_batch.pb_put_cf(cf_toolkits_access, toolkit.as_str(), "".as_bytes());
+            // Clear existing toolkits for this agent and profile
+            let existing_toolkits_prefix = format!(
+                "agent_{}_toolkit_{}",
+                agent_id_for_db_hash,
+                profile.get_profile_name().unwrap_or_default()
+            );
+            batch.delete_cf(cf_node_and_users, &existing_toolkits_prefix);
+
+            // Add new toolkits access
+            for toolkit_access in toolkits {
+                let toolkit_key = format!("agent_{}_toolkit_{}", agent_id_for_db_hash, toolkit_access);
+                batch.put_cf(cf_node_and_users, &toolkit_key, "".as_bytes());
             }
         }
 
         // Write the batch
-        self.write_pb(pb_batch)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
 
     pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
-        // Fetch the agent's bytes by their id from the Agents topic
-        let agent_bytes = self.pb_topic_get(Topic::Agents, agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+
+        // Fetch the agent's bytes by their prefixed id from the NodeAndUsers topic
+        let prefixed_id = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let agent_bytes = self.db.get_cf(cf_node_and_users, prefixed_id.as_bytes())?;
 
         // If the agent was found, deserialize the bytes into an agent object and return it
-        let agent: SerializedAgent = from_slice(agent_bytes.as_slice())?;
-        Ok(Some(agent))
+        if let Some(bytes) = agent_bytes {
+            let agent: SerializedAgent = from_slice(&bytes)?;
+            Ok(Some(agent))
+        } else {
+            Err(ShinkaiDBError::DataNotFound)
+        }
     }
 
     pub fn get_agent_profiles_with_access(
@@ -153,17 +199,32 @@ impl ShinkaiDB {
         agent_id: &str,
         profile: &ShinkaiName,
     ) -> Result<Vec<String>, ShinkaiDBError> {
-        // Start write batch for atomic operation
-        let cf_name = format!("agent_{}_profiles_with_access", agent_id);
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
 
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                "Column family not found for: {}",
-                cf_name
-            )))?;
-        self.pb_cf_get_all_keys(cf, profile)
+        let prefix = format!("agent_{}_profile_", agent_id_for_db_hash);
+        let mut profiles_with_access = Vec::new();
+
+        let iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix.as_bytes());
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    // Extract profile name from the key
+                    let key_str = String::from_utf8(key.to_vec())
+                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
+                    // Ensure the key follows the prefix convention before extracting the profile name
+                    if key_str.starts_with(&prefix) {
+                        if let Some(profile_name) = key_str.split("_").last() {
+                            profiles_with_access.push(profile_name.to_string());
+                        }
+                    }
+                }
+                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
+            }
+        }
+
+        Ok(profiles_with_access)
     }
 
     pub fn get_agent_toolkits_accessible(
@@ -171,15 +232,31 @@ impl ShinkaiDB {
         agent_id: &str,
         profile: &ShinkaiName,
     ) -> Result<Vec<String>, ShinkaiDBError> {
-        let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                "Column family not found for: {}",
-                cf_name
-            )))?;
-        self.pb_cf_get_all_keys(cf, profile)
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
+        let prefix = format!("agent_{}_toolkit_", agent_id_for_db_hash);
+        let mut toolkits_accessible = Vec::new();
+
+        let iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix.as_bytes());
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    // Extract toolkit name from the key
+                    let key_str = String::from_utf8(key.to_vec())
+                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
+                    // Ensure the key follows the prefix convention before extracting the toolkit name
+                    if key_str.starts_with(&prefix) {
+                        if let Some(toolkit_name) = key_str.split("_").last() {
+                            toolkits_accessible.push(toolkit_name.to_string());
+                        }
+                    }
+                }
+                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
+            }
+        }
+
+        Ok(toolkits_accessible)
     }
 
     pub fn remove_profile_from_agent_access(
@@ -188,16 +265,14 @@ impl ShinkaiDB {
         profile: &str,
         bounded_profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_name = format!("agent_{}_profiles_with_access", agent_id);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                "Column family not found for: {}",
-                cf_name
-            )))?;
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, bounded_profile)?;
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
+        let profile_key = format!("agent_{}_profile_{}", agent_id_for_db_hash, profile);
 
-        self.pb_delete_cf(cf, profile, &bounded_profile)?;
+        // Delete the specific profile access key using native RocksDB method
+        self.db.delete_cf(cf_node_and_users, profile_key.as_bytes())?;
+
         Ok(())
     }
 
@@ -207,39 +282,15 @@ impl ShinkaiDB {
         toolkit: &str,
         bounded_profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
-        let cf = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
-                "Column family not found for: {}",
-                cf_name
-            )))?;
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+        let agent_id_for_db = Self::db_agent_id(&agent_id, bounded_profile)?;
+        let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
+        let toolkit_key = format!("agent_{}_toolkit_{}", agent_id_for_db_hash, toolkit);
 
-        self.pb_delete_cf(cf, toolkit, bounded_profile)?;
+        // Delete the specific toolkit access key using native RocksDB method
+        self.db.delete_cf(cf_node_and_users, toolkit_key.as_bytes())?;
+
         Ok(())
-    }
-
-    fn get_column_family_data(&self, cf: &rocksdb::ColumnFamily) -> Result<Vec<String>, ShinkaiDBError> {
-        let mut data = Vec::new();
-        let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
-
-        for item in iter {
-            match item {
-                Ok((key, _)) => {
-                    let key_str = String::from_utf8(key.to_vec())
-                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
-                    data.push(key_str);
-                }
-                Err(_) => {
-                    return Err(ShinkaiDBError::DataConversionError(
-                        "Error iterating over column family".to_string(),
-                    ))
-                }
-            }
-        }
-
-        Ok(data)
     }
 
     pub fn get_agents_for_profile(&self, profile_name: ShinkaiName) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
@@ -248,21 +299,42 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::DataConversionError(
                 "Profile name not found".to_string(),
             ))?;
-        let all_agents = self.get_all_agents()?;
         let mut result = Vec::new();
 
-        for agent in all_agents {
-            let cf_name = format!("agent_{}_profiles_with_access", agent.id);
-            let cf = self.cf_handle(&cf_name)?;
-            let profiles = self.get_column_family_data(cf)?;
+        // Assuming get_all_agents fetches all agents from the NodeAndUsers topic
+        let all_agents = self.get_all_agents()?;
 
-            if profiles.contains(&profile) {
-                result.push(agent);
-            } else {
-                // Check for creation access
-                if profile_name.contains(&agent.full_identity_name) {
-                    result.push(agent);
+        // Iterate over all agents
+        for agent in all_agents {
+            let agent_id_for_db = Self::db_agent_id(&agent.id, &profile_name)?;
+            let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
+
+            // Construct the prefix to search for profiles with access to this agent
+            let prefix = format!("agent_{}_profile_", agent_id_for_db_hash);
+            let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+
+            // Use the prefix iterator to find all profiles with access to this agent
+            let iter = self.db.prefix_iterator_cf(cf_node_and_users, prefix.as_bytes());
+            let mut has_access = false;
+            for item in iter {
+                match item {
+                    Ok((key, _)) => {
+                        // Extract profile name from the key
+                        let key_str = String::from_utf8(key.to_vec())
+                            .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
+                        // Check if the extracted profile name matches the input profile name
+                        if key_str.ends_with(&format!("_{}", profile)) {
+                            has_access = true;
+                            break;
+                        }
+                    }
+                    Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
                 }
+            }
+
+            // If the profile has access to the agent, add the agent to the result
+            if has_access {
+                result.push(agent);
             }
         }
 

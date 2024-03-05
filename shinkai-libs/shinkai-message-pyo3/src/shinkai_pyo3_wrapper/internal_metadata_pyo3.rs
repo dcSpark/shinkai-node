@@ -1,13 +1,21 @@
-use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
-use shinkai_message_primitives::{shinkai_message::shinkai_message::{InternalMetadata}, shinkai_utils::encryption::EncryptionMethod};
-use pyo3::ToPyObject;
-use crate::shinkai_pyo3_wrapper::shinkai_message_pyo3::PyInternalMetadata;
 use super::encryption_method_pyo3::PyEncryptionMethod;
+use crate::shinkai_pyo3_wrapper::shinkai_message_pyo3::PyInternalMetadata;
+use pyo3::ToPyObject;
+use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message::InternalMetadata, shinkai_utils::encryption::EncryptionMethod,
+};
 
 #[pymethods]
 impl PyInternalMetadata {
     #[new]
-    fn new(sender_subidentity: String, recipient_subidentity: String, inbox: String, signature: String, encryption: Py<PyEncryptionMethod>) -> PyResult<Self> {
+    fn new(
+        sender_subidentity: String,
+        recipient_subidentity: String,
+        inbox: String,
+        signature: String,
+        encryption: Py<PyEncryptionMethod>,
+    ) -> PyResult<Self> {
         Python::with_gil(|py| {
             let encryption_ref = encryption.as_ref(py).borrow();
             let inner = InternalMetadata {
@@ -16,6 +24,7 @@ impl PyInternalMetadata {
                 inbox,
                 signature,
                 encryption: encryption_ref.inner.clone(),
+                node_api_data: None,
             };
             Ok(Self { inner })
         })
@@ -64,7 +73,12 @@ impl PyInternalMetadata {
     #[getter]
     fn get_encryption(&self) -> PyResult<Py<PyEncryptionMethod>> {
         Python::with_gil(|py| {
-            Ok(Py::new(py, PyEncryptionMethod { inner: self.inner.encryption.clone() })?)
+            Ok(Py::new(
+                py,
+                PyEncryptionMethod {
+                    inner: self.inner.encryption.clone(),
+                },
+            )?)
         })
     }
 
@@ -100,6 +114,7 @@ impl<'source> FromPyObject<'source> for PyInternalMetadata {
                 inbox,
                 signature,
                 encryption,
+                node_api_data: None,
             },
         })
     }
@@ -108,8 +123,10 @@ impl<'source> FromPyObject<'source> for PyInternalMetadata {
 impl ToPyObject for PyInternalMetadata {
     fn to_object(&self, py: Python) -> PyObject {
         let dict = PyDict::new(py);
-        dict.set_item("sender_subidentity", self.inner.sender_subidentity.clone()).unwrap();
-        dict.set_item("recipient_subidentity", self.inner.recipient_subidentity.clone()).unwrap();
+        dict.set_item("sender_subidentity", self.inner.sender_subidentity.clone())
+            .unwrap();
+        dict.set_item("recipient_subidentity", self.inner.recipient_subidentity.clone())
+            .unwrap();
         dict.set_item("inbox", self.inner.inbox.clone()).unwrap();
         dict.set_item("signature", self.inner.signature.clone()).unwrap();
         dict.set_item("encryption", self.inner.encryption.as_str()).unwrap();

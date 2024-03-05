@@ -63,7 +63,7 @@ pub struct FSItem {
     /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
     pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
     /// The original location where the VectorResource/SourceFileMap in this FSItem were downloaded/fetched/synced from.
-    pub distribution_origin: DistributionOrigin,
+    pub distribution_origin: Option<DistributionOrigin>,
     /// The size in bytes of the Vector Resource in this FSItem
     pub vr_size: usize,
     /// The size in bytes of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
@@ -140,7 +140,7 @@ Once you have created a Writer, you can use the following methods on the VectorF
 
 - `create_new_folder(writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError>`: Creates a new FSFolder at the writer's path.
 
-- `save_vector_resource_in_folder(writer: &VFSWriter, resource: BaseVectorResource, source_file_map: Option<SourceFileMap>, distribution_origin: DistributionOrigin) -> Result<FSItem, VectorFSError>`: Saves a Vector Resource and optional SourceFileMap into an FSItem, underneath the FSFolder at the writer's path. If an FSItem with the same name (as the VR) already exists underneath the current path, then it updates (overwrites) it. This method does not support saving into the VecFS root.
+- `save_vector_resource_in_folder(writer: &VFSWriter, resource: BaseVectorResource, source_file_map: Option<SourceFileMap>, distribution_origin: Option<DistributionOrigin>) -> Result<FSItem, VectorFSError>`: Saves a Vector Resource and optional SourceFileMap into an FSItem, underneath the FSFolder at the writer's path. If an FSItem with the same name (as the VR) already exists underneath the current path, then it updates (overwrites) it. This method does not support saving into the VecFS root.
 
 - `copy_folder(writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError>`: Copies the FSFolder from the writer's path into being held underneath the destination_path.
 
@@ -191,7 +191,7 @@ Once a folder is created, we can save a BaseVectorResource (ie. One that was gen
             &writer,
             resource.clone(),
             None,
-            DistributionOrigin::None,
+            None,
         )
         .unwrap();
 

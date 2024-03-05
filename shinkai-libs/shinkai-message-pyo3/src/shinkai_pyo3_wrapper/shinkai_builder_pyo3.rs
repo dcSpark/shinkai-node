@@ -9,7 +9,11 @@ use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
+        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
+        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
+        IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest,
+        RegistrationCodeType,
     },
     shinkai_utils::{
         encryption::{
@@ -105,8 +109,12 @@ impl PyShinkaiMessageBuilder {
         Python::with_gil(|py| {
             let encryption_ref = encryption.as_ref(py).borrow();
             if let Some(inner) = self.inner.take() {
-                let new_inner =
-                    inner.internal_metadata(sender_subidentity, recipient_subidentity, encryption_ref.inner.clone());
+                let new_inner = inner.internal_metadata(
+                    sender_subidentity,
+                    recipient_subidentity,
+                    encryption_ref.inner.clone(),
+                    None,
+                );
                 self.inner = Some(new_inner);
                 Ok(())
             } else {
@@ -130,6 +138,7 @@ impl PyShinkaiMessageBuilder {
                     recipient_subidentity,
                     inbox,
                     encryption_ref.inner.clone(),
+                    None,
                 );
                 self.inner = Some(new_inner);
                 Ok(())
@@ -157,6 +166,7 @@ impl PyShinkaiMessageBuilder {
                     inbox,
                     message_schema_ref.inner.clone(),
                     encryption_ref.inner.clone(),
+                    None,
                 );
                 self.inner = Some(new_inner);
                 Ok(())

@@ -26,6 +26,8 @@ chrono-tz = "0.5"
 rand = "0.8.4"
 hex = "=0.4.3"
 textcode = "0.2.2"
+lz4_flex = "0.11.0"
+base64 = "0.13.0"
 
 [build-dependencies]
 reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
@@ -45,4 +47,4 @@ version = "1.0.188"
 features = ["derive"]
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.36", features = ["full"] }

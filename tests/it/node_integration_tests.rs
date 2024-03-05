@@ -270,6 +270,7 @@ fn subidentity_registration() {
                     node2_profile_name.to_string().clone(),
                     node1_profile_name.to_string(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                    None,
                 )
                 .external_metadata_with_other(
                     node1_identity_name.to_string(),
@@ -432,6 +433,7 @@ fn subidentity_registration() {
                     node1_profile_name.to_string().clone(),
                     node1_subidentity_name_2.to_string().clone(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                    None,
                 )
                 .external_metadata_with_other_and_intra_sender(
                     node1_identity_name.to_string().clone(),
@@ -517,6 +519,7 @@ fn subidentity_registration() {
                     node1_profile_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                    None,
                 )
                 .external_metadata_with_other(
                     node2_identity_name.to_string().clone(),
@@ -640,7 +643,7 @@ fn subidentity_registration() {
         // Wait for all tasks to complete
         let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
         match result {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {

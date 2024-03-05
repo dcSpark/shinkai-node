@@ -5,7 +5,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
 use shinkai_vector_resources::resource_errors::VRError;
-use std::{io, str::Utf8Error};
+use std::{io, str::{ParseBoolError, Utf8Error}};
 
 #[derive(Debug)]
 pub enum ShinkaiDBError {
@@ -50,7 +50,9 @@ pub enum ShinkaiDBError {
     ShinkaiMessageError(String),
     JobAlreadyExists(String),
     CronTaskNotFound(String),
-    VectorFSError(String)
+    VectorFSError(String),
+    InvalidAttributeName(String),
+    BoolParseError(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -110,6 +112,8 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::JobAlreadyExists(e) => write!(f, "Job attempted to be created, but already exists: {}", e),
             ShinkaiDBError::CronTaskNotFound(e) => write!(f, "Cron task not found: {}", e),
             ShinkaiDBError::VectorFSError(e) => write!(f, "VectorFS error: {}", e),
+            ShinkaiDBError::InvalidAttributeName(e) => write!(f, "Invalid attribute name: {}", e),
+            ShinkaiDBError::BoolParseError(e) => write!(f, "Bool parse error: {}", e),
         }
     }
 }
@@ -171,6 +175,7 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::DeviceIdentityAlreadyExists(msg1), ShinkaiDBError::DeviceIdentityAlreadyExists(msg2)) => {
                 msg1 == msg2
             }
+            (ShinkaiDBError::DeviceNameNonExistent(msg1), ShinkaiDBError::DeviceNameNonExistent(msg2)) => msg1 == msg2,
             _ => false,
         }
     }
@@ -253,5 +258,17 @@ impl From<ShinkaiMessageError> for ShinkaiDBError {
 impl From<VectorFSError> for ShinkaiDBError {
     fn from(err: VectorFSError) -> ShinkaiDBError {
         ShinkaiDBError::VectorFSError(err.to_string())
+    }
+}
+
+impl From<std::string::FromUtf8Error> for ShinkaiDBError {
+    fn from(err: std::string::FromUtf8Error) -> ShinkaiDBError {
+        ShinkaiDBError::Utf8ConversionError
+    }
+}
+
+impl From<ParseBoolError> for ShinkaiDBError {
+    fn from(err: ParseBoolError) -> ShinkaiDBError {
+        ShinkaiDBError::BoolParseError(err.to_string())
     }
 }

@@ -1,7 +1,9 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-use shinkai_message_primitives::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
+use shinkai_message_primitives::shinkai_utils::encryption::{
+    unsafe_deterministic_encryption_keypair, EncryptionMethod,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
@@ -18,7 +20,7 @@ use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 fn setup() {
@@ -43,6 +45,7 @@ fn generate_message_with_text(
             "".to_string(),
             recipient_subidentity_name.clone().to_string(),
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),
@@ -56,7 +59,7 @@ fn generate_message_with_text(
 
 #[test]
 fn test_insert_message_to_all() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     // Initialization same as in db_inbox test
@@ -76,7 +79,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34.450Z".to_string(),
     );
 
     // Create the DB and insert the message to all
@@ -98,7 +101,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34.450Z".to_string(),
     );
     let message_before = generate_message_with_text(
         "Hello All before".to_string(),
@@ -107,7 +110,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481344".to_string(),
+        "2023-07-02T20:53:34.440Z".to_string(),
     );
     let message_after = generate_message_with_text(
         "Hello All after".to_string(),
@@ -116,7 +119,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481346".to_string(),
+        "2023-07-02T20:53:34.460Z".to_string(),
     );
 
     assert!(shinkai_db.insert_message_to_all(&message2).is_ok());
@@ -143,7 +146,7 @@ fn test_insert_message_to_all() {
 
 #[test]
 fn test_schedule_and_get_due_scheduled_messages() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     // Initialization same as in db_inbox test
@@ -214,7 +217,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
     let expected_contents = ["Hello Scheduled", "Hello Scheduled 2"];
     assert!(expected_contents.contains(&due_messages[1].clone().get_message_content().unwrap().as_str()));
     assert!(expected_contents.contains(&due_messages[2].clone().get_message_content().unwrap().as_str()));
-   
+
     assert_eq!(
         due_messages[3].clone().get_message_content().unwrap(),
         "Hello Scheduled after".to_string()
@@ -229,9 +232,13 @@ fn test_schedule_and_get_due_scheduled_messages() {
         "Hello Scheduled before".to_string()
     );
 
-    let due_messages = shinkai_db.get_due_scheduled_messages("2023-07-03T00:00:00Z".to_string()).unwrap();
+    let due_messages = shinkai_db
+        .get_due_scheduled_messages("2023-07-03T00:00:00Z".to_string())
+        .unwrap();
     assert_eq!(due_messages.len(), 4);
 
-    let due_messages = shinkai_db.get_due_scheduled_messages("2023-07-01T00:00:00Z".to_string()).unwrap();
+    let due_messages = shinkai_db
+        .get_due_scheduled_messages("2023-07-01T00:00:00Z".to_string())
+        .unwrap();
     assert_eq!(due_messages.len(), 0);
 }

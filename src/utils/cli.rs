@@ -1,4 +1,5 @@
 // src/utils/cli.rs
+use super::{args::Args, keys::NodeKeys};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
@@ -7,8 +8,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
-use super::{args::Args, keys::NodeKeys};
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identity_name: &str) {
     if args.create_message {
@@ -68,6 +68,7 @@ fn handle_create_message(
         receiver_subidentity.to_string(),
         inbox.to_string(),
         EncryptionMethod::None,
+        None,
     )
     .external_metadata(recipient.to_string(), global_identity_name.to_string().clone())
     .build();

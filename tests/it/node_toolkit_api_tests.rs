@@ -1,3 +1,4 @@
+use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -18,7 +19,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_node::network::node::NodeCommand;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
-use super::utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
@@ -28,7 +28,7 @@ use mockito::Server;
 
 #[test]
 fn node_toolkit_api() {
-    init_default_tracing(); 
+    init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -176,6 +176,7 @@ fn node_toolkit_api() {
                     node1_profile_name.to_string().clone(),
                     "".to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .external_metadata_with_intra_sender(
                     node1_identity_name.to_string(),
@@ -196,7 +197,10 @@ fn node_toolkit_api() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 assert_eq!(
                     response,
-                    vec!["files/example-packaged-shinkai-toolkit.js", "files/example-toolkit-setup.json"]
+                    vec![
+                        "files/example-packaged-shinkai-toolkit.js",
+                        "files/example-toolkit-setup.json"
+                    ]
                 );
             }
             {
@@ -215,6 +219,7 @@ fn node_toolkit_api() {
                     node1_profile_name.to_string().clone(),
                     "".to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .external_metadata_with_intra_sender(
                     node1_identity_name.to_string(),
@@ -251,6 +256,7 @@ fn node_toolkit_api() {
                     node1_profile_name.to_string().clone(),
                     "".to_string(),
                     EncryptionMethod::None,
+                    None,
                 )
                 .external_metadata_with_intra_sender(
                     node1_identity_name.to_string(),

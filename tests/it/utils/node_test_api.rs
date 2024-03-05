@@ -636,6 +636,7 @@ pub async fn api_get_all_smart_inboxes_from_profile(
             "".to_string(),
             MessageSchemaType::TextContent,
             EncryptionMethod::None,
+            None,
         )
         .external_metadata_with_intra_sender(
             recipient.to_string(),

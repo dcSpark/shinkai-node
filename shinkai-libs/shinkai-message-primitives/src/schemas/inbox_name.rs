@@ -185,6 +185,25 @@ impl InboxName {
             InboxName::JobInbox { value, .. } => value.clone(),
         }
     }
+
+    /// Returns the first half of the blake3 hash of the inbox name's value
+    pub fn hash_value_first_half(&self) -> String {
+        let value = match self {
+            InboxName::RegularInbox { value, .. } => value,
+            InboxName::JobInbox { value, .. } => value,
+        };
+        let full_hash = blake3::hash(value.as_bytes()).to_hex().to_string();
+        full_hash[..full_hash.len() / 2].to_string()
+    }
+
+    /// Returns the value field of the inbox no matter if it's a regular or job inbox
+    pub fn get_value(&self) -> String {
+        let value = match self {
+            InboxName::RegularInbox { value, .. } => value,
+            InboxName::JobInbox { value, .. } => value,
+        };
+        value.clone()
+    }
 }
 
 impl fmt::Display for InboxName {
@@ -198,7 +217,8 @@ mod tests {
     use crate::{
         shinkai_message::{
             shinkai_message::{
-                ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiVersion,
+                ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData,
+                ShinkaiVersion,
             },
             shinkai_message_schemas::MessageSchemaType,
         },
@@ -311,6 +331,7 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -350,6 +371,7 @@ mod tests {
                     inbox: "1nb0x::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::truee".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: None,
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -461,6 +483,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai/subidentity2::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {
@@ -497,6 +524,11 @@ mod tests {
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai::true".into(),
                     signature: "".into(),
                     encryption: EncryptionMethod::None,
+                    node_api_data: Some(NodeApiData {
+                        parent_hash: "parent_hash".into(),
+                        node_message_hash: "node_message_hash".into(),
+                        node_timestamp: "20230714T19363326163".into(),
+                    }),
                 },
             }),
             external_metadata: ExternalMetadata {

@@ -16,7 +16,7 @@ use shinkai_node::schemas::identity::{StandardIdentity, StandardIdentityType};
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 fn setup() {
@@ -39,7 +39,7 @@ async fn create_local_node_profile(
 
 #[test]
 fn test_generate_and_use_registration_code_for_specific_profile() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (_, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -73,7 +73,7 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
             &signature_public_key_to_string(profile_identity_pk),
             &encryption_public_key_to_string(profile_encryption_pk),
             None,
-            None
+            None,
         )
         .unwrap();
 
@@ -86,7 +86,7 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
 
 #[test]
 fn test_generate_and_use_registration_code_for_device() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -125,7 +125,6 @@ fn test_generate_and_use_registration_code_for_device() {
         Some(&encryption_public_key_to_string(device_encryption_pk)),
     );
 
-    println!("profile_result: {:?}", profile_result);
     // registration code for device
     let registration_code = shinkai_db
         .generate_registration_new_code(
@@ -167,7 +166,7 @@ fn test_generate_and_use_registration_code_for_device() {
 
 #[test]
 fn test_generate_and_use_registration_code_for_device_with_main_profile() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -244,7 +243,7 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
 
 #[test]
 fn test_generate_and_use_registration_code_no_associated_profile() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -296,7 +295,7 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 
 #[test]
 fn test_new_load_all_sub_identities() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -366,7 +365,7 @@ fn test_new_load_all_sub_identities() {
 
 #[test]
 fn test_update_local_node_keys() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -379,23 +378,20 @@ fn test_update_local_node_keys() {
         .update_local_node_keys(node_profile_name.clone(), encryption_pk.clone(), identity_pk.clone())
         .unwrap();
 
-    // check the encryption and identity keys in database
-    let cf_node_encryption = shinkai_db
-        .db
-        .cf_handle(Topic::ExternalNodeEncryptionKey.as_str())
-        .unwrap();
-    let cf_node_identity = shinkai_db
-        .db
-        .cf_handle(Topic::ExternalNodeIdentityKey.as_str())
-        .unwrap();
+    // Update to use the new context for checking the encryption and identity keys in database
+    let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();
+    let node_name = node_profile_name.get_node_name().to_string();
+    let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
+    let signature_key_prefix = format!("node_signature_key_{}", node_name);
+
     let encryption_key_in_db = shinkai_db
         .db
-        .get_cf(cf_node_encryption, &node_profile_name.to_string())
+        .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())
         .unwrap()
         .unwrap();
     let identity_key_in_db = shinkai_db
         .db
-        .get_cf(cf_node_identity, &node_profile_name.to_string())
+        .get_cf(cf_node_and_users, signature_key_prefix.as_bytes())
         .unwrap()
         .unwrap();
 
@@ -411,13 +407,20 @@ fn test_update_local_node_keys() {
 
 #[test]
 fn test_new_insert_profile() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+    // Check if any profile exists before insertion
+    assert_eq!(
+        shinkai_db.has_any_profile().unwrap(),
+        false,
+        "No profiles should exist before insertion"
+    );
 
     let subidentity_name = "subidentity_1";
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
@@ -430,32 +433,46 @@ fn test_new_insert_profile() {
         identity_pk.clone(),
         Some(subencryption_pk.clone()),
         Some(subidentity_pk.clone()),
-        // todo: review this
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
 
-    // Test new_insert_sub_identity
+    // Test insert_profile
     shinkai_db.insert_profile(identity.clone()).unwrap();
 
-    // check in db
-    let cf_identity = shinkai_db.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-    let cf_encryption = shinkai_db.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-    let cf_permission = shinkai_db.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+    // Check if any profile exists after insertion
+    assert_eq!(
+        shinkai_db.has_any_profile().unwrap(),
+        true,
+        "A profile should exist after insertion"
+    );
+
+    // Update to use the new context for checking in db
+    let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();
+    let profile_name = identity.full_identity_name.get_profile_name().unwrap();
+    let identity_key_prefix = format!("identity_key_of_{}", profile_name);
+    let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
+    let permission_key_prefix = format!("permissions_of_{}", profile_name);
+    let identity_type_key_prefix = format!("identity_type_of_{}", profile_name);
 
     let identity_in_db = shinkai_db
         .db
-        .get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, identity_key_prefix.as_bytes())
         .unwrap()
         .unwrap();
     let encryption_in_db = shinkai_db
         .db
-        .get_cf(cf_encryption, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())
         .unwrap()
         .unwrap();
     let permission_in_db = shinkai_db
         .db
-        .get_cf(cf_permission, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, permission_key_prefix.as_bytes())
+        .unwrap()
+        .unwrap();
+    let identity_type_in_db = shinkai_db
+        .db
+        .get_cf(cf_node_and_users, identity_type_key_prefix.as_bytes())
         .unwrap()
         .unwrap();
 
@@ -467,17 +484,18 @@ fn test_new_insert_profile() {
         encryption_in_db,
         encryption_public_key_to_string(subencryption_pk).as_bytes()
     );
-    assert_eq!(permission_in_db, identity.identity_type.to_string().as_bytes());
+    assert_eq!(permission_in_db, identity.permission_type.to_string().as_bytes());
+    assert_eq!(identity_type_in_db, identity.identity_type.to_string().as_bytes());
 }
 
 #[test]
 fn test_remove_profile() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let subidentity_name = "subidentity_1";
@@ -491,36 +509,42 @@ fn test_remove_profile() {
         identity_pk.clone(),
         Some(subencryption_pk.clone()),
         Some(subidentity_pk.clone()),
-        // todo: review this
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
 
-    // insert identity
+    // Insert identity
     shinkai_db.insert_profile(identity.clone()).unwrap();
 
-    // remove identity
+    // Remove identity
     shinkai_db.remove_profile(&subidentity_name).unwrap();
 
-    // check in db
-    let cf_identity = shinkai_db.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-    let cf_encryption = shinkai_db.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-    let cf_permission = shinkai_db.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+    // Update to use the new context for checking in db
+    let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();
+    let identity_key_prefix = format!("identity_key_of_{}", subidentity_name);
+    let encryption_key_prefix = format!("encryption_key_of_{}", subidentity_name);
+    let permission_key_prefix = format!("permissions_of_{}", subidentity_name);
+    let identity_type_key_prefix = format!("identity_type_of_{}", subidentity_name);
 
     let identity_in_db = shinkai_db
         .db
-        .get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, identity_key_prefix.as_bytes())
         .unwrap();
     let encryption_in_db = shinkai_db
         .db
-        .get_cf(cf_encryption, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, encryption_key_prefix.as_bytes())
         .unwrap();
     let permission_in_db = shinkai_db
         .db
-        .get_cf(cf_permission, identity.full_identity_name.get_profile_name().unwrap())
+        .get_cf(cf_node_and_users, permission_key_prefix.as_bytes())
+        .unwrap();
+    let identity_type_in_db = shinkai_db
+        .db
+        .get_cf(cf_node_and_users, identity_type_key_prefix.as_bytes())
         .unwrap();
 
     assert!(identity_in_db.is_none());
     assert!(encryption_in_db.is_none());
     assert!(permission_in_db.is_none());
+    assert!(identity_type_in_db.is_none());
 }

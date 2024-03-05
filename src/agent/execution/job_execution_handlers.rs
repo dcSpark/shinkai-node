@@ -179,15 +179,12 @@ impl JobManager {
                 // If crawl_links is true, scan for all the links in content and download_and_parse them as well
                 if cron_job.crawl_links {
                     let links = WebScraper::extract_links(&inference_response_content);
-                    eprintln!("Extracted Links: {:?}", links);
 
                     for link in links {
                         let mut scraper_for_link = scraper.clone();
                         scraper_for_link.task.url = link.clone();
                         match scraper_for_link.download_and_parse().await {
                             Ok(content) => {
-                                eprintln!("Link: {:?}", link);
-                                eprintln!("web scrapping result {:?}", content.structured);
                                 let (inference_response_content, new_execution_context) =
                                     JobManager::cron_inference_chain_router_summary(
                                         db.clone(),
@@ -201,8 +198,6 @@ impl JobManager {
                                         InferenceChain::CronExecutionChainSubtask,
                                     )
                                     .await?;
-
-                                eprintln!("Inference response content: {:?}", inference_response_content);
 
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                                     full_job.clone().job_id.to_string(),
@@ -226,7 +221,6 @@ impl JobManager {
                                 shinkai_db.set_job_execution_context(job_id.clone(), new_execution_context, None)?;
                             }
                             Err(e) => {
-                                eprintln!("Web scraping failed for link: {:?}, error: {:?}", link, e);
                                 shinkai_log(
                                     ShinkaiLogOption::CronExecution,
                                     ShinkaiLogLevel::Error,

@@ -34,13 +34,26 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
     ) -> Result<String, AgentError> {
-        shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Info, &format!("start_qa_inference_chain>  message: {:?}", job_task));
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_qa_inference_chain>  message: {:?}", job_task),
+        );
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).await?;
-        let ret_nodes =
-            JobManager::job_scope_vector_search(db.clone(), vector_fs.clone(), full_job.scope(), query, 20, &user_profile, true).await?;
+        let ret_nodes = JobManager::job_scope_vector_search(
+            db.clone(),
+            vector_fs.clone(),
+            full_job.scope(),
+            query,
+            query_text.clone(),
+            20,
+            &user_profile,
+            true,
+        )
+        .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < max_iterations && !full_job.scope.is_empty() {
@@ -114,7 +127,11 @@ impl JobManager {
             let response_json = JobManager::inference_agent(agent.clone(), retry_prompt).await?;
             match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
                 Ok(search_str) => {
-                    shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Info, &format!("QA Chain New Search Retry Term: {:?}", search_str));
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Info,
+                        &format!("QA Chain New Search Retry Term: {:?}", search_str),
+                    );
                     new_search_text = search_str;
                 }
                 Err(_) => {}

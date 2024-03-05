@@ -1,5 +1,9 @@
 use crate::{
-    shinkai_message::shinkai_message_schemas::{APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson},
+    shinkai_message::shinkai_message_schemas::{
+        APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
+        APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+        APIVecFsRetrieveVectorSearchSimplifiedJson,
+    },
     shinkai_utils::job_scope::JobScope,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -56,11 +60,13 @@ impl ShinkaiMessageBuilder {
                 "".to_string(),
                 schema_type,
                 EncryptionMethod::None,
+                None,
             )
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
             .build()
     }
+
     pub fn vecfs_create_folder(
         &mut self,
         folder_name: &str,
@@ -252,9 +258,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let payload = APIVecFSRetrieveVectorResource {
-            path: path.to_string(),
-        };
+        let payload = APIVecFSRetrieveVectorResource { path: path.to_string() };
 
         self.create_vecfs_message(
             payload,
@@ -268,7 +272,7 @@ impl ShinkaiMessageBuilder {
             node_receiver_subidentity,
         )
     }
-    
+
     pub fn vecfs_retrieve_path_simplified(
         &mut self,
         path: &str,
@@ -280,9 +284,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let payload = APIVecFsRetrievePathSimplifiedJson {
-            path: path.to_string(),
-        };
+        let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
         self.create_vecfs_message(
             payload,
