@@ -43,7 +43,7 @@ jobs:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           with:
             repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: target/release/shinkai_node
+            file: target/release/shinkai_node${{ env.EXTENSION }}
             asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
             tag: ${{ github.ref }}
             overwrite: true
