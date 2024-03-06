@@ -54,7 +54,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
         .expect("Failed to extract content field from response_body");
 
     // Validate that content is a valid JSON object
-    match extract_first_json_object(content) {
+    match extract_largest_json_object(content) {
         Ok(_) => (),
         Err(e) => {
             eprintln!("Failed to extract JSON object from content: {}", content);
@@ -625,7 +625,7 @@ fn create_openai_mock_3(server: &mut mockito::Server) -> Mock {
     )
 }
 
-fn extract_first_json_object(s: &str) -> Result<JsonValue, AgentError> {
+fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
     let mut depth = 0;
     let mut start = None;
 

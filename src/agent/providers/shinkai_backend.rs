@@ -157,7 +157,7 @@ impl LLMProvider for ShinkaiBackend {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            Self::extract_first_json_object(&response_string)
+                            Self::extract_largest_json_object(&response_string)
                         } else {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
@@ -169,7 +169,7 @@ impl LLMProvider for ShinkaiBackend {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            Self::extract_first_json_object(&response_string)
+                            Self::extract_largest_json_object(&response_string)
                         }
                     }
                     Err(e) => {

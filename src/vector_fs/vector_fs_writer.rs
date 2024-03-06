@@ -81,20 +81,18 @@ impl VectorFS {
     /// Copies the FSFolder from the writer's path into being held underneath the destination_path.
     pub fn copy_folder(&mut self, writer: &VFSWriter, destination_path: VRPath) -> Result<FSFolder, VectorFSError> {
         let write_batch = writer.new_write_batch()?;
-        let (write_batch, new_folder) = self.wb_copy_folder(writer, destination_path, write_batch)?;
+        let (write_batch, new_folder) = self.internal_wb_copy_folder(writer, destination_path, write_batch, false)?;
         self.db.write_pb(write_batch)?;
         Ok(new_folder)
     }
 
     /// Internal method to copy the FSFolder from the writer's path into being held underneath the destination_path.
-    /// TODO: Check if memory requirements spin out of control because for each recursive item/folder save we also re-save
-    /// the whole of FS internals. If so, add a boolean input to saving methods for whether to skip the fs internals saving.
-    /// Or try using rocksdb merge instead of write batch.
-    fn wb_copy_folder(
+    fn internal_wb_copy_folder(
         &mut self,
         writer: &VFSWriter,
         destination_path: VRPath,
         mut write_batch: ProfileBoundWriteBatch,
+        is_recursive_call: bool,
     ) -> Result<(ProfileBoundWriteBatch, FSFolder), VectorFSError> {
         let current_datetime = ShinkaiTime::generate_time_now();
         let destination_writer = writer.new_writer_copied_data(destination_path.clone(), self)?;
@@ -144,7 +142,7 @@ impl VectorFS {
             let dest_path = destination_child_path.clone();
             match node.content {
                 NodeContent::Resource(_) => {
-                    let (batch, _) = self.wb_copy_folder(&origin_writer, dest_path, write_batch)?;
+                    let (batch, _) = self.internal_wb_copy_folder(&origin_writer, dest_path, write_batch, true)?;
                     write_batch = batch;
                 }
                 NodeContent::VRHeader(_) => {
@@ -155,9 +153,11 @@ impl VectorFS {
             }
         }
 
-        // Re-add saving fs internals to the write batch one last time to guarantee it gets updated fully
-        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
-        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        // Only commit updating the fs internals once at the top level, efficiency improvement
+        if !is_recursive_call {
+            let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+            self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        }
 
         // Fetch the new FSFolder after everything has been copied over in fs internals
         let reader = destination_writer.new_reader_copied_data(destination_child_path.clone(), self)?;

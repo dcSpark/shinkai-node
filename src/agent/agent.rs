@@ -1,6 +1,8 @@
-use super::execution::job_prompts::Prompt;
+use super::execution::job_prompts::{Prompt, SubPromptType};
 use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
@@ -79,36 +81,97 @@ impl Agent {
     /// Inferences the LLM model tied to the agent to get a response back.
     /// Note, all `content` is expected to use prompts from the PromptGenerator,
     /// meaning that they tell/force the LLM to always respond in JSON. We automatically
-    /// parse the JSON object out of the response into a JsonValue, or error if no object is found.
+    /// parse the JSON object out of the response into a JsonValue, perform retries, and error if no object is found after everything.
     pub async fn inference(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
-        let response = match &self.model {
+        let mut response = self.internal_inference_matching_model(prompt.clone()).await;
+        let mut attempts = 0;
+
+        let mut rng = StdRng::from_entropy(); // This uses the system's source of entropy to seed the RNG
+        let random_number: i32 = rng.gen();
+
+        let mut new_prompt = prompt.clone();
+        while let Err(err) = &response {
+            if attempts >= 3 {
+                break;
+            }
+            attempts += 1;
+
+            // If serde failed parsing the json string, then use advanced rertrying
+            if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
+                println!("101 - {} - Failed parsing json of: {}", random_number, response_json);
+                new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
+                new_prompt.add_content(
+                    format!(
+                        "`{}` \nFix this error in your response so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always use single quotes (never double quotes) inside of the strings.",
+                        serde_error.to_string()
+                    ),
+                    SubPromptType::User,
+                    100,
+                );
+                response = self.internal_inference_matching_model(new_prompt.clone()).await;
+            }
+            // Otherwise if another error happened, best to retry whole inference to start from scratch/get new response
+            else {
+                response = self.internal_inference_matching_model(prompt.clone()).await;
+            }
+        }
+
+        let cleaned_json = JobManager::convert_inference_response_to_internal_strings(response?);
+
+        println!(
+            "105 - {} - Succeeded parsing json of: {}",
+            random_number,
+            cleaned_json.to_string()
+        );
+        Ok(cleaned_json)
+    }
+
+    async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
+        match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
                 openai
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                    )
                     .await
             }
             AgentLLMInterface::GenericAPI(genericapi) => {
                 genericapi
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                    )
                     .await
             }
             AgentLLMInterface::Ollama(ollama) => {
                 ollama
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                    )
                     .await
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
                 shinkai_backend
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                    )
                     .await
             }
             AgentLLMInterface::LocalLLM(local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
-        }?;
-
-        let cleaned_json = JobManager::convert_inference_response_to_internal_strings(response);
-        Ok(cleaned_json)
+        }
     }
 }
 

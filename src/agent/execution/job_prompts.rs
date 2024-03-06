@@ -99,7 +99,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             100
         );
@@ -180,7 +180,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             100
         );
@@ -272,7 +272,7 @@ impl JobPromptGenerator {
 
         // Final content to be added with the specific instructions
         let mut final_content =
-            r#"No, I need it to be properly formatted as JSON with the correct field/key names. "#.to_string();
+            r#"No, I need it to be properly formatted as a flat JSON with the correct field/key names, and no objects inside of each other. "#.to_string();
 
         if let Some(key) = json_key_to_correct {
             final_content += &format!(
@@ -287,7 +287,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the JSON and absolutely no explanation or anything else: "#,
+                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the flat JSON and absolutely no explanation or anything else: "#,
                 final_content
             ),
             SubPromptType::User,

@@ -1,8 +1,8 @@
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::LLMProvider;
 use super::shared::togetherai::TogetherAPIResponse;
+use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -102,8 +102,7 @@ impl LLMProvider for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(|| String::new());
 
-                        let json_part = Self::json_string_cleanup(&response_string);
-                        Self::extract_first_json_object(&json_part)
+                        Self::extract_largest_json_object(&response_string)
                     }
                     Err(e) => {
                         shinkai_log(
