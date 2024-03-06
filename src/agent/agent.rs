@@ -91,10 +91,13 @@ impl Agent {
 
         let mut new_prompt = prompt.clone();
         while let Err(err) = &response {
+            if attempts >= 2 {
+                break;
+            }
+            attempts += 1;
+
+            // If serde failed parsing the json string, then use advanced rertrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
-                if attempts >= 2 {
-                    break;
-                }
                 println!("101 - {} - Failed parsing json of: {}", random_number, response_json);
                 new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
                 new_prompt.add_content(
@@ -106,9 +109,10 @@ impl Agent {
                     100,
                 );
                 response = self.internal_inference_matching_model(new_prompt.clone()).await;
-                attempts += 1;
-            } else {
-                break;
+            }
+            // Otherwise if another error happened, best to retry whole inference to start from scratch/get new response
+            else {
+                response = self.internal_inference_matching_model(prompt.clone()).await;
             }
         }
 
