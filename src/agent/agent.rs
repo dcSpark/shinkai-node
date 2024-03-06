@@ -91,7 +91,7 @@ impl Agent {
 
         let mut new_prompt = prompt.clone();
         while let Err(err) = &response {
-            if attempts >= 2 {
+            if attempts >= 3 {
                 break;
             }
             attempts += 1;
@@ -102,7 +102,7 @@ impl Agent {
                 new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
                 new_prompt.add_content(
                     format!(
-                        "`{}` \nFix this error in your response so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no other objects inside of any fields.",
+                        "`{}` \nFix this error in your response so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always use single quotes (never double quotes) inside of the strings.",
                         serde_error.to_string()
                     ),
                     SubPromptType::User,

@@ -99,7 +99,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             100
         );
@@ -180,7 +180,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             100
         );

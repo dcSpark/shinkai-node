@@ -81,6 +81,8 @@ pub trait LLMProvider {
         // Extra linebreak replaces
         response_string = response_string.replace("\"\n}\n``` ", "\"}");
         response_string = response_string.replace("\\n", " ");
+        response_string = response_string.replace("{\" \"", "{ \"");
+        response_string = response_string.replace("\" \"}", "\" }");
 
         // Check for and remove an extra set of curly braces after everything else
         let trimmed_string = response_string.trim();
