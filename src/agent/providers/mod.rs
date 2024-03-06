@@ -54,9 +54,16 @@ pub trait LLMProvider {
     fn json_string_cleanup(s: &str) -> String {
         let mut response_string = replace_single_quotes(s);
 
-        // Quote fixes
+        // Quote & underscore fixes
+        response_string = response_string.replace("\\'", "\'");
+        response_string = response_string.replace("\\\'", "\'");
         response_string = response_string.replace("\\\"", "\"");
-        response_string = escape_double_quotes_within_json_values(&response_string);
+        response_string = response_string.replace("\\_", "_");
+        response_string = response_string.replace("\\\\_", "_");
+
+        // Remove system messages from LLM models
+        response_string = response_string.replace("<</SYS>>", "");
+        response_string = response_string.replace("<<SYS>>", "");
 
         // Further more manual fixes
         response_string = if response_string.starts_with("- \n\n") {
@@ -91,66 +98,28 @@ pub trait LLMProvider {
     }
 }
 
-/// Replace single quotes around json keys/values with double quotes
 fn replace_single_quotes(s: &str) -> String {
     let mut chars = s.chars().peekable();
     let mut cleaned_string = String::new();
-    let mut in_quotes = false;
+    let mut in_quotes = false; // Tracks whether we are inside quotes
 
     while let Some(c) = chars.next() {
         match c {
+            // If we encounter a double quote, we flip the in_quotes flag
+            '"' => {
+                cleaned_string.push(c);
+                in_quotes = !in_quotes;
+            }
+            // If we encounter a single quote and we are not inside quotes, replace it with a double quote
             '\'' if !in_quotes => {
-                // Replace starting single quote with double quote
                 cleaned_string.push('"');
-                in_quotes = true;
             }
-            '\'' if in_quotes => {
-                // Look ahead to decide if this quote should be closed or is part of a possessive noun, etc.
-                match chars.peek() {
-                    Some(next_char) if next_char.is_alphanumeric() => {
-                        // It's likely part of a word, keep it as is
-                        cleaned_string.push(c);
-                    }
-                    _ => {
-                        // Replace ending single quote with double quote
-                        cleaned_string.push('"');
-                        in_quotes = false;
-                    }
-                }
-            }
+            // If we are inside quotes or it's any other character, just append it
             _ => cleaned_string.push(c),
         }
     }
 
     cleaned_string
-}
-
-/// Escapes double quotes within JSON string values
-fn escape_double_quotes_within_json_values(s: &str) -> String {
-    let mut result = String::new();
-    let mut in_string = false;
-
-    for c in s.chars() {
-        match c {
-            '"' if in_string => {
-                // End of string value
-                in_string = false;
-                result.push(c);
-            }
-            '"' if !in_string => {
-                // Start of string value
-                in_string = true;
-                result.push(c);
-            }
-            '"' if in_string => {
-                // Double quote within string value, escape it
-                result.push_str("\\\"");
-            }
-            _ => result.push(c),
-        }
-    }
-
-    result
 }
 
 /// Attempts to extract out all json strings from the input by matching braces and returns the longest one.

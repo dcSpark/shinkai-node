@@ -156,7 +156,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'search' ':' string, 'summary': 'string' }'"#),
+            String::from(r#"'{' 'search' ':' string, 'answer': 'string' }'"#),
             SubPromptType::System,
             100,
         );
@@ -272,7 +272,7 @@ impl JobPromptGenerator {
 
         // Final content to be added with the specific instructions
         let mut final_content =
-            r#"No, I need it to be properly formatted as JSON with the correct field/key names. "#.to_string();
+            r#"No, I need it to be properly formatted as a flat JSON with the correct field/key names, and no objects inside of each other. "#.to_string();
 
         if let Some(key) = json_key_to_correct {
             final_content += &format!(
@@ -287,7 +287,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the JSON and absolutely no explanation or anything else: "#,
+                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the flat JSON and absolutely no explanation or anything else: "#,
                 final_content
             ),
             SubPromptType::User,
