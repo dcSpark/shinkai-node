@@ -105,7 +105,7 @@ impl JobManager {
                     new_resp_json.clone(),
                     filled_prompt.clone(),
                     vec!["summary".to_string(), "answer".to_string()],
-                    2,
+                    4,
                 )
                 .await
                 {
@@ -114,7 +114,10 @@ impl JobManager {
                 };
                 (search_str.to_string(), summary_str)
             }
-            Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
+            Err(_) => {
+                println!("Failed qa inference chain");
+                return Err(AgentError::InferenceJSONResponseMissingField("search".to_string()));
+            }
         };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term

@@ -114,8 +114,7 @@ impl LLMProvider for Ollama {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source())
-                                .as_str(),
+                            format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
                         );
                         return Err(AgentError::NetworkError(e.to_string()));
                     }
@@ -131,7 +130,7 @@ impl LLMProvider for Ollama {
             match serde_json::from_str::<JsonValue>(&response_text) {
                 Ok(deserialized_json) => {
                     let response_string = deserialized_json.to_string();
-                    Self::extract_first_json_object(&response_string)
+                    Self::extract_largest_json_object(&response_string)
                 }
                 Err(e) => {
                     shinkai_log(
