@@ -156,7 +156,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'search' ':' string, 'answer': 'string' }'"#),
+            String::from(r#"'{' 'search' ':' string, 'summary': 'string' }'"#),
             SubPromptType::System,
             100,
         );

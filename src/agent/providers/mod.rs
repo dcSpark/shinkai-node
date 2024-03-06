@@ -28,20 +28,14 @@ pub trait LLMProvider {
         match internal_extract_json_string(s) {
             Ok(json_str) => match serde_json::from_str(&json_str) {
                 Ok(json_val) => Ok(json_val),
-                Err(_) => {
+                Err(e) => {
                     // If parsing fails, clean up the string and try again
                     let cleaned_json_string = Self::json_string_cleanup(&json_str);
                     match internal_extract_json_string(&cleaned_json_string) {
-                        Ok(re_json_str) => {
-                            let obj = serde_json::from_str(&re_json_str);
-                            if let Err(e) = &obj {
-                                println!(
-                                    "\n\n2 - Failed string to parse as json: {:?}, error: {:?}\n\n",
-                                    &re_json_str, e
-                                );
-                            }
-                            Ok(obj?)
-                        }
+                        Ok(re_json_str) => match serde_json::from_str(&re_json_str) {
+                            Ok(obj) => Ok(obj),
+                            Err(e) => Err(AgentError::FailedSerdeParsingJSONString(re_json_str, e)),
+                        },
                         Err(e) => Err(e),
                     }
                 }
@@ -145,9 +139,7 @@ fn internal_extract_json_string(s: &str) -> Result<String, AgentError> {
                         start = None; // Reset start for the next JSON string
                     } else {
                         println!("\n\n1 - Failed string to parse as json: {}\n\n", s);
-                        return Err(AgentError::FailedExtractingJSONObjectFromResponse(
-                            s.to_string() + "-- internal extract method",
-                        ));
+                        return Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()));
                     }
                 }
             }
