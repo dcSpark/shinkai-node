@@ -6,6 +6,7 @@ use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -54,6 +55,11 @@ impl JobManager {
             true,
         )
         .await?;
+        // Text from the first node, which is the summary of the most similar VR
+        let summary_node_text = ret_nodes
+            .get(0)
+            .and_then(|node| node.node.get_text_content().ok())
+            .map(|text| text.to_string());
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let is_not_final = iteration_count < max_iterations && !full_job.scope.is_empty();
@@ -76,7 +82,7 @@ impl JobManager {
 
         // Inference the agent's LLM with the prompt, and check if it failed to produce a proper json object at all
         let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
-        if let Err(_) = &response {
+        if let Err(e) = &response {
             // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
             if iteration_count < max_iterations {
                 return JobManager::start_qa_inference_chain(
@@ -95,14 +101,26 @@ impl JobManager {
                 )
                 .await;
             }
-            // Else if we're past the max iterations, return the last successfully parse summary if it exists
+            // Else if we're past the max iterations, return either last valid summary from previous iterations or VR summary
             else {
+                eprintln!("Qa inference chain failure due to no parsable JSON produced: {}\nUsing summary backup to respond to user.", e);
+                let mut summary_answer = String::new();
+                // Try from previous iteration
                 if let Some(summary_str) = &summary_text {
-                    let cleaned_answer = ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(
-                        summary_str.as_str(),
-                    ));
-                    return Ok(cleaned_answer);
+                    summary_answer = summary_str.to_string()
                 }
+                // Else use the VR summary. We create _temp_res to have `response?` resolve to pushing the error properly
+                else {
+                    let mut _temp_resp = JsonValue::Null;
+                    match summary_node_text {
+                        Some(text) => summary_answer = text.to_string(),
+                        None => _temp_resp = response?,
+                    }
+                }
+
+                let cleaned_answer =
+                    ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(summary_answer.as_str()));
+                return Ok(cleaned_answer);
             }
         }
 
