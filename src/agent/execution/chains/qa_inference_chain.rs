@@ -113,7 +113,7 @@ impl JobManager {
             return Ok(cleaned_answer);
         }
         // If it errored and past max iterations, try to use the summary from the previous iteration, or return error
-        else if let Err(e) = answer {
+        else if let Err(_) = answer {
             if iteration_count > max_iterations {
                 if let Some(summary_str) = &summary_text {
                     let cleaned_answer = ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(
@@ -132,8 +132,8 @@ impl JobManager {
             agent.clone(),
             response_json.clone(),
             filled_prompt.clone(),
-            vec!["summary".to_string(), "answer".to_string()],
-            2,
+            vec!["summary".to_string(), "answer".to_string(), "text".to_string()],
+            3,
         )
         .await
         {
@@ -143,7 +143,7 @@ impl JobManager {
                     new_resp_json.clone(),
                     filled_prompt.clone(),
                     vec!["search".to_string(), "lookup".to_string()],
-                    4,
+                    2,
                 )
                 .await
                 {
@@ -157,8 +157,12 @@ impl JobManager {
                 )
             }
             Err(_) => {
-                eprintln!("Failed qa inference chain: Missing Field {}", "search");
-                return Err(AgentError::InferenceJSONResponseMissingField("search".to_string()));
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed qa inference chain: Missing Field {}", "summary"),
+                );
+                return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
             }
         };
 
@@ -167,18 +171,17 @@ impl JobManager {
         if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt =
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
-            let response_json = JobManager::inference_agent(agent.clone(), retry_prompt).await?;
-            match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
-                Ok(search_str) => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Info,
-                        &format!("QA Chain New Search Retry Term: {:?}", search_str),
-                    );
-                    new_search_text = search_str;
+            let response = JobManager::inference_agent(agent.clone(), retry_prompt).await;
+            if let Ok(response_json) = response {
+                match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
+                    Ok(search_str) => {
+                        new_search_text = search_str;
+                    }
+                    // If extracting fails, use summary to make the new search text likely different compared to last iteration
+                    Err(_) => new_search_text = summary.clone(),
                 }
-                // Use summary to make the new search text likely different compared to last iteration
-                Err(_) => new_search_text = summary.clone(),
+            } else {
+                new_search_text = summary.clone();
             }
         }
 
@@ -237,7 +240,6 @@ async fn no_json_object_retry_logic(
         }
         // Else if we're past the max iterations, return either last valid summary from previous iterations or VR summary
         else {
-            eprintln!();
             shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,
