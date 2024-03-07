@@ -20,24 +20,52 @@ use std::io::Cursor;
 
 impl JobManager {
     /// Given a list of UnstructuredElements generates a description using the Agent's LLM
+    // TODO: the 2000 should be dynamic depending on the agent model capabilities
     pub async fn generate_description(
         elements: &Vec<UnstructuredElement>,
         agent: SerializedAgent,
+        max_node_size: u64,
     ) -> Result<String, AgentError> {
-        // TODO: the 2000 should be dynamic depending on the LLM model
         let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
-        let response_json = JobManager::inference_agent(agent.clone(), prompt.clone()).await?;
-        let (answer, _new_resp_json) = &JobManager::advanced_extract_key_from_inference_response(
-            agent.clone(),
-            response_json,
-            prompt,
-            vec!["summary".to_string(), "answer".to_string()],
-            1,
-        )
-        .await?;
-        let desc = Some(ParsingHelper::ending_stripper(answer));
-        eprintln!("LLM Generated File Description: {:?}", desc);
-        Ok(desc.unwrap_or_else(|| "".to_string()))
+
+        let mut extracted_answer: Option<String> = None;
+        for _ in 0..5 {
+            let response_json = match JobManager::inference_agent(agent.clone(), prompt.clone()).await {
+                Ok(json) => json,
+                Err(e) => {
+                    continue; // Continue to the next iteration on error
+                }
+            };
+            let (answer, _new_resp_json) = match JobManager::advanced_extract_key_from_inference_response(
+                agent.clone(),
+                response_json,
+                prompt.clone(),
+                vec!["summary".to_string(), "answer".to_string()],
+                1,
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    continue; // Continue to the next iteration on error
+                }
+            };
+            extracted_answer = Some(answer.clone());
+            break; // Exit the loop if successful
+        }
+
+        if let Some(answer) = extracted_answer {
+            let desc = ParsingHelper::ending_stripper(&answer);
+            Ok(desc)
+        } else {
+            eprintln!(
+                "Failed to generate VR description after multiple attempts. Defaulting to text from first N nodes."
+            );
+
+            let concat_text = ParsingHelper::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
+            let desc = ParsingHelper::ending_stripper(&concat_text);
+            Ok(desc)
+        }
     }
 
     /// Processes the list of files into VRKai structs ready to be used/saved/etc.
@@ -117,14 +145,9 @@ impl JobManager {
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
         let mut desc = String::new();
         if let Some(actual_agent) = agent {
-            desc = Self::generate_description(&elements, actual_agent).await?;
+            desc = Self::generate_description(&elements, actual_agent, max_node_size).await?;
         } else {
-            desc = elements
-                .iter()
-                .take_while(|e| desc.len() + e.text.len() <= max_node_size as usize)
-                .map(|e| e.text.as_str())
-                .collect::<Vec<&str>>()
-                .join(" ");
+            desc = ParsingHelper::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
         }
 
         ParsingHelper::parse_elements_into_resource(
@@ -146,6 +169,19 @@ impl ParsingHelper {
     /// Generates Blake3 hash of the input data.
     fn generate_data_hash_blake3(content: &[u8]) -> String {
         UnstructuredParser::generate_data_hash(content)
+    }
+
+    /// Concatenate elements text up to a maximum size.
+    pub fn concatenate_elements_up_to_max_size(elements: &[UnstructuredElement], max_size: usize) -> String {
+        let mut desc = String::new();
+        for e in elements {
+            if desc.len() + e.text.len() + 1 > max_size {
+                break; // Stop appending if adding the next element would exceed max_size
+            }
+            desc.push_str(&e.text);
+            desc.push('\n'); // Add a line break after each element's text
+        }
+        desc.trim_end().to_string() // Trim any trailing space before returning
     }
 
     ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
