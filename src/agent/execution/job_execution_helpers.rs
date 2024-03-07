@@ -42,7 +42,7 @@ impl JobManager {
         let mut current_response_json = response_json;
         for _ in 0..retry_attempts {
             for key in &potential_keys {
-                let new_response_json = JobManager::json_not_found_retry(
+                let new_response_json = internal_json_not_found_retry(
                     agent.clone(),
                     current_response_json.to_string(),
                     filled_prompt.clone(),
@@ -101,26 +101,14 @@ impl JobManager {
         })
         .await;
 
-        let response = match task_response {
-            Ok(res) => res,
-            Err(e) => {
-                eprintln!("Task panicked with error: {:?}", e);
-                return Err(AgentError::InferenceFailed);
-            }
-        };
-
+        let response = task_response?;
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
             format!("inference_agent> response: {:?}", response).as_str(),
         );
 
-        // Validates that the response is a proper JSON object, else inferences again to get the
-        // LLM to parse the previous response into proper JSON
-        let json_resp =
-            JobManager::_extract_json_value_from_inference_result(response, agent.clone(), filled_prompt).await?;
-        let cleaned_json = JobManager::convert_inference_response_to_internal_strings(json_resp);
-        Ok(cleaned_json)
+        response
     }
 
     /// Internal method that attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
@@ -146,42 +134,13 @@ impl JobManager {
                 }
 
                 //
-                match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
+                match internal_json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
                 }
             }
             Err(e) => Err(e),
         }
-    }
-
-    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse. json_key_to_correct allows providing a specific key that the LLM should make sure to correct.
-    async fn json_not_found_retry(
-        agent: SerializedAgent,
-        invalid_json_answer: String,
-        original_prompt: Prompt,
-        json_key_to_correct: Option<String>,
-    ) -> Result<JsonValue, AgentError> {
-        let response = tokio::spawn(async move {
-            let agent = Agent::from_serialized_agent(agent);
-            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(
-                invalid_json_answer,
-                original_prompt,
-                json_key_to_correct,
-            );
-            agent.inference(prompt).await
-        })
-        .await;
-        let response = match response {
-            Ok(res) => res?,
-            Err(e) => {
-                eprintln!("Task panicked with error: {:?}", e);
-                return Err(AgentError::InferenceFailed);
-            }
-        };
-
-        Ok(response)
     }
 
     /// Fetches boilerplate/relevant data required for a job to process a step
@@ -292,4 +251,33 @@ fn to_dash_case(s: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
+/// that we can parse. json_key_to_correct allows providing a specific key that the LLM should make sure to correct.
+async fn internal_json_not_found_retry(
+    agent: SerializedAgent,
+    invalid_json_answer: String,
+    original_prompt: Prompt,
+    json_key_to_correct: Option<String>,
+) -> Result<JsonValue, AgentError> {
+    let response = tokio::spawn(async move {
+        let agent = Agent::from_serialized_agent(agent);
+        let prompt = JobPromptGenerator::basic_json_retry_response_prompt(
+            invalid_json_answer,
+            original_prompt,
+            json_key_to_correct,
+        );
+        agent.inference(prompt).await
+    })
+    .await;
+    let response = match response {
+        Ok(res) => res?,
+        Err(e) => {
+            eprintln!("Task panicked with error: {:?}", e);
+            return Err(AgentError::InferenceFailed);
+        }
+    };
+
+    Ok(response)
 }

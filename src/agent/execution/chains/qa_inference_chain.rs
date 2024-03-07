@@ -80,51 +80,29 @@ impl JobManager {
             )
         };
 
-        // Inference the agent's LLM with the prompt, and check if it failed to produce a proper json object at all
+        // Inference the agent's LLM with the prompt
         let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
-        if let Err(e) = &response {
-            // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
-            if iteration_count < max_iterations {
-                return JobManager::start_qa_inference_chain(
-                    db,
-                    vector_fs,
-                    full_job,
-                    job_task.to_string(),
-                    agent,
-                    execution_context,
-                    generator,
-                    user_profile,
-                    summary_text.clone(),
-                    summary_text,
-                    iteration_count + 1,
-                    max_iterations,
-                )
-                .await;
-            }
-            // Else if we're past the max iterations, return either last valid summary from previous iterations or VR summary
-            else {
-                eprintln!("Qa inference chain failure due to no parsable JSON produced: {}\nUsing summary backup to respond to user.", e);
-                let mut summary_answer = String::new();
-                // Try from previous iteration
-                if let Some(summary_str) = &summary_text {
-                    summary_answer = summary_str.to_string()
-                }
-                // Else use the VR summary. We create _temp_res to have `response?` resolve to pushing the error properly
-                else {
-                    let mut _temp_resp = JsonValue::Null;
-                    match summary_node_text {
-                        Some(text) => summary_answer = text.to_string(),
-                        None => _temp_resp = response?,
-                    }
-                }
-
-                let cleaned_answer =
-                    ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(summary_answer.as_str()));
-                return Ok(cleaned_answer);
-            }
+        // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
+        if response.is_err() {
+            return no_json_object_retry_logic(
+                response,
+                db,
+                vector_fs,
+                full_job,
+                job_task,
+                agent,
+                execution_context,
+                generator,
+                user_profile,
+                summary_text,
+                summary_node_text, // This needs to be defined or passed appropriately
+                iteration_count,
+                max_iterations,
+            )
+            .await;
         }
 
-        // Attempt to extract the JSON from the Result and proceed forward. This is where method will fail if after everything LLM never produced a single valid summary
+        // Extract the JSON from the inference response Result and proceed forward
         let response_json = response?;
         let answer = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer");
 
@@ -143,7 +121,6 @@ impl JobManager {
                     ));
                     return Ok(cleaned_answer);
                 } else {
-                    eprintln!("Failed qa inference chain: {}", e);
                     return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
                 }
             }
@@ -222,4 +199,69 @@ impl JobManager {
         )
         .await
     }
+}
+
+async fn no_json_object_retry_logic(
+    response: Result<JsonValue, AgentError>,
+    db: Arc<Mutex<ShinkaiDB>>,
+    vector_fs: Arc<Mutex<VectorFS>>,
+    full_job: Job,
+    job_task: String,
+    agent: SerializedAgent,
+    execution_context: HashMap<String, String>,
+    generator: &dyn EmbeddingGenerator,
+    user_profile: ShinkaiName,
+    summary_text: Option<String>,
+    summary_node_text: Option<String>,
+    iteration_count: u64,
+    max_iterations: u64,
+) -> Result<String, AgentError> {
+    if let Err(e) = &response {
+        // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
+        if iteration_count < max_iterations {
+            return JobManager::start_qa_inference_chain(
+                db,
+                vector_fs,
+                full_job,
+                job_task.to_string(),
+                agent,
+                execution_context,
+                generator,
+                user_profile,
+                summary_text.clone(),
+                summary_text,
+                iteration_count + 1,
+                max_iterations,
+            )
+            .await;
+        }
+        // Else if we're past the max iterations, return either last valid summary from previous iterations or VR summary
+        else {
+            eprintln!();
+            shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    &format!("Qa inference chain failure due to no parsable JSON produced: {}\nUsing summary backup to respond to user.", e),
+                );
+            let mut summary_answer = String::new();
+            // Try from previous iteration
+            if let Some(summary_str) = &summary_text {
+                summary_answer = summary_str.to_string()
+            }
+            // Else use the VR summary. We create _temp_res to have `response?` resolve to pushing the error properly
+            else {
+                let mut _temp_resp = JsonValue::Null;
+                match summary_node_text {
+                    Some(text) => summary_answer = text.to_string(),
+                    None => _temp_resp = response?,
+                }
+            }
+
+            // Return the cleaned summary
+            let cleaned_answer =
+                ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(summary_answer.as_str()));
+            return Ok(cleaned_answer);
+        }
+    }
+    Err(AgentError::InferenceFailed)
 }
