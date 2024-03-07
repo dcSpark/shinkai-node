@@ -43,7 +43,7 @@ jobs:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           with:
             repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: target/release/shinkai_node
+            file: target/release/shinkai_node${{ env.EXTENSION }}
             asset_name: shinkai-node-${{ matrix.arch }}${{ env.EXTENSION }}
             tag: ${{ github.ref }}
             overwrite: true
@@ -52,9 +52,9 @@ jobs:
           env:
             EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
           run: |
-            mkdir files-to-r2/${{ matrix.arch }}
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/${{ matrix.arch }}/shinkai-node-latest${{ env.EXTENSION }}
+            mkdir files-to-r2
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-${{ github.ref_name }}${{ env.EXTENSION }}
+            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node-latest${{ env.EXTENSION }}
 
         - name: Upload binaries to R2 bucket
           uses: shallwefootball/s3-upload-action@master
@@ -63,5 +63,5 @@ jobs:
             aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
             aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
             aws_bucket: shinkai-download
-            source_dir: files-to-r2/${{ matrix.arch }}
+            source_dir: files-to-r2
             destination_dir: ./shinkai-node/binaries/${{ matrix.arch }}/
