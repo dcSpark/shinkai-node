@@ -96,7 +96,7 @@ impl Agent {
             }
             attempts += 1;
 
-            // If serde failed parsing the json string, then use advanced rertrying
+            // If serde failed parsing the json string, then use advanced retrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
                 println!("101 - {} - Failed parsing json of: {}", random_number, response_json);
                 new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);

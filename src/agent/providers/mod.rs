@@ -25,6 +25,7 @@ pub trait LLMProvider {
     /// Given an input string, parses the largest JSON object that it finds. Largest allows us to skip over
     /// cases where LLMs repeat your schema or post other broken/smaller json objects for whatever reason.
     fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
+        println!("909 - Starting parsing of inference response: {} ", s);
         match internal_extract_json_string(s) {
             Ok(json_str) => match serde_json::from_str(&json_str) {
                 Ok(json_val) => Ok(json_val),
@@ -151,7 +152,7 @@ fn internal_extract_json_string(s: &str) -> Result<String, AgentError> {
     }
 
     // Return the longest JSON string
-    match json_strings.into_iter().max_by_key(|s| s.len()) {
+    match json_strings.into_iter().max_by_key(|jstr| jstr.len()) {
         Some(longest_json_string) => Ok(longest_json_string),
         None => Err(AgentError::FailedExtractingJSONObjectFromResponse(
             s.to_string() + " - No JSON strings found",
