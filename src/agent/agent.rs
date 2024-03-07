@@ -1,8 +1,6 @@
 use super::execution::job_prompts::{Prompt, SubPromptType};
 use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
@@ -86,9 +84,6 @@ impl Agent {
         let mut response = self.internal_inference_matching_model(prompt.clone()).await;
         let mut attempts = 0;
 
-        let mut rng = StdRng::from_entropy(); // This uses the system's source of entropy to seed the RNG
-        let random_number: i32 = rng.gen();
-
         let mut new_prompt = prompt.clone();
         while let Err(err) = &response {
             if attempts >= 3 {
@@ -98,7 +93,6 @@ impl Agent {
 
             // If serde failed parsing the json string, then use advanced retrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
-                println!("101 - {} - Failed parsing json of: {}", random_number, response_json);
                 new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
                 new_prompt.add_content(
                     format!(
@@ -118,11 +112,6 @@ impl Agent {
 
         let cleaned_json = JobManager::convert_inference_response_to_internal_strings(response?);
 
-        println!(
-            "105 - {} - Succeeded parsing json of: {}",
-            random_number,
-            cleaned_json.to_string()
-        );
         Ok(cleaned_json)
     }
 
