@@ -10,7 +10,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem,
     APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
@@ -517,7 +517,36 @@ fn vector_fs_api_tests() {
             }
             {
                 // Move item
-                // For Later
+                let payload = APIVecFsMoveItem {
+                    origin_path: "/test_folder3/shinkai_intro".to_string(),
+                    destination_path: "/test_folder2".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsMoveItem, // Assuming you have a corresponding schema type for moving items
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSMoveItem { msg, res: res_sender }) // Assuming you have a corresponding NodeCommand for moving items
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
+                assert!(
+                    resp.contains("Item moved successfully to /test_folder"),
+                    "Response does not contain the expected file path: /test_folder"
+                );
             }
             {
                 // Move Folder
@@ -549,6 +578,102 @@ fn vector_fs_api_tests() {
                 eprintln!("resp: {:?}", resp);
             }
             {
+                // Recover file from path using APIVecFSRetrievePathSimplifiedJson
+                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp for current file system files: {:?}", resp);
+
+                /*
+                /
+                ├── test_folder2
+                │   ├── test_folder
+                │   │   └── shinkai_intro
+                │   └── shinkai_intro
+                └── test_folder3
+                 */
+
+                // Assuming `resp` is a String containing the JSON response
+                let parsed_resp: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse JSON");
+
+                // Assert the root contains 'test_folder2' and 'test_folder3'
+                assert!(
+                    parsed_resp["child_folders"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|folder| folder["name"] == "test_folder2"),
+                    "test_folder2 is missing"
+                );
+                assert!(
+                    parsed_resp["child_folders"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|folder| folder["name"] == "test_folder3"),
+                    "test_folder3 is missing"
+                );
+
+                // Assert 'test_folder2' contains 'test_folder' and 'shinkai_intro'
+                let test_folder2 = parsed_resp["child_folders"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|folder| folder["name"] == "test_folder2")
+                    .expect("test_folder2 not found");
+                assert!(
+                    test_folder2["child_folders"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|folder| folder["name"] == "test_folder"),
+                    "test_folder inside test_folder2 is missing"
+                );
+                assert!(
+                    test_folder2["child_items"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|item| item["name"] == "shinkai_intro"),
+                    "shinkai_intro directly inside test_folder2 is missing"
+                );
+
+                // Assert 'test_folder' inside 'test_folder2' contains 'shinkai_intro'
+                let test_folder_inside_test_folder2 = test_folder2["child_folders"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|folder| folder["name"] == "test_folder")
+                    .expect("test_folder inside test_folder2 not found");
+                assert!(
+                    test_folder_inside_test_folder2["child_items"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|item| item["name"] == "shinkai_intro"),
+                    "shinkai_intro inside test_folder inside test_folder2 is missing"
+                );
+            }
+            {
                 // Do deep search
                 let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
                     search: "who wrote Shinkai?".to_string(),
@@ -577,6 +702,7 @@ fn vector_fs_api_tests() {
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp: {:?}", resp);
                 assert!(!resp.is_empty(), "Response is empty.");
                 assert_eq!(
                     (&resp[0].0, &resp[0].1),
