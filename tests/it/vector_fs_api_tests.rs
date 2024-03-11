@@ -677,7 +677,7 @@ fn vector_fs_api_tests() {
                 // Do deep search
                 let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
                     search: "who wrote Shinkai?".to_string(),
-                    path: Some("/test_folder".to_string()),
+                    path: Some("/test_folder2".to_string()),
                     max_results: Some(10),
                     max_files_to_scan: Some(100),
                 };
@@ -702,7 +702,9 @@ fn vector_fs_api_tests() {
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp: {:?}", resp);
+                for r in &resp {
+                    eprintln!("\n\nSearch result: {:?}", r);
+                }
                 assert!(!resp.is_empty(), "Response is empty.");
                 assert_eq!(
                     (&resp[0].0, &resp[0].1),

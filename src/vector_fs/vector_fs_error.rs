@@ -124,17 +124,17 @@ impl fmt::Display for VectorFSError {
                 write!(f, "Failed parsing profile and creating a write batch for: {}", e)
             }
             VectorFSError::CannotOverwriteFolder(e) => write!(f, "Cannot write over existing folder at: {}", e),
-            VectorFSError::CannotOverwriteFSEntry(e) => write!(f, "Cannot write over existing fs entry at: {}", e),
+            VectorFSError::CannotOverwriteFSEntry(e) => write!(f, "Cannot write over existing filesystem entry at: {}", e),
             VectorFSError::PathDoesNotPointAtFolder(e) => {
-                write!(f, "Entry at supplied path does not hold an FSFolder: {}", e)
+                write!(f, "Entry at supplied path does not hold a Filesystem Folder: {}", e)
             }
             VectorFSError::PathDoesNotPointAtItem(e) => {
-                write!(f, "Entry at supplied path does not hold an FSItem: {}", e)
+                write!(f, "Entry at supplied path does not hold a Filesystem Item: {}", e)
             }
             VectorFSError::NoEntryAtPath(e) => {
                 write!(
                     f,
-                    "Supplied path does not exist/hold any FSEntry in the VectorFS: {}",
+                    "Supplied path does not exist in the VectorFS: {}",
                     e
                 )
             }

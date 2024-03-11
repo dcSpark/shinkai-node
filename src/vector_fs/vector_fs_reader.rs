@@ -37,6 +37,11 @@ impl VFSReader {
             profile: profile.clone(),
         };
 
+        // Validate that the path exists
+        if vector_fs.validate_path_points_to_entry(path.clone(), &profile).is_err() {
+            return Err(VectorFSError::NoEntryAtPath(path));
+        }
+
         // Validate read permissions to ensure requester_name has rights
         let fs_internals = vector_fs.get_profile_fs_internals(&profile)?;
         if fs_internals
@@ -214,8 +219,11 @@ impl VectorFS {
         }
     }
 
-    /// Validates that the path points to any FSEntry, meaning that something exists at that path
+    /// Validates that the path points to any FSEntry, meaning that something exists at that path. Also returns `Ok()` for root `/`.
     pub fn validate_path_points_to_entry(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+        if path == VRPath::root() {
+            return Ok(());
+        }
         self._retrieve_core_resource_node_at_path(path, profile).map(|_| ())
     }
 }
