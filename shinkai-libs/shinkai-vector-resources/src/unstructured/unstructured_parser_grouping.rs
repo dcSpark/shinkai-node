@@ -18,7 +18,6 @@ impl UnstructuredParser {
         path: Vec<usize>,
     ) {
         for (i, text_group) in text_groups.iter().enumerate() {
-            // println!("Processing text group at index {}", i);
             texts.push(text_group.format_text_for_embedding(max_chunk_size));
             let mut current_path = path.clone();
             current_path.push(i);
@@ -82,7 +81,6 @@ impl UnstructuredParser {
         let mut embeddings = Vec::new();
         for batch in texts.chunks(max_batch_size as usize) {
             let batch_ids = &ids[..batch.len()];
-            // println!("Generating batched embeddings for {} text groups", batch_ids.len());
             match generator
                 .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
                 .await
@@ -91,7 +89,6 @@ impl UnstructuredParser {
                     embeddings.extend(batch_embeddings);
                 }
                 Err(e) => {
-                    println!("Error generating embeddings: {:?}", e);
                     if max_batch_size > 5 {
                         max_batch_size -= 5;
                         return Self::generate_text_group_embeddings(
@@ -138,13 +135,11 @@ impl UnstructuredParser {
         let mut embeddings = Vec::new();
         for batch in texts.chunks(max_batch_size as usize) {
             let batch_ids = &ids[..batch.len()];
-            println!("Generating batched embeddings for {} text groups", batch_ids.len());
             match generator.generate_embeddings_blocking(&batch.to_vec(), &batch_ids.to_vec()) {
                 Ok(batch_embeddings) => {
                     embeddings.extend(batch_embeddings);
                 }
                 Err(e) => {
-                    println!("Error generating embeddings: {:?}", e);
                     if max_batch_size > 5 {
                         max_batch_size -= 5;
                         return Self::generate_text_group_embeddings_blocking(

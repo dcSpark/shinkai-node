@@ -505,11 +505,8 @@ impl RemoteEmbeddingGenerator {
             VRError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
-        println!("Received response");
-
         // Check if the response is successful
         if response.status().is_success() {
-            println!("Is successful");
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
             let embedding_response: EmbeddingResponse = response

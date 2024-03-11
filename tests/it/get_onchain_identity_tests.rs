@@ -10,7 +10,7 @@ mod tests {
 
     #[test]
     fn test_get_identity_record() {
-        init_default_tracing(); 
+        init_default_tracing();
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let mut registry = ShinkaiRegistry::new(
@@ -33,10 +33,12 @@ mod tests {
                 signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
                 routing: false,
                 address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
-                delegated_tokens: U256::from_dec_str("0").unwrap(),
-                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1708468692)),
+                delegated_tokens: U256::from_dec_str("2000000000000000000").unwrap(),
+                last_updated: DateTime::<Utc>::from(
+                    std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1708468692),
+                ),
             };
-            assert_eq!(record, expected_record);    
+            assert_eq!(record, expected_record);
 
             let initial_cache_time = registry.get_cache_time(&identity).unwrap();
 
