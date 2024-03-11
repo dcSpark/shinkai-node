@@ -338,7 +338,7 @@ fn vector_fs_api_tests() {
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp for current file system files: {:?}", resp);
+                // eprintln!("resp for current file system files: {}", resp);
 
                 // TODO: convert to json and then compare
                 let expected_path = "/test_folder/shinkai_intro";
