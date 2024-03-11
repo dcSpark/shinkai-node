@@ -597,11 +597,11 @@ async fn test_vector_fs_operations() {
             default_test_profile(),
         )
         .unwrap();
-    let dest_reader = orig_writer
-        .new_reader_copied_data(new_root_folder_first_folder_path.clone(), &mut vector_fs)
-        .unwrap();
     vector_fs
         .copy_folder(&orig_writer, new_root_folder_path.clone())
+        .unwrap();
+    let dest_reader = orig_writer
+        .new_reader_copied_data(new_root_folder_first_folder_path.clone(), &mut vector_fs)
         .unwrap();
     let mut retrieved_vr = vector_fs
         .retrieve_vector_resource_in_folder(&dest_reader, resource_name.to_string())
