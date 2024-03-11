@@ -164,7 +164,6 @@ impl UnstructuredParser {
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
-                println!("Generating embedding for resource: {:?}", &name);
                 doc.update_resource_embedding(generator, None).await?;
             }
         }
@@ -192,7 +191,6 @@ impl UnstructuredParser {
                 if let Some(embedding) = &grouped_text.embedding {
                     doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
                 } else {
-                    println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
                     doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
                 }
@@ -225,7 +223,6 @@ impl UnstructuredParser {
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
-                println!("Generating embedding for resource: {:?}", &name);
                 doc.update_resource_embedding_blocking(generator, None)?;
             }
         }
@@ -250,7 +247,6 @@ impl UnstructuredParser {
                 if let Some(embedding) = &grouped_text.embedding {
                     doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
                 } else {
-                    println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
                     doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
                 }
