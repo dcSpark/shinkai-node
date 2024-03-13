@@ -11,6 +11,7 @@ use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiStringTime;
 use crate::shinkai_time::ShinkaiTime;
+use crate::source::DistributionInfo;
 pub use crate::source::VRSource;
 use crate::utils::{hash_string, random_string};
 use crate::vector_resource::base_vector_resources::VRBaseType;
@@ -43,6 +44,8 @@ pub trait VectorResourceCore: Send + Sync {
     fn resource_base_type(&self) -> VRBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
+    fn distribution_info(&self) -> &DistributionInfo;
+    fn set_distribution_info(&mut self, dist_info: DistributionInfo);
     fn data_tag_index(&self) -> &DataTagIndex;
     fn metadata_index(&self) -> &MetadataIndex;
     /// Retrieves an Embedding given its id, at the root level depth.

@@ -5,7 +5,7 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
-use crate::source::{SourceReference, VRSource};
+use crate::source::{DistributionInfo, SourceReference, VRSource};
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::vector_resource::vector_search_traversal::VRHeader;
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
@@ -35,6 +35,7 @@ pub struct MapVectorResource {
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
     keywords: VRKeywords,
+    distribution_info: DistributionInfo,
 }
 impl VectorResource for MapVectorResource {}
 impl VectorResourceSearch for MapVectorResource {}
@@ -99,6 +100,14 @@ impl VectorResourceCore for MapVectorResource {
 
     fn metadata_index(&self) -> &MetadataIndex {
         &self.metadata_index
+    }
+
+    fn distribution_info(&self) -> &DistributionInfo {
+        &self.distribution_info
+    }
+
+    fn set_distribution_info(&mut self, dist_info: DistributionInfo) {
+        self.distribution_info = dist_info;
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -363,6 +372,7 @@ impl MapVectorResource {
         nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
         is_merkelized: bool,
+        distribution_info: DistributionInfo,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
         let merkle_root = if is_merkelized {
@@ -389,6 +399,7 @@ impl MapVectorResource {
             metadata_index: MetadataIndex::new(),
             merkle_root,
             keywords: VRKeywords::new(),
+            distribution_info,
         };
         // Generate a unique resource_id:
         resource.generate_and_update_resource_id();
@@ -407,6 +418,7 @@ impl MapVectorResource {
             HashMap::new(),
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
             is_merkelized,
+            DistributionInfo::new_empty(),
         )
     }
 
