@@ -90,6 +90,7 @@ impl ShinkaiDB {
                 "inbox" => Some(47),
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
+                "temp_files_inbox" => Some(47),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);
