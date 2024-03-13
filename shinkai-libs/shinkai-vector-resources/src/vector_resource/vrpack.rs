@@ -27,6 +27,7 @@ impl VRPackVersion {
 
 /// Represents a parsed VRPack file, which contains a Map Vector Resource that holds a tree structure of folders & encoded VRKai nodes.
 /// In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
+/// Of note, VRPacks are not compressed because the VRKais held inside already are. This improves performance for large VRPacks.
 /// To save as a file or transfer the VRPack, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRPack {
@@ -56,7 +57,7 @@ impl VRPack {
         }
     }
 
-    /// Prepares the VRPack to be saved or transferred as compressed bytes.
+    /// Prepares the VRPack to be saved or transferred as bytes.
     /// Of note, this is the bytes of the UTF-8 base64 string. This allows for easy compatibility between the two.
     pub fn encode_as_bytes(&self) -> Result<Vec<u8>, VRError> {
         if let VRPackVersion::V1 = self.version {
@@ -66,12 +67,11 @@ impl VRPack {
         return Err(VRError::UnsupportedVRPackVersion(self.version.to_string()));
     }
 
-    /// Prepares the VRPack to be saved or transferred across the network as a compressed base64 encoded string.
+    /// Prepares the VRPack to be saved or transferred across the network as a base64 encoded string.
     pub fn encode_as_base64(&self) -> Result<String, VRError> {
         if let VRPackVersion::V1 = self.version {
             let json_str = serde_json::to_string(self)?;
-            let compressed_bytes = compress_prepend_size(json_str.as_bytes());
-            let base64_encoded = encode(compressed_bytes);
+            let base64_encoded = encode(json_str.as_bytes());
             return Ok(base64_encoded);
         }
         return Err(VRError::UnsupportedVRPackVersion(self.version.to_string()));
@@ -89,7 +89,7 @@ impl VRPack {
         return Err(VRError::UnsupportedVRPackVersion("".to_string()));
     }
 
-    /// Parses a VRPack from a Base64 encoded string.
+    /// Parses a VRPack from a Base64 encoded string without compression.
     pub fn from_base64(base64_encoded: &str) -> Result<Self, VRError> {
         // If it is Version V1
         if let Ok(vrkai) = Self::from_base64_v1(base64_encoded) {
@@ -99,13 +99,11 @@ impl VRPack {
         return Err(VRError::UnsupportedVRPackVersion("".to_string()));
     }
 
-    /// Parses a VRPack from a Base64 encoded string using V1 logic.
+    /// Parses a VRPack from a Base64 encoded string using V1 logic without compression.
     fn from_base64_v1(base64_encoded: &str) -> Result<Self, VRError> {
         let bytes =
             decode(base64_encoded).map_err(|e| VRError::VRPackParsingError(format!("Base64 decoding error: {}", e)))?;
-        let decompressed_bytes = decompress_size_prepended(&bytes)
-            .map_err(|e| VRError::VRPackParsingError(format!("Decompression error: {}", e)))?;
-        let json_str = String::from_utf8(decompressed_bytes)
+        let json_str = String::from_utf8(bytes)
             .map_err(|e| VRError::VRPackParsingError(format!("UTF-8 conversion error: {}", e)))?;
         let vrkai = serde_json::from_str(&json_str)
             .map_err(|e| VRError::VRPackParsingError(format!("JSON parsing error: {}", e)))?;
