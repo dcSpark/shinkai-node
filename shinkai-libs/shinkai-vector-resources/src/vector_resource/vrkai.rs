@@ -25,7 +25,7 @@ impl VRKaiVersion {
 }
 
 /// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap/DistributionOrigin.
-/// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
+/// To save as a file or transfer the VRKai, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRKai {
     pub resource: BaseVectorResource,
@@ -56,16 +56,16 @@ impl VRKai {
 
     /// Prepares the VRKai to be saved or transferred as compressed bytes.
     /// Of note, this is the bytes of the UTF-8 base64 string. This allows for easy compatibility between the two.
-    pub fn prepare_as_bytes(&self) -> Result<Vec<u8>, VRError> {
+    pub fn encode_as_bytes(&self) -> Result<Vec<u8>, VRError> {
         if let VRKaiVersion::V1 = self.version {
-            let base64_encoded = self.prepare_as_base64()?;
+            let base64_encoded = self.encode_as_base64()?;
             return Ok(base64_encoded.into_bytes());
         }
         return Err(VRError::UnsupportedVRKaiVersion(self.version.to_string()));
     }
 
     /// Prepares the VRKai to be saved or transferred across the network as a compressed base64 encoded string.
-    pub fn prepare_as_base64(&self) -> Result<String, VRError> {
+    pub fn encode_as_base64(&self) -> Result<String, VRError> {
         if let VRKaiVersion::V1 = self.version {
             let json_str = serde_json::to_string(self)?;
             let compressed_bytes = compress_prepend_size(json_str.as_bytes());

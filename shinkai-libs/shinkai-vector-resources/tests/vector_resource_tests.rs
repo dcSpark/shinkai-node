@@ -50,16 +50,16 @@ fn default_vr_kai() -> VRKai {
 fn test_vr_kai_prepare_and_parse_methods() {
     let vr_kai = default_vr_kai();
 
-    // Test prepare_as_base64 and from_base64
-    let base64_encoded = vr_kai.prepare_as_base64().expect("Failed to prepare as base64");
+    // Test encode_as_base64 and from_base64
+    let base64_encoded = vr_kai.encode_as_base64().expect("Failed to prepare as base64");
     let parsed_from_base64 = VRKai::from_base64(&base64_encoded).expect("Failed to parse from base64");
     assert_eq!(
         serde_json::to_string(&vr_kai).unwrap(),
         serde_json::to_string(&parsed_from_base64).unwrap()
     );
 
-    // Test prepare_as_bytes and from_bytes
-    let bytes_encoded = vr_kai.prepare_as_bytes().expect("Failed to prepare as bytes");
+    // Test encode_as_bytes and from_bytes
+    let bytes_encoded = vr_kai.encode_as_bytes().expect("Failed to prepare as bytes");
     let parsed_from_bytes = VRKai::from_bytes(&bytes_encoded).expect("Failed to parse from bytes");
     assert_eq!(
         serde_json::to_string(&vr_kai).unwrap(),

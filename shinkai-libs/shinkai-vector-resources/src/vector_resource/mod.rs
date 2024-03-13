@@ -7,6 +7,7 @@ pub mod vector_resource_search;
 pub mod vector_resource_types;
 pub mod vector_search_traversal;
 pub mod vrkai;
+pub mod vrpack;
 
 pub use base_vector_resources::*;
 pub use document_resource::*;
@@ -17,3 +18,4 @@ pub use vector_resource_search::*;
 pub use vector_resource_types::*;
 pub use vector_search_traversal::*;
 pub use vrkai::*;
+pub use vrpack::*;

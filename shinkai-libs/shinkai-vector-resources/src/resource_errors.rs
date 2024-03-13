@@ -35,8 +35,9 @@ pub enum VRError {
     MerkleHashNotFoundInNode(String),
     VectorResourceIsNotMerkelized(String),
     VRKaiParsingError(String),
+VRPackParsingError(String),
     UnsupportedVRKaiVersion(String),
-
+    UnsupportedVRPackVersion(String),
 }
 
 impl fmt::Display for VRError {
@@ -84,7 +85,9 @@ impl fmt::Display for VRError {
             VRError::MerkleHashNotFoundInNode(ref s) => write!(f, "The Node does not contain a merkle root: {}", s),
             VRError::VectorResourceIsNotMerkelized(ref s) => write!(f, "The Vector Resource is not merkelized, and thus cannot perform merkel-related functionality: {}", s),
             VRError::VRKaiParsingError(ref s) => write!(f, "Failed to parse contents into VRKai struct: {}", s),
+            VRError::VRPackParsingError(ref s) => write!(f, "Failed to parse contents into VRKai struct: {}", s),
             VRError::UnsupportedVRKaiVersion(ref s) => write!(f, "Unsupported VRKai version: {}", s),
+            VRError::UnsupportedVRPackVersion(ref s) => write!(f, "Unsupported VRPack version: {}", s),
  
         }
     }

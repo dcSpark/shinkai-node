@@ -105,7 +105,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 //     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
 //     // Without source file map
 //     let vrkai = VRKai::from_base_vector_resource(resource, None, None);
-//     let vrkai_bytes = vrkai.prepare_as_bytes().expect("Failed to prepare VRKai bytes");
+//     let vrkai_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRKai bytes");
 //     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
 // }
 
