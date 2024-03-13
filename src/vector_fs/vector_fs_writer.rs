@@ -7,7 +7,7 @@ use log::kv::source;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::source::{DistributionOrigin, SourceFileMap};
+use shinkai_vector_resources::source::{DistributionInfo, DistributionOrigin, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai};
 use shinkai_vector_resources::{
     embeddings::Embedding,
@@ -535,7 +535,7 @@ impl VectorFS {
     /// If a FSItem with the same name (as the VR) already exists underneath the current path, then updates(overwrites) it.
     /// Does not support saving into VecFS root.
     pub fn save_vrkai_in_folder(&mut self, writer: &VFSWriter, vrkai: VRKai) -> Result<FSItem, VectorFSError> {
-        self.save_vector_resource_in_folder(writer, vrkai.resource, vrkai.sfm, vrkai.distribution_origin)
+        self.save_vector_resource_in_folder(writer, vrkai.resource, vrkai.sfm)
     }
 
     /// Saves a Vector Resource and optional SourceFile into an FSItem, underneath the FSFolder at the writer's path.
@@ -546,7 +546,6 @@ impl VectorFS {
         writer: &VFSWriter,
         resource: BaseVectorResource,
         source_file_map: Option<SourceFileMap>,
-        distribution_origin: Option<DistributionOrigin>,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
@@ -597,10 +596,6 @@ impl VectorFS {
                 // SFM Size
                 let sfm_size = sfm.encoded_size()?;
                 node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
-            }
-            // Update distribution_origin key in metadata
-            if let Some(dist_orig) = distribution_origin {
-                node_metadata.insert(FSItem::distribution_origin_metadata_key(), dist_orig.to_json()?);
             }
             // Update vr_size key in metadata
             let vr_size = resource.as_trait_object().encoded_size()?;
@@ -653,7 +648,6 @@ impl VectorFS {
         &mut self,
         writer: &VFSWriter,
         source_file_map: SourceFileMap,
-        distribution_origin: Option<DistributionOrigin>,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut source_db_key = String::new();
@@ -689,9 +683,6 @@ impl VectorFS {
             );
             let sfm_size = source_file_map.encoded_size()?;
             node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
-            if let Some(dis_orig) = &distribution_origin {
-                node_metadata.insert(FSItem::distribution_origin_metadata_key(), dis_orig.to_json()?);
-            }
 
             // Now after updating the metadata, finally save the VRHeader Node into the core vector resource
             let vr_header = vr_header.ok_or(VectorFSError::InvalidFSEntryType(writer.path.to_string()))?;

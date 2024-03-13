@@ -2,9 +2,10 @@ use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
-use crate::source::VRSource;
+use crate::source::{distribution, VRSource};
 use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
+use distribution::DistributionInfo;
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
@@ -51,6 +52,7 @@ impl UnstructuredAPI {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of elements
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
@@ -66,6 +68,7 @@ impl UnstructuredAPI {
             source,
             parsing_tags,
             max_chunk_size,
+            distribution_info,
         )
     }
 
@@ -81,6 +84,7 @@ impl UnstructuredAPI {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of elements
         let elements = self.file_request(file_buffer, &file_name).await?;

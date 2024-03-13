@@ -3,6 +3,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
+use crate::source::DistributionInfo;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -537,6 +538,7 @@ pub struct VRHeader {
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
     pub resource_keywords: VRKeywords,
+    pub resource_distribution_info: DistributionInfo,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes

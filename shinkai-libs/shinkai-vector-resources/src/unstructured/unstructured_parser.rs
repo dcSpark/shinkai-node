@@ -3,6 +3,7 @@ use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
+use crate::source::DistributionInfo;
 use crate::source::VRSource;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
@@ -46,6 +47,7 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_with_custom_collection(
             elements,
@@ -71,6 +73,7 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_blocking_with_custom_collection(
             elements,
@@ -96,6 +99,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
@@ -108,7 +112,11 @@ impl UnstructuredParser {
         )
         .await?;
 
-        Self::process_new_doc_resource(new_text_groups, &*generator, &name, desc, source, parsing_tags, None).await
+        let mut resource =
+            Self::process_new_doc_resource(new_text_groups, &*generator, &name, desc, source, parsing_tags, None)
+                .await?;
+        resource.as_trait_object_mut().set_distribution_info(distribution_info);
+        Ok(resource)
     }
 
     #[cfg(feature = "native-http")]
@@ -123,6 +131,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
@@ -137,7 +146,18 @@ impl UnstructuredParser {
             collect_texts_and_indices,
         )?;
 
-        Self::process_new_doc_resource_blocking(new_text_groups, &*generator, &name, desc, source, parsing_tags, None)
+        let mut resource = Self::process_new_doc_resource_blocking(
+            new_text_groups,
+            &*generator,
+            &name,
+            desc,
+            source,
+            parsing_tags,
+            None,
+        )?;
+
+        resource.as_trait_object_mut().set_distribution_info(distribution_info);
+        Ok(resource)
     }
 
     #[async_recursion]

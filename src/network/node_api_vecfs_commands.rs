@@ -18,10 +18,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
-use shinkai_vector_resources::{
-    source::{DistributionOrigin, SourceFileMap},
-    vector_resource::VRKai,
-};
+use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
 
 impl Node {
     async fn validate_and_extract_payload<T: DeserializeOwned>(

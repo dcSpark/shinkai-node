@@ -6,7 +6,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
-    source::DistributionOrigin,
+    source::DistributionInfo,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRKeywords, VRPath},
 };
 use std::{collections::HashMap, mem::discriminant};
@@ -331,8 +331,8 @@ pub struct FSItem {
     pub vr_last_saved_datetime: DateTime<Utc>,
     /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
     pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
-    /// The original location where the VectorResource/SourceFileMap in this FSItem were downloaded/fetched/synced from.
-    pub distribution_origin: Option<DistributionOrigin>,
+    /// The original release location/date time where the VectorResource/SourceFileMap in this FSItem were made available from.
+    pub distribution_info: DistributionInfo,
     /// The size of the Vector Resource in this FSItem
     pub vr_size: usize,
     /// The size of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
@@ -351,7 +351,7 @@ impl FSItem {
         last_read_datetime: DateTime<Utc>,
         vr_last_saved_datetime: DateTime<Utc>,
         source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
-        distribution_origin: Option<DistributionOrigin>,
+        distribution_info: DistributionInfo,
         vr_size: usize,
         source_file_map_size: usize,
         merkle_hash: String,
@@ -366,7 +366,7 @@ impl FSItem {
             last_read_datetime,
             vr_last_saved_datetime,
             source_file_map_last_saved_datetime,
-            distribution_origin,
+            distribution_info,
             vr_size,
             source_file_map_size,
             merkle_hash,
@@ -417,7 +417,6 @@ impl FSItem {
                 let (vr_last_saved_datetime, source_file_map_last_saved) = Self::process_datetimes_from_node(&node)?;
                 let last_read_datetime = lr_index.get_last_read_datetime_or_now(&node_fs_path);
                 let (vr_size, sfm_size) = Self::process_sizes_from_node(&node)?;
-                let distribution_origin = Self::process_distribution_origin(&node)?;
                 let merkle_hash = node.get_merkle_hash()?;
 
                 Ok(FSItem::new(
@@ -428,7 +427,7 @@ impl FSItem {
                     last_read_datetime,
                     vr_last_saved_datetime,
                     source_file_map_last_saved,
-                    distribution_origin,
+                    header.resource_distribution_info,
                     vr_size,
                     sfm_size,
                     merkle_hash,
@@ -516,20 +515,6 @@ impl FSItem {
         Ok((vr_size, sfm_size))
     }
 
-    /// Process the distribution origin stored in metadata in an FSItem Node from the VectorFS core resource.
-    /// The node must be an FSItem for this to succeed.
-    pub fn process_distribution_origin(node: &Node) -> Result<Option<DistributionOrigin>, VectorFSError> {
-        if let Some(dist_origin_str) = node
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get(&Self::distribution_origin_metadata_key()))
-        {
-            Ok(Some(DistributionOrigin::from_json(dist_origin_str)?))
-        } else {
-            Ok(None)
-        }
-    }
-
     /// Returns the metadata key for the Vector Resource last saved datetime.
     pub fn vr_last_saved_metadata_key() -> String {
         String::from("vr_last_saved")
@@ -548,11 +533,6 @@ impl FSItem {
     /// Metadata key where SourceFileMap's size will be found in a Node.
     pub fn source_file_map_size_metadata_key() -> String {
         String::from("sfm_size")
-    }
-
-    /// Metadata key where DistributionOrigin will be found in a Node.
-    pub fn distribution_origin_metadata_key() -> String {
-        String::from("dist_origin")
     }
 }
 
