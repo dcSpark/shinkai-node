@@ -1,5 +1,6 @@
-use super::{BaseVectorResource, MapVectorResource, VRSource};
+use super::{BaseVectorResource, MapVectorResource, Node, VRKai, VRPath, VRSource};
 use crate::{
+    embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionOrigin, SourceFileMap},
     vector_resource::vrkai,
@@ -119,5 +120,36 @@ impl VRPack {
     /// Parses into a VRPack from human-readable JSON (intended for readability in non-production use cases)
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
+    }
+
+    /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
+    pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
+        let resource_name = vrkai.resource.as_trait_object().name().to_string();
+        let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
+        let metadata = None;
+        let enc_vrkai = vrkai.encode_as_base64()?;
+        let node = Node::new_text(resource_name.clone(), enc_vrkai, metadata, &vec![]);
+
+        self.resource
+            .as_trait_object_mut()
+            .insert_node_at_path(parent_path, resource_name, node, embedding)?;
+
+        Ok(())
+    }
+
+    /// Creates a folder inside the VRPack at the specified parent path.
+    pub fn create_folder(&mut self, folder_name: &str, parent_path: VRPath) -> Result<(), VRError> {
+        let resource = BaseVectorResource::Map(MapVectorResource::new_empty("vrpack", None, VRSource::None, true));
+        let node = Node::new_vector_resource(folder_name.to_string(), &resource, None);
+        let embedding = Embedding::new_empty();
+
+        self.resource.as_trait_object_mut().insert_node_at_path(
+            parent_path,
+            folder_name.to_string(),
+            node,
+            embedding,
+        )?;
+
+        Ok(())
     }
 }

@@ -51,7 +51,7 @@ pub fn create_weblink_extractor_tool() -> ShinkaiTool {
         description: "Extracts all hyperlinks from the provided HTML string.".to_string(),
         input_args,
         output_args,
-        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+        tool_embedding: Embedding::new_empty(), // You need to provide the actual embedding vector here
     };
 
     ShinkaiTool::Rust(rust_tool)
@@ -81,7 +81,7 @@ pub fn create_web_crawler_tool() -> ShinkaiTool {
         description: "Fetches HTML content from the specified URL.".to_string(),
         input_args,
         output_args,
-        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+        tool_embedding: Embedding::new_empty(), // You need to provide the actual embedding vector here
     };
 
     ShinkaiTool::Rust(rust_tool)
@@ -121,7 +121,7 @@ pub fn create_content_summarizer_tool() -> ShinkaiTool {
         description: "Generates a concise summary of the provided text content. It could be a website.".to_string(),
         input_args,
         output_args,
-        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+        tool_embedding: Embedding::new_empty(), // You need to provide the actual embedding vector here
     };
 
     ShinkaiTool::Rust(rust_tool)
@@ -169,7 +169,7 @@ pub fn create_llm_string_preparer_tool() -> ShinkaiTool {
         description: "Splits a string into segments suitable for processing by a specified LLM without exceeding a maximum token count.".to_string(),
         input_args,
         output_args,
-        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+        tool_embedding: Embedding::new_empty(), // You need to provide the actual embedding vector here
     };
 
     ShinkaiTool::Rust(rust_tool)
@@ -199,7 +199,7 @@ pub fn create_llm_caller_tool() -> ShinkaiTool {
         description: "Ask an LLM any questions (it won't know current information).".to_string(),
         input_args,
         output_args,
-        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+        tool_embedding: Embedding::new_empty(), // You need to provide the actual embedding vector here
     };
 
     ShinkaiTool::Rust(rust_tool)

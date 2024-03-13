@@ -25,7 +25,7 @@ pub struct VFSWriter {
 }
 
 impl VFSWriter {
-    /// Creates a new VFSWriter if the `requester_name` passes read permission validation check.
+    /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
     pub fn new(
         requester_name: ShinkaiName,
         path: VRPath,
@@ -488,7 +488,7 @@ impl VectorFS {
             VRSource::None,
             true,
         ));
-        let embedding = Embedding::new("", vec![]); // Empty embedding as folders do not score in VecFS search
+        let embedding = Embedding::new_empty(); // Empty embedding as folders do not score in VecFS search
 
         // Setup default metadata for new folder node
         let mut metadata = HashMap::new();
