@@ -1,3 +1,4 @@
+use super::network_job::subscriber_manager::SubscriberManager;
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
 use super::node_error::NodeError;
 use crate::agent::job_manager::JobManager;
@@ -363,6 +364,8 @@ pub struct Node {
     pub unstructured_api: UnstructuredAPI,
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
+    /// Subscription Manager
+    pub subscription_manager: Arc<Mutex<Option<SubscriberManager>>>,
 }
 
 impl Node {
@@ -382,7 +385,7 @@ impl Node {
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         unstructured_api: Option<UnstructuredAPI>,
-    ) -> Node {
+    ) -> Arc<Mutex<Node>> {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
             Ok(_) => (),
@@ -446,7 +449,7 @@ impl Node {
 
         let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // TODO: allow for ENV to set this
 
-        Node {
+        let node = Arc::new(Mutex::new(Node {
             node_profile_name,
             identity_secret_key,
             identity_public_key,
@@ -456,18 +459,36 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
-            identity_manager,
-            db: db_arc,
+            identity_manager: identity_manager.clone(),
+            db: db_arc.clone(),
             job_manager: None,
             cron_manager: None,
             first_device_needs_registration_code,
             initial_agents,
             js_toolkit_executor_remote,
-            vector_fs: vector_fs_arc,
+            vector_fs: vector_fs_arc.clone(),
             embedding_generator,
             unstructured_api,
             conn_limiter,
+            subscription_manager: Arc::new(Mutex::new(None)),
+        }));
+
+        // Create SubscriberManager with a weak reference to this node
+        let subscriber_manager = SubscriberManager::new(
+            Arc::downgrade(&node),
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            Arc::downgrade(&identity_manager),
+        )
+        .await;
+
+        // Store the SubscriberManager in the Node
+        {
+            let mut node_locked = node.lock().await;
+            *node_locked.subscription_manager.lock().await = Some(subscriber_manager);
         }
+
+        node
     }
 
     // Start the node's operations.
@@ -762,6 +783,84 @@ impl Node {
         save_to_db_flag: bool,
         retry: Option<u32>,
     ) {
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Sending {:?} to {:?}", message, peer),
+        );
+        let address = peer.0;
+        let message = Arc::new(message);
+
+        tokio::spawn(async move {
+            let stream = TcpStream::connect(address).await;
+            match stream {
+                Ok(mut stream) => {
+                    let encoded_msg = message.encode_message().unwrap();
+                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let _ = stream.flush().await;
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Sent message to {}", stream.peer_addr().unwrap()),
+                    );
+                    if save_to_db_flag {
+                        let _ = Node::save_to_db(
+                            true,
+                            &message,
+                            Arc::clone(&my_encryption_sk).as_ref().clone(),
+                            db.clone(),
+                            maybe_identity_manager.clone(),
+                        )
+                        .await;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to {}: {}", address, e);
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to connect to {}: {}", address, e),
+                    );
+                    // If retry is enabled, add the message to retry list on failure
+                    let retry_count = retry.unwrap_or(0) + 1;
+                    let db = db.lock().await;
+                    let retry_message = RetryMessage {
+                        retry_count: retry_count,
+                        message: message.as_ref().clone(),
+                        peer: peer.clone(),
+                        save_to_db_flag,
+                    };
+                    // Calculate the delay for the next retry
+                    let delay_seconds = (4 as u64).pow(retry_count - 1);
+                    let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
+                    db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                }
+            }
+        });
+    }
+
+    pub fn subscriber_test_fn(&self) -> String {
+        // return encryption key
+        let encryption_secret_key = self.encryption_secret_key.clone();
+        encryption_secret_key_to_string(encryption_secret_key)   
+    }
+
+    pub fn send_file(
+        message: ShinkaiMessage,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
+        peer: (SocketAddr, ProfileName),
+        db: Arc<Mutex<ShinkaiDB>>,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        save_to_db_flag: bool,
+        retry: Option<u32>,
+    ) {
+        // TODO: redo all of this
+        // Step 1: send symmetric key to peer
+        // Step 2: convert file to chunks
+        // Step 3: encrypt and send chunks to peer
+
+        // TODO: the receiver should delete the inbox after the file is received
+
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,

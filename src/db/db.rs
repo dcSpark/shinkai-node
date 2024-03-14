@@ -1,10 +1,7 @@
 use super::db_errors::ShinkaiDBError;
-use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
+use crate::network::ws_manager::WSUpdateHandler;
 use chrono::{DateTime, Utc};
-use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
-    LogLevel, Options, SingleThreaded, WriteBatch, DB,
-};
+use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, LogLevel, Options, DB};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -22,6 +19,7 @@ pub enum Topic {
     MessagesToRetry,
     TempFilesInbox,
     JobQueues,
+    Subscriptions,
     CronQueues,
     NodeAndUsers,
     MessageBoxSymmetricKeys,
@@ -37,6 +35,7 @@ impl Topic {
             Self::MessagesToRetry => "messages_to_retry",
             Self::TempFilesInbox => "temp_files_inbox",
             Self::JobQueues => "jobs",
+            Self::Subscriptions => "subscriptions",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
@@ -79,6 +78,7 @@ impl ShinkaiDB {
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::TempFilesInbox.as_str().to_string(),
                 Topic::JobQueues.as_str().to_string(),
+                Topic::Subscriptions.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
                 Topic::NodeAndUsers.as_str().to_string(),
             ]
@@ -91,6 +91,7 @@ impl ShinkaiDB {
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
                 "temp_files_inbox" => Some(47),
+                "subscriptions" => Some(47),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);

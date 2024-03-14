@@ -3,7 +3,7 @@ use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::agent::agent::Agent;
 pub use crate::agent::execution::job_execution_core::*;
 use crate::agent::job::JobLike;
-use crate::db::ShinkaiDB;
+use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
@@ -79,7 +79,7 @@ impl JobManager {
             }
         }
 
-        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
+        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone(), Topic::JobQueues.as_str()).await.unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")
