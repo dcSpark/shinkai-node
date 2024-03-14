@@ -338,6 +338,58 @@ impl PermissionsIndex {
             }
         }
     }
+
+    /// Finds all paths that have one of the specified type of read permissions, starting from a given path.
+    pub fn find_paths_with_read_permissions(
+        &self,
+        starting_path: VRPath,
+        read_permissions_to_find: Vec<ReadPermission>,
+    ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
+        let mut paths_with_permissions = Vec::new();
+
+        // Iterate through the fs_permissions hashmap
+        for (path, permission_json) in self.fs_permissions.iter() {
+            // Check if the current path is a descendant of the starting path
+            if starting_path.is_ancestor_path(path) {
+                match PathPermission::from_json(permission_json) {
+                    Ok(path_permission) => {
+                        if read_permissions_to_find.contains(&path_permission.read_permission) {
+                            paths_with_permissions.push((path.clone(), path_permission.read_permission.clone()));
+                        }
+                    }
+                    Err(_) => (),
+                }
+            }
+        }
+
+        Ok(paths_with_permissions)
+    }
+
+    /// Finds all paths that have one of the specified type of write permissions, starting from a given path.
+    pub fn find_paths_with_write_permissions(
+        &self,
+        starting_path: VRPath,
+        write_permissions_to_find: Vec<WritePermission>,
+    ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
+        let mut paths_with_permissions = Vec::new();
+
+        // Iterate through the fs_permissions hashmap
+        for (path, permission_json) in self.fs_permissions.iter() {
+            // Check if the current path is a descendant of the starting path
+            if starting_path.is_ancestor_path(path) {
+                match PathPermission::from_json(permission_json) {
+                    Ok(path_permission) => {
+                        if write_permissions_to_find.contains(&path_permission.write_permission) {
+                            paths_with_permissions.push((path.clone(), path_permission.write_permission.clone()));
+                        }
+                    }
+                    Err(_) => (),
+                }
+            }
+        }
+
+        Ok(paths_with_permissions)
+    }
 }
 
 impl VectorFS {
