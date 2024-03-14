@@ -44,7 +44,7 @@ impl VFSReader {
 
         // Validate read permissions to ensure requester_name has rights
         vector_fs
-            .validate_read_permission_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
+            .validate_read_access_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
             .map_err(|_| {
                 VectorFSError::InvalidReaderPermission(requester_name.clone(), profile.clone(), path.clone())
             })?;
