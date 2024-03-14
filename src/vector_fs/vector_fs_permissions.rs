@@ -393,6 +393,48 @@ impl PermissionsIndex {
 }
 
 impl VectorFS {
+    /// Validates read permissions for a given `ShinkaiName` across multiple `VRPath`s in a profile's VectorFS.
+    /// Returns `Ok(())` if all paths are valid for reading by the given name, or an error indicating the first one that it found which did not pass.
+    pub fn validate_read_permission_for_paths(
+        &self,
+        profile_name: ShinkaiName,
+        name_to_check: ShinkaiName,
+        paths: Vec<VRPath>,
+    ) -> Result<(), VectorFSError> {
+        for path in paths {
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            if fs_internals
+                .permissions_index
+                .validate_read_permission(&name_to_check, &path)
+                .is_err()
+            {
+                return Err(VectorFSError::InvalidReadPermission(name_to_check, path));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates write permissions for a given `ShinkaiName` across multiple `VRPath`s in a profile's VectorFS.
+    /// Returns `Ok(())` if all paths are valid for writing by the given name, or an error indicating the first one that it found which did not pass.
+    pub fn validate_write_permission_for_paths(
+        &self,
+        profile_name: ShinkaiName,
+        name_to_check: ShinkaiName,
+        paths: Vec<VRPath>,
+    ) -> Result<(), VectorFSError> {
+        for path in paths {
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            if fs_internals
+                .permissions_index
+                .validate_write_permission(&name_to_check, &path)
+                .is_err()
+            {
+                return Err(VectorFSError::InvalidWritePermission(name_to_check, path));
+            }
+        }
+        Ok(())
+    }
+
     /// Sets the read/write permissions for the FSEntry at the writer's path (overwrites).
     /// This action is only allowed to be performed by the profile owner.
     /// No remove_path_permission is implemented, as all FSEntries must have a path permission.

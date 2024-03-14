@@ -43,17 +43,15 @@ impl VFSReader {
         }
 
         // Validate read permissions to ensure requester_name has rights
-        let fs_internals = vector_fs.get_profile_fs_internals(&profile)?;
-        if fs_internals
-            .permissions_index
-            .validate_read_permission(&requester_name, &path)
-            .is_err()
-        {
-            return Err(VectorFSError::InvalidReaderPermission(requester_name, profile, path));
-        }
+        vector_fs
+            .validate_read_permission_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
+            .map_err(|_| {
+                VectorFSError::InvalidReaderPermission(requester_name.clone(), profile.clone(), path.clone())
+            })?;
 
         // Once permission verified, saves the datatime both into memory (last_read_index)
         // and into the FSDB as stored logs.
+        let fs_internals = vector_fs.get_profile_fs_internals(&profile)?;
         let current_datetime = ShinkaiTime::generate_time_now();
         fs_internals
             .last_read_index
