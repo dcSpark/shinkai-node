@@ -63,7 +63,7 @@ pub enum AgentError {
     LLMProviderInferenceLimitReached(String),
     LLMProviderUnexpectedError(String),
     FailedSerdeParsingJSONString(String, serde_json::Error),
-
+    ShinkaiMessageBuilderError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -133,6 +133,7 @@ impl fmt::Display for AgentError {
             AgentError::LLMProviderInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
             AgentError::LLMProviderUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
             AgentError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
+            AgentError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
      
         }
     }
@@ -193,6 +194,7 @@ impl AgentError {
             AgentError::LLMProviderInferenceLimitReached(_) => "LLMProviderInferenceLimitReached",
             AgentError::LLMProviderUnexpectedError(_) => "LLMProviderUnexpectedError",
             AgentError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
+            AgentError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
         };
 
         let error_message = format!("{}", self);

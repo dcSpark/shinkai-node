@@ -215,7 +215,7 @@ impl JobManager {
             profile_name.clone(),
             profile_name.clone(),
         )
-        .unwrap();
+        .map_err(|e| AgentError::ShinkaiMessageBuilderError(e.to_string()))?;
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -286,7 +286,7 @@ impl JobManager {
                         &format!("Found a .jobkai file: {}", filename),
                     );
 
-                    let content_str = String::from_utf8(content.clone()).unwrap();
+                    let content_str = String::from_utf8(content.clone()).unwrap_or_default();
                     let kai_file_result: Result<KaiJobFile, serde_json::Error> =
                         KaiJobFile::from_json_str(&content_str);
                     let kai_file = match kai_file_result {

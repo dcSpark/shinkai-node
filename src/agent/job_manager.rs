@@ -374,7 +374,9 @@ impl JobManager {
                         if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id, profile).await {
                             let agent = Agent::from_serialized_agent(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
-                            self.agents.push(agent_found.clone().unwrap());
+                            if let Some(agent) = agent_found.clone() {
+                                self.agents.push(agent);
+                            }
                         }
                     }
 
