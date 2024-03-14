@@ -129,6 +129,15 @@ impl PermissionsIndex {
         path
     }
 
+    /// Retrieves the PathPermission for a given path.
+    pub fn get_path_permission(&self, path: &VRPath) -> Result<PathPermission, VectorFSError> {
+        self.fs_permissions
+            .get(path)
+            .map(|json| PathPermission::from_json(json))
+            .transpose()?
+            .ok_or_else(|| VectorFSError::NoPermissionEntryAtPath(path.clone()))
+    }
+
     /// Inserts a path permission into the fs_permissions map. Note, this will overwrite the old read/write permissions
     /// for the path if they exist. The Whitelist for the path are preserved always in this method,
     /// even when neither read/write are still set as Whitelist.
@@ -433,6 +442,25 @@ impl VectorFS {
             }
         }
         Ok(())
+    }
+
+    /// Retrieves the PathPermission for each path in a list, returning a list of tuples containing the VRPath and its corresponding PathPermission.
+    pub fn get_path_permission_for_paths(
+        &self,
+        profile_name: ShinkaiName,
+        paths: Vec<VRPath>,
+    ) -> Result<Vec<(VRPath, PathPermission)>, VectorFSError> {
+        let mut path_permissions = Vec::new();
+
+        for path in paths {
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            match fs_internals.permissions_index.get_path_permission(&path) {
+                Ok(permission) => path_permissions.push((path, permission)),
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(path_permissions)
     }
 
     /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
