@@ -76,7 +76,11 @@ pub async fn tauri_initialize_node() -> Result<
             Ok((node_local_commands, api_server, node_task, ws_server, node))
         }
         Err(e) => {
-            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Error running node: {}", e).as_str());
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                format!("Error running node: {}", e).as_str(),
+            );
             Err(NodeRunnerError { source: e })
         }
     }
@@ -208,24 +212,22 @@ pub async fn initialize_node() -> Result<
 
     // Now that all core init data acquired, start running the node itself
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
-    let node = Arc::new(tokio::sync::Mutex::new(
-        Node::new(
-            global_identity_name.clone().to_string(),
-            node_env.listen_address,
-            clone_signature_secret_key(&node_keys.identity_secret_key),
-            node_keys.encryption_secret_key.clone(),
-            node_env.ping_interval,
-            node_commands_receiver,
-            main_db_path.clone(),
-            node_env.first_device_needs_registration_code,
-            initial_agents,
-            node_env.js_toolkit_executor_remote.clone(),
-            vector_fs_db_path.clone(),
-            Some(embedding_generator),
-            Some(unstructured_api),
-        )
-        .await,
-    ));
+    let node = Node::new(
+        global_identity_name.clone().to_string(),
+        node_env.listen_address,
+        clone_signature_secret_key(&node_keys.identity_secret_key),
+        node_keys.encryption_secret_key.clone(),
+        node_env.ping_interval,
+        node_commands_receiver,
+        main_db_path.clone(),
+        node_env.first_device_needs_registration_code,
+        initial_agents,
+        node_env.js_toolkit_executor_remote.clone(),
+        vector_fs_db_path.clone(),
+        Some(embedding_generator),
+        Some(unstructured_api),
+    )
+    .await;
 
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
