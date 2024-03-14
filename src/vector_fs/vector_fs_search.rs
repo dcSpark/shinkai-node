@@ -338,7 +338,5 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
     // Initialize the PermissionsIndex struct
     let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
 
-    perm_index
-        .validate_read_permission(&reader.requester_name, path)
-        .is_ok()
+    perm_index.validate_read_access(&reader.requester_name, path).is_ok()
 }
