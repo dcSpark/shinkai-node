@@ -435,6 +435,30 @@ impl VectorFS {
         Ok(())
     }
 
+    /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
+    pub fn find_paths_with_read_permissions(
+        &self,
+        reader: &VFSReader,
+        read_permissions_to_find: Vec<ReadPermission>,
+    ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
+        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        fs_internals
+            .permissions_index
+            .find_paths_with_read_permissions(reader.path.clone(), read_permissions_to_find)
+    }
+
+    /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
+    pub fn find_paths_with_write_permissions(
+        &self,
+        reader: &VFSReader,
+        write_permissions_to_find: Vec<WritePermission>,
+    ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
+        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        fs_internals
+            .permissions_index
+            .find_paths_with_write_permissions(reader.path.clone(), write_permissions_to_find)
+    }
+
     /// Sets the read/write permissions for the FSEntry at the writer's path (overwrites).
     /// This action is only allowed to be performed by the profile owner.
     /// No remove_path_permission is implemented, as all FSEntries must have a path permission.
