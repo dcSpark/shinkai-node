@@ -9,11 +9,11 @@ use super::{
 /// Struct that holds the read/write permissions specified for a specific path in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathPermission {
-    read_permission: ReadPermission,
-    write_permission: WritePermission,
+    pub read_permission: ReadPermission,
+    pub write_permission: WritePermission,
     /// Whitelist which specifies per ShinkaiName which perms they have. Checked
     /// if either read or write perms are set to Whitelist, respectively.
-    whitelist: HashMap<ShinkaiName, WhitelistPermission>,
+    pub whitelist: HashMap<ShinkaiName, WhitelistPermission>,
 }
 
 impl PathPermission {

@@ -1,5 +1,9 @@
 use std::fmt;
 
+use shinkai_vector_resources::resource_errors::VRError;
+
+use crate::vector_fs::vector_fs_error::VectorFSError;
+
 // Define a custom error for SubscriberManager operations
 #[derive(Debug)]
 pub enum SubscriberManagerError {
@@ -9,6 +13,9 @@ pub enum SubscriberManagerError {
     VectorFSNotAvailable(String),
     InvalidRequest(String),
     NodeNotAvailable(String),
+    DatabaseNotAvailable(String),
+    VectorFSError(String),
+    VRError(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -20,8 +27,23 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::VectorFSNotAvailable(e) => write!(f, "VectorFS not available: {}", e),
             SubscriberManagerError::InvalidRequest(e) => write!(f, "Invalid request: {}", e),
             SubscriberManagerError::NodeNotAvailable(e) => write!(f, "Node not available: {}", e),
+            SubscriberManagerError::DatabaseNotAvailable(e) => write!(f, "Database not available: {}", e),
+            SubscriberManagerError::VectorFSError(e) => write!(f, "VectorFS error: {}", e),
+            SubscriberManagerError::VRError(e) => write!(f, "VR error: {}", e)
         }
     }
 }
 
 impl std::error::Error for SubscriberManagerError {}
+
+impl From<VectorFSError> for SubscriberManagerError {
+    fn from(error: VectorFSError) -> Self {
+        SubscriberManagerError::VectorFSNotAvailable(error.to_string())
+    }
+}
+
+impl From<VRError> for SubscriberManagerError {
+    fn from(error: VRError) -> Self {
+        SubscriberManagerError::VRError(error.to_string())
+    }
+}

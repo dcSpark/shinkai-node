@@ -1,20 +1,22 @@
 use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::{ShinkaiDB, Topic};
-use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_job::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use chrono::Utc;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
 };
+use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiSubscriptionReq;
+use shinkai_vector_resources::vector_resource::VRPath;
+use std::env;
 use std::result::Result::Ok;
+use std::sync::Arc;
 use std::sync::Weak;
-use std::{collections::HashMap, sync::Arc};
-use std::{env, mem};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 
 // Message
 
@@ -66,7 +68,7 @@ impl SubscriberManager {
             .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
 
-        let thread_number = env::var("SUBSCRIBER_MANAGER_THREADS")
+        let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
             .parse::<usize>()
             .unwrap_or(NUM_THREADS); // Start processing the job queue
@@ -98,36 +100,187 @@ impl SubscriberManager {
         }
     }
 
-    // TODO: change u64 for a proper type for tokens
-    pub async fn create_shareable_folder(
+    pub async fn available_shared_folders(
         &self,
-        min_delegation: Option<u64>,
-        min_montly: Option<u64>,
+        requester_shinkai_identity: ShinkaiName,
         path: String,
-        profile: ShinkaiName,
-    ) -> Result<bool, SubscriberManagerError> {
+    ) -> Result<Vec<(String, String, Option<ShinkaiSubscriptionReq>)>, SubscriberManagerError> {
         let vector_fs = self
             .vector_fs
             .upgrade()
             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                 "VectorFS instance is not available".to_string(),
             ))?;
-        let vector_fs = vector_fs.lock().await;
-        // TODO: we need to keep track of what's accessible here in SubscriberManager
-        // TODO: Assume that we updated the vector_fs to have a new shareable folder
+        let mut vector_fs = vector_fs.lock().await;
+
+        let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+        let reader = vector_fs
+            .new_reader(
+                requester_shinkai_identity.clone(),
+                vr_path,
+                requester_shinkai_identity.clone(),
+            )
+            .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+        // Note: double-check that the Whitelist is correct here under these assumptions
+        let results = vector_fs
+            .find_paths_with_read_permissions(&reader, vec![ReadPermission::Public, ReadPermission::Whitelist])?;
+
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let db = db.lock().await;
+
+        let mut converted_results = Vec::new();
+        for (path, permission) in results {
+            let path_str = path.to_string();
+            let permission_str = format!("{:?}", permission);
+            let subscription_requirement = match db.get_folder_requirements(&path_str) {
+                Ok(req) => Some(req),
+                Err(_) => None, // Instead of erroring out, we return None for folders without requirements
+            };
+            converted_results.push((path_str, permission_str, subscription_requirement));
+        }
+
+        // TODO: should we return a tree? so you can see the structure of the folders?
+        Ok(converted_results)
+    }
+
+    pub async fn update_shareable_folder_requirements(
+        &self,
+        path: String,
+        requester_shinkai_identity: ShinkaiName,
+        subscription_requirement: ShinkaiSubscriptionReq,
+    ) -> Result<bool, SubscriberManagerError> {
+        // TODO: check that you are actually an admin of the folder
+        let vector_fs = self
+            .vector_fs
+            .upgrade()
+            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                "VectorFS instance is not available".to_string(),
+            ))?;
+        let mut vector_fs = vector_fs.lock().await;
+
+        let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+        let result = vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])?;
+
+        // Checks that the permission is valid (Whitelist or Public)
+        for (_, path_permission) in &result {
+            if path_permission.read_permission != ReadPermission::Public
+                && path_permission.read_permission != ReadPermission::Whitelist
+            {
+                return Err(SubscriberManagerError::InvalidRequest(
+                    "Permission is not valid".to_string(),
+                ));
+            }
+        }
+
+        // Assuming we have validated the admin and permissions, we proceed to update the DB
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let mut db = db.lock().await;
+
+        db.set_folder_requirements(&path, subscription_requirement)
+            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
         Ok(true)
     }
 
-    pub async fn unshare_folder(&self) -> Result<bool, SubscriberManagerError> {
+    pub async fn create_shareable_folder(
+        &self,
+        path: String,
+        requester_shinkai_identity: ShinkaiName,
+        subscription_requirement: ShinkaiSubscriptionReq,
+    ) -> Result<bool, SubscriberManagerError> {
+        // TODO: check that you are actually an admin of the folder
         let vector_fs = self
             .vector_fs
             .upgrade()
             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                 "VectorFS instance is not available".to_string(),
             ))?;
-        let vector_fs = vector_fs.lock().await;
-        // TODO: we need to keep track of what's accessible here in SubscriberManager
-        // TODO: Assume that we updated the vector_fs to have a new shareable folder
+        let mut vector_fs = vector_fs.lock().await;
+
+        let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+        let writer = vector_fs.new_writer(
+            requester_shinkai_identity.clone(),
+            vr_path.clone(),
+            requester_shinkai_identity.clone(),
+        )?;
+
+        // Retrieve the current write permissions for the path
+        let permissions_vector =
+            vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])?;
+
+        if permissions_vector.is_empty() {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "Path does not exist".to_string(),
+            ));
+        }
+
+        let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
+
+        // Set the read permissions to Public while reusing the write permissions
+        vector_fs
+            .set_path_permission(&writer, ReadPermission::Public, current_permissions.write_permission)
+            .map_err(|e| SubscriberManagerError::VectorFSError(e.to_string()))?;
+
+        // Assuming we have validated the admin and permissions, we proceed to update the DB
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let mut db = db.lock().await;
+
+        db.set_folder_requirements(&path, subscription_requirement)
+            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+        Ok(true)
+    }
+
+    pub async fn unshare_folder(&self, path: String, requester_shinkai_identity: ShinkaiName) -> Result<bool, SubscriberManagerError> {
+        let vector_fs = self
+            .vector_fs
+            .upgrade()
+            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                "VectorFS instance is not available".to_string(),
+            ))?;
+        let mut vector_fs = vector_fs.lock().await;
+
+        // Retrieve the current permissions for the path
+        let permissions_vector = vector_fs.get_path_permission_for_paths(
+            requester_shinkai_identity.clone(),
+            vec![VRPath::from_string(&path)?],
+        )?;
+
+        if permissions_vector.is_empty() {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "Path does not exist".to_string(),
+            ));
+        }
+
+        let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
+
+        // Create a writer for the path
+        let writer = vector_fs.new_writer(
+            requester_shinkai_identity.clone(),
+            vr_path,
+            requester_shinkai_identity.clone(),
+        )?;
+
+        // Set the read permissions to Private while reusing the write permissions
+        vector_fs.set_path_permission(&writer, ReadPermission::Private, current_permissions.write_permission)?;
+
+        // Assuming we have validated the admin and permissions, we proceed to update the DB
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let mut db = db.lock().await;
+
+        db.remove_folder_requirements(&path)
+            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
         Ok(true)
     }
 
