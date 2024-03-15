@@ -851,7 +851,6 @@ impl Node {
         let mut vector_fs = self.vector_fs.lock().await;
         for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
-            eprintln!("folder_path: {:?}", folder_path);
             let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
 
             if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
