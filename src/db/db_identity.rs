@@ -55,7 +55,6 @@ impl ShinkaiDB {
 
     pub fn get_all_profiles(&self, my_node_identity: ShinkaiName) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {
         let my_node_identity_name = my_node_identity.get_node_name();
-        println!("my_node_identity_name: {}", my_node_identity_name);
 
         // Use Topic::NodeAndUsers for profiles related information with specific prefixes
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
