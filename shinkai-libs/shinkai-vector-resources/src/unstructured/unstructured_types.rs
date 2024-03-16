@@ -93,6 +93,27 @@ pub enum ElementType {
     UncategorizedText,
     Image,
     Formula,
+    EmailAddress,
+    CompositeElement,
+    TableChunk, // Specialized form of Table
+    SectionHeader,
+    Headline,
+    SubHeadline,
+    FieldName,
+    Text, // General text, might overlap with NarrativeText
+    Abstract,
+    Threading,
+    Form,
+    Value,
+    Link,
+    BulletedText,
+    ListItemOther,
+    PageHeader,
+    PageFooter,
+    Footnote,
+    Caption, // Might overlap with FigureCaption
+    Figure,
+    Picture,
 }
 
 /// Output data from Unstructured which holds a piece of text and
