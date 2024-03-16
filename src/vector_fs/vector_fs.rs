@@ -106,6 +106,7 @@ impl VectorFS {
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
+        self._validate_node_action_permission(requester_name, &format!("Failed initializing profile {}.", profile))?;
         self.db
             .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)?;
         let internals = self.db.get_profile_fs_internals(&profile)?;

@@ -39,14 +39,11 @@ impl VFSWriter {
         };
 
         // Validate write permissions to ensure requester_name has rights
-        let fs_internals = vector_fs.get_profile_fs_internals_read_only(&profile)?;
-        if fs_internals
-            .permissions_index
-            .validate_read_permission(&requester_name, &path)
-            .is_err()
-        {
-            return Err(VectorFSError::InvalidWriterPermission(requester_name, profile, path));
-        }
+        vector_fs
+            .validate_write_access_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
+            .map_err(|_| {
+                VectorFSError::InvalidWriterPermission(requester_name.clone(), profile.clone(), path.clone())
+            })?;
 
         // Once permission verified, saves the datatime into the FSDB as stored logs.
         let current_datetime = ShinkaiTime::generate_time_now();

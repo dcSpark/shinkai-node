@@ -255,7 +255,7 @@ pub trait VectorResourceCore: Send + Sync {
 
         let mut result = format!("{}{}{}, Keywords: [{}]", name, source_string, desc, keyword_string);
         if result.len() > model.max_input_token_count() {
-            result.truncate(model.max_input_token_count());
+            result = result.chars().take(model.max_input_token_count()).collect();
         }
         result
     }
