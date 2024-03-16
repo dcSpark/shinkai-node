@@ -425,37 +425,43 @@ impl ModelCapabilitiesManager {
 
     pub fn generic_token_estimation(text: &str) -> usize {
         let average_token_size = 4;
-        let buffer_percentage = 0.1;
+        let buffer_percentage = 10; // Representing 10% as an integer
         let char_count = text.chars().count();
-        let estimated_tokens = (char_count as f64 / average_token_size as f64).ceil() as usize;
-        let buffered_token_count = (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize;
+
+        // Calculate estimated tokens, rounding up to account for partial tokens
+        let estimated_tokens = (char_count + average_token_size - 1) / average_token_size;
+
+        // Apply the buffer to estimate the total token count, using integer arithmetic
+        // Adjust the calculation to work with integers, effectively applying the buffer
+        let buffered_token_count = estimated_tokens * (100 - buffer_percentage) / 100;
 
         buffered_token_count
     }
 
-    pub fn num_tokens_from_messages(
-        messages: &[ChatCompletionRequestMessage],
-    ) -> Result<usize, String> {
+    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> Result<usize, String> {
         let average_token_size = 4; // Average size of a token (in characters)
-        let buffer_percentage = 0.15; // Buffer to account for tokenization variance
-    
-        let mut total_characters = 0;
-        for message in messages {
-            total_characters += message.role.chars().count() + 1; // +1 for a space or newline after the role
-            if let Some(ref content) = message.content {
-                total_characters += content.chars().count() + 1; // +1 for spaces or newlines between messages
-            }
-            if let Some(ref name) = message.name {
-                total_characters += name.chars().count() + 1; // +1 for a space or newline after the name
-            }
-        }
-    
+        let buffer_percentage = 15; // Buffer to account for tokenization variance
+
+        let total_characters: usize = messages
+            .iter()
+            .map(|message| {
+                let mut count = message.role.len() + 1; // +1 for a space or newline after the role
+                if let Some(ref content) = message.content {
+                    count += content.len() + 1; // +1 for spaces or newlines between messages
+                }
+                if let Some(ref name) = message.name {
+                    count += name.len() + 1; // +1 for a space or newline after the name
+                }
+                count
+            })
+            .sum();
+
         // Calculate estimated tokens without the buffer
-        let estimated_tokens = (total_characters as f64 / average_token_size as f64).ceil() as usize;
-    
+        let estimated_tokens = (total_characters + average_token_size - 1) / average_token_size;
+
         // Apply the buffer to estimate the total token count
-        let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
-    
+        let buffered_token_count = estimated_tokens - (estimated_tokens * buffer_percentage) / 100;
+
         Ok(buffered_token_count)
     }
 }
