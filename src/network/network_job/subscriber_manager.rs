@@ -7,7 +7,6 @@ use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::{DateTime, Utc};
-use futures::Future;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
@@ -16,7 +15,6 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiSubscr
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
-use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;

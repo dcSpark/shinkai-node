@@ -16,6 +16,7 @@ use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
@@ -99,7 +100,7 @@ fn node_retrying_test() {
             node1_fs_db_path,
             None,
             None,
-        );
+        ).await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         let mut node2 = Node::new(
@@ -116,23 +117,25 @@ fn node_retrying_test() {
             node2_fs_db_path,
             None,
             None,
-        );
+        ).await;
 
         eprintln!("Starting nodes");
         // Start node1 and node2
+        let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 1");
-            let _ = node1.await.start().await;
+            let _ = node1_clone.lock().await.start().await;
         });
         let abort_handler_node1 = node1_handler.abort_handle();
 
+        let node2_clone = Arc::clone(&node2);
         let node2_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 2 after 2 seconds");
             tokio::time::sleep(Duration::from_secs(2)).await;
             eprintln!("\n\n*** Starting node 2 ***");
-            let _ = node2.await.start().await;
+            let _ = node2_clone.lock().await.start().await;
         });
         let abort_handler_node2 = node2_handler.abort_handle();
 

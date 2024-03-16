@@ -65,7 +65,7 @@ mod tests {
                     ShinkaiLogLevel::Debug,
                     &format!("Starting Node 1"),
                 );
-                let _ = node1.await.start().await;
+                let _ = node1.await.lock().await.start().await;
             });
             let abort_handler = node1_handler.abort_handle();
 

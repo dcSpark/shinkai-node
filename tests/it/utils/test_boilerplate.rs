@@ -100,7 +100,7 @@ where
         let node1_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 1");
-            let _ = node1.await.start().await;
+            let _ = node1.await.lock().await.start().await;
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
