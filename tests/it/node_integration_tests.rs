@@ -1,6 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use core::panic;
+use std::sync::Arc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -106,7 +107,7 @@ fn subidentity_registration() {
             node1_fs_db_path,
             None,
             None,
-        );
+        ).await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         let mut node2 = Node::new(
@@ -123,7 +124,7 @@ fn subidentity_registration() {
             node2_fs_db_path,
             None,
             None,
-        );
+        ).await;
 
         // Printing
         eprintln!(
@@ -200,18 +201,20 @@ fn subidentity_registration() {
 
         eprintln!("Starting nodes");
         // Start node1 and node2
+        let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 1");
-            let _ = node1.await.start().await;
+            let _ = node1_clone.lock().await.start().await;
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
 
+        let node2_clone = Arc::clone(&node2);
         let node2_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 2");
-            let _ = node2.await.start().await;
+            let _ = node2_clone.lock().await.start().await;
         });
         let node2_abort_handler = node2_handler.abort_handle();
 
