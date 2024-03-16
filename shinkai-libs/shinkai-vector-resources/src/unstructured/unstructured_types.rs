@@ -81,12 +81,18 @@ impl GroupedText {
 /// Different types of elements Unstructured can output
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub enum ElementType {
-    Title,
+    FigureCaption,
     NarrativeText,
-    UncategorizedText,
     ListItem,
-    EmailAddress,
+    Title,
+    Address,
     Table,
+    PageBreak,
+    Header,
+    Footer,
+    UncategorizedText,
+    Image,
+    Formula,
 }
 
 /// Output data from Unstructured which holds a piece of text and
