@@ -11,7 +11,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
 };
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiSubscriptionReq;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
@@ -105,7 +105,6 @@ impl SubscriberManager {
         }
     }
 
-    // WIP
     fn build_tree(items: &[FSItem], parent_path: &str) -> FSItemTree {
         let mut children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
 
@@ -187,17 +186,17 @@ impl SubscriberManager {
 
         // Step 1: Obtain all the shared folders
         let shared_folders = vector_fs
-            .find_paths_with_read_permissions(&reader, vec![ReadPermission::Public, ReadPermission::Whitelist])?;
+            .find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
 
-        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-            "Database instance is not available".to_string(),
-        ))?;
-        let db = db.lock().await;
+        // let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+        //     "Database instance is not available".to_string(),
+        // ))?;
+        // let db = db.lock().await;
 
         let mut fs_items = Vec::new();
 
         for (path, _permission) in shared_folders {
-            let path_str = path.to_string();
+            // let path_str = path.to_string(); // Not used?
 
             // Step 2: Check the content of each shared folder
             let reader = vector_fs
@@ -236,7 +235,6 @@ impl SubscriberManager {
 
         // Step 3: Form the tree based on the obtained items
         let tree = Self::build_tree(&fs_items, &path);
-
         Ok(tree)
     }
 
@@ -254,7 +252,6 @@ impl SubscriberManager {
 
         Ok(items)
     }
-    // end WIP
 
     // Placeholder for process_job_message_queued
     // Correct the return type of the function to match the expected type
@@ -322,7 +319,7 @@ impl SubscriberManager {
         &self,
         requester_shinkai_identity: ShinkaiName,
         path: String,
-    ) -> Result<Vec<(String, String, Option<ShinkaiSubscriptionReq>)>, SubscriberManagerError> {
+    ) -> Result<Vec<(String, String, Option<ShinkaiFolderSubscription>)>, SubscriberManagerError> {
         let vector_fs = self
             .vector_fs
             .upgrade()
@@ -343,7 +340,9 @@ impl SubscriberManager {
 
         // Note: double-check that the Whitelist is correct here under these assumptions
         let results = vector_fs
-            .find_paths_with_read_permissions(&reader, vec![ReadPermission::Public, ReadPermission::Whitelist])?;
+            .find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
+
+        eprintln!("find_paths_with_read_permissions results: {:?}", results);
 
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
@@ -369,7 +368,7 @@ impl SubscriberManager {
         &self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
-        subscription_requirement: ShinkaiSubscriptionReq,
+        subscription_requirement: ShinkaiFolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
         // TODO: check that you are actually an admin of the folder
         let vector_fs = self
@@ -410,9 +409,10 @@ impl SubscriberManager {
         &self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
-        subscription_requirement: ShinkaiSubscriptionReq,
+        subscription_requirement: ShinkaiFolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
         // TODO: check that you are actually an admin of the folder
+        // Note: I think is done automatically
         let vector_fs = self
             .vector_fs
             .upgrade()

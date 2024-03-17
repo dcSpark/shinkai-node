@@ -44,12 +44,3 @@ impl Ord for ShinkaiSubscription {
         self.date_created.cmp(&other.date_created)
     }
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct ShinkaiShareablePath {
-    pub vector_db_path: String,
-    // TODO: add local profiles with access rights.
-    pub min_delegation: u64,
-    pub date_created: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
-}
