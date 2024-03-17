@@ -24,7 +24,7 @@ use shinkai_vector_resources::{
 };
 
 impl Node {
-    async fn validate_and_extract_payload<T: DeserializeOwned>(
+    pub async fn validate_and_extract_payload<T: DeserializeOwned>(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: MessageSchemaType,

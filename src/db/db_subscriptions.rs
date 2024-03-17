@@ -1,11 +1,11 @@
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiSubscriptionReq;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
 
 impl ShinkaiDB {
     pub fn set_folder_requirements(
         &mut self,
         path: &str,
-        subscription_requirement: ShinkaiSubscriptionReq,
+        subscription_requirement: ShinkaiFolderSubscription,
     ) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -23,7 +23,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_folder_requirements(&self, path: &str) -> Result<ShinkaiSubscriptionReq, ShinkaiDBError> {
+    pub fn get_folder_requirements(&self, path: &str) -> Result<ShinkaiFolderSubscription, ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 
@@ -64,7 +64,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_all_folder_requirements(&self) -> Result<Vec<(String, ShinkaiSubscriptionReq)>, ShinkaiDBError> {
+    pub fn get_all_folder_requirements(&self) -> Result<Vec<(String, ShinkaiFolderSubscription)>, ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 

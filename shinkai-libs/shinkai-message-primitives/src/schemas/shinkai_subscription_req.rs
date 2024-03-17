@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShinkaiSubscriptionReq {
+pub struct ShinkaiFolderSubscription {
     pub minimum_token_delegation: Option<u64>,
     pub minimum_time_delegated_hours: Option<u64>,
     pub monthly_payment: Option<PaymentOption>,

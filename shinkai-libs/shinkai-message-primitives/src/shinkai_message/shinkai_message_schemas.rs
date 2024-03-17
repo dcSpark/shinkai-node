@@ -1,3 +1,5 @@
+use crate::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionRequest};
+use crate::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -36,6 +38,10 @@ pub enum MessageSchemaType {
     VecFsMoveItem,
     VecFsCopyItem,
     VecFsDeleteItem,
+    AvailableSharedItems,
+    CreateShareableFolder,
+    UpdateShareableFolder,
+    UnshareFolder,
     ConvertFilesAndSaveToFolder,
 }
 
@@ -70,6 +76,10 @@ impl MessageSchemaType {
             "VecFsMoveItem" => Some(Self::VecFsMoveItem),
             "VecFsCopyItem" => Some(Self::VecFsCopyItem),
             "VecFsDeleteItem" => Some(Self::VecFsDeleteItem),
+            "AvailableSharedItems" => Some(Self::AvailableSharedItems),
+            "CreateShareableFolder" => Some(Self::CreateShareableFolder),
+            "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
+            "UnshareFolder" => Some(Self::UnshareFolder),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
             _ => None,
         }
@@ -104,6 +114,10 @@ impl MessageSchemaType {
             Self::VecFsMoveItem => "VecFsMoveItem",
             Self::VecFsCopyItem => "VecFsCopyItem",
             Self::VecFsDeleteItem => "VecFsDeleteItem",
+            Self::AvailableSharedItems => "AvailableSharedItems",
+            Self::CreateShareableFolder => "CreateShareableFolder",
+            Self::UpdateShareableFolder => "UpdateShareableFolder",
+            Self::UnshareFolder => "UnshareFolder",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
             Self::Empty => "",
         }
@@ -313,6 +327,28 @@ pub struct APIVecFsMoveItem {
 pub struct APIVecFsCopyItem {
     pub origin_path: String,
     pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIAvailableSharedItems {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APICreateShareableFolder {
+    pub path: String,
+    pub subscription_req: ShinkaiFolderSubscription,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIUpdateShareableFolder {
+    pub path: String,
+    pub subscription: ShinkaiFolderSubscription,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIUnshareFolder {
+    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -311,6 +311,22 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     },
+    APIAvailableSharedItems {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    }, 
+    APICreateShareableFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIUpdateShareableFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIUnshareFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -638,6 +654,10 @@ impl Node {
                             Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
                             Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
+                            Some(NodeCommand::APIAvailableSharedItems { msg, res }) => self.api_subscription_available_shared_items(msg, res).await?,
+                            Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
+                            Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
+                            Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
                             _ => {},
                         }
                     }
