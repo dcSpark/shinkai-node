@@ -453,6 +453,11 @@ impl FSItem {
         Ok(serde_json::to_string(self)?)
     }
 
+    /// Restores an FSItem from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VectorFSError> {
+        Ok(serde_json::from_str(s)?)
+    }
+
     /// Converts the FSItem to a "simplified" JSON string without embeddings and keywords
     pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
         let mut item = self.clone();
