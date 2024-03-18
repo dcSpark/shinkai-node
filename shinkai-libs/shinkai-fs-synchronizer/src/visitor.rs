@@ -62,8 +62,8 @@ impl DirectoryVisitor for SyncFolderVisitor {
         let path_str = dir.to_str().unwrap_or_default().to_string();
         let local_os_folder_path = LocalOSFolderPath(path_str.clone());
         let syncing_folder = SyncingFolder {
-            profile_name: "".to_string(),
-            vector_fs_path: "".to_string(),
+            profile_name: None,
+            vector_fs_path: None,
             local_os_folder_path: local_os_folder_path.clone(),
             last_synchronized_file_datetime: None,
         };
@@ -73,15 +73,13 @@ impl DirectoryVisitor for SyncFolderVisitor {
             folders.insert(local_os_folder_path, syncing_folder);
         } // Release the lock immediately after use
 
-        // Recursively visit subdirectories
         if dir.is_dir() {
             for entry in std::fs::read_dir(dir)? {
                 let entry = entry?;
                 let path = entry.path();
                 if path.is_dir() {
-                    self.visit_dirs(&path)?; // Recursive call to visit subdirectories
+                    self.visit_dirs(&path)?;
                 }
-                // If you also want to process files, you can do it here
             }
         }
 

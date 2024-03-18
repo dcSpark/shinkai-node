@@ -13,7 +13,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileN
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let syncing_folders = HashMap::new();
     let major_directory = "knowledge";
 

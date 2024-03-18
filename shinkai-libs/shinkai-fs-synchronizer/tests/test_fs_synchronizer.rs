@@ -91,8 +91,8 @@ mod tests {
         assert_eq!(visited.len(), 7);
     }
 
-    #[test]
-    fn test_create_initial_syncfolder_hashmap() {
+    #[tokio::test]
+    async fn test_create_initial_syncfolder_hashmap() {
         use std::path::Path;
 
         // Setup - specify the main directory structure
@@ -126,8 +126,7 @@ mod tests {
 
         let syncing_folders = sync_visitor.syncing_folders.lock().unwrap().clone();
 
-        dbg!(syncing_folders.clone());
-
-        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
+        let synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
+        synchronizer.synchronize().await;
     }
 }

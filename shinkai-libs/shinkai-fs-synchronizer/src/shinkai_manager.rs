@@ -1,5 +1,8 @@
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder};
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Clone)]
@@ -28,6 +31,17 @@ impl ShinkaiManager {
         node_receiver_subidentity: ProfileName,
         profile_name: ProfileName,
     ) -> Self {
+        // the following initialization is incorrect - TODO: check how it's iniitialized in ts side (didn't see any good example on shinkai node side)
+        ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+            my_encryption_secret_key.clone(),
+            my_signature_secret_key.clone(),
+            my_encryption_secret_key.clone(),
+            my_signature_secret_key.clone(),
+            sender.clone(),
+            sender_subidentity.clone(),
+            node_receiver.clone(),
+            node_receiver_subidentity.clone(),
+        );
         Self {
             my_encryption_secret_key,
             my_signature_secret_key,
@@ -41,8 +55,11 @@ impl ShinkaiManager {
         }
     }
 
-    fn check_folder_exists(&mut self, path: &str) -> Result<bool, &'static str> {
-        let message = self.message_builder.vecfs_retrieve_path_simplified(
+    async fn initialize_node_connection(&self) {}
+
+    pub async fn get_node_folder(&mut self, path: &str) -> Result<String, &'static str> {
+        println!("vecfs_retrieve_path_simplified");
+        let shinkai_message = self.message_builder.vecfs_retrieve_path_simplified(
             path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
@@ -53,13 +70,18 @@ impl ShinkaiManager {
             self.node_receiver_subidentity.clone(),
         );
 
-        match message {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
+        match shinkai_message {
+            Ok(shinkai_message) => {
+                let decoded_message = self.decode_message(shinkai_message).await;
+                // Assuming decodeMessage returns a Result<String, &'static str>, you can directly return its result here
+                // If decodeMessage's return type is not a Result, you need to adjust its implementation accordingly
+                return Ok(decoded_message); // Example conversion, adjust based on actual logic
+            }
+            Err(e) => Err(e),
         }
     }
 
-    fn create_folder(&mut self, folder_name: &str, path: &str) -> Result<(), &'static str> {
+    pub fn create_folder(&mut self, folder_name: &str, path: &str) -> Result<(), &'static str> {
         self.message_builder.vecfs_create_folder(
             folder_name,
             path,
@@ -92,10 +114,26 @@ impl ShinkaiManager {
     //     Ok(())
     // }
 
-    fn upload_file(&self, file_bytes: &[u8], destination_path: &str) -> Result<(), &'static str> {
-        // create_files_inbox_with_sym_key
+    pub async fn upload_file(&self, file_bytes: &[u8], destination_path: &str) -> Result<(), &'static str> {
+        // TODO: add missing pieces here
 
-        // pass message to `/v1/add_file_to_inbox_with_symmetric_key` to the node endpoint
+        // Prepare the file data
+        // let file_data = encrypted_file_data; // In Rust, Vec<u8> can be used directly
+
+        // let form_data = multipart::Form::new()
+        //     .file("file", file_data, destination_path)
+        //     .map_err(|_| "Failed to create form data")?;
+
+        // let url = format!(
+        //     "{}/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
+        //     self.base_url, hash, nonce_str
+        // );
+
+        // TODO: add http service that communicates with the node api
+        // self.http_service
+        //     .fetch(&url, form_data)
+        //     .await
+        //     .map_err(|_| "HTTP request failed")?;
 
         Ok(())
     }
@@ -114,5 +152,17 @@ impl ShinkaiManager {
         )?;
 
         Ok(())
+    }
+
+    async fn decode_message(&self, message: ShinkaiMessage) -> String {
+        let decrypted_message = message
+            .decrypt_outer_layer(&self.my_encryption_secret_key, &self.receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        let content = decrypted_message.get_message_content().unwrap();
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+        content.to_string()
     }
 }
