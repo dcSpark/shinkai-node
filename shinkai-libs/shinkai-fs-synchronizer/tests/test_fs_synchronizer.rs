@@ -6,6 +6,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[cfg(test)]
 mod tests {
     use shinkai_file_synchronizer::{shinkai_manager::ShinkaiManager, synchronizer::DirectoryVisitor};
+    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 
     use super::*;
     use std::{
@@ -54,10 +55,20 @@ mod tests {
         // Setup - specify the main directory structure
         let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
 
+        let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
+        let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
+        let receiver_public_key = EncryptionPublicKey::from([0; 32]);
+
+        let shinkai_message_builder = ShinkaiMessageBuilder::new(
+            my_encryption_secret_key.clone(),
+            my_signature_secret_key.clone(),
+            receiver_public_key,
+        );
         let shinkai_manager = ShinkaiManager::new(
-            EncryptionStaticKey::new(rand::rngs::OsRng),
-            SigningKey::from_bytes(&[0; 32]),
-            EncryptionPublicKey::from([0; 32]),
+            shinkai_message_builder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
             ProfileName::default(),
             String::default(),
             "".to_string(),
