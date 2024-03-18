@@ -157,7 +157,7 @@ impl SubscriberManager {
         Ok(folder_tree)
     }
 
-    pub fn compare_fs_item_trees(&self, client_tree: &FSItemTree, server_tree: &FSItemTree) -> FSItemTree {
+    pub fn compare_fs_item_trees(client_tree: &FSItemTree, server_tree: &FSItemTree) -> FSItemTree {
         let mut differences = FSItemTree {
             name: server_tree.name.clone(),
             path: server_tree.path.clone(),
@@ -169,9 +169,11 @@ impl SubscriberManager {
         for (child_name, server_child_tree) in &server_tree.children {
             if let Some(client_child_tree) = client_tree.children.get(child_name) {
                 // If both trees have the child, compare them recursively
-                let child_differences = self.compare_fs_item_trees(client_child_tree, server_child_tree);
+                let child_differences = Self::compare_fs_item_trees(client_child_tree, server_child_tree);
                 if !child_differences.children.is_empty()
                     || child_differences.last_modified != server_child_tree.last_modified
+                    || child_differences.last_modified != client_child_tree.last_modified
+                // Check if the last_modified dates are different
                 {
                     differences
                         .children
@@ -199,6 +201,11 @@ impl SubscriberManager {
                     }),
                 );
             }
+        }
+
+        // If there are no differences in children and the last_modified dates are the same, consider the trees identical
+        if differences.children.is_empty() && differences.last_modified == client_tree.last_modified {
+            differences.last_modified = client_tree.last_modified; // Ensure the last_modified date reflects any potential differences
         }
 
         differences
@@ -229,5 +236,207 @@ impl SubscriberManager {
             }
         }
         filtered_results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn create_test_tree() -> FSItemTree {
+        let shinkai_intro_crypto = FSItemTree {
+            name: "shinkai_intro".to_string(),
+            path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
+            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            children: HashMap::new(),
+        };
+
+        let zeko_intro_crypto = FSItemTree {
+            name: "zeko_intro".to_string(),
+            path: "/shared_test_folder/crypto/zeko_intro".to_string(),
+            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            children: HashMap::new(),
+        };
+
+        let crypto_folder = FSItemTree {
+            name: "crypto".to_string(),
+            path: "/shared_test_folder/crypto".to_string(),
+            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
+            children: {
+                let mut children = HashMap::new();
+                children.insert(shinkai_intro_crypto.name.clone(), Arc::new(shinkai_intro_crypto));
+                children.insert(zeko_intro_crypto.name.clone(), Arc::new(zeko_intro_crypto));
+                children
+            },
+        };
+
+        let shinkai_intro_folder = FSItemTree {
+            name: "shinkai_intro".to_string(),
+            path: "/shared_test_folder/shinkai_intro".to_string(),
+            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            children: HashMap::new(),
+        };
+
+        let shared_test_folder = FSItemTree {
+            name: "shared_test_folder".to_string(),
+            path: "/shared_test_folder".to_string(),
+            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
+            children: {
+                let mut children = HashMap::new();
+                children.insert(crypto_folder.name.clone(), Arc::new(crypto_folder));
+                children.insert(shinkai_intro_folder.name.clone(), Arc::new(shinkai_intro_folder));
+                children
+            },
+        };
+
+        let root = FSItemTree {
+            name: "/".to_string(),
+            path: "/".to_string(),
+            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
+            children: {
+                let mut children = HashMap::new();
+                children.insert(shared_test_folder.name.clone(), Arc::new(shared_test_folder));
+                children
+            },
+        };
+
+        root
+    }
+
+    #[test]
+    fn test_compare_fs_item_trees_with_empty_client_tree() {
+        let server_tree = create_test_tree();
+        let client_tree = FSItemTree {
+            name: "/".to_string(),
+            path: "/".to_string(),
+            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
+            children: HashMap::new(),
+        };
+
+        let differences = SubscriberManager::compare_fs_item_trees(&client_tree, &server_tree);
+        eprintln!("Differences: {:#?}", differences);
+        assert_eq!(
+            differences.children.len(),
+            1,
+            "Expected differences in the root children"
+        );
+    }
+
+    fn remove_crypto_from_shared_test_folder(mut tree: FSItemTree) -> FSItemTree {
+        if let Some(shared_test_folder_arc) = tree.children.get("shared_test_folder") {
+            let mut shared_test_folder =
+                Arc::try_unwrap(shared_test_folder_arc.clone()).unwrap_or_else(|arc| (*arc).clone());
+
+            // Perform the modification
+            shared_test_folder.children.remove("crypto");
+
+            // Replace the modified folder back into the tree
+            tree.children
+                .insert("shared_test_folder".to_string(), Arc::new(shared_test_folder));
+        }
+        tree
+    }
+
+    #[test]
+    fn test_compare_fs_item_trees_with_partial_client_tree() {
+        let server_tree = create_test_tree();
+        let client_tree = create_test_tree(); // Assuming this returns FSItemTree
+
+        // Modify the client_tree to simulate the removal of the "crypto" folder
+        let client_tree_modified = remove_crypto_from_shared_test_folder(client_tree);
+
+        let differences = SubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        eprintln!(
+            "test_compare_fs_item_trees_with_partial_client_tree Differences: {:#?}",
+            differences
+        );
+        assert!(
+            differences
+                .children
+                .get("shared_test_folder")
+                .unwrap()
+                .children
+                .contains_key("crypto"),
+            "Expected 'crypto' folder to be in the differences"
+        );
+    }
+
+    fn modify_zeko_intro_date(mut tree: FSItemTree, new_date: DateTime<Utc>) -> FSItemTree {
+        // Attempt to directly access and modify the shared_test_folder if it exists
+        if let Some(shared_test_folder_arc) = tree.children.get("shared_test_folder").cloned() {
+            let mut shared_test_folder = (*shared_test_folder_arc).clone();
+
+            // Attempt to directly access and modify the crypto folder if it exists
+            if let Some(crypto_folder_arc) = shared_test_folder.children.get("crypto").cloned() {
+                let mut crypto_folder = (*crypto_folder_arc).clone();
+
+                // Check if zeko_intro exists and modify its date
+                if crypto_folder.children.contains_key("zeko_intro") {
+                    if let Some(zeko_intro_arc) = crypto_folder.children.get("zeko_intro").cloned() {
+                        let mut zeko_intro = (*zeko_intro_arc).clone();
+                        zeko_intro.last_modified = new_date;
+                        crypto_folder
+                            .children
+                            .insert("zeko_intro".to_string(), Arc::new(zeko_intro));
+                    }
+                }
+
+                shared_test_folder
+                    .children
+                    .insert("crypto".to_string(), Arc::new(crypto_folder));
+            }
+
+            tree.children
+                .insert("shared_test_folder".to_string(), Arc::new(shared_test_folder));
+        }
+        tree
+    }
+
+    #[test]
+    fn test_compare_fs_item_trees_with_date_difference() {
+        let server_tree = create_test_tree();
+        let client_tree = create_test_tree(); // Clone the server tree for the client
+
+        // Modify the date of "zeko_intro" in the client tree to simulate an older version
+        let new_date = Utc.ymd(2024, 2, 25).and_hms(23, 6, 0); // Set to an older date
+        let client_tree_modified = modify_zeko_intro_date(client_tree, new_date);
+
+        let differences = SubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        eprintln!(
+            "test_compare_fs_item_trees_with_date_difference Differences: {:#?}",
+            differences
+        );
+
+        // Check if the differences include the "zeko_intro" with the updated date
+        assert!(
+            differences
+                .children
+                .get("shared_test_folder")
+                .unwrap()
+                .children
+                .get("crypto")
+                .unwrap()
+                .children
+                .contains_key("zeko_intro"),
+            "Expected 'zeko_intro' folder with date difference to be in the differences"
+        );
+
+        // Additionally, check if the last_modified date of "zeko_intro" in the differences matches the server's date
+        let zeko_intro_diff = differences
+            .children
+            .get("shared_test_folder")
+            .unwrap()
+            .children
+            .get("crypto")
+            .unwrap()
+            .children
+            .get("zeko_intro")
+            .unwrap();
+        assert_eq!(
+            zeko_intro_diff.last_modified,
+            Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            "Expected 'zeko_intro' last_modified date in differences to match the server's date"
+        );
     }
 }
