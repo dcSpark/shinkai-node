@@ -5,7 +5,10 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 #[cfg(test)]
 mod tests {
-    use shinkai_file_synchronizer::{shinkai_manager::ShinkaiManager, synchronizer::DirectoryVisitor};
+    use shinkai_file_synchronizer::{
+        shinkai_manager::ShinkaiManager,
+        visitor::{traverse_and_synchronize, DirectoryVisitor, SyncFolderVisitor},
+    };
     use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 
     use super::*;
@@ -48,8 +51,6 @@ mod tests {
 
     #[test]
     fn test_traverse_and_synchronize_visits_all_files() {
-        use std::fs::{self, File};
-        use std::io::Write;
         use std::path::Path;
 
         // Setup - specify the main directory structure
@@ -73,37 +74,60 @@ mod tests {
             String::default(),
             "".to_string(),
             "".to_string(),
+            "".to_string(),
         );
 
-        // Initialize the synchronizer with the main directory
-        let client_keypairs = vec![];
         let syncing_folders = HashMap::new();
-        let synchronizer = FilesystemSynchronizer::new(
-            shinkai_manager,
-            knowledge_dir.to_str().unwrap(),
-            client_keypairs,
-            syncing_folders,
-        );
+        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
 
-        // Use a shared variable to track visited files
         let visited_files = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
         let mock_visitor = MockDirectoryVisitor {
             visited_files: visited_files.clone(),
         };
-        // Act - call the method under test with the mock
-        // Specifying the type parameter explicitly due to type inference issue
-        synchronizer
-            .traverse_and_synchronize::<(), MockDirectoryVisitor>(knowledge_dir.to_str().unwrap(), &mock_visitor);
-        // Assert - check if all files were visited
-        // Note: The actual number of visited files will depend on the current state of the directory
-        // For the purpose of this test, we're assuming the directory structure and files are pre-set and known
+
+        traverse_and_synchronize::<(), MockDirectoryVisitor>(knowledge_dir.to_str().unwrap(), &mock_visitor);
         let visited = visited_files.lock().unwrap();
 
-        dbg!(visited.len());
-        // The expected count should be adjusted based on the actual directory structure
         assert_eq!(visited.len(), 7);
-        dbg!(visited);
-        // assert!(visited.contains(&knowledge_dir.join("file1.txt")));
-        // assert!(visited.contains(&knowledge_dir.join("test_1/file2.txt")));
+    }
+
+    #[test]
+    fn test_create_initial_syncfolder_hashmap() {
+        use std::path::Path;
+
+        // Setup - specify the main directory structure
+        let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
+
+        let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
+        let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
+        let receiver_public_key = EncryptionPublicKey::from([0; 32]);
+
+        let shinkai_message_builder = ShinkaiMessageBuilder::new(
+            my_encryption_secret_key.clone(),
+            my_signature_secret_key.clone(),
+            receiver_public_key,
+        );
+
+        let shinkai_manager = ShinkaiManager::new(
+            shinkai_message_builder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            ProfileName::default(),
+            String::default(),
+            "".to_string(),
+            "".to_string(),
+            "".to_string(),
+        );
+
+        let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
+        let sync_visitor = SyncFolderVisitor::new(syncing_folders);
+        traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
+
+        let syncing_folders = sync_visitor.syncing_folders.lock().unwrap().clone();
+
+        dbg!(syncing_folders.clone());
+
+        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
     }
 }

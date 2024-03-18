@@ -12,6 +12,7 @@ pub struct ShinkaiManager {
     pub sender_subidentity: String,
     pub node_receiver: ProfileName,
     pub node_receiver_subidentity: ProfileName,
+    pub profile_name: ProfileName,
 }
 
 impl ShinkaiManager {
@@ -25,6 +26,7 @@ impl ShinkaiManager {
         sender_subidentity: String,
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
+        profile_name: ProfileName,
     ) -> Self {
         Self {
             my_encryption_secret_key,
@@ -35,6 +37,7 @@ impl ShinkaiManager {
             node_receiver,
             node_receiver_subidentity,
             message_builder,
+            profile_name,
         }
     }
 
@@ -43,7 +46,7 @@ impl ShinkaiManager {
             path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
-            self.receiver_public_key.clone(),
+            self.receiver_public_key,
             self.sender.clone(),
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),
@@ -72,8 +75,8 @@ impl ShinkaiManager {
         Ok(())
     }
 
+    // TODO: how to delete folder with files on the node
     // fn delete_folder(&self, folder_name: &str, path: &str) -> Result<(), &'static str> {
-    //     // Assuming there's a method in the message builder for deleting a folder, which is not shown in the provided context
     //     self.message_builder.vecfs_delete_folder(
     //         folder_name,
     //         path,
@@ -89,25 +92,15 @@ impl ShinkaiManager {
     //     Ok(())
     // }
 
-    // fn upload_file(&self, file_path: &str, destination_path: &str) -> Result<(), &'static str> {
-    //     // Assuming there's a method in the message builder for uploading a file, which is not shown in the provided context
-    //     self.message_builder.vecfs_upload_file(
-    //         file_path,
-    //         destination_path,
-    //         self.my_encryption_secret_key.clone(),
-    //         self.my_signature_secret_key.clone(),
-    //         self.receiver_public_key.clone(),
-    //         self.sender.clone(),
-    //         self.sender_subidentity.clone(),
-    //         self.node_receiver.clone(),
-    //         self.node_receiver_subidentity.clone(),
-    //     )?;
+    fn upload_file(&self, file_bytes: &[u8], destination_path: &str) -> Result<(), &'static str> {
+        // create_files_inbox_with_sym_key
 
-    //     Ok(())
-    // }
+        // pass message to `/v1/add_file_to_inbox_with_symmetric_key` to the node endpoint
+
+        Ok(())
+    }
 
     fn add_items_to_db(&mut self, destination_path: &str, file_inbox: &str) -> Result<(), &'static str> {
-        // Assuming there's a method in the message builder for adding items to a database, which is not shown in the provided context
         self.message_builder.vecfs_create_items(
             destination_path,
             file_inbox,

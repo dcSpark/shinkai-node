@@ -4,131 +4,98 @@ use std::sync::{Arc, Mutex};
 use std::{path, thread};
 
 use std::fs::{self, DirEntry};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct SyncingFolder {
     pub profile_name: String,
     pub vector_fs_path: String,
-    pub local_os_folder_path: String,
-    pub last_synchronized_file_datetime: String, // UTC with milliseconds
+    pub local_os_folder_path: LocalOSFolderPath,
+    pub last_synchronized_file_datetime: Option<u64>, // UTC with milliseconds
 }
 
 // for simplicity we don't use this wrapper right now
-pub struct LocalOSFolderPath(String);
+#[derive(Clone, Debug)]
+pub struct LocalOSFolderPath(pub String);
 
-pub trait DirectoryVisitor {
-    fn visit_dirs(&self, dir: &Path) -> std::io::Result<()>;
+impl PartialEq for LocalOSFolderPath {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
 }
 
-impl DirectoryVisitor for FilesystemSynchronizer {
-    fn visit_dirs(&self, dir: &Path) -> std::io::Result<()> {
-        if dir.is_dir() {
-            for entry in fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
+impl Eq for LocalOSFolderPath {}
 
-                if path.is_dir() {
-                    println!("Directory: {:?}", path);
-                    // check if directory already exists in specific place on the Node
-                    // if it does, proceed
-                    // if it doesn't create it
-
-                    // TODO: edge case to be handled differently: if the folder on the disk was moved or deleted, but it is found in specific place on the node vector_fs, remove the whole directory on the vector_fs
-
-                    self.visit_dirs(&path)?;
-                } else {
-                    // check all the files inside the directory - one by one
-                    // if the file is not found in the specific place on the node vector_fs, save it there
-
-                    // if the file is found in the specific place on the node vector_fs, check if it is up to date
-                    // if it is up to date, do nothing
-                    // if it is not up to date, save the new one (it will be overwritten)
-
-                    // because we're doing recursive search, we just need to exit at this point in here
-                }
-            }
-        }
-
-        Ok(())
+impl Hash for LocalOSFolderPath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
 #[derive(Clone)]
 pub struct FilesystemSynchronizer {
-    client_keypairs: Vec<String>, // Placeholder for shinkai node keypairs (TODO: adjust structure later on)
-    syncing_folders: Arc<Mutex<HashMap<String, SyncingFolder>>>, // LocalOSFolderPath, SyncingFolder
-
+    syncing_folders: Arc<Mutex<HashMap<LocalOSFolderPath, SyncingFolder>>>, // LocalOSFolderPath, SyncingFolder
     // because we're just sending content, we should only need sender here
     sender: std::sync::mpsc::Sender<String>,
-
     shinkai_manager: ShinkaiManager,
 }
 
 impl FilesystemSynchronizer {
-    pub fn new(
-        shinkai_manager: ShinkaiManager,
-        major_directory_path: &str,
-        client_keypairs: Vec<String>,
-        syncing_folders: HashMap<String, SyncingFolder>,
-    ) -> Self {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    // treat new as a constructor, so how this should be treated
+    pub fn new(shinkai_manager: ShinkaiManager, syncing_folders: HashMap<LocalOSFolderPath, SyncingFolder>) -> Self {
+        let (sender, _) = std::sync::mpsc::channel();
         let syncing_folders = Arc::new(Mutex::new(syncing_folders));
-
-        // TODO: read last syncing state if there was one saved in the past
-
-        let syncing_folders_clone_for_thread = Arc::clone(&syncing_folders);
-        thread::spawn(move || loop {
-            // let folders = syncing_folders_clone_for_thread.lock().unwrap();
-            // for (path, folder) in folders.iter() {
-            //     println!("Checking if folder at path {} is out of date.", path);
-            // }
-            std::thread::sleep(std::time::Duration::from_secs(60));
-        });
-
         FilesystemSynchronizer {
-            client_keypairs,
             syncing_folders,
             sender,
             shinkai_manager,
         }
     }
 
-    pub fn add_syncing_folder(&mut self, path: String, folder: SyncingFolder) -> Result<(), String> {
-        let mut folders = self.syncing_folders.lock().unwrap();
-        if let std::collections::hash_map::Entry::Vacant(e) = folders.entry(path) {
-            e.insert(folder);
-            Ok(())
-        } else {
-            Err("Folder already exists".to_string())
-        }
+    // start synchronization
+    pub async fn synchronize(&self) {
+        let syncing_folders = self.syncing_folders.clone();
+        let shinkai_manager_profile_name = self.shinkai_manager.profile_name.clone();
+
+        // the main loop is happening here
+        thread::spawn(move || loop {
+            let folders = syncing_folders.lock().unwrap();
+            for (path, folder) in folders.iter() {
+                // Clone or copy necessary data before using it in the thread
+                let syncing_folder_for_os_path = SyncingFolder {
+                    profile_name: shinkai_manager_profile_name.clone(),
+                    vector_fs_path: "".to_string(),
+                    local_os_folder_path: path.clone(),
+                    last_synchronized_file_datetime: None,
+                };
+
+                println!("Checking if folder at path {} is out of date.", path.0);
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        });
     }
 
-    pub fn get_current_syncing_folders_map(&self) -> HashMap<String, SyncingFolder> {
+    // pub fn add_syncing_folder(&mut self, path: String, folder: SyncingFolder) -> Result<(), String> {
+    //     let mut folders = self.syncing_folders.lock().unwrap();
+    //     if let std::collections::hash_map::Entry::Vacant(e) = folders.entry(path) {
+    //         e.insert(folder);
+    //         Ok(())
+    //     } else {
+    //         Err("Folder already exists".to_string())
+    //     }
+    // }
+
+    pub fn get_current_syncing_folders_map(&self) -> HashMap<LocalOSFolderPath, SyncingFolder> {
         let folders = self.syncing_folders.lock().unwrap();
 
         // TODO: save the current state of sync somewhere
         folders.clone()
     }
 
-    pub fn stop(self) -> HashMap<String, SyncingFolder> {
+    pub fn stop(self) -> HashMap<LocalOSFolderPath, SyncingFolder> {
         drop(self.sender); // This will close the thread
         self.syncing_folders.lock().unwrap().clone()
-    }
-
-    pub fn traverse_and_synchronize<F, D>(&self, major_directory_path: &str, visitor: &D)
-    where
-        D: DirectoryVisitor,
-    {
-        let major_directory_path = Path::new(major_directory_path);
-
-        if major_directory_path.is_dir() {
-            match visitor.visit_dirs(major_directory_path) {
-                Ok(_) => println!("Traversal complete."),
-                Err(e) => println!("Error during traversal: {}", e),
-            }
-        } else {
-            println!("The provided path is not a directory.");
-        }
     }
 }

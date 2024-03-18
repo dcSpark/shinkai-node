@@ -14,10 +14,10 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 fn main() {
-    let client_keypairs = vec!["keypair1".to_string(), "keypair2".to_string()];
     let syncing_folders = HashMap::new();
     let major_directory = "knowledge";
 
+    // TODO: remove exemplary initialization and implement auto connecting to the node
     let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
     let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
     let receiver_public_key = EncryptionPublicKey::from([0; 32]);
@@ -36,10 +36,10 @@ fn main() {
         String::default(),
         "".to_string(),
         "".to_string(),
+        String::default(),
     );
 
-    let mut synchronizer =
-        FilesystemSynchronizer::new(shinkai_manager, major_directory, client_keypairs, syncing_folders);
+    let mut synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
 
     // synchronizer.traverse_and_synchronize(major_directory);
 
