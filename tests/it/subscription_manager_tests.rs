@@ -246,6 +246,7 @@ fn print_tree_simple(json_str: &str) {
     //         └── shinkai_intro
     // eprintln!("print_tree_simple JSON: {}", json_str);
     // Parse the JSON string into a serde_json::Value
+
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
         eprintln!("/");
         if let Some(folders) = val["child_folders"].as_array() {
@@ -363,7 +364,7 @@ async fn upload_file(
         .await
         .unwrap();
     let res = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp: {:?}", res);
+    eprintln!("upload_file resp to inbox: {:?}", res);
 
     // Convert File and Save to Folder
     let payload = APIConvertFilesAndSaveToFolder {
@@ -388,7 +389,7 @@ async fn upload_file(
         .await
         .unwrap();
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp: {:?}", resp);
+    eprintln!("upload_file resp processed: {:?}", resp);
 }
 
 #[test]
@@ -783,10 +784,10 @@ fn subscription_manager_test() {
                     )
                     .await;
                 }
-                // panic!("end");
             }
             {
                 // Make /shared_test_folder shareable
+                eprintln!("Make /shared_test_folder shareable");
                 make_folder_shareable(
                     &node1_commands_sender,
                     "/shared_test_folder",

@@ -31,8 +31,8 @@ impl Node {
         };
 
         // Lock the mutex and handle the Option
-        let subscription_manager = self.subscription_manager.lock().await;
-        if let Some(manager) = &*subscription_manager {
+        let mut subscription_manager = self.subscription_manager.lock().await;
+        if let Some(manager) = &mut *subscription_manager {
             let result = manager
                 .available_shared_folders(requester_name, input_payload.path)
                 .await;
@@ -93,8 +93,8 @@ impl Node {
             }
         };
 
-        let subscription_manager = self.subscription_manager.lock().await;
-        if let Some(manager) = &*subscription_manager {
+        let mut subscription_manager = self.subscription_manager.lock().await;
+        if let Some(manager) = &mut *subscription_manager {
             let result = manager
                 .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req)
                 .await;
@@ -201,8 +201,8 @@ impl Node {
             }
         };
 
-        let subscription_manager = self.subscription_manager.lock().await;
-        if let Some(manager) = &*subscription_manager {
+        let mut subscription_manager = self.subscription_manager.lock().await;
+        if let Some(manager) = &mut *subscription_manager {
             let result = manager.unshare_folder(input_payload.path, requester_name).await;
 
             match result {

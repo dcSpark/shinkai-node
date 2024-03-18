@@ -7,6 +7,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_error::VectorFSError;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
+use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -23,6 +24,8 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
+
+use super::subscriber_manager_tree::FSItemTree;
 
 // Message
 
@@ -49,39 +52,6 @@ use tokio::sync::{Mutex, MutexGuard};
 // state
 
 /// Temp
-#[derive(Debug, Clone)]
-pub struct FSItemTree {
-    pub name: String,
-    pub path: String,
-    pub last_modified: DateTime<Utc>,
-    pub children: HashMap<String, Arc<FSItemTree>>,
-}
-
-impl FSItemTree {
-    // Method to transform the tree into a visually pleasant JSON string
-    pub fn to_pretty_json(&self) -> serde_json::Value {
-        json!({
-            "name": self.name,
-            "path": self.path,
-            "last_modified": self.last_modified.to_rfc3339(),
-            "children": self.children.iter().map(|(_, child)| child.to_pretty_json()).collect::<Vec<_>>(),
-        })
-    }
-
-    // Optionally, if you want to print it directly in a more human-readable format
-    pub fn pretty_print(&self, indent: usize) {
-        println!(
-            "{}- {} ({}) [Last Modified: {}]",
-            " ".repeat(indent * 2),
-            self.name,
-            self.path,
-            self.last_modified.format("%Y-%m-%d %H:%M:%S")
-        );
-        for child in self.children.values() {
-            child.pretty_print(indent + 1);
-        }
-    }
-}
 
 // Who decides to split it? a cron? the SubscriberManager that checks the state? -> The subscriber manager
 
@@ -94,6 +64,7 @@ pub struct SubscriberManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
+    pub shared_folders_trees: HashMap<String, Arc<FSItemTree>>,
 }
 
 impl SubscriberManager {
@@ -131,163 +102,8 @@ impl SubscriberManager {
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
+            shared_folders_trees: HashMap::new(),
         }
-    }
-
-    fn build_tree(items: &[FSItem], parent_path: &str) -> FSItemTree {
-        let mut children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
-
-        for item in items {
-            let item_path = item.path.to_string();
-            if item_path.starts_with(parent_path) && item_path != parent_path {
-                let child_name = item_path
-                    .strip_prefix(parent_path)
-                    .unwrap()
-                    .trim_start_matches('/')
-                    .to_string();
-                let child_path = if parent_path.ends_with('/') {
-                    format!("{}{}", parent_path, child_name)
-                } else {
-                    format!("{}/{}", parent_path, child_name)
-                };
-                let last_modified = item.last_written_datetime;
-
-                if child_name.contains('/') {
-                    let child_name = child_name.split('/').next().unwrap().to_string();
-                    if !children.contains_key(&child_name) {
-                        children.insert(
-                            child_name.clone(),
-                            Arc::new(FSItemTree {
-                                name: child_name.clone(),
-                                path: child_path,
-                                last_modified,
-                                children: HashMap::new(),
-                            }),
-                        );
-                    }
-                } else {
-                    children.insert(
-                        child_name.clone(),
-                        Arc::new(FSItemTree {
-                            name: child_name,
-                            path: child_path,
-                            last_modified,
-                            children: HashMap::new(),
-                        }),
-                    );
-                }
-            }
-        }
-
-        for child in children.values_mut() {
-            *child = Arc::new(Self::build_tree(items, &child.path));
-        }
-
-        FSItemTree {
-            name: parent_path.to_string(),
-            path: parent_path.to_string(),
-            last_modified: items
-                .iter()
-                .find(|item| item.path.to_string() == parent_path)
-                .map(|item| item.last_written_datetime)
-                .unwrap_or_else(|| Utc::now()),
-            children,
-        }
-    }
-
-    pub async fn shared_folders_to_tree(
-        &self,
-        requester_shinkai_identity: ShinkaiName,
-        path: String,
-    ) -> Result<FSItemTree, SubscriberManagerError> {
-        let vector_fs = self
-            .vector_fs
-            .upgrade()
-            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                "VectorFS instance is not available".to_string(),
-            ))?;
-        let mut vector_fs = vector_fs.lock().await;
-
-        let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let reader = vector_fs
-            .new_reader(
-                requester_shinkai_identity.clone(),
-                vr_path,
-                requester_shinkai_identity.clone(),
-            )
-            .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-        let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
-        let filtered_results = self.filter_to_top_level_folders(shared_folders);
-
-        let mut root_children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
-        for (path, _permission) in filtered_results {
-            let reader = vector_fs
-                .new_reader(
-                    requester_shinkai_identity.clone(),
-                    path.clone(),
-                    requester_shinkai_identity.clone(),
-                )
-                .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-            let result = vector_fs.retrieve_fs_entry(&reader);
-            let fs_entry = result
-                .map_err(|e| SubscriberManagerError::InvalidRequest(format!("Failed to retrieve fs entry: {}", e)))?;
-
-            match fs_entry {
-                FSEntry::Folder(fs_folder) => {
-                    let folder_tree = Self::process_folder(&fs_folder, &path.to_string())?;
-                    root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
-                }
-                FSEntry::Item(fs_item) => {
-                    // If you need to handle items at the root level, adjust here
-                }
-                _ => {} // Handle FSEntry::Root if necessary
-            }
-        }
-
-        // Construct the root of the tree
-        let tree = FSItemTree {
-            name: "/".to_string(), // Adjust based on your root naming convention
-            path: path,
-            last_modified: Utc::now(),
-            children: root_children,
-        };
-
-        Ok(tree)
-    }
-
-    // Adjusted to directly build FSItemTree structure
-    fn process_folder(fs_folder: &FSFolder, parent_path: &str) -> Result<FSItemTree, SubscriberManagerError> {
-        let mut children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
-
-        // Process child folders and add them to the children map
-        for child_folder in &fs_folder.child_folders {
-            let child_tree = Self::process_folder(child_folder, &format!("{}/{}", parent_path, child_folder.name))?;
-            children.insert(child_folder.name.clone(), Arc::new(child_tree));
-        }
-
-        // Process child items and add them to the children map
-        for child_item in &fs_folder.child_items {
-            let child_path = format!("{}/{}", parent_path, child_item.name);
-            let child_tree = FSItemTree {
-                name: child_item.name.clone(),
-                path: child_path,
-                last_modified: child_item.last_written_datetime,
-                children: HashMap::new(), // Items do not have children
-            };
-            children.insert(child_item.name.clone(), Arc::new(child_tree));
-        }
-
-        // Construct the current folder's tree
-        let folder_tree = FSItemTree {
-            name: fs_folder.name.clone(),
-            path: parent_path.to_string(),
-            last_modified: fs_folder.last_written_datetime,
-            children,
-        };
-
-        Ok(folder_tree)
     }
 
     // Placeholder for process_job_message_queued
@@ -353,7 +169,7 @@ impl SubscriberManager {
     }
 
     pub async fn available_shared_folders(
-        &self,
+        &mut self,
         requester_shinkai_identity: ShinkaiName,
         path: String,
     ) -> Result<Vec<(String, String, Option<ShinkaiFolderSubscription>)>, SubscriberManagerError> {
@@ -402,43 +218,16 @@ impl SubscriberManager {
             }
         }
 
-        // Debug
+        eprintln!("Shared folders to tree...");
         let tree = self
             .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
-            .await;
-        tree?.pretty_print(0);
-        // eprintln!("Tree: {:?}", tree_j);
-        // println!("Tree: {}", serde_json::to_string_pretty(&pretty_json).unwrap());
+            .await?;
+
+        self.shared_folders_trees.insert(path.clone(), Arc::new(tree.clone()));
+        tree.pretty_print(0);
 
         // TODO: should we return a tree? so you can see the structure of the folders?
         Ok(converted_results)
-    }
-
-    fn filter_to_top_level_folders(&self, results: Vec<(VRPath, ReadPermission)>) -> Vec<(VRPath, ReadPermission)> {
-        let mut filtered_results: Vec<(VRPath, ReadPermission)> = Vec::new();
-        for (path, permission) in results {
-            let is_subpath = filtered_results.iter().any(|(acc_path, _): &(VRPath, ReadPermission)| {
-                // Check if `path` is a subpath of `acc_path`
-                if path.path_ids.len() > acc_path.path_ids.len() && path.path_ids.starts_with(&acc_path.path_ids) {
-                    true
-                } else {
-                    false
-                }
-            });
-
-            if !is_subpath {
-                // Before adding, make sure it's not a parent path of an already added path
-                filtered_results.retain(|(acc_path, _): &(VRPath, ReadPermission)| {
-                    if acc_path.path_ids.len() > path.path_ids.len() && acc_path.path_ids.starts_with(&path.path_ids) {
-                        false // Remove if current path is a parent of the acc_path
-                    } else {
-                        true
-                    }
-                });
-                filtered_results.push((path, permission));
-            }
-        }
-        filtered_results
     }
 
     pub async fn update_shareable_folder_requirements(
@@ -483,62 +272,70 @@ impl SubscriberManager {
     }
 
     pub async fn create_shareable_folder(
-        &self,
+        &mut self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: ShinkaiFolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
         // TODO: check that you are actually an admin of the folder
         // Note: I think is done automatically
-        let vector_fs = self
-            .vector_fs
-            .upgrade()
-            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                "VectorFS instance is not available".to_string(),
+        {
+            let vector_fs = self
+                .vector_fs
+                .upgrade()
+                .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                    "VectorFS instance is not available".to_string(),
+                ))?;
+            let mut vector_fs = vector_fs.lock().await;
+
+            let vr_path =
+                VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+            let writer = vector_fs.new_writer(
+                requester_shinkai_identity.clone(),
+                vr_path.clone(),
+                requester_shinkai_identity.clone(),
+            )?;
+
+            // Retrieve the current write permissions for the path
+            let permissions_vector =
+                vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])?;
+
+            if permissions_vector.is_empty() {
+                return Err(SubscriberManagerError::InvalidRequest(
+                    "Path does not exist".to_string(),
+                ));
+            }
+
+            let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
+
+            // Set the read permissions to Public while reusing the write permissions
+            vector_fs.update_permissions_recursively(
+                &writer,
+                ReadPermission::Public,
+                current_permissions.write_permission,
+            )?;
+        }
+        {
+            // Assuming we have validated the admin and permissions, we proceed to update the DB
+            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+                "Database instance is not available".to_string(),
             ))?;
-        let mut vector_fs = vector_fs.lock().await;
+            let mut db = db.lock().await;
 
-        let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        eprintln!("VR Path: {:?}", vr_path);
-        let writer = vector_fs.new_writer(
-            requester_shinkai_identity.clone(),
-            vr_path.clone(),
-            requester_shinkai_identity.clone(),
-        )?;
-
-        // Retrieve the current write permissions for the path
-        let permissions_vector =
-            vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])?;
-
-        if permissions_vector.is_empty() {
-            return Err(SubscriberManagerError::InvalidRequest(
-                "Path does not exist".to_string(),
-            ));
+            db.set_folder_requirements(&path, subscription_requirement)
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
-        let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
-
-        // Set the read permissions to Public while reusing the write permissions
-        vector_fs.update_permissions_recursively(
-            &writer,
-            ReadPermission::Public,
-            current_permissions.write_permission,
-        )?;
-
-        // Assuming we have validated the admin and permissions, we proceed to update the DB
-        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-            "Database instance is not available".to_string(),
-        ))?;
-        let mut db = db.lock().await;
-
-        db.set_folder_requirements(&path, subscription_requirement)
-            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+        let tree = self
+            .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
+            .await?;
+        self.shared_folders_trees.insert(path.clone(), Arc::new(tree));
 
         Ok(true)
     }
 
     pub async fn unshare_folder(
-        &self,
+        &mut self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
     ) -> Result<bool, SubscriberManagerError> {
@@ -585,6 +382,7 @@ impl SubscriberManager {
         db.remove_folder_requirements(&path)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
+        self.shared_folders_trees.remove(&path);
         Ok(true)
     }
 

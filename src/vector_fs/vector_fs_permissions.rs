@@ -362,7 +362,7 @@ impl PermissionsIndex {
             if starting_path.is_ancestor_path(path) {
                 match PathPermission::from_json(permission_json) {
                     Ok(path_permission) => {
-                        eprintln!("path: {:?}", path);
+                        eprintln!("\npath: {:?}", path);
                         eprintln!("path_permission: {:?}", path_permission);
                         if read_permissions_to_find.contains(&path_permission.read_permission) {
                             paths_with_permissions.push((path.clone(), path_permission.read_permission.clone()));
