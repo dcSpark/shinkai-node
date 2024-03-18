@@ -203,6 +203,7 @@ async fn retrieve_file_info(
     identity_name: &str,
     profile_name: &str,
     path: &str,
+    is_simple: bool,
 ) {
     let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
@@ -226,7 +227,83 @@ async fn retrieve_file_info(
         .await
         .unwrap();
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-    eprintln!("resp for current file system files: {}", resp);
+
+    if is_simple {
+        print_tree_simple(&resp);
+    } else {
+        eprintln!("resp for current file system files: {}", resp);
+    }
+}
+
+fn print_tree_simple(json_str: &str) {
+    // TODO: fix there is some extra space
+    // /
+    // ├── private_test_folder
+    //     │   └── shinkai_intro
+    // └── shared_test_folder
+    //         ├── crypto
+    //         │   └── shinkai_intro
+    //         └── shinkai_intro
+    // eprintln!("print_tree_simple JSON: {}", json_str);
+    // Parse the JSON string into a serde_json::Value
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+        eprintln!("/");
+        if let Some(folders) = val["child_folders"].as_array() {
+            let folders_len = folders.len();
+            for (index, folder) in folders.iter().enumerate() {
+                let folder_name = folder["name"].as_str().unwrap_or("Unknown Folder");
+                let prefix = if index < folders_len - 1 {
+                    "├── "
+                } else {
+                    "└── "
+                };
+                eprintln!("{}{}", prefix, folder_name);
+                print_subtree(folder, "    ", index == folders_len - 1);
+            }
+        }
+    } else {
+        eprintln!("Failed to parse JSON");
+    }
+}
+
+fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
+    let mut new_indent = String::from(indent);
+    if !is_last {
+        new_indent.push_str("│   ");
+    } else {
+        new_indent.push_str("    ");
+    }
+
+    // Create a longer-lived empty Vec that can be borrowed
+    let empty_vec = vec![];
+
+    // Use a reference to `empty_vec` instead of creating a temporary value inline
+    let subfolders = folder["child_folders"].as_array().unwrap_or(&empty_vec);
+    let items = folder["child_items"].as_array().unwrap_or(&empty_vec);
+
+    let subfolders_len = subfolders.len();
+    let total_len = subfolders_len + items.len();
+
+    for (index, subfolder) in subfolders.iter().enumerate() {
+        let subfolder_name = subfolder["name"].as_str().unwrap_or("Unknown Subfolder");
+        let prefix = if index < subfolders_len - 1 || !items.is_empty() {
+            "├── "
+        } else {
+            "└── "
+        };
+        eprintln!("{}{}{}", new_indent, prefix, subfolder_name);
+        print_subtree(subfolder, &new_indent, index == total_len - 1);
+    }
+
+    for (index, item) in items.iter().enumerate() {
+        let item_name = item["name"].as_str().unwrap_or("Unknown Item");
+        let prefix = if index < items.len() - 1 {
+            "├── "
+        } else {
+            "└── "
+        };
+        eprintln!("{}{}{}", new_indent, prefix, item_name);
+    }
 }
 
 async fn upload_file(
@@ -573,6 +650,7 @@ fn subscription_manager_test() {
                     node1_identity_name,
                     node1_profile_name,
                     "/",
+                    true,
                 )
                 .await;
             }
@@ -617,24 +695,13 @@ fn subscription_manager_test() {
                     node1_identity_name,
                     node1_profile_name,
                     "/",
-                )
-                .await;
-            }
-            {
-                // Make /shared_test_folder shareable
-                make_folder_shareable(
-                    &node1_commands_sender,
-                    "/shared_test_folder",
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
-                    node1_identity_name,
-                    node1_profile_name,
+                    true,
                 )
                 .await;
             }
             {
                 // Show available shared items
+                eprintln!("Show available shared items before making /shared_test_folder shareable");
                 show_available_shared_items(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
@@ -645,6 +712,32 @@ fn subscription_manager_test() {
                 )
                 .await;
             }
+            // {
+            //     // Make /shared_test_folder shareable
+            //     make_folder_shareable(
+            //         &node1_commands_sender,
+            //         "/shared_test_folder",
+            //         node1_profile_encryption_sk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_encryption_pk.clone(),
+            //         node1_identity_name,
+            //         node1_profile_name,
+            //     )
+            //     .await;
+            // }
+            // {
+            //     // Show available shared items
+            //     eprintln!("Show available shared items after making /shared_test_folder shareable");
+            //     show_available_shared_items(
+            //         &node1_commands_sender,
+            //         node1_profile_encryption_sk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_encryption_pk.clone(),
+            //         node1_identity_name,
+            //         node1_profile_name,
+            //     )
+            //     .await;
+            // }
             {
                 // Create /shared_test_folder/crypto
                 create_folder(
@@ -673,9 +766,56 @@ fn subscription_manager_test() {
                     0,
                 )
                 .await;
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                {
+                    // Retrieve info
+                    retrieve_file_info(
+                        &node1_commands_sender,
+                        node1_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk.clone(),
+                        node1_identity_name,
+                        node1_profile_name,
+                        "/",
+                        true,
+                    )
+                    .await;
+                }
+                // panic!("end");
             }
-              {
+            {
+                // Make /shared_test_folder shareable
+                make_folder_shareable(
+                    &node1_commands_sender,
+                    "/shared_test_folder",
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
+                {
+                    eprintln!("### Retrieve info");
+                    // Retrieve info
+                    retrieve_file_info(
+                        &node1_commands_sender,
+                        node1_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk.clone(),
+                        node1_identity_name,
+                        node1_profile_name,
+                        "/",
+                        true,
+                    )
+                    .await;
+                }
+            }
+            {
                 // Show available shared items
+                eprintln!("Show available shared items after making /shared_test_folder shareable");
                 show_available_shared_items(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
