@@ -17,6 +17,20 @@ pub struct PostDataResponse {
     pub data: serde_json::Value,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ErrorResponse {
+    pub scheme: String,
+    pub cannot_be_a_base: bool,
+    pub username: String,
+    pub password: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub path: String,
+    pub query: Option<String>,
+    pub fragment: Option<String>,
+    pub status: String,
+}
+
 pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse, String> {
     let client = Client::new();
     let shinkai_node_url = env::var("SHINKAI_NODE_URL").expect("SHINKAI_NODE_URL must be set");
@@ -25,20 +39,24 @@ pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse,
     match client
         .post(&url)
         .header("Content-Type", "application/json")
-        .body(input)
+        .body(input.clone()) // Clone input for debugging
         .send()
         .await
     {
-        Ok(response) => match response.json::<PostDataResponse>().await {
-            Ok(data) => {
-                dbg!(data.clone());
-                Ok(data)
+        Ok(response) => {
+            // Print the payload before attempting to map it
+            println!("response: {:?}", response);
+            match response.json::<PostDataResponse>().await {
+                Ok(data) => {
+                    dbg!(data.clone());
+                    Ok(data)
+                }
+                Err(e) => {
+                    eprintln!("Error parsing response: {:?}", e);
+                    Err(format!("Error parsing response: {:?}", e))
+                }
             }
-            Err(e) => {
-                eprintln!("Error parsing response: {:?}", e);
-                Err(format!("Error parsing response: {:?}", e))
-            }
-        },
+        }
         Err(e) => {
             eprintln!("Error when interacting with {}. Error: {:?}", path, e);
             Err(format!("Error when interacting with {}. Error: {:?}", path, e))
@@ -82,20 +100,20 @@ pub async fn node_init() -> ShinkaiManager {
                 profile_encryption_sk.clone(),
                 profile_signing_key.clone(),
                 "registration_name".to_string(),
-                sender_subidentity,
-                sender,
-                receiver,
+                sender_subidentity.clone(),
+                sender.clone(),
+                receiver.clone(),
             )
             .await
             {
                 Ok(manager) => {
                     shinkai_manager = Some(manager);
+                    break;
                 }
                 Err(e) => {
                     eprintln!("Failed to initialize node connection: {}", e);
                 }
             }
-            break;
         }
 
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
