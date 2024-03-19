@@ -1,4 +1,5 @@
 use ed25519_dalek::SigningKey;
+use shinkai_file_synchronizer::communication::node_init;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -9,7 +10,6 @@ mod tests {
         synchronizer::FilesystemSynchronizer,
         visitor::{traverse_and_synchronize, DirectoryVisitor, SyncFolderVisitor},
     };
-    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 
     use super::*;
     use std::{
@@ -49,27 +49,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_traverse_and_synchronize_visits_all_files() {
+    #[tokio::test]
+    async fn test_traverse_and_synchronize_visits_all_files() {
         use std::path::Path;
+        dotenv::dotenv().ok();
 
         // Setup - specify the main directory structure
         let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
 
-        let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
-        let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
-        let receiver_public_key = EncryptionPublicKey::from([0; 32]);
-
-        let shinkai_manager = ShinkaiManager::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            receiver_public_key,
-            ProfileName::default(),
-            String::default(),
-            "".to_string(),
-            "".to_string(),
-            "".to_string(),
-        );
+        let shinkai_manager = node_init().await;
 
         let syncing_folders = HashMap::new();
         let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
@@ -88,24 +76,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_initial_syncfolder_hashmap() {
         use std::path::Path;
+        dotenv::dotenv().ok();
 
         // Setup - specify the main directory structure
         let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
 
-        let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
-        let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
-        let receiver_public_key = EncryptionPublicKey::from([0; 32]);
-
-        let shinkai_manager = ShinkaiManager::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            receiver_public_key,
-            ProfileName::default(),
-            String::default(),
-            "".to_string(),
-            "".to_string(),
-            "".to_string(),
-        );
+        let shinkai_manager = node_init().await;
 
         let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
         let sync_visitor = SyncFolderVisitor::new(syncing_folders);
