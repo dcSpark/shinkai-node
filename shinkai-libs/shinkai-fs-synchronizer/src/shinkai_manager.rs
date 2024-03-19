@@ -1,8 +1,10 @@
+use crate::communication;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
 };
+use std::env;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Clone)]
@@ -21,7 +23,6 @@ pub struct ShinkaiManager {
 impl ShinkaiManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        message_builder: ShinkaiMessageBuilder,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -31,18 +32,14 @@ impl ShinkaiManager {
         node_receiver_subidentity: ProfileName,
         profile_name: ProfileName,
     ) -> Self {
-        // the following initialization is incorrect - TODO: check how it's iniitialized in ts side (didn't see any good example on shinkai node side)
-        ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+        // TODO: all the keys to be read from other service directory (e.g. Shinkai Desktop)
+        let shinkai_message_builder = ShinkaiMessageBuilder::new(
             my_encryption_secret_key.clone(),
             my_signature_secret_key.clone(),
-            my_encryption_secret_key.clone(),
-            my_signature_secret_key.clone(),
-            sender.clone(),
-            sender_subidentity.clone(),
-            node_receiver.clone(),
-            node_receiver_subidentity.clone(),
+            receiver_public_key,
         );
         Self {
+            message_builder: shinkai_message_builder,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
@@ -50,12 +47,84 @@ impl ShinkaiManager {
             sender_subidentity,
             node_receiver,
             node_receiver_subidentity,
-            message_builder,
             profile_name,
         }
     }
 
-    async fn initialize_node_connection(&self) {}
+    #[allow(clippy::too_many_arguments)]
+    pub async fn initialize_node_connection(
+        my_device_encryption_sk: EncryptionStaticKey,
+        my_device_signature_sk: SigningKey,
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SigningKey,
+        registration_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> anyhow::Result<(), &'static str> {
+        let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+            my_device_encryption_sk.clone(),
+            my_device_signature_sk.clone(),
+            profile_encryption_sk.clone(),
+            profile_signature_sk.clone(),
+            registration_name.clone(),
+            sender_subidentity.clone(),
+            sender.clone(),
+            receiver.clone(),
+        );
+
+        dbg!(shinkai_message_result.clone());
+
+        if shinkai_message_result.is_err() {
+            return Err(shinkai_message_result.err().unwrap());
+        }
+
+        let shinkai_message = shinkai_message_result.unwrap();
+        let shinkai_message_json = serde_json::to_string(&shinkai_message).expect("Failed to serialize ShinkaiMessage");
+        match communication::request_post(shinkai_message_json, "/v1/use_registration_code").await {
+            Ok(response) => {
+                println!("Successfully posted ShinkaiMessage. Response: {:?}", response);
+
+                // TODO: store keys received from the respone in persistent storage so we can reuse them
+                // TODO: verify if there is better way to do that
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Failed to post ShinkaiMessage. Error: {}", e);
+                Err("Failed to communicate with the endpoint")
+            }
+        }
+    }
+
+    pub async fn check_node_health() -> Result<(), &'static str> {
+        let shinkai_health_url = format!(
+            "{}/v1/shinkai_health",
+            env::var("SHINKAI_NODE_URL").expect("SHINKAI_NODE_URL must be set")
+        );
+
+        match reqwest::get(&shinkai_health_url).await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    let health_data: serde_json::Value =
+                        response.json().await.expect("Failed to parse health check response");
+                    if health_data["status"] == "ok" {
+                        println!("Shinkai node is healthy.");
+                        Ok(())
+                    } else {
+                        eprintln!("Shinkai node health check failed.");
+                        Err("Shinkai node health check failed")
+                    }
+                } else {
+                    eprintln!("Failed to reach Shinkai node for health check.");
+                    Err("Failed to reach Shinkai node for health check")
+                }
+            }
+            Err(e) => {
+                eprintln!("Error verifying node health. Please check Node configuration and if all is fine, then Shinkai Node itself. \n{}", e);
+                Err("Error verifying node health")
+            }
+        }
+    }
 
     pub async fn get_node_folder(&mut self, path: &str) -> Result<String, &'static str> {
         println!("vecfs_retrieve_path_simplified");

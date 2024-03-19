@@ -1,5 +1,4 @@
 use ed25519_dalek::SigningKey;
-use shinkai_file_synchronizer::synchronizer::FilesystemSynchronizer;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -7,6 +6,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 mod tests {
     use shinkai_file_synchronizer::{
         shinkai_manager::ShinkaiManager,
+        synchronizer::FilesystemSynchronizer,
         visitor::{traverse_and_synchronize, DirectoryVisitor, SyncFolderVisitor},
     };
     use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -60,13 +60,7 @@ mod tests {
         let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
         let receiver_public_key = EncryptionPublicKey::from([0; 32]);
 
-        let shinkai_message_builder = ShinkaiMessageBuilder::new(
-            my_encryption_secret_key.clone(),
-            my_signature_secret_key.clone(),
-            receiver_public_key,
-        );
         let shinkai_manager = ShinkaiManager::new(
-            shinkai_message_builder,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
@@ -102,14 +96,7 @@ mod tests {
         let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
         let receiver_public_key = EncryptionPublicKey::from([0; 32]);
 
-        let shinkai_message_builder = ShinkaiMessageBuilder::new(
-            my_encryption_secret_key.clone(),
-            my_signature_secret_key.clone(),
-            receiver_public_key,
-        );
-
         let shinkai_manager = ShinkaiManager::new(
-            shinkai_message_builder,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,

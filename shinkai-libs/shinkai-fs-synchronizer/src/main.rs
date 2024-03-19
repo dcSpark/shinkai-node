@@ -1,35 +1,82 @@
+pub mod communication;
 pub mod shinkai_manager;
 pub mod synchronizer;
+pub mod visitor;
 
 use crate::shinkai_manager::ShinkaiManager;
 use crate::synchronizer::FilesystemSynchronizer;
-use crate::synchronizer::SyncingFolder;
+use dotenv::dotenv;
+use rand::Rng;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[tokio::main]
 async fn main() {
-    let syncing_folders = HashMap::new();
+    dotenv().ok();
     let major_directory = "knowledge";
 
-    // TODO: remove exemplary initialization and implement auto connecting to the node
+    // TODO: move initialization code to a separate function
+    // let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
+    // let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
+    // let receiver_public_key = EncryptionPublicKey::from([0; 32]);
+
+    async fn generate_encryption_keys() -> (EncryptionStaticKey, EncryptionPublicKey) {
+        let seed = rand::rngs::OsRng;
+        let secret_key = EncryptionStaticKey::new(seed);
+        let public_key = EncryptionPublicKey::from(&secret_key);
+        (secret_key, public_key)
+    }
+
+    async fn generate_signature_keys() -> (x25519_dalek::StaticSecret, SigningKey) {
+        let mut csprng = rand::rngs::OsRng;
+        let secret_key = x25519_dalek::StaticSecret::new(&mut csprng);
+        let signing_key = SigningKey::generate(&mut csprng);
+        (secret_key, signing_key)
+    }
+
+    let (my_device_encryption_sk, my_device_encryption_pk) = generate_encryption_keys().await;
+    let (my_device_signature_sk, my_device_signing_key) = generate_signature_keys().await;
+
+    let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
+    let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
+
+    loop {
+        let check_health = ShinkaiManager::check_node_health().await;
+        if check_health.is_ok() {
+            if let Err(e) = ShinkaiManager::initialize_node_connection(
+                my_device_encryption_sk.clone(),
+                my_device_signing_key.clone(),
+                profile_encryption_sk.clone(),
+                profile_signing_key.clone(),
+                "registration_name".to_string(),
+                "".to_string(),
+                "".to_string(),
+                String::default(),
+            )
+            .await
+            {
+                eprintln!("Failed to initialize node connection: {}", e);
+            }
+            break;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    }
+
+    // connectio with the node was initialzied, we can assign initialized ShinkaiManager instance here
+    let my_encryption_secret_key = my_device_encryption_sk.clone();
+    let my_signature_secret_key = my_device_signing_key.clone();
+    let my_signature_secret_key = my_device_signing_key.clone();
+
     let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
     let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
     let receiver_public_key = EncryptionPublicKey::from([0; 32]);
 
-    let shinkai_message_builder = ShinkaiMessageBuilder::new(
-        my_encryption_secret_key.clone(),
-        my_signature_secret_key.clone(),
-        receiver_public_key,
-    );
     let shinkai_manager = ShinkaiManager::new(
-        shinkai_message_builder,
         my_encryption_secret_key,
         my_signature_secret_key,
         receiver_public_key,
@@ -37,9 +84,10 @@ async fn main() {
         String::default(),
         "".to_string(),
         "".to_string(),
-        String::default(),
+        "".to_string(),
     );
 
+    let syncing_folders = HashMap::new();
     let mut synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
 
     // synchronizer.traverse_and_synchronize(major_directory);
