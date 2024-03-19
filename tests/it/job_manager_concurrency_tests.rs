@@ -151,7 +151,7 @@ async fn test_process_job_queue_concurrency() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::JobQueues.as_str()).await.unwrap();
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency
@@ -269,7 +269,7 @@ async fn test_sequential_process_for_same_job_id() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::JobQueues.as_str()).await.unwrap();
+    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency

@@ -9,7 +9,6 @@ use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
-use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
@@ -18,8 +17,6 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolder
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
-use std::fs::File;
-use std::io::Write;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -74,8 +71,9 @@ impl SubscriberManager {
         vector_fs: Weak<Mutex<VectorFS>>,
         identity_manager: Weak<Mutex<IdentityManager>>,
     ) -> Self {
+        let db_prefix = "subscriptions_abcprefix_";
         let subscriptions_queue =
-            JobQueueManager::<ShinkaiSubscription>::new(db.clone(), Topic::Subscriptions.as_str())
+            JobQueueManager::<ShinkaiSubscription>::new(db.clone(), Topic::AnyQueuesPrefixed.as_str(), Some(db_prefix.to_string()))
                 .await
                 .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
@@ -104,6 +102,13 @@ impl SubscriberManager {
             subscription_processing_task: Some(subscription_queue_handler),
             shared_folders_trees: HashMap::new(),
         }
+    }
+
+    pub async fn get_cached_shared_folder_tree(
+        &self,
+        path: &str,
+    ) -> Option<Arc<FSItemTree>> {
+        self.shared_folders_trees.get(path).cloned()
     }
 
     // Placeholder for process_job_message_queued
@@ -339,48 +344,50 @@ impl SubscriberManager {
         path: String,
         requester_shinkai_identity: ShinkaiName,
     ) -> Result<bool, SubscriberManagerError> {
-        let vector_fs = self
-            .vector_fs
-            .upgrade()
-            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                "VectorFS instance is not available".to_string(),
-            ))?;
-        let mut vector_fs = vector_fs.lock().await;
+        {
+            let vector_fs = self
+                .vector_fs
+                .upgrade()
+                .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                    "VectorFS instance is not available".to_string(),
+                ))?;
+            let mut vector_fs = vector_fs.lock().await;
 
-        // Retrieve the current permissions for the path
-        let permissions_vector = vector_fs
-            .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])?;
+            // Retrieve the current permissions for the path
+            let permissions_vector = vector_fs
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])?;
 
-        if permissions_vector.is_empty() {
-            return Err(SubscriberManagerError::InvalidRequest(
-                "Path does not exist".to_string(),
-            ));
+            if permissions_vector.is_empty() {
+                return Err(SubscriberManagerError::InvalidRequest(
+                    "Path does not exist".to_string(),
+                ));
+            }
+
+            let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
+
+            // Create a writer for the path
+            let writer = vector_fs.new_writer(
+                requester_shinkai_identity.clone(),
+                vr_path,
+                requester_shinkai_identity.clone(),
+            )?;
+
+            // Set the read permissions to Private while reusing the write permissions using update_permissions_recursively
+            vector_fs.update_permissions_recursively(
+                &writer,
+                ReadPermission::Private,
+                current_permissions.write_permission,
+            )?;
         }
-
-        let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
-
-        // Create a writer for the path
-        let writer = vector_fs.new_writer(
-            requester_shinkai_identity.clone(),
-            vr_path,
-            requester_shinkai_identity.clone(),
-        )?;
-
-        // Set the read permissions to Private while reusing the write permissions using update_permissions_recursively
-        vector_fs.update_permissions_recursively(
-            &writer,
-            ReadPermission::Private,
-            current_permissions.write_permission,
-        )?;
-
-        // Assuming we have validated the admin and permissions, we proceed to update the DB
-        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-            "Database instance is not available".to_string(),
-        ))?;
-        let mut db = db.lock().await;
-
-        db.remove_folder_requirements(&path)
+        {
+            // Assuming we have validated the admin and permissions, we proceed to update the DB
+            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+                "Database instance is not available".to_string(),
+            ))?;
+            let mut db = db.lock().await;
+            db.remove_folder_requirements(&path)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+        }        
 
         self.shared_folders_trees.remove(&path);
         Ok(true)

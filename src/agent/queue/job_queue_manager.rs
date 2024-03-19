@@ -79,19 +79,20 @@ pub struct JobQueueManager<T: Debug> {
     all_subscribers: Arc<Mutex<Vec<Subscriber<T>>>>,
     db: Weak<Mutex<ShinkaiDB>>,
     cf_name: String,
+    prefix: Option<String>,
 }
 
 // Note: these are the ones that are kept in memory but the complete list is kept in the database
 static BUFFER_SIZE: usize = 10;
 
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
-    pub async fn new(db: Weak<Mutex<ShinkaiDB>>, cf_name: &str) -> Result<Self, ShinkaiDBError> {
+    pub async fn new(db: Weak<Mutex<ShinkaiDB>>, cf_name: &str, prefix: Option<String>) -> Result<Self, ShinkaiDBError> {
         // Lock the db for safe access
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db_lock = db_arc.lock().await;
 
         // Call the get_all_queues method to get all queue data from the db
-        match db_lock.get_all_queues(&cf_name) {
+        match db_lock.get_all_queues(&cf_name, prefix.clone()) {
             Ok(db_queues) => {
                 // Initialize the queues field with Mutex-wrapped Vecs from the db data
                 let manager_queues = db_queues
@@ -106,6 +107,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
                     all_subscribers: Arc::new(Mutex::new(Vec::new())),
                     db: db.clone(),
                     cf_name: cf_name.to_string(),
+                    prefix,
                 })
             }
             Err(e) => Err(e),
@@ -115,7 +117,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     async fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db = db_arc.lock().await;
-        db.get_job_queues(&self.cf_name, key)
+        db.get_job_queues(&self.cf_name, key, self.prefix.clone())
     }
 
     pub async fn push(&mut self, key: &str, value: T) -> Result<(), ShinkaiDBError> {
@@ -133,7 +135,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db = db_arc.lock().await;
-        db.persist_queue(&self.cf_name, key, &guarded_queue)?;
+        db.persist_queue(&self.cf_name, key, &guarded_queue, self.prefix.clone())?;
         drop(db);
 
         // Notify subscribers
@@ -179,7 +181,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db = db_arc.lock().await;
-        db.persist_queue(&self.cf_name, key, &guarded_queue)?;
+        db.persist_queue(&self.cf_name, key, &guarded_queue, self.prefix.clone())?;
 
         Ok(result)
     }
@@ -198,7 +200,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db_lock = db_arc.lock().await;
-        let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>(&self.cf_name)?;
+        let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>(&self.cf_name, self.prefix.clone())?;
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
@@ -254,6 +256,7 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
             all_subscribers: Arc::clone(&self.all_subscribers),
             db: self.db.clone(),
             cf_name: self.cf_name.clone(),
+            prefix: self.prefix.clone(),
         }
     }
 }
@@ -279,7 +282,7 @@ mod tests {
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let db_weak = Arc::downgrade(&db);
 
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::JobQueues.as_str())
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
             .await
             .unwrap();
 
@@ -336,7 +339,7 @@ mod tests {
         let db_path = "db_tests/";
         let db_arc = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
         let db_weak = Arc::downgrade(&db_arc);
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::JobQueues.as_str())
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
             .await
             .unwrap();
 
@@ -366,7 +369,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500));
 
         // Create a new manager and recover the state
-        let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::JobQueues.as_str())
+        let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
             .await
             .unwrap();
 
@@ -403,7 +406,7 @@ mod tests {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let db_weak = Arc::downgrade(&db);
-        let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, Topic::JobQueues.as_str())
+        let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
             .await
             .unwrap();
 
@@ -444,7 +447,7 @@ mod tests {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let db_weak = Arc::downgrade(&db);
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::JobQueues.as_str())
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, Topic::AnyQueuesPrefixed.as_str(), None)
             .await
             .unwrap();
 

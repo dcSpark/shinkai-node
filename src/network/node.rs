@@ -18,7 +18,6 @@ use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::future::Remote;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;

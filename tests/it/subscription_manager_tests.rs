@@ -80,6 +80,18 @@ fn generate_message_with_payload<T: ToString>(
     message
 }
 
+async fn fetch_last_messages(
+    commands_sender: &Sender<NodeCommand>,
+    limit: usize,
+) -> Result<Vec<ShinkaiMessage>, APIError> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    commands_sender
+        .send(NodeCommand::FetchLastMessages { limit, res: res_sender })
+        .await
+        .unwrap();
+    Ok(res_receiver.recv().await.unwrap())
+}
+
 async fn make_folder_shareable(
     commands_sender: &Sender<NodeCommand>,
     folder_path: &str,
@@ -826,6 +838,138 @@ fn subscription_manager_test() {
                     node1_profile_name,
                 )
                 .await;
+            }
+            //
+            // Second Part of the Test
+            //
+            //      _   _      _                      _
+            //     | \ | |    | |                    | |
+            //     |  \| | ___| |___      _____  _ __| | __
+            //     | . ` |/ _ \ __\ \ /\ / / _ \| '__| |/ /
+            //     | |\  |  __/ |_ \ V  V / (_) | |  |   <
+            //     |_| \_|\___|\__| \_/\_/ \___/|_|  |_|\_\
+            //
+            //
+            {
+                // Remove this after the other stuff is working
+                eprintln!("\n\n### Sending message from a node 2 profile to node 1 profile\n\n");
+
+                let message_content = "test body content".to_string();
+                let unchanged_message = ShinkaiMessageBuilder::new(
+                    node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node1_profile_encryption_pk.clone(),
+                )
+                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::None)
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node2_profile_name.to_string().clone(),
+                    node1_profile_name.to_string(),
+                    EncryptionMethod::None,
+                    None,
+                )
+                .external_metadata_with_other_and_intra_sender(
+                    node1_identity_name.to_string(),
+                    node2_identity_name.to_string().clone(),
+                    "".to_string(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
+
+                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node2_commands_sender
+                    .send(NodeCommand::SendOnionizedMessage {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                let send_result = res_send_msg_receiver.recv().await.unwrap();
+                assert!(send_result.is_ok(), "Failed to send onionized message");
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 2");
+
+                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 1");
+
+                // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                // eprintln!("\n\n");
+                // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                // eprintln!("\n\n");
+            }
+            {
+                let message_content = "".to_string();
+                let unchanged_message = ShinkaiMessageBuilder::new(
+                    node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node1_profile_encryption_pk.clone(),
+                )
+                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::None)
+                .message_schema_type(MessageSchemaType::AvailableSharedItems)
+                .internal_metadata(
+                    node2_profile_name.to_string().clone(),
+                    node1_profile_name.to_string(),
+                    EncryptionMethod::None,
+                    None,
+                )
+                .external_metadata_with_other_and_intra_sender(
+                    node1_identity_name.to_string(),
+                    node2_identity_name.to_string().clone(),
+                    "".to_string(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
+
+                eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node2_commands_sender
+                    .send(NodeCommand::SendOnionizedMessage {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                let send_result = res_send_msg_receiver.recv().await.unwrap();
+                assert!(send_result.is_ok(), "Failed to send onionized message");
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 2");
+
+                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 1");
+
+                // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                // eprintln!("\n\n");
+                // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                // eprintln!("\n\n");
             }
             {
                 // Dont forget to do this at the end

@@ -3,7 +3,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_extension::EncryptionStatus,
+        shinkai_message_extension::EncryptionStatus, shinkai_message_schemas::MessageSchemaType,
     },
     shinkai_utils::{
         encryption::{clone_static_secret_key, encryption_public_key_to_string},
@@ -72,7 +72,7 @@ pub async fn handle_based_on_message_content_and_encryption(
         (_, EncryptionStatus::ContentEncrypted) => {
             // TODO: save to db to send the profile when connected
             println!("{} > Content encrypted", receiver_address);
-            handle_other_cases(
+            handle_network_message_cases(
                 message,
                 sender_encryption_pk,
                 sender_address,
@@ -106,8 +106,8 @@ pub async fn handle_based_on_message_content_and_encryption(
             println!("{} > ACK from {:?}", receiver_address, unsafe_sender_address);
             Ok(())
         }
-        (_, _) => {
-            handle_other_cases(
+        (_, EncryptionStatus::NotCurrentlyEncrypted) => {
+            handle_network_message_cases(
                 message,
                 sender_encryption_pk,
                 sender_address,
@@ -201,8 +201,8 @@ pub async fn handle_default_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    _receiver_address: SocketAddr,
-    _unsafe_sender_address: SocketAddr,
+    receiver_address: SocketAddr,
+    unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
@@ -230,20 +230,21 @@ pub async fn handle_default_encryption(
             match message {
                 Ok(message_content) => {
                     if message_content != "ACK" {
-                        // TODO: add handler that checks for the Schema and decides what to do with the message
-                        // TODO: the message may be need to be added to an internal NetworkJobQueue
-                        // TODO: Create NetworkJobQueue Struct
-                        let _ = send_ack(
-                            (sender_address.clone(), sender_profile_name.clone()),
-                            clone_static_secret_key(my_encryption_secret_key),
-                            clone_signature_secret_key(my_signature_secret_key),
+                        // Call handle_other_cases after decrypting the payload
+                        handle_network_message_cases(
+                            decrypted_message,
                             sender_encryption_pk,
-                            my_node_profile_name.to_string(),
+                            sender_address,
                             sender_profile_name,
+                            my_encryption_secret_key,
+                            my_signature_secret_key,
+                            my_node_profile_name,
+                            receiver_address,
+                            unsafe_sender_address,
                             maybe_db,
                             maybe_identity_manager,
                         )
-                        .await;
+                        .await?;
                     }
                 }
                 Err(_) => {
@@ -271,7 +272,7 @@ pub async fn handle_default_encryption(
     }
 }
 
-pub async fn handle_other_cases(
+pub async fn handle_network_message_cases(
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
@@ -285,10 +286,11 @@ pub async fn handle_other_cases(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
     println!(
-        "{} > Got message from {:?}. Sending ACK",
+        "{} > Got message from {:?}. Processing and sending ACK",
         receiver_address, unsafe_sender_address
     );
     // Save to db
+    // TODO: should this be saved to the networkjobqueue instead?
     {
         Node::save_to_db(
             false,
@@ -299,6 +301,28 @@ pub async fn handle_other_cases(
         )
         .await?;
     }
+
+    // Check the schema of the message and decide what to do
+    // TODO: add handler that checks for the Schema and decides what to do with the message
+    // TODO: the message may be need to be added to an internal NetworkJobQueue
+    // TODO: Create NetworkJobQueue Struct
+    match message.get_message_content_schema() {
+        Ok(schema) => match schema {
+            MessageSchemaType::AvailableSharedItems => {
+                // Handle Schema1 specific logic
+                println!("Handling Schema1 specific logic");
+
+            },
+            _ => {
+                // Ignore other schemas
+                println!("Ignoring other schemas");
+            }
+        },
+        Err(e) => {
+            // Handle error case
+            println!("Error getting message schema: {:?}", e);
+        }
+    }    
 
     send_ack(
         (sender_address.clone(), sender_profile_name.clone()),

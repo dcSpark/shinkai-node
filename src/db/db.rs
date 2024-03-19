@@ -18,8 +18,7 @@ pub enum Topic {
     Toolkits,
     MessagesToRetry,
     TempFilesInbox,
-    JobQueues,
-    Subscriptions,
+    AnyQueuesPrefixed,
     CronQueues,
     NodeAndUsers,
     MessageBoxSymmetricKeys,
@@ -34,8 +33,7 @@ impl Topic {
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
             Self::TempFilesInbox => "temp_files_inbox",
-            Self::JobQueues => "jobs",
-            Self::Subscriptions => "subscriptions",
+            Self::AnyQueuesPrefixed => "any_queues_prefixed",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
@@ -77,8 +75,7 @@ impl ShinkaiDB {
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::TempFilesInbox.as_str().to_string(),
-                Topic::JobQueues.as_str().to_string(),
-                Topic::Subscriptions.as_str().to_string(),
+                Topic::AnyQueuesPrefixed.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
                 Topic::NodeAndUsers.as_str().to_string(),
             ]
@@ -92,6 +89,7 @@ impl ShinkaiDB {
                 "all_messages" => Some(47),
                 "temp_files_inbox" => Some(47),
                 "subscriptions" => Some(47),
+                "any_queues_prefixed" => Some(24),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);
