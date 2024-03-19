@@ -2,10 +2,10 @@ use reqwest::{Client, Error};
 use serde::{Deserialize, Serialize};
 use std::env;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PostDataResponse {
-    status: String,
-    data: serde_json::Value,
+    pub status: String,
+    pub data: serde_json::Value,
 }
 
 pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse, String> {
@@ -21,7 +21,10 @@ pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse,
         .await
     {
         Ok(response) => match response.json::<PostDataResponse>().await {
-            Ok(data) => Ok(data),
+            Ok(data) => {
+                dbg!(data.clone());
+                Ok(data)
+            }
             Err(e) => {
                 eprintln!("Error parsing response: {:?}", e);
                 Err(format!("Error parsing response: {:?}", e))

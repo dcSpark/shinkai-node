@@ -1,9 +1,11 @@
 use crate::communication;
+use base64::{engine::general_purpose, Engine as _};
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
 };
+use std::convert::TryInto;
 use std::env;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -61,7 +63,7 @@ impl ShinkaiManager {
         sender_subidentity: String,
         sender: ProfileName,
         receiver: ProfileName,
-    ) -> anyhow::Result<(), &'static str> {
+    ) -> anyhow::Result<Self, &'static str> {
         let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
             my_device_encryption_sk.clone(),
             my_device_signature_sk.clone(),
@@ -73,8 +75,6 @@ impl ShinkaiManager {
             receiver.clone(),
         );
 
-        dbg!(shinkai_message_result.clone());
-
         if shinkai_message_result.is_err() {
             return Err(shinkai_message_result.err().unwrap());
         }
@@ -85,9 +85,34 @@ impl ShinkaiManager {
             Ok(response) => {
                 println!("Successfully posted ShinkaiMessage. Response: {:?}", response);
 
+                let response_data = response.data;
+                let encryption_public_key = response_data["encryption_public_key"]
+                    .as_str()
+                    .expect("Failed to extract encryption_public_key");
+
+                let my_encryption_secret_key = my_device_encryption_sk.clone();
+                let my_signature_secret_key = my_device_signature_sk.clone();
+
+                let encryption_public_key_bytes = hex::decode(encryption_public_key).expect("Decoding failed");
+                let receiver_public_key_bytes: [u8; 32] = encryption_public_key_bytes
+                    .try_into()
+                    .expect("encryption_public_key_bytes with incorrect length");
+                let receiver_public_key = x25519_dalek::PublicKey::from(receiver_public_key_bytes);
+
+                let shinkai_manager = ShinkaiManager::new(
+                    my_encryption_secret_key,
+                    my_signature_secret_key,
+                    receiver_public_key,
+                    ProfileName::default(),
+                    String::default(),
+                    sender,
+                    sender_subidentity,
+                    receiver,
+                );
+
                 // TODO: store keys received from the respone in persistent storage so we can reuse them
                 // TODO: verify if there is better way to do that
-                return Ok(());
+                Ok(shinkai_manager)
             }
             Err(e) => {
                 eprintln!("Failed to post ShinkaiMessage. Error: {}", e);

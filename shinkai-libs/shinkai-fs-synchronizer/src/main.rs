@@ -6,9 +6,8 @@ pub mod visitor;
 use crate::shinkai_manager::ShinkaiManager;
 use crate::synchronizer::FilesystemSynchronizer;
 use dotenv::dotenv;
-use rand::Rng;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::env;
 
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
@@ -44,22 +43,33 @@ async fn main() {
     let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
     let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
 
+    let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
+    let sender_subidentity = env::var("DEVICE_NAME").expect("DEVICE_NAME must be set");
+    let receiver = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
+
+    let mut shinkai_manager: Option<ShinkaiManager> = None;
+
     loop {
         let check_health = ShinkaiManager::check_node_health().await;
         if check_health.is_ok() {
-            if let Err(e) = ShinkaiManager::initialize_node_connection(
+            match ShinkaiManager::initialize_node_connection(
                 my_device_encryption_sk.clone(),
                 my_device_signing_key.clone(),
                 profile_encryption_sk.clone(),
                 profile_signing_key.clone(),
                 "registration_name".to_string(),
-                "".to_string(),
-                "".to_string(),
-                String::default(),
+                sender_subidentity,
+                sender,
+                receiver,
             )
             .await
             {
-                eprintln!("Failed to initialize node connection: {}", e);
+                Ok(manager) => {
+                    shinkai_manager = Some(manager);
+                }
+                Err(e) => {
+                    eprintln!("Failed to initialize node connection: {}", e);
+                }
             }
             break;
         }
@@ -67,28 +77,8 @@ async fn main() {
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 
-    // connectio with the node was initialzied, we can assign initialized ShinkaiManager instance here
-    let my_encryption_secret_key = my_device_encryption_sk.clone();
-    let my_signature_secret_key = my_device_signing_key.clone();
-    let my_signature_secret_key = my_device_signing_key.clone();
-
-    let my_encryption_secret_key = EncryptionStaticKey::new(rand::rngs::OsRng);
-    let my_signature_secret_key = SigningKey::from_bytes(&[0; 32]);
-    let receiver_public_key = EncryptionPublicKey::from([0; 32]);
-
-    let shinkai_manager = ShinkaiManager::new(
-        my_encryption_secret_key,
-        my_signature_secret_key,
-        receiver_public_key,
-        ProfileName::default(),
-        String::default(),
-        "".to_string(),
-        "".to_string(),
-        "".to_string(),
-    );
-
     let syncing_folders = HashMap::new();
-    let mut synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
+    let _synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), syncing_folders);
 
     // synchronizer.traverse_and_synchronize(major_directory);
 
