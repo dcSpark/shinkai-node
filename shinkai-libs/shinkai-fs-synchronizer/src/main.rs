@@ -1,4 +1,5 @@
 pub mod communication;
+pub mod persistent;
 pub mod shinkai_manager;
 pub mod synchronizer;
 pub mod visitor;
@@ -14,12 +15,14 @@ use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+// TODO: move all envs to configuration variables initialized with custom values/yaml or default values
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     let major_directory = "knowledge";
 
-    let shinkai_manager = node_init().await;
+    let shinkai_manager = node_init().await.unwrap();
 
     let syncing_folders = HashMap::new();
     let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);

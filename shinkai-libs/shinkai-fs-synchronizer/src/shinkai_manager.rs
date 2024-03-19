@@ -1,13 +1,25 @@
-use crate::communication;
-use base64::{engine::general_purpose, Engine as _};
+use crate::{
+    communication::{self, generate_encryption_keys, generate_signature_keys},
+    persistent::Storage,
+};
 use ed25519_dalek::SigningKey;
+use serde::Deserialize;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
 };
-use std::convert::TryInto;
 use std::env;
+use std::{convert::TryInto, fs};
+use x25519_dalek::StaticSecret;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct NodeHealthStatus {
+    pub is_pristine: bool,
+    pub node_name: String,
+    pub status: String,
+    pub version: String,
+}
 
 #[derive(Clone)]
 pub struct ShinkaiManager {
@@ -34,12 +46,12 @@ impl ShinkaiManager {
         node_receiver_subidentity: ProfileName,
         profile_name: ProfileName,
     ) -> Self {
-        // TODO: all the keys to be read from other service directory (e.g. Shinkai Desktop)
         let shinkai_message_builder = ShinkaiMessageBuilder::new(
             my_encryption_secret_key.clone(),
             my_signature_secret_key.clone(),
             receiver_public_key,
         );
+
         Self {
             message_builder: shinkai_message_builder,
             my_encryption_secret_key,
@@ -54,74 +66,118 @@ impl ShinkaiManager {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn initialize_node_connection(
-        my_device_encryption_sk: EncryptionStaticKey,
-        my_device_signature_sk: SigningKey,
-        profile_encryption_sk: EncryptionStaticKey,
-        profile_signature_sk: SigningKey,
-        registration_name: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
-    ) -> anyhow::Result<Self, &'static str> {
-        let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
-            my_device_encryption_sk.clone(),
-            my_device_signature_sk.clone(),
-            profile_encryption_sk.clone(),
-            profile_signature_sk.clone(),
-            registration_name.clone(),
-            sender_subidentity.clone(),
-            sender.clone(),
-            receiver.clone(),
-        );
+    pub async fn initialize_node_connection(health_status: NodeHealthStatus) -> anyhow::Result<Self, &'static str> {
+        let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
+        let storage_path = env::var("SHINKAI_STORAGE_PATH").expect("SHINKAI_STORAGE_PATH must be set");
+        let local_storage_path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), storage_path);
 
-        if shinkai_message_result.is_err() {
-            return Err(shinkai_message_result.err().unwrap());
+        // Ensure the storage directory exists
+        fs::create_dir_all(&local_storage_path).expect("Failed to create storage directory");
+
+        let storage = Storage::new(local_storage_path, "node_keys.json".to_string());
+
+        let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
+        let sender_subidentity = env::var("DEVICE_NAME").expect("DEVICE_NAME must be set");
+        let receiver = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
+
+        if health_status.is_pristine {
+            let (my_device_encryption_sk, my_device_encryption_pk) = generate_encryption_keys().await;
+            let (my_device_signature_sk, my_device_signing_key) = generate_signature_keys().await;
+
+            let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
+            let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
+
+            let my_encryption_secret_key = my_device_encryption_sk.clone();
+            let my_signature_secret_key = my_device_signing_key.clone();
+
+            // this one is irrelevant here, because it will be overwritten by the encryption_publick_key from the node
+            let receiver_public_key = profile_encryption_pk.clone();
+
+            let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+                my_device_encryption_sk.clone(),
+                my_device_signing_key.clone(),
+                profile_encryption_sk.clone(),
+                profile_signing_key.clone(),
+                "registration_name".to_string(),
+                sender_subidentity.clone(),
+                sender.clone(),
+                receiver.clone(),
+            );
+
+            if shinkai_message_result.is_err() {
+                return Err(shinkai_message_result.err().unwrap());
+            }
+
+            let shinkai_message = shinkai_message_result.unwrap();
+            let shinkai_message_json =
+                serde_json::to_string(&shinkai_message).expect("Failed to serialize ShinkaiMessage");
+            match communication::request_post(shinkai_message_json, "/v1/use_registration_code").await {
+                Ok(response) => {
+                    println!("Successfully posted ShinkaiMessage. Response: {:?}", response);
+
+                    let response_data = response.data;
+                    let encryption_public_key = response_data["encryption_public_key"]
+                        .as_str()
+                        .expect("Failed to extract encryption_public_key");
+
+                    let my_encryption_secret_key = my_device_encryption_sk.clone();
+                    let my_signature_secret_key = my_device_signing_key.clone();
+
+                    let encryption_public_key_bytes = hex::decode(encryption_public_key).expect("Decoding failed");
+                    let receiver_public_key_bytes: [u8; 32] = encryption_public_key_bytes
+                        .try_into()
+                        .expect("encryption_public_key_bytes with incorrect length");
+                    let receiver_public_key = x25519_dalek::PublicKey::from(receiver_public_key_bytes);
+
+                    let _ = storage.write_encryption_secret_key(&my_encryption_secret_key);
+                    let _ = storage.write_signature_secret_key(&my_signature_secret_key);
+                    let _ = storage.write_receiver_public_key(&receiver_public_key);
+
+                    let shinkai_manager = ShinkaiManager::new(
+                        my_encryption_secret_key,
+                        my_signature_secret_key,
+                        receiver_public_key,
+                        ProfileName::default(),
+                        String::default(),
+                        sender,
+                        sender_subidentity,
+                        receiver,
+                    );
+
+                    // TODO: store keys received from the respone in persistent storage so we can reuse them
+                    // TODO: verify if there is better way to do that
+                    Ok(shinkai_manager)
+                }
+                Err(e) => {
+                    eprintln!("Failed to post ShinkaiMessage. Error: {}", e);
+                    Err("Failed to communicate with the endpoint")
+                }
+            }
+        } else {
+            let my_encryption_secret_key = storage.read_encryption_secret_key();
+            let my_signature_secret_key = storage.read_signature_secret_key();
+            let receiver_public_key = storage.read_receiver_public_key();
+
+            let shinkai_manager = ShinkaiManager::new(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                ProfileName::default(),
+                String::default(),
+                sender,
+                sender_subidentity,
+                receiver,
+            );
+
+            Ok(shinkai_manager)
         }
 
-        let shinkai_message = shinkai_message_result.unwrap();
-        let shinkai_message_json = serde_json::to_string(&shinkai_message).expect("Failed to serialize ShinkaiMessage");
-        match communication::request_post(shinkai_message_json, "/v1/use_registration_code").await {
-            Ok(response) => {
-                println!("Successfully posted ShinkaiMessage. Response: {:?}", response);
+        // if is pristine, run initial_registration
 
-                let response_data = response.data;
-                let encryption_public_key = response_data["encryption_public_key"]
-                    .as_str()
-                    .expect("Failed to extract encryption_public_key");
-
-                let my_encryption_secret_key = my_device_encryption_sk.clone();
-                let my_signature_secret_key = my_device_signature_sk.clone();
-
-                let encryption_public_key_bytes = hex::decode(encryption_public_key).expect("Decoding failed");
-                let receiver_public_key_bytes: [u8; 32] = encryption_public_key_bytes
-                    .try_into()
-                    .expect("encryption_public_key_bytes with incorrect length");
-                let receiver_public_key = x25519_dalek::PublicKey::from(receiver_public_key_bytes);
-
-                let shinkai_manager = ShinkaiManager::new(
-                    my_encryption_secret_key,
-                    my_signature_secret_key,
-                    receiver_public_key,
-                    ProfileName::default(),
-                    String::default(),
-                    sender,
-                    sender_subidentity,
-                    receiver,
-                );
-
-                // TODO: store keys received from the respone in persistent storage so we can reuse them
-                // TODO: verify if there is better way to do that
-                Ok(shinkai_manager)
-            }
-            Err(e) => {
-                eprintln!("Failed to post ShinkaiMessage. Error: {}", e);
-                Err("Failed to communicate with the endpoint")
-            }
-        }
+        // if not pristine, use keys stored in the storage
     }
 
-    pub async fn check_node_health() -> Result<(), &'static str> {
+    pub async fn check_node_health() -> Result<NodeHealthStatus, &'static str> {
         let shinkai_health_url = format!(
             "{}/v1/shinkai_health",
             env::var("SHINKAI_NODE_URL").expect("SHINKAI_NODE_URL must be set")
@@ -132,9 +188,13 @@ impl ShinkaiManager {
                 if response.status().is_success() {
                     let health_data: serde_json::Value =
                         response.json().await.expect("Failed to parse health check response");
-                    if health_data["status"] == "ok" {
+
+                    let health_status: NodeHealthStatus = serde_json::from_value(health_data.clone())
+                        .expect("Failed to parse health data into NodeHealthStatusPayload");
+
+                    if health_status.status == "ok" {
                         println!("Shinkai node is healthy.");
-                        Ok(())
+                        Ok(health_status)
                     } else {
                         eprintln!("Shinkai node health check failed.");
                         Err("Shinkai node health check failed")
@@ -169,7 +229,7 @@ impl ShinkaiManager {
                 let decoded_message = self.decode_message(shinkai_message).await;
                 // Assuming decodeMessage returns a Result<String, &'static str>, you can directly return its result here
                 // If decodeMessage's return type is not a Result, you need to adjust its implementation accordingly
-                return Ok(decoded_message); // Example conversion, adjust based on actual logic
+                Ok(decoded_message) // Example conversion, adjust based on actual logic
             }
             Err(e) => Err(e),
         }
