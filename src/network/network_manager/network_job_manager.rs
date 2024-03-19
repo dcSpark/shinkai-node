@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
@@ -21,6 +22,7 @@ use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use super::network_handlers::{extract_message, handle_based_on_message_content_and_encryption, verify_message_signature};
 use super::network_job_manager_error::NetworkJobQueueError;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -60,7 +62,7 @@ impl NetworkJobManager {
         node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
-        my_node_profile_name: String,
+        my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -96,7 +98,7 @@ impl NetworkJobManager {
             node.clone(),
             db.clone(),
             vector_fs.clone(),
-            my_node_profile_name.clone(),
+            my_node_name.clone(),
             clone_static_secret_key(&my_encryption_secret_key),
             clone_signature_secret_key(&my_signature_secret_key),
             thread_number,
@@ -137,7 +139,7 @@ impl NetworkJobManager {
         node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
-        my_node_profile_name: String,
+        my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         max_parallel_jobs: usize,
@@ -148,7 +150,7 @@ impl NetworkJobManager {
                 Weak<Mutex<Node>>,           // node
                 Weak<Mutex<ShinkaiDB>>,      // db
                 Weak<Mutex<VectorFS>>,       // vector_fs
-                String,                      // my_profile_name
+                ShinkaiName,                 // my_profile_name
                 EncryptionStaticKey,         // my_encryption_secret_key
                 SigningKey,                  // my_signature_secret_key
                 Arc<Mutex<IdentityManager>>, // identity_manager
@@ -310,18 +312,28 @@ impl NetworkJobManager {
         node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
-        my_node_profile_name: String,
+        my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<String, NetworkJobQueueError> {
-        // Your processing logic here. For example:
-        // 1. Upgrade the weak references to strong references if they are still alive.
-        // 2. Lock the mutexes to access the shared resources.
-        // 3. Process the job using the provided parameters.
 
-        // Placeholder for actual logic
-        Ok("Processed".to_string())
+        // TODO: Remove later
+        eprintln!("Processing job {:?}", job.receiver_address.to_string());
+
+        Self::handle_message_internode(
+            node,
+            job.receiver_address,
+            job.unsafe_sender_address,
+            &job.content,
+            my_node_profile_name.get_node_name(),
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            db,
+            identity_manager,
+        ).await;
+
+        Ok("OK".to_string())
     }
 
     pub async fn add_network_job_to_queue(
@@ -334,5 +346,98 @@ impl NetworkJobManager {
             .await;
 
         Ok(network_job.receiver_address.to_string())
+    }
+
+    pub async fn handle_message_internode(
+        node: Weak<Mutex<Node>>,
+        receiver_address: SocketAddr,
+        unsafe_sender_address: SocketAddr,
+        bytes: &[u8],
+        my_node_profile_name: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        maybe_db: Weak<Mutex<ShinkaiDB>>,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> Result<(), NetworkJobQueueError> {
+        let maybe_db = maybe_db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
+        );
+
+        // Extract and validate the message
+        let message = extract_message(bytes, receiver_address)?;
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Decoded Message: {:?}", receiver_address, message),
+        );
+
+        // Extract sender's public keys and verify the signature
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
+            .unwrap()
+            .get_node_name();
+        let sender_identity = maybe_identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&sender_profile_name_string)
+            .await
+            .unwrap();
+
+        verify_message_signature(sender_identity.node_signature_public_key, &message)?;
+
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "{} > Sender Profile Name: {:?}",
+                receiver_address, sender_profile_name_string
+            ),
+        );
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
+        );
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Verified message signature", receiver_address),
+        );
+
+        // // Save to db -- Previous
+        // {
+        //     Node::save_to_db(
+        //         false,
+        //         &message,
+        //         clone_static_secret_key(&my_encryption_secret_key),
+        //         maybe_db.clone(),
+        //         maybe_identity_manager.clone(),
+        //     )
+        //     .await?;
+        // }
+
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
+        );
+
+        handle_based_on_message_content_and_encryption(
+            message.clone(),
+            sender_identity.node_encryption_public_key,
+            sender_identity.addr.clone().unwrap(),
+            sender_profile_name_string,
+            &my_encryption_secret_key,
+            &my_signature_secret_key,
+            &my_node_profile_name,
+            maybe_db,
+            maybe_identity_manager,
+            receiver_address,
+            unsafe_sender_address,
+        )
+        .await
     }
 }

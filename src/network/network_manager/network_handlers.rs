@@ -1,4 +1,4 @@
-use crate::{db::ShinkaiDB, managers::IdentityManager, network::Node};
+use crate::{db::ShinkaiDB, managers::IdentityManager, network::{node_error::NodeError, Node}};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     shinkai_message::{
@@ -12,12 +12,12 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::node_error::NodeError;
+use super::network_job_manager_error::NetworkJobQueueError;
 
 pub enum PingPong {
     Ping,
@@ -36,7 +36,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
         MessageBody::Encrypted(body) => &body.content,
@@ -177,7 +177,7 @@ pub async fn handle_ping(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     ping_pong(
         (sender_address, sender_profile_name.clone()),
@@ -205,7 +205,7 @@ pub async fn handle_default_encryption(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
@@ -284,7 +284,7 @@ pub async fn handle_network_message_cases(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     println!(
         "{} > Got message from {:?}. Processing and sending ACK",
         receiver_address, unsafe_sender_address
@@ -346,7 +346,7 @@ pub async fn send_ack(
     receiver: ProfileName,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
@@ -386,7 +386,7 @@ pub async fn ping_pong(
     receiver: ProfileName,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> Result<(), NodeError> {
+) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
         PingPong::Pong => "Pong",

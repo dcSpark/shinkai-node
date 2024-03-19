@@ -63,7 +63,7 @@ impl Node {
         validate_message_main_logic(
             &self.encryption_secret_key,
             Arc::new(Mutex::new(identity_manager_trait)),
-            &self.node_profile_name,
+            &self.node_name,
             potentially_encrypted_msg,
             schema_type,
         )
@@ -658,7 +658,7 @@ impl Node {
             .as_str(),
         );
 
-        let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
+        let main_profile_exists = match db.main_profile_exists(self.node_name.get_node_name().as_str()) {
             Ok(exists) => exists,
             Err(err) => {
                 let _ = res
@@ -707,7 +707,7 @@ impl Node {
         let result = db
             .use_registration_code(
                 &code.clone(),
-                self.node_profile_name.get_node_name().as_str(),
+                self.node_name.get_node_name().as_str(),
                 registration_name.as_str(),
                 &profile_identity_pk,
                 &profile_encryption_pk,
@@ -720,13 +720,13 @@ impl Node {
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
         let mut profile_list = vec![];
-        profile_list = match db.get_all_profiles(self.node_profile_name.clone()) {
+        profile_list = match db.get_all_profiles(self.node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
         let mut vfs = self.vector_fs.lock().await;
         vfs.initialize_new_profiles(
-            &self.node_profile_name,
+            &self.node_name,
             profile_list,
             self.embedding_generator.model_type.clone(),
             NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
@@ -746,7 +746,7 @@ impl Node {
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile(
-                            self.node_profile_name.get_node_name(),
+                            self.node_name.get_node_name(),
                             registration_name.clone(),
                         );
 
@@ -779,7 +779,7 @@ impl Node {
                             Ok(_) => {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_profile_name.get_node_name().clone(),
+                                    node_name: self.node_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -819,7 +819,7 @@ impl Node {
                         {
                             let mut identity_manager = self.identity_manager.lock().await;
                             let profile_identity_name = ShinkaiName::from_node_and_profile(
-                                self.node_profile_name.get_node_name(),
+                                self.node_name.get_node_name(),
                                 profile_name.clone(),
                             )
                             .unwrap();
@@ -845,7 +845,7 @@ impl Node {
                         // Logic for handling device identity
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
                         let full_identity_name = ShinkaiName::from_node_and_profile_and_type_and_name(
-                            self.node_profile_name.get_node_name(),
+                            self.node_name.get_node_name(),
                             profile_name,
                             ShinkaiSubidentityType::Device,
                             registration_name.clone(),
@@ -885,7 +885,7 @@ impl Node {
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_profile_name.get_node_name().clone(),
+                                    node_name: self.node_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -1191,7 +1191,7 @@ impl Node {
             profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
         } else {
             profile_requested = ShinkaiName::from_node_and_profile(
-                self.node_profile_name.get_node_name(),
+                self.node_name.get_node_name(),
                 profile_requested_str.clone(),
             )
             .map_err(|err| err.to_string())?;
@@ -2256,7 +2256,7 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
+        if self.node_name.get_node_name() == "@@localhost.shinkai" {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),

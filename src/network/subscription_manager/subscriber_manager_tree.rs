@@ -1,7 +1,7 @@
 use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
-use crate::network::network_job::subscriber_manager_error::SubscriberManagerError;
+use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_error::VectorFSError;
