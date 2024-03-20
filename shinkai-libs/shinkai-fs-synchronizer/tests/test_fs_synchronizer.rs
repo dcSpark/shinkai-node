@@ -57,13 +57,14 @@ mod tests {
         use std::path::Path;
         dotenv::dotenv().ok();
 
-        // Setup - specify the main directory structure
-        let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
+        let major_directory = "tests/knowledge/";
+        let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(major_directory);
 
         let shinkai_manager = node_init().await;
 
         let syncing_folders = Arc::new(Mutex::new(HashMap::<LocalOSFolderPath, SyncingFolder>::new()));
-        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), syncing_folders);
+        let _synchronizer =
+            FilesystemSynchronizer::new(shinkai_manager.unwrap(), syncing_folders, major_directory.to_string());
 
         let visited_files = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
         let mock_visitor = MockDirectoryVisitor {
@@ -82,7 +83,8 @@ mod tests {
         dotenv::dotenv().ok();
 
         // Setup - specify the main directory structure
-        let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/knowledge/");
+        let major_directory = "tests/knowledge/";
+        let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(major_directory);
 
         let shinkai_manager = node_init().await;
 
@@ -90,7 +92,11 @@ mod tests {
         let sync_visitor = SyncFolderVisitor::new(syncing_folders);
         traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-        let synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), sync_visitor.syncing_folders);
+        let synchronizer = FilesystemSynchronizer::new(
+            shinkai_manager.unwrap(),
+            sync_visitor.syncing_folders,
+            major_directory.to_string(),
+        );
         synchronizer.synchronize().await;
     }
 

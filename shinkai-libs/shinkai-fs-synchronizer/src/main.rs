@@ -22,7 +22,8 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("knowledge/");
+    let major_directory = "knowledge/";
+    let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(major_directory);
 
     let shinkai_manager = match node_init().await {
         Ok(manager) => manager,
@@ -36,7 +37,11 @@ async fn main() {
     let sync_visitor = SyncFolderVisitor::new(syncing_folders);
     traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-    let synchronizer = FilesystemSynchronizer::new(shinkai_manager, sync_visitor.syncing_folders);
+    let synchronizer = FilesystemSynchronizer::new(
+        shinkai_manager,
+        sync_visitor.syncing_folders,
+        major_directory.to_string(),
+    );
 
     const MAX_RETRIES: u32 = 3;
     let mut attempts = 0;

@@ -6,7 +6,11 @@ use ed25519_dalek::SigningKey;
 use serde::Deserialize;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, encryption_secret_key_to_string},
+        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        signatures::signature_secret_key_to_string,
+    },
 };
 use std::env;
 use std::{convert::TryInto, fs};
@@ -82,6 +86,8 @@ impl ShinkaiManager {
         if health_status.is_pristine {
             let (my_device_encryption_sk, my_device_encryption_pk) = generate_encryption_keys().await;
             let (my_device_signature_sk, my_device_signing_key) = generate_signature_keys().await;
+
+            let my_device_signing_key = SigningKey::from(my_device_signature_sk.as_bytes());
 
             let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
             let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
@@ -209,31 +215,67 @@ impl ShinkaiManager {
     pub async fn get_node_folder(&mut self, path: &str) -> Result<String, &'static str> {
         println!("vecfs_retrieve_path_simplified");
 
-        println!("path: {:?}", path);
+        println!("Path: {}", path);
         println!(
-            "my_encryption_secret_key: {:#?}",
-            self.my_encryption_secret_key.to_bytes()
+            "My Encryption Secret Key: {}",
+            encryption_secret_key_to_string(self.my_encryption_secret_key.clone())
         );
-        println!("my_signature_secret_key: {:?}", self.my_signature_secret_key);
-        println!("receiver_public_key: {:?}", self.receiver_public_key);
-        println!("sender: {:?}", self.sender);
-        println!("sender_subidentity: {:?}", self.sender_subidentity);
-        println!("node_receiver: {:?}", self.node_receiver);
-        println!("node_receiver_subidentity: {:?}", self.node_receiver_subidentity);
+        println!(
+            "My Signature Secret Key: {}",
+            signature_secret_key_to_string(self.my_signature_secret_key.clone())
+        );
+        println!(
+            "Receiver Public Key: {}",
+            encryption_public_key_to_string(self.receiver_public_key)
+        );
+        println!("Sender: {}", self.sender.to_string());
+        println!("Sender Subidentity: {}", self.sender_subidentity);
+        println!("Node Receiver: {}", self.node_receiver.to_string());
+        println!(
+            "Node Receiver Subidentity: {}",
+            self.node_receiver_subidentity.to_string()
+        );
 
-        let shinkai_message = self.message_builder.vecfs_retrieve_path_simplified(
-            "/",
-            self.my_encryption_secret_key.clone(),
-            self.my_signature_secret_key.clone(),
-            self.receiver_public_key,
-            self.sender.clone(),
-            self.sender_subidentity.clone(),
-            self.node_receiver.clone(),
-            self.node_receiver_subidentity.clone(),
-        );
+        // this.encryptionSecretKey,
+        // this.signatureSecretKey,
+        // this.receiverPublicKey,
+        // path,
+        // this.shinkaiName,
+        // this.profileName,
+        // this.shinkaiName,
+        // ""
+
+        let shinkai_message = self
+            .message_builder
+            .vecfs_retrieve_path_simplified(
+                path,
+                self.my_encryption_secret_key.clone(),
+                self.my_signature_secret_key.clone(),
+                self.receiver_public_key,
+                self.sender.clone(),
+                self.sender_subidentity.clone(),
+                self.node_receiver.clone(),
+                "".to_string(),
+            )
+            .unwrap();
+
+        let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
+        let response = crate::communication::request_post(payload, "/v1/vec_fs/retrieve_path_simplified_json").await;
+
+        dbg!(response.clone());
+        let shinkai_message = match response {
+            Ok(data) => Ok(data.data),
+            Err(e) => {
+                eprintln!("Failed to retrieve node folder: {}", e);
+                Err("Failed to retrieve node folder")
+            }
+        };
 
         match shinkai_message {
-            Ok(shinkai_message) => {
+            Ok(shinkai_message_value) => {
+                // Assuming `shinkai_message_value` is of type `serde_json::Value`
+                let shinkai_message: ShinkaiMessage =
+                    serde_json::from_value(shinkai_message_value).expect("Failed to deserialize to ShinkaiMessage");
                 let decoded_message = self.decode_message(shinkai_message).await;
                 dbg!(decoded_message.clone());
                 Ok(decoded_message)

@@ -50,6 +50,8 @@ pub struct FilesystemSynchronizer {
     shinkai_manager: ShinkaiManager,
 
     syncing_queue: Arc<Mutex<Vec<SyncQueueItem>>>,
+
+    major_dir: String,
 }
 
 impl FilesystemSynchronizer {
@@ -57,6 +59,7 @@ impl FilesystemSynchronizer {
     pub fn new(
         shinkai_manager: ShinkaiManager,
         syncing_folders: Arc<Mutex<HashMap<LocalOSFolderPath, SyncingFolder>>>,
+        major_dir: String,
     ) -> Self {
         let (sender, _) = std::sync::mpsc::channel();
         FilesystemSynchronizer {
@@ -64,23 +67,21 @@ impl FilesystemSynchronizer {
             sender,
             shinkai_manager,
             syncing_queue: Arc::new(Mutex::new(Vec::new())),
+            major_dir,
         }
     }
 
     // start synchronization
     pub async fn synchronize(&self) -> anyhow::Result<()> {
         let syncing_folders = self.syncing_folders.clone();
-        let shinkai_manager = self.shinkai_manager.clone();
+        let mut shinkai_manager = self.shinkai_manager.clone();
         let syncing_queue = Arc::clone(&self.syncing_queue);
-
-        dbg!(syncing_folders.clone());
 
         for (path, folder) in syncing_folders.lock().unwrap().iter() {
             let dir_entries = std::fs::read_dir(&path.0)?;
             for entry in dir_entries {
                 let entry = entry?;
                 let metadata = entry.metadata()?;
-                dbg!(&metadata);
 
                 let modified_time = metadata.modified()?.elapsed()?.as_secs();
                 let file_datetime = match folder.last_synchronized_file_datetime {
@@ -103,15 +104,23 @@ impl FilesystemSynchronizer {
         // Sort the syncing queue based on file_datetime
         syncing_queue.lock().unwrap().sort_by_key(|k| k.file_datetime);
 
-        // Process the syncing queue
         let queue = syncing_queue.lock().unwrap().clone();
-        dbg!(queue.clone());
+        let major_dir_path = Path::new(&self.major_dir);
         for item in queue.iter() {
-            println!("Syncing file: {:?}", item.os_file_path);
+            let relative_path = item
+                .os_file_path
+                .strip_prefix(major_dir_path)
+                .map_or_else(|_| item.os_file_path.clone(), PathBuf::from);
+            let node_fs_path = relative_path
+                .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+                .unwrap_or(&relative_path);
+            println!("Syncing file: {:?}", node_fs_path);
+
+            shinkai_manager.get_node_folder("/").await;
+            shinkai_manager.create_folder("/", "test/");
 
             // every few seconds (configurable) save state of the SyncingFolder, so we can rebuild syncing queue
         }
-
         // clear the queue after processing
         syncing_queue.lock().unwrap().clear();
 
@@ -119,14 +128,13 @@ impl FilesystemSynchronizer {
     }
 
     pub fn add_syncing_folder(&mut self, path: String, folder: SyncingFolder) -> Result<(), String> {
-        // Check if the path exists and is accessible
         let path_buf = PathBuf::from(&folder.local_os_folder_path.0);
         if !path_buf.exists() || !path_buf.is_dir() {
             return Err("Specified path does not exist or is not a directory".to_string());
         }
 
         let mut folders = self.syncing_folders.lock().unwrap();
-        let local_os_folder_path = LocalOSFolderPath(path); // Convert String to LocalOSFolderPath
+        let local_os_folder_path = LocalOSFolderPath(path);
         if let std::collections::hash_map::Entry::Vacant(e) = folders.entry(local_os_folder_path) {
             e.insert(folder);
             Ok(())

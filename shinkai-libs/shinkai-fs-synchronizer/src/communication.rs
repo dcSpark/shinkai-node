@@ -41,13 +41,15 @@ pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse,
         Ok(response) => {
             // Print the payload before attempting to map it
             println!("response: {:?}", response);
-            match response.json::<PostDataResponse>().await {
-                Ok(data) => {
-                    dbg!(data.clone());
-                    Ok(data)
-                }
+            let response_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get response text".to_string());
+            match serde_json::from_str::<PostDataResponse>(&response_text) {
+                Ok(data) => Ok(data),
                 Err(e) => {
                     eprintln!("Error parsing response: {:?}", e);
+                    eprintln!("Response text: {}", response_text);
                     Err(format!("Error parsing response: {:?}", e))
                 }
             }
