@@ -10,7 +10,6 @@ use shinkai_message_primitives::{
 };
 use std::env;
 use std::{convert::TryInto, fs};
-use x25519_dalek::StaticSecret;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -162,8 +161,8 @@ impl ShinkaiManager {
                 my_encryption_secret_key,
                 my_signature_secret_key,
                 receiver_public_key,
-                ProfileName::default(),
-                String::default(),
+                sender.clone(),
+                sender_subidentity.clone(),
                 sender,
                 sender_subidentity,
                 receiver,
@@ -171,10 +170,6 @@ impl ShinkaiManager {
 
             Ok(shinkai_manager)
         }
-
-        // if is pristine, run initial_registration
-
-        // if not pristine, use keys stored in the storage
     }
 
     pub async fn check_node_health() -> Result<NodeHealthStatus, &'static str> {
@@ -213,8 +208,21 @@ impl ShinkaiManager {
 
     pub async fn get_node_folder(&mut self, path: &str) -> Result<String, &'static str> {
         println!("vecfs_retrieve_path_simplified");
+
+        println!("path: {:?}", path);
+        println!(
+            "my_encryption_secret_key: {:#?}",
+            self.my_encryption_secret_key.to_bytes()
+        );
+        println!("my_signature_secret_key: {:?}", self.my_signature_secret_key);
+        println!("receiver_public_key: {:?}", self.receiver_public_key);
+        println!("sender: {:?}", self.sender);
+        println!("sender_subidentity: {:?}", self.sender_subidentity);
+        println!("node_receiver: {:?}", self.node_receiver);
+        println!("node_receiver_subidentity: {:?}", self.node_receiver_subidentity);
+
         let shinkai_message = self.message_builder.vecfs_retrieve_path_simplified(
-            path,
+            "/",
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,
@@ -227,9 +235,8 @@ impl ShinkaiManager {
         match shinkai_message {
             Ok(shinkai_message) => {
                 let decoded_message = self.decode_message(shinkai_message).await;
-                // Assuming decodeMessage returns a Result<String, &'static str>, you can directly return its result here
-                // If decodeMessage's return type is not a Result, you need to adjust its implementation accordingly
-                Ok(decoded_message) // Example conversion, adjust based on actual logic
+                dbg!(decoded_message.clone());
+                Ok(decoded_message)
             }
             Err(e) => Err(e),
         }
@@ -241,7 +248,7 @@ impl ShinkaiManager {
             path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
-            self.receiver_public_key.clone(),
+            self.receiver_public_key,
             self.sender.clone(),
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),

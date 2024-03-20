@@ -10,8 +10,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[cfg(test)]
 mod tests {
     use shinkai_file_synchronizer::{
-        shinkai_manager::ShinkaiManager,
-        synchronizer::FilesystemSynchronizer,
+        synchronizer::{FilesystemSynchronizer, LocalOSFolderPath, SyncingFolder},
         visitor::{traverse_and_synchronize, DirectoryVisitor, SyncFolderVisitor},
     };
 
@@ -19,7 +18,6 @@ mod tests {
     use std::{
         collections::HashMap,
         fs,
-        net::{IpAddr, Ipv4Addr, SocketAddr},
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
@@ -64,7 +62,7 @@ mod tests {
 
         let shinkai_manager = node_init().await;
 
-        let syncing_folders = HashMap::new();
+        let syncing_folders = Arc::new(Mutex::new(HashMap::<LocalOSFolderPath, SyncingFolder>::new()));
         let _synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), syncing_folders);
 
         let visited_files = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
@@ -92,9 +90,7 @@ mod tests {
         let sync_visitor = SyncFolderVisitor::new(syncing_folders);
         traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-        let syncing_folders = sync_visitor.syncing_folders.lock().unwrap().clone();
-
-        let synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), syncing_folders);
+        let synchronizer = FilesystemSynchronizer::new(shinkai_manager.unwrap(), sync_visitor.syncing_folders);
         synchronizer.synchronize().await;
     }
 

@@ -8,11 +8,13 @@ use crate::shinkai_manager::ShinkaiManager;
 use crate::synchronizer::FilesystemSynchronizer;
 use communication::node_init;
 use dotenv::dotenv;
-use std::collections::HashMap;
-use std::env;
+use std::{
+    collections::HashMap,
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use visitor::{traverse_and_synchronize, SyncFolderVisitor};
 
-use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // TODO: move all envs to configuration variables initialized with custom values/yaml or default values
@@ -20,31 +22,42 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let major_directory = "knowledge";
+    let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("knowledge/");
 
-    let shinkai_manager = node_init().await.unwrap();
+    let shinkai_manager = match node_init().await {
+        Ok(manager) => manager,
+        Err(e) => {
+            eprintln!("Failed to initialize node: {}", e);
+            return;
+        }
+    };
 
-    let syncing_folders = HashMap::new();
-    let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders);
+    let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
+    let sync_visitor = SyncFolderVisitor::new(syncing_folders);
+    traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-    // synchronizer.traverse_and_synchronize(major_directory);
+    let synchronizer = FilesystemSynchronizer::new(shinkai_manager, sync_visitor.syncing_folders);
 
-    // // Add a syncing folder
-    // let folder = SyncingFolder {
-    //     profile_name: "profile1".to_string(),
-    //     vector_fs_path: "vector/path".to_string(),
-    //     local_os_folder_path: "local/path".to_string(),
-    //     last_synchronized_file_datetime: "2021-07-21T15:00:00.000Z".to_string(),
-    // };
-    // synchronizer
-    //     .add_syncing_folder("local/path".to_string(), folder)
-    //     .unwrap();
+    const MAX_RETRIES: u32 = 3;
+    let mut attempts = 0;
 
-    // // Get current syncing folders map
-    // let current_folders = synchronizer.get_current_syncing_folders_map();
-    // println!("{:?}", current_folders);
-
-    // // Stop the synchronizer
-    // let final_folders = synchronizer.stop();
-    // println!("{:?}", final_folders);
+    loop {
+        attempts += 1;
+        match synchronizer.synchronize().await {
+            Ok(_) => {
+                println!("Synchronization successful.");
+                break;
+            }
+            Err(e) => {
+                eprintln!("Failed to synchronize on attempt {}: {}", attempts, e);
+                if attempts >= MAX_RETRIES {
+                    eprintln!("Reached maximum retry limit. Aborting.");
+                    break;
+                }
+                // TODO: implement a backoff strategy or a delay before retrying
+                // for now keep constant max retries and constant time to keep things simple for now
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
 }

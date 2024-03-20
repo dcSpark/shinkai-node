@@ -76,7 +76,7 @@ pub async fn generate_signature_keys() -> (x25519_dalek::StaticSecret, SigningKe
 pub async fn node_init() -> anyhow::Result<ShinkaiManager> {
     loop {
         let check_health_result = ShinkaiManager::check_node_health().await;
-        let check_health = check_health_result.map_err(|e| anyhow::Error::msg(e))?;
+        let check_health = check_health_result.map_err(anyhow::Error::msg)?;
 
         if check_health.status == "ok" {
             match ShinkaiManager::initialize_node_connection(check_health).await {
