@@ -70,7 +70,7 @@ impl ShinkaiManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn initialize_node_connection(health_status: NodeHealthStatus) -> anyhow::Result<Self, &'static str> {
-        let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
+        // let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
         let storage_path = env::var("SHINKAI_STORAGE_PATH").expect("SHINKAI_STORAGE_PATH must be set");
         let local_storage_path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), storage_path);
 
@@ -79,30 +79,26 @@ impl ShinkaiManager {
 
         let storage = Storage::new(local_storage_path, "node_keys.json".to_string());
 
-        let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
         let sender_subidentity = env::var("DEVICE_NAME").expect("DEVICE_NAME must be set");
+        let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
         let receiver = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
 
         if health_status.is_pristine {
             let (my_device_encryption_sk, my_device_encryption_pk) = generate_encryption_keys().await;
-            let (my_device_signature_sk, my_device_signing_key) = generate_signature_keys().await;
+            let (my_device_signature_sk, _) = generate_signature_keys().await;
 
-            let my_device_signing_key = SigningKey::from(my_device_signature_sk.as_bytes());
+            let my_device_signature_sk = SigningKey::from(my_device_signature_sk.as_bytes());
 
             let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
             let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
 
-            let my_encryption_secret_key = my_device_encryption_sk.clone();
-            let my_signature_secret_key = my_device_signing_key.clone();
-
-            // this one is irrelevant here, because it will be overwritten by the encryption_publick_key from the node
-            let receiver_public_key = profile_encryption_pk.clone();
+            let profile_signature_sk = SigningKey::from(profile_signature_sk.as_bytes());
 
             let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
                 my_device_encryption_sk.clone(),
-                my_device_signing_key.clone(),
+                my_device_signature_sk.clone(),
                 profile_encryption_sk.clone(),
-                profile_signing_key.clone(),
+                profile_signature_sk.clone(),
                 "registration_name".to_string(),
                 sender_subidentity.clone(),
                 sender.clone(),
@@ -123,10 +119,10 @@ impl ShinkaiManager {
                     let response_data = response.data;
                     let encryption_public_key = response_data["encryption_public_key"]
                         .as_str()
-                        .expect("Failed to extract encryption_public_key");
+                        .expect("Failed to extract encryption_public_key from node response");
 
                     let my_encryption_secret_key = my_device_encryption_sk.clone();
-                    let my_signature_secret_key = my_device_signing_key.clone();
+                    let my_signature_secret_key = my_device_signature_sk.clone();
 
                     let encryption_public_key_bytes = hex::decode(encryption_public_key).expect("Decoding failed");
                     let receiver_public_key_bytes: [u8; 32] = encryption_public_key_bytes
@@ -236,30 +232,21 @@ impl ShinkaiManager {
             self.node_receiver_subidentity.to_string()
         );
 
-        // this.encryptionSecretKey,
-        // this.signatureSecretKey,
-        // this.receiverPublicKey,
-        // path,
-        // this.shinkaiName,
-        // this.profileName,
-        // this.shinkaiName,
-        // ""
+        let shinkai_message = self.message_builder.vecfs_retrieve_path_simplified(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            "".to_string(),
+        );
+        //.unwrap();
 
-        let shinkai_message = self
-            .message_builder
-            .vecfs_retrieve_path_simplified(
-                path,
-                self.my_encryption_secret_key.clone(),
-                self.my_signature_secret_key.clone(),
-                self.receiver_public_key,
-                self.sender.clone(),
-                self.sender_subidentity.clone(),
-                self.node_receiver.clone(),
-                "".to_string(),
-            )
-            .unwrap();
+        dbg!(shinkai_message.clone());
 
-        let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
+        let payload = serde_json::to_string(&shinkai_message.unwrap()).expect("Failed to serialize shinkai_message");
         let response = crate::communication::request_post(payload, "/v1/vec_fs/retrieve_path_simplified_json").await;
 
         dbg!(response.clone());
