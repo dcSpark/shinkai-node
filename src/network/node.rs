@@ -305,6 +305,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIVecFSSearchItems {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -598,6 +602,7 @@ impl Node {
                             Some(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await?,
                             Some(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res }) => self.api_convert_files_and_save_to_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await?,
+                            Some(NodeCommand::APIVecFSSearchItems { msg, res }) => self.api_vec_fs_search_items(msg, res).await?,
                             Some(NodeCommand::APIVecFSCreateFolder { msg, res }) => self.api_vec_fs_create_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSMoveItem { msg, res }) => self.api_vec_fs_move_item(msg, res).await?,
                             Some(NodeCommand::APIVecFSCopyItem { msg, res }) => self.api_vec_fs_copy_item(msg, res).await?,
