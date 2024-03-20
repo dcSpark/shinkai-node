@@ -23,7 +23,7 @@ use parking_lot::deadlock;
 
 extern crate core_affinity;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 pub async fn main() {
 // Create a background thread which checks for deadlocks every 10s
     thread::spawn(move || {
