@@ -66,6 +66,10 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tiktoken-rs = "0.5.8"
 num_cpus = "1.16.0"
+console-subscriber = "0.2.0"
+tracing-mutex = "0.3.0"
+parking_lot = { version = "0.12.1", features = ["deadlock_detection"] }
+core_affinity = "0.8.1"
 
 [dependencies.opentelemetry]
 version = "0.21.0"
@@ -116,3 +120,6 @@ features = ["unstable"]
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
