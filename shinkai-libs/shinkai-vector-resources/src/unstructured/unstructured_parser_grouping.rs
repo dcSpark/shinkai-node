@@ -60,7 +60,7 @@ impl UnstructuredParser {
     #[cfg(feature = "native-http")]
     #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
-    /// for all of them.
+    /// for all of them in parallel.
     pub async fn generate_text_group_embeddings(
         text_groups: &Vec<GroupedText>,
         generator: Box<dyn EmbeddingGenerator>,
@@ -78,13 +78,21 @@ impl UnstructuredParser {
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
-        let mut embeddings = Vec::new();
+        let mut futures = Vec::new();
+
         for batch in texts.chunks(max_batch_size as usize) {
-            let batch_ids = &ids[..batch.len()];
-            match generator
-                .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
-                .await
-            {
+            let batch_texts = batch.to_vec();
+            let batch_ids = ids[..batch.len()].to_vec();
+            let generator_clone = generator.box_clone();
+            let future = async move { generator_clone.generate_embeddings(&batch_texts, &batch_ids).await };
+            futures.push(future);
+        }
+
+        let results = futures::future::join_all(futures).await;
+
+        let mut embeddings = Vec::new();
+        for result in results {
+            match result {
                 Ok(batch_embeddings) => {
                     embeddings.extend(batch_embeddings);
                 }
