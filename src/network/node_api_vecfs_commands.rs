@@ -17,7 +17,10 @@ use shinkai_message_primitives::{
         },
     },
 };
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
+use shinkai_vector_resources::{
+    source::DistributionInfo,
+    vector_resource::{BaseVectorResource, VRPath},
+};
 use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
 
 impl Node {
@@ -838,10 +841,22 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
+        // TODO: Decide how frontend relays distribution info so it can be properly added
+        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
+        let mut dist_files = vec![];
+        for file in files {
+            let distribution_info = DistributionInfo::new_auto(&file.0, None);
+            dist_files.push((file.0, file.1, distribution_info));
+        }
+
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais =
-            JobManager::process_files_into_vrkai(files, &self.embedding_generator, None, self.unstructured_api.clone())
-                .await?;
+        let processed_vrkais = JobManager::process_files_into_vrkai(
+            dist_files,
+            &self.embedding_generator,
+            None,
+            self.unstructured_api.clone(),
+        )
+        .await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();

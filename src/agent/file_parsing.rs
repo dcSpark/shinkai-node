@@ -124,10 +124,7 @@ impl JobManager {
             let mut source_map = SourceFileMap::new(HashMap::new());
             source_map.add_source_file(VRPath::root(), source);
 
-            processed_vrkais.push((
-                filename,
-                VRKai::from_base_vector_resource(resource, Some(source_map), None),
-            ))
+            processed_vrkais.push((filename, VRKai::from_base_vector_resource(resource, Some(source_map))))
         }
 
         Ok(processed_vrkais)
@@ -202,6 +199,7 @@ impl ParsingHelper {
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
         let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), file_name.clone(), unstructured_api).await?;
@@ -217,6 +215,7 @@ impl ParsingHelper {
             source,
             parsing_tags,
             max_node_size,
+            distribution_info,
         )
         .await
     }
@@ -241,6 +240,7 @@ impl ParsingHelper {
             source,
             parsing_tags,
             max_node_size,
+            distribution_info,
         )
         .await?;
 

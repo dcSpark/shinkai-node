@@ -427,7 +427,7 @@ impl FSItem {
                     last_read_datetime,
                     vr_last_saved_datetime,
                     source_file_map_last_saved,
-                    header.resource_distribution_info,
+                    header.resource_distribution_info.clone(),
                     vr_size,
                     sfm_size,
                     merkle_hash,

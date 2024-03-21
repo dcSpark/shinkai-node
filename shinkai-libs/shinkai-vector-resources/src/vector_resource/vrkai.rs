@@ -22,13 +22,12 @@ impl VRKaiVersion {
     }
 }
 
-/// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap/DistributionInfo.
+/// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap.
 /// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
-    pub distribution_info: Option<DistributionInfo>,
     pub version: VRKaiVersion,
 }
 
@@ -39,15 +38,10 @@ impl VRKai {
     }
 
     /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionInfo.
-    pub fn from_base_vector_resource(
-        resource: BaseVectorResource,
-        sfm: Option<SourceFileMap>,
-        distribution_info: Option<DistributionInfo>,
-    ) -> Self {
+    pub fn from_base_vector_resource(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
         VRKai {
             resource,
             sfm,
-            distribution_info,
             version: Self::default_vrkai_version(),
         }
     }
