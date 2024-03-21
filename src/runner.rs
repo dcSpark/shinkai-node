@@ -206,6 +206,12 @@ pub async fn initialize_node() -> Result<
         std::fs::write(secrets_file_path, secret_content).expect("Unable to write to .secret file");
     }
 
+    let db = ShinkaiDB::new(&main_db_path).unwrap_or_else(|e| {
+        eprintln!("Error: {:?}", e);
+        panic!("Failed to open database: {}", main_db_path)
+    });
+    let db_arc = Arc::new(Mutex::new(db));
+
     // Now that all core init data acquired, start running the node itself
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
     let node = Arc::new(tokio::sync::Mutex::new(
@@ -216,7 +222,7 @@ pub async fn initialize_node() -> Result<
             node_keys.encryption_secret_key.clone(),
             node_env.ping_interval,
             node_commands_receiver,
-            main_db_path.clone(),
+            db_arc.clone(),
             node_env.first_device_needs_registration_code,
             initial_agents,
             node_env.js_toolkit_executor_remote.clone(),
@@ -236,11 +242,6 @@ pub async fn initialize_node() -> Result<
     let identity_manager = {
         let node = start_node.lock().await;
         node.identity_manager.clone()
-    };
-
-    let shinkai_db = {
-        let node = start_node.lock().await;
-        node.db.clone()
     };
 
     // Node task
@@ -292,9 +293,9 @@ pub async fn initialize_node() -> Result<
         .await;
     });
 
-    let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
+    let db_arc_copy = Arc::downgrade(&db_arc.clone());
     let ws_server = tokio::spawn(async move {
-        init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
+        init_ws_server(&node_env, identity_manager, db_arc_copy).await;
     });
 
     // Return the node_commands_sender_copy and the tasks

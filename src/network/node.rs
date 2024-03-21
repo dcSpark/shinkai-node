@@ -372,7 +372,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
-        main_db_path: String,
+        db_arc: Arc<Mutex<ShinkaiDB>>,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -387,11 +387,6 @@ impl Node {
         }
 
         // Get public keys, and update the local node keys in the db
-        let db = ShinkaiDB::new(&main_db_path).unwrap_or_else(|e| {
-            eprintln!("Error: {:?}", e);
-            panic!("Failed to open database: {}", main_db_path)
-        });
-        let db_arc = Arc::new(Mutex::new(db));
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
