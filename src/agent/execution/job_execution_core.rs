@@ -16,7 +16,9 @@ use shinkai_message_primitives::{
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource};
+use shinkai_vector_resources::source::{
+    DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource,
+};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
 use std::result::Result::Ok;
@@ -529,8 +531,17 @@ impl JobManager {
             }
         };
 
+        // TODO: Decide how frontend relays distribution info so it can be properly added
+        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
+        let mut dist_files = vec![];
+        for file in files {
+            let distribution_info = DistributionInfo::new_auto(&file.0, None);
+            dist_files.push((file.0, file.1, distribution_info));
+        }
+
         let processed_vrkais =
-            JobManager::process_files_into_vrkai(files, &generator, agent.clone(), unstructured_api.clone()).await?;
+            JobManager::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
+                .await?;
 
         // Save the vrkai into scope (and potentially VectorFS)
         for (filename, vrkai) in processed_vrkais {

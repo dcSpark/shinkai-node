@@ -58,6 +58,7 @@ impl UnstructuredParser {
             parsing_tags,
             max_chunk_size,
             Self::collect_texts_and_indices,
+            distribution_info,
         )
         .await
     }
@@ -84,6 +85,7 @@ impl UnstructuredParser {
             parsing_tags,
             max_chunk_size,
             Self::collect_texts_and_indices,
+            distribution_info,
         )
     }
 

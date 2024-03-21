@@ -560,6 +560,7 @@ impl VRHeader {
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
         resource_keywords: VRKeywords,
+        resource_distribution_info: DistributionInfo,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -574,6 +575,7 @@ impl VRHeader {
             resource_embedding_model_used,
             resource_merkle_root,
             resource_keywords,
+            resource_distribution_info,
         }
     }
 
@@ -590,6 +592,7 @@ impl VRHeader {
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
         resource_keywords: VRKeywords,
+        resource_distribution_info: DistributionInfo,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -611,6 +614,7 @@ impl VRHeader {
             resource_embedding_model_used,
             resource_merkle_root,
             resource_keywords,
+            resource_distribution_info,
         })
     }
 

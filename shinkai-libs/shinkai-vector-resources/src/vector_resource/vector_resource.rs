@@ -293,6 +293,7 @@ pub trait VectorResourceCore: Send + Sync {
             self.embedding_model_used(),
             merkle_root,
             keywords,
+            self.distribution_info().clone(),
         )
     }
 

@@ -19,6 +19,16 @@ impl DistributionInfo {
         }
     }
 
+    /// Creates a new instance of DistributionInfo with auto-detecting origin based on file name
+    pub fn new_auto(file_name: &str, release_datetime: Option<DateTime<Utc>>) -> Self {
+        let origin = DistributionOrigin::new_auto(file_name);
+
+        Self {
+            origin,
+            release_datetime,
+        }
+    }
+
     /// Creates a new, empty instance of DistributionInfo with no origin and no release_datetime
     pub fn new_empty() -> Self {
         Self {
@@ -35,10 +45,33 @@ pub enum DistributionOrigin {
     Uri(String),
     ShinkaiNode((ShinkaiNameString, VRPath)),
     Other(String),
-    None,
 }
 
 impl DistributionOrigin {
+    /// Creates a new instance with auto-detecting origin based on input name/source string
+    pub fn new_auto(input: &str) -> Option<Self> {
+        if input.starts_with("http://")
+            || input.starts_with("https://")
+            || input.starts_with("ipfs://")
+            || input.starts_with("ar://")
+        {
+            Some(DistributionOrigin::Uri(input.to_string()))
+        } else if input.starts_with("@@") {
+            let parts: Vec<&str> = input.splitn(2, '/').collect();
+            if parts.len() == 2 {
+                let name_string = parts[0].to_string();
+                let vr_path_part = parts[1];
+                if let Some(vr_path_index) = vr_path_part.find("/vec_fs") {
+                    let vr_path = vr_path_part[vr_path_index..].to_string();
+                    return Some(DistributionOrigin::ShinkaiNode((name_string, VRPath(vr_path))));
+                }
+            }
+            None
+        } else {
+            None
+        }
+    }
+
     // Converts the DistributionOrigin to a JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)

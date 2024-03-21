@@ -100,6 +100,7 @@ impl UnstructuredAPI {
             source,
             parsing_tags,
             max_chunk_size,
+            distribution_info,
         )
         .await
     }
