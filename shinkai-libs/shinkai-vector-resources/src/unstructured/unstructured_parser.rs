@@ -20,10 +20,16 @@ impl UnstructuredParser {
         if let JsonValue::Array(array) = &json {
             let mut elements = Vec::new();
             for item in array {
-                let element: UnstructuredElement = serde_json::from_value(item.clone()).map_err(|err| {
-                    VRError::FailedParsingUnstructedAPIJSON(format!("{}: {}", err.to_string(), json.to_string()))
-                })?;
-                elements.push(element);
+                let el = serde_json::from_value(item.clone());
+                if let Ok(element) = el {
+                    elements.push(element);
+                } else if let Err(err) = el {
+                    eprintln!(
+                        "Failed parsing Unstructured element JSON: {}  --- {}",
+                        err.to_string(),
+                        json.to_string()
+                    );
+                }
             }
             Ok(elements)
         } else {
