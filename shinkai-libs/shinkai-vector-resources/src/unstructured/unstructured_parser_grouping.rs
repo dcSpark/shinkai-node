@@ -60,7 +60,7 @@ impl UnstructuredParser {
     #[cfg(feature = "native-http")]
     #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
-    /// for all of them in parallel.
+    /// for all of them in parallel, processing up to 10 futures at a time.
     pub async fn generate_text_group_embeddings(
         text_groups: &Vec<GroupedText>,
         generator: Box<dyn EmbeddingGenerator>,
@@ -78,37 +78,48 @@ impl UnstructuredParser {
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
-        let mut futures = Vec::new();
+        let mut all_futures = Vec::new();
+        let mut current_batch_futures = Vec::new();
 
-        for batch in texts.chunks(max_batch_size as usize) {
+        for (index, batch) in texts.chunks(max_batch_size as usize).enumerate() {
             let batch_texts = batch.to_vec();
             let batch_ids = ids[..batch.len()].to_vec();
-            let generator_clone = generator.box_clone();
+            let generator_clone = generator.box_clone(); // Clone the generator for use in the future.
+
+            // Use the `move` keyword to take ownership of `generator_clone` inside the async block.
             let future = async move { generator_clone.generate_embeddings(&batch_texts, &batch_ids).await };
-            futures.push(future);
+            current_batch_futures.push(future);
+
+            // If we've collected 10 futures or are at the last batch, add them to all_futures and start a new vector
+            if current_batch_futures.len() == 10 || index == texts.chunks(max_batch_size as usize).count() - 1 {
+                all_futures.push(current_batch_futures);
+                current_batch_futures = Vec::new();
+            }
         }
 
-        let results = futures::future::join_all(futures).await;
-
+        // Process each group of up to 10 futures in sequence
         let mut embeddings = Vec::new();
-        for result in results {
-            match result {
-                Ok(batch_embeddings) => {
-                    embeddings.extend(batch_embeddings);
-                }
-                Err(e) => {
-                    if max_batch_size > 5 {
-                        max_batch_size -= 5;
-                        return Self::generate_text_group_embeddings(
-                            &text_groups,
-                            generator,
-                            max_batch_size,
-                            max_chunk_size,
-                            collect_texts_and_indices,
-                        )
-                        .await;
-                    } else {
-                        return Err(e);
+        for futures_group in all_futures {
+            let results = futures::future::join_all(futures_group).await;
+            for result in results {
+                match result {
+                    Ok(batch_embeddings) => {
+                        embeddings.extend(batch_embeddings);
+                    }
+                    Err(e) => {
+                        if max_batch_size > 5 {
+                            max_batch_size -= 5;
+                            return Self::generate_text_group_embeddings(
+                                &text_groups,
+                                generator,
+                                max_batch_size,
+                                max_chunk_size,
+                                collect_texts_and_indices,
+                            )
+                            .await;
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
