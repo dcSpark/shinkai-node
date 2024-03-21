@@ -426,6 +426,7 @@ impl NetworkJobManager {
         );
 
         handle_based_on_message_content_and_encryption(
+            node.clone(),
             message.clone(),
             sender_identity.node_encryption_public_key,
             sender_identity.addr.clone().unwrap(),

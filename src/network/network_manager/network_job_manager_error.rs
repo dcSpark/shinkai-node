@@ -1,5 +1,7 @@
 use std::fmt;
 
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
+
 // Define your new error type
 #[derive(Debug)]
 pub enum NetworkJobQueueError {
@@ -37,5 +39,11 @@ impl std::error::Error for NetworkJobQueueError {}
 impl From<std::io::Error> for NetworkJobQueueError {
     fn from(err: std::io::Error) -> NetworkJobQueueError {
         NetworkJobQueueError::Other(format!("{}", err))
+    }
+}
+
+impl From<ShinkaiNameError> for NetworkJobQueueError {
+    fn from(err: ShinkaiNameError) -> NetworkJobQueueError {
+        NetworkJobQueueError::Other(format!("ShinkaiName error: {}", err))
     }
 }

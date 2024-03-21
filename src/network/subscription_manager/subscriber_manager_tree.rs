@@ -9,6 +9,7 @@ use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
@@ -25,41 +26,8 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
 
+use super::fs_item_tree::FSItemTree;
 use super::subscriber_manager::SubscriberManager;
-
-#[derive(Debug, Clone)]
-pub struct FSItemTree {
-    pub name: String,
-    pub path: String,
-    pub last_modified: DateTime<Utc>,
-    pub children: HashMap<String, Arc<FSItemTree>>,
-}
-
-impl FSItemTree {
-    // Method to transform the tree into a visually pleasant JSON string
-    pub fn to_pretty_json(&self) -> serde_json::Value {
-        json!({
-            "name": self.name,
-            "path": self.path,
-            "last_modified": self.last_modified.to_rfc3339(),
-            "children": self.children.iter().map(|(_, child)| child.to_pretty_json()).collect::<Vec<_>>(),
-        })
-    }
-
-    // Optionally, if you want to print it directly in a more human-readable format
-    pub fn pretty_print(&self, indent: usize) {
-        println!(
-            "{}- {} ({}) [Last Modified: {}]",
-            " ".repeat(indent * 2),
-            self.name,
-            self.path,
-            self.last_modified.format("%Y-%m-%d %H:%M:%S")
-        );
-        for child in self.children.values() {
-            child.pretty_print(indent + 1);
-        }
-    }
-}
 
 impl SubscriberManager {
     pub async fn shared_folders_to_tree(

@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
 
-use super::subscriber_manager_tree::FSItemTree;
+use super::fs_item_tree::FSItemTree;
 
 // Message
 
@@ -223,15 +223,18 @@ impl SubscriberManager {
             }
         }
 
+        // TODO: convert eprintlns to shinkai_logs
         eprintln!("Shared folders to tree...");
         let tree = self
             .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
             .await?;
 
         self.shared_folders_trees.insert(path.clone(), Arc::new(tree.clone()));
+        // TODO: Remove this
         tree.pretty_print(0);
 
         // TODO: should we return a tree? so you can see the structure of the folders?
+        // Maybe you can generate it yourself fwiw
         Ok(converted_results)
     }
 

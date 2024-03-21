@@ -39,7 +39,6 @@ use super::{
 
 impl ShinkaiMessageBuilder {
     fn create_vecfs_message(
-        &mut self,
         payload: impl Serialize,
         schema_type: MessageSchemaType,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -68,7 +67,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_create_folder(
-        &mut self,
         folder_name: &str,
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -84,7 +82,7 @@ impl ShinkaiMessageBuilder {
             folder_name: folder_name.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsCreateFolder,
             my_encryption_secret_key,
@@ -98,7 +96,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_move_folder(
-        &mut self,
         origin_path: &str,
         destination_path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -114,7 +111,7 @@ impl ShinkaiMessageBuilder {
             destination_path: destination_path.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsMoveFolder,
             my_encryption_secret_key,
@@ -128,7 +125,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_copy_folder(
-        &mut self,
         origin_path: &str,
         destination_path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -144,7 +140,7 @@ impl ShinkaiMessageBuilder {
             destination_path: destination_path.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsCopyFolder,
             my_encryption_secret_key,
@@ -158,7 +154,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_move_item(
-        &mut self,
         origin_path: &str,
         destination_path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -174,7 +169,7 @@ impl ShinkaiMessageBuilder {
             destination_path: destination_path.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsMoveItem,
             my_encryption_secret_key,
@@ -188,7 +183,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_copy_item(
-        &mut self,
         origin_path: &str,
         destination_path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -204,7 +198,7 @@ impl ShinkaiMessageBuilder {
             destination_path: destination_path.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsCopyItem,
             my_encryption_secret_key,
@@ -218,7 +212,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_create_items(
-        &mut self,
         destination_path: &str,
         file_inbox: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -234,7 +227,7 @@ impl ShinkaiMessageBuilder {
             file_inbox: file_inbox.to_string(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::ConvertFilesAndSaveToFolder,
             my_encryption_secret_key,
@@ -248,7 +241,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_retrieve_resource(
-        &mut self,
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -260,7 +252,7 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFSRetrieveVectorResource { path: path.to_string() };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsRetrieveVectorResource,
             my_encryption_secret_key,
@@ -274,7 +266,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_retrieve_path_simplified(
-        &mut self,
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -286,7 +277,7 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsRetrievePathSimplifiedJson,
             my_encryption_secret_key,
@@ -300,7 +291,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_retrieve_vector_search_simplified(
-        &mut self,
         search: &str,
         path: Option<&str>,
         max_results: Option<&usize>,
@@ -320,9 +310,33 @@ impl ShinkaiMessageBuilder {
             max_files_to_scan: max_files_to_scan.copied(),
         };
 
-        self.create_vecfs_message(
+        Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn vecfs_available_shared_items_response(
+        results: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+
+        Self::create_vecfs_message(
+            results,
+            MessageSchemaType::AvailableSharedItemsResponse,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
