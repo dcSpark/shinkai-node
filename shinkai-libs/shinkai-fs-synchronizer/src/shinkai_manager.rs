@@ -9,7 +9,7 @@ use shinkai_message_primitives::{
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, encryption_secret_key_to_string},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-        signatures::signature_secret_key_to_string,
+        signatures::{ephemeral_signature_keypair, signature_secret_key_to_string},
     },
 };
 use std::env;
@@ -55,6 +55,12 @@ impl ShinkaiManager {
             receiver_public_key,
         );
 
+        println!("sender: {:?}", sender);
+        println!("sender_subidentity: {:?}", sender_subidentity);
+        println!("node_receiver: {:?}", node_receiver);
+        println!("node_receiver_subidentity: {:?}", node_receiver_subidentity);
+        println!("profile_name: {:?}", profile_name);
+
         Self {
             message_builder: shinkai_message_builder,
             my_encryption_secret_key,
@@ -83,16 +89,21 @@ impl ShinkaiManager {
         let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
         let receiver = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
 
+        println!("sender_subidentity: {}", sender_subidentity);
+        println!("sender: {}", sender);
+
         if health_status.is_pristine {
-            let (my_device_encryption_sk, my_device_encryption_pk) = generate_encryption_keys().await;
-            let (my_device_signature_sk, _) = generate_signature_keys().await;
+            let (encryption_secret_key, encryption_public_key) = ephemeral_signature_keypair();
+            let (identity_secret_key, identity_public_key) = ephemeral_signature_keypair();
 
-            let my_device_signature_sk = SigningKey::from(my_device_signature_sk.as_bytes());
+            let my_device_encryption_sk_bytes = encryption_secret_key.as_bytes();
+            let my_device_encryption_sk: EncryptionStaticKey =
+                x25519_dalek::StaticSecret::from(*my_device_encryption_sk_bytes);
 
-            let (profile_encryption_sk, profile_encryption_pk) = generate_encryption_keys().await;
-            let (profile_signature_sk, profile_signing_key) = generate_signature_keys().await;
-
-            let profile_signature_sk = SigningKey::from(profile_signature_sk.as_bytes());
+            let my_device_signature_sk = identity_secret_key.clone();
+            let profile_encryption_sk: EncryptionStaticKey =
+                x25519_dalek::StaticSecret::from(*encryption_secret_key.as_bytes());
+            let profile_signature_sk = identity_secret_key.clone();
 
             let shinkai_message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
                 my_device_encryption_sk.clone(),
@@ -138,8 +149,8 @@ impl ShinkaiManager {
                         my_encryption_secret_key,
                         my_signature_secret_key,
                         receiver_public_key,
-                        ProfileName::default(),
-                        String::default(),
+                        sender.clone(),
+                        sender_subidentity.clone(),
                         sender,
                         sender_subidentity,
                         receiver,
@@ -232,21 +243,23 @@ impl ShinkaiManager {
             self.node_receiver_subidentity.to_string()
         );
 
-        let shinkai_message = self.message_builder.vecfs_retrieve_path_simplified(
-            path,
-            self.my_encryption_secret_key.clone(),
-            self.my_signature_secret_key.clone(),
-            self.receiver_public_key,
-            self.sender.clone(),
-            self.sender_subidentity.clone(),
-            self.node_receiver.clone(),
-            "".to_string(),
-        );
-        //.unwrap();
+        let shinkai_message = self
+            .message_builder
+            .vecfs_retrieve_path_simplified(
+                path,
+                self.my_encryption_secret_key.clone(),
+                self.my_signature_secret_key.clone(),
+                self.receiver_public_key,
+                self.sender.clone(),
+                self.sender_subidentity.clone(),
+                self.node_receiver.clone(),
+                "".to_string(),
+            )
+            .unwrap();
 
         dbg!(shinkai_message.clone());
 
-        let payload = serde_json::to_string(&shinkai_message.unwrap()).expect("Failed to serialize shinkai_message");
+        let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
         let response = crate::communication::request_post(payload, "/v1/vec_fs/retrieve_path_simplified_json").await;
 
         dbg!(response.clone());
