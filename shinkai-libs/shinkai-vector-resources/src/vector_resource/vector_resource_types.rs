@@ -3,6 +3,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
+use crate::source::DistributionInfo;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -537,6 +538,7 @@ pub struct VRHeader {
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
     pub resource_keywords: VRKeywords,
+    pub resource_distribution_info: DistributionInfo,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes
@@ -558,6 +560,7 @@ impl VRHeader {
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
         resource_keywords: VRKeywords,
+        resource_distribution_info: DistributionInfo,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -572,6 +575,7 @@ impl VRHeader {
             resource_embedding_model_used,
             resource_merkle_root,
             resource_keywords,
+            resource_distribution_info,
         }
     }
 
@@ -588,6 +592,7 @@ impl VRHeader {
         resource_embedding_model_used: EmbeddingModelType,
         resource_merkle_root: Option<String>,
         resource_keywords: VRKeywords,
+        resource_distribution_info: DistributionInfo,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -609,6 +614,7 @@ impl VRHeader {
             resource_embedding_model_used,
             resource_merkle_root,
             resource_keywords,
+            resource_distribution_info,
         })
     }
 

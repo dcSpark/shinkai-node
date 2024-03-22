@@ -12,7 +12,7 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{
-    DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
+    DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{
@@ -72,6 +72,7 @@ pub async fn get_shinkai_intro_doc_async(
         data_tags,
         500,
         UnstructuredAPI::new_default(),
+        DistributionInfo::new_empty(),
     )
     .await
     .unwrap();
@@ -160,7 +161,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
         .unwrap();
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
@@ -250,7 +251,6 @@ async fn test_vector_fs_saving_reading() {
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
-            None,
         )
         .unwrap();
 
@@ -513,7 +513,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let first_folder_item = vector_fs
-        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
         .unwrap();
 
     //

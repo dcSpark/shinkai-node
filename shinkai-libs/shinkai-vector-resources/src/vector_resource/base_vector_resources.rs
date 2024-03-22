@@ -48,7 +48,7 @@ impl BaseVectorResource {
 
     /// Converts the BaseVectorResource into a VRKai instance using the previously defined from_base_vector_resource method.
     pub fn to_vrkai(self) -> VRKai {
-        VRKai::from_base_vector_resource(self, None, None)
+        VRKai::from_base_vector_resource(self, None)
     }
 
     /// Converts the BaseVectorResource into a JSON string (without the enum wrapping JSON)
