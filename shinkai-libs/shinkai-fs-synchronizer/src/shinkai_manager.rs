@@ -16,12 +16,43 @@ use std::env;
 use std::{convert::TryInto, fs};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use hex::decode;
+use libsodium_sys::*;
+use std::str;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct NodeHealthStatus {
     pub is_pristine: bool,
     pub node_name: String,
     pub status: String,
     pub version: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct DeviceKeys {
+    pub my_device_encryption_pk: String,
+    pub my_device_encryption_sk: String,
+    pub my_device_identity_pk: String,
+    pub my_device_identity_sk: String,
+    pub profile_encryption_pk: String,
+    pub profile_encryption_sk: String,
+    pub profile_identity_pk: String,
+    pub profile_identity_sk: String,
+    pub profile: String,
+    pub identity_type: String,
+    pub permission_type: String,
+    pub shinkai_identity: String,
+    pub registration_code: String,
+    pub node_encryption_pk: String,
+    pub node_address: String,
+    pub registration_name: String,
+    pub node_signature_pk: String,
+}
+
+impl DeviceKeys {
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json_str)
+    }
 }
 
 #[derive(Clone)]
@@ -54,12 +85,6 @@ impl ShinkaiManager {
             my_signature_secret_key.clone(),
             receiver_public_key,
         );
-
-        println!("sender: {:?}", sender);
-        println!("sender_subidentity: {:?}", sender_subidentity);
-        println!("node_receiver: {:?}", node_receiver);
-        println!("node_receiver_subidentity: {:?}", node_receiver_subidentity);
-        println!("profile_name: {:?}", profile_name);
 
         Self {
             message_builder: shinkai_message_builder,
@@ -367,5 +392,65 @@ impl ShinkaiManager {
         // Deserialize the content into a JSON object
         let content: serde_json::Value = serde_json::from_str(&content).unwrap();
         content.to_string()
+    }
+
+    pub fn decrypt_exported_keys(encrypted_body: &str, passphrase: &str) -> Result<DeviceKeys, &'static str> {
+        unsafe {
+            if libsodium_sys::sodium_init() == -1 {
+                return Err("Failed to initialize libsodium");
+            }
+
+            if !encrypted_body.starts_with("encrypted:") {
+                return Err("Unexpected variant");
+            }
+
+            let content = &encrypted_body["encrypted:".len()..];
+            let salt_hex = &content[..32];
+            let nonce_hex = &content[32..56];
+            let ciphertext_hex = &content[56..];
+
+            let salt = decode(salt_hex).map_err(|_| "Failed to decode salt")?;
+            let nonce = decode(nonce_hex).map_err(|_| "Failed to decode nonce")?;
+            let ciphertext = decode(ciphertext_hex).map_err(|_| "Failed to decode ciphertext")?;
+
+            let mut key = vec![0u8; 32];
+
+            let pwhash_result = crypto_pwhash(
+                key.as_mut_ptr(),
+                key.len() as u64,
+                passphrase.as_ptr() as *const i8,
+                passphrase.len() as u64,
+                salt.as_ptr(),
+                crypto_pwhash_OPSLIMIT_INTERACTIVE as u64,
+                crypto_pwhash_MEMLIMIT_INTERACTIVE as usize,
+                crypto_pwhash_ALG_DEFAULT as i32,
+            );
+
+            if pwhash_result != 0 {
+                return Err("Key derivation failed");
+            }
+
+            let mut decrypted_data = vec![0u8; ciphertext.len() - crypto_aead_chacha20poly1305_IETF_ABYTES as usize];
+            let mut decrypted_len = 0u64;
+
+            let decryption_result = crypto_aead_chacha20poly1305_ietf_decrypt(
+                decrypted_data.as_mut_ptr(),
+                &mut decrypted_len,
+                std::ptr::null_mut(),
+                ciphertext.as_ptr(),
+                ciphertext.len() as u64,
+                std::ptr::null(),
+                0,
+                nonce.as_ptr() as *const u8,
+                key.as_ptr(),
+            );
+            if decryption_result != 0 {
+                return Err("Decryption failed");
+            }
+
+            decrypted_data.truncate(decrypted_len as usize);
+            let decrypted_str = String::from_utf8(decrypted_data).map_err(|_| "Failed to decode decrypted data")?;
+            serde_json::from_str(&decrypted_str).map_err(|_| "Failed to parse decrypted data into DeviceKeys")
+        }
     }
 }
