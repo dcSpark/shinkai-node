@@ -36,7 +36,7 @@ pub enum VRError {
     VectorResourceIsNotMerkelized(String),
     VRKaiParsingError(String),
     UnsupportedVRKaiVersion(String),
-
+    InvalidSimplifiedFSEntryType(String),
 }
 
 impl fmt::Display for VRError {
@@ -85,6 +85,7 @@ impl fmt::Display for VRError {
             VRError::VectorResourceIsNotMerkelized(ref s) => write!(f, "The Vector Resource is not merkelized, and thus cannot perform merkel-related functionality: {}", s),
             VRError::VRKaiParsingError(ref s) => write!(f, "Failed to parse contents into VRKai struct: {}", s),
             VRError::UnsupportedVRKaiVersion(ref s) => write!(f, "Unsupported VRKai version: {}", s),
+            VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
  
         }
     }

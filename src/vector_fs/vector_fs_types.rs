@@ -61,8 +61,20 @@ impl FSEntry {
         }
     }
 
-    /// Creates a FSEntry from a JSON string
-    pub fn from_json(s: &str) -> Result<Self, VectorFSError> {
+    /// Creates a FSEntry from a FSEntry JSON string.
+    /// Attempts to parse all entry types directly, and then at the top level.
+    pub fn from_json(s: &str) -> Result<Self, VRError> {
+        if let Ok(folder) = FSFolder::from_json(s) {
+            return Ok(FSEntry::Folder(folder));
+        }
+        if let Ok(item) = FSItem::from_json(s) {
+            return Ok(FSEntry::Item(item));
+        }
+        if let Ok(root) = FSRoot::from_json(s) {
+            return Ok(FSEntry::Root(root));
+        }
+
+        // If its not any of the specific entries JSON, then fall back on top level parsing
         Ok(serde_json::from_str(s)?)
     }
 }
@@ -98,6 +110,11 @@ impl FSRoot {
     /// Converts to a JSON string
     pub fn to_json(&self) -> Result<String, VectorFSError> {
         Ok(serde_json::to_string(self)?)
+    }
+
+    /// Deserializes from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VRError> {
+        Ok(serde_json::from_str(s)?)
     }
 
     /// Converts the FSRoot to a "simplified" JSON string without embeddings in child items
@@ -294,6 +311,11 @@ impl FSFolder {
         Ok(serde_json::to_string(self)?)
     }
 
+    /// Deserializes from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VRError> {
+        Ok(serde_json::from_str(s)?)
+    }
+
     /// Converts the FSFolder to a "simplified" JSON string without embeddings in child items
     /// and recursively simplifies child folders.
     pub fn to_json_simplified(&self) -> Result<String, VectorFSError> {
@@ -450,6 +472,11 @@ impl FSItem {
     /// Converts to a JSON string
     pub fn to_json(&self) -> Result<String, VectorFSError> {
         Ok(serde_json::to_string(self)?)
+    }
+
+    /// Deserializes from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VRError> {
+        Ok(serde_json::from_str(s)?)
     }
 
     /// Converts the FSItem to a "simplified" JSON string without embeddings and keywords

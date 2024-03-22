@@ -15,6 +15,7 @@ use shinkai_vector_resources::source::{
     DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::simplified_fs_types::*;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
@@ -765,4 +766,40 @@ async fn test_vector_fs_operations() {
     let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
 
     assert_eq!(current_state, new_state);
+
+    //
+    // Verify Simplified FSEntry types parse properly
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let root_json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+
+    let simplified_root = SimplifiedFSEntry::from_json(&root_json);
+
+    assert!(simplified_root.is_ok());
+
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    println!("\n\n folder: {:?}", json);
+
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
+
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    println!("\n\n item: {:?}", json);
+
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
 }
