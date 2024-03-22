@@ -76,6 +76,12 @@ impl JobManager {
             .map(|text| text.to_string())
             .unwrap_or_default();
 
+        // Initialize included_vrs vector with the resource header id of the first node, if it exists
+        let mut included_vrs = ret_nodes
+            .get(0)
+            .map(|node| vec![node.resource_header.reference_string()])
+            .unwrap_or_else(Vec::new);
+
         // Extract top 3 keywords from the query_text
         let keywords = Self::extract_keywords_from_text(&query_text, 3);
 
@@ -96,7 +102,7 @@ impl JobManager {
 
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
-            let mut attempt_unique_vr_node_insert = false;
+            let mut from_unique_vr = false;
             for keyword_node in keyword_ret_nodes {
                 if !ret_nodes
                     .iter()
@@ -104,7 +110,7 @@ impl JobManager {
                 {
                     // If the node is unique and we haven't inserted any keyword node yet
                     if !keyword_node_inserted {
-                        // Insert the first unique node
+                        // Insert the first node that is not in ret_nodes
                         if ret_nodes.len() >= 3 {
                             ret_nodes.insert(3, keyword_node.clone()); // Insert at the 3rd position
                         } else {
@@ -112,21 +118,16 @@ impl JobManager {
                         }
                         keyword_node_inserted = true;
 
-                        // Check if this node is from a unique VR, if not, attempt to find one that is
-                        // Ensure safe access to the first element and default to false if it doesn't exist
-                        attempt_unique_vr_node_insert = ret_nodes.get(0).map_or(false, |first_node| {
-                            keyword_node.resource_header.resource_id == first_node.resource_header.resource_id
-                        });
+                        // Check if this keyword node is from a unique VR
+                        from_unique_vr = !included_vrs.contains(&keyword_node.resource_header.reference_string());
+                        // Update the included_vrs
+                        included_vrs.push(keyword_node.resource_header.reference_string());
 
-                        if !attempt_unique_vr_node_insert {
-                            // If the first unique node is from a unique VR, no need to continue searching
+                        // If the first unique node is from a unique VR, no need to continue going through rest of the keyword_nodes
+                        if from_unique_vr {
                             break;
                         }
-                    } else if attempt_unique_vr_node_insert
-                        && ret_nodes.get(0).map_or(false, |first_node| {
-                            keyword_node.resource_header.resource_id != first_node.resource_header.resource_id
-                        })
-                    {
+                    } else {
                         // If we're attempting to insert a unique VR node and found one
                         if ret_nodes.len() >= 4 {
                             ret_nodes.insert(4, keyword_node); // Insert at the 4th position if possible
