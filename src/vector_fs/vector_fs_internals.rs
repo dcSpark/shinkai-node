@@ -11,6 +11,7 @@ use shinkai_vector_resources::{
     embeddings::Embedding,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
     resource_errors::VRError,
+    source::DistributionInfo,
     vector_resource::{
         BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSource, VectorResource,
         VectorResourceCore,
@@ -42,6 +43,7 @@ impl VectorFSInternals {
             HashMap::new(),
             default_embedding_model_used,
             true,
+            DistributionInfo::new_empty(),
         );
         Self {
             fs_core_resource: core_resource,

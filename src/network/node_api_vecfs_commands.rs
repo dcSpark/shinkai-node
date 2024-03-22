@@ -12,16 +12,16 @@ use shinkai_message_primitives::{
             APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
             APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
             APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions,
-            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems,
+            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
 };
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 use shinkai_vector_resources::{
-    source::{DistributionOrigin, SourceFileMap},
-    vector_resource::VRKai,
+    source::DistributionInfo,
+    vector_resource::{BaseVectorResource, VRPath},
 };
+use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
 
 impl Node {
     async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -123,6 +123,76 @@ impl Node {
         };
 
         let _ = res.send(Ok(result)).await.map_err(|_| ());
+        Ok(())
+    }
+
+    pub async fn api_vec_fs_search_items(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match self
+            .validate_and_extract_payload::<APIVecFsSearchItems>(
+                potentially_encrypted_msg,
+                MessageSchemaType::VecFsSearchItems,
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut vector_fs = self.vector_fs.lock().await;
+        let vr_path = match input_payload.path {
+            Some(path) => match VRPath::from_string(&path) {
+                Ok(path) => path,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to convert path to VRPath: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            None => VRPath::root(),
+        };
+        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = match reader {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
+        let max_results = input_payload.max_results.unwrap_or(100) as u64;
+
+        let query_embedding = vector_fs
+            .generate_query_embedding_using_reader(input_payload.search, &reader)
+            .await
+            .unwrap();
+        let search_results = vector_fs.vector_search_fs_item(&reader, query_embedding, max_resources_to_search).unwrap();
+
+        let results: Vec<String> = search_results
+            .into_iter()
+            .map(|res| {
+                res.path.to_string()
+            })
+            .take(max_results as usize)
+            .collect();
+
+        let _ = res.send(Ok(results)).await.map_err(|_| ());
         Ok(())
     }
 
@@ -444,7 +514,7 @@ impl Node {
         let (input_payload, requester_name) = match self
             .validate_and_extract_payload::<APIVecFsDeleteItem>(
                 potentially_encrypted_msg,
-                MessageSchemaType::VecFsMoveItem,
+                MessageSchemaType::VecFsDeleteItem,
             )
             .await
         {
@@ -508,7 +578,7 @@ impl Node {
         let (input_payload, requester_name) = match self
             .validate_and_extract_payload::<APIVecFsDeleteFolder>(
                 potentially_encrypted_msg,
-                MessageSchemaType::VecFsMoveItem,
+                MessageSchemaType::VecFsDeleteFolder,
             )
             .await
         {
@@ -841,10 +911,22 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
+        // TODO: Decide how frontend relays distribution info so it can be properly added
+        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
+        let mut dist_files = vec![];
+        for file in files {
+            let distribution_info = DistributionInfo::new_auto(&file.0, None);
+            dist_files.push((file.0, file.1, distribution_info));
+        }
+
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais =
-            JobManager::process_files_into_vrkai(files, &self.embedding_generator, None, self.unstructured_api.clone())
-                .await?;
+        let processed_vrkais = JobManager::process_files_into_vrkai(
+            dist_files,
+            &self.embedding_generator,
+            None,
+            self.unstructured_api.clone(),
+        )
+        .await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();

@@ -5,7 +5,7 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
-use crate::source::{SourceReference, VRSource};
+use crate::source::{DistributionInfo, SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
 use blake3::Hash;
 use chrono::{DateTime, Utc};
@@ -34,6 +34,7 @@ pub struct DocumentVectorResource {
     metadata_index: MetadataIndex,
     merkle_root: Option<String>,
     keywords: VRKeywords,
+    distribution_info: DistributionInfo,
 }
 impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}
@@ -141,6 +142,14 @@ impl VectorResourceCore for DocumentVectorResource {
 
     fn metadata_index(&self) -> &MetadataIndex {
         &self.metadata_index
+    }
+
+    fn distribution_info(&self) -> &DistributionInfo {
+        &self.distribution_info
+    }
+
+    fn set_distribution_info(&mut self, dist_info: DistributionInfo) {
+        self.distribution_info = dist_info;
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -452,6 +461,7 @@ impl DocumentVectorResource {
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
         is_merkelized: bool,
+        distribution_info: DistributionInfo,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
         let merkle_root = if is_merkelized {
@@ -478,6 +488,7 @@ impl DocumentVectorResource {
             metadata_index: MetadataIndex::new(),
             merkle_root,
             keywords: VRKeywords::new(),
+            distribution_info,
         };
 
         // Generate a unique resource_id
@@ -497,6 +508,7 @@ impl DocumentVectorResource {
             Vec::new(),
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
             is_merkelized,
+            DistributionInfo::new_empty(),
         )
     }
 

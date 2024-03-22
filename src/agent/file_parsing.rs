@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceFile, SourceFileMap, TextChunkingStrategy};
+use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
@@ -71,13 +71,17 @@ impl JobManager {
     /// Processes the list of files into VRKai structs ready to be used/saved/etc.
     /// Supports both `.vrkai` files, and standard doc/html/etc which get generated into VRs.
     pub async fn process_files_into_vrkai(
-        files: Vec<(String, Vec<u8>)>,
+        files: Vec<(String, Vec<u8>, DistributionInfo)>,
         generator: &dyn EmbeddingGenerator,
         agent: Option<SerializedAgent>,
         unstructured_api: UnstructuredAPI,
     ) -> Result<Vec<(String, VRKai)>, AgentError> {
-        let (vrkai_files, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
-            files.into_iter().partition(|(name, _)| name.ends_with(".vrkai"));
+        let (vrkai_files, other_files): (
+            Vec<(String, Vec<u8>, DistributionInfo)>,
+            Vec<(String, Vec<u8>, DistributionInfo)>,
+        ) = files
+            .into_iter()
+            .partition(|(name, _, _dist_info)| name.ends_with(".vrkai"));
         let mut processed_vrkais = vec![];
 
         // Parse the `.vrkai` files
@@ -111,6 +115,7 @@ impl JobManager {
                 agent.clone(),
                 400,
                 unstructured_api.clone(),
+                file.2.clone(),
             )
             .await?;
 
@@ -119,10 +124,7 @@ impl JobManager {
             let mut source_map = SourceFileMap::new(HashMap::new());
             source_map.add_source_file(VRPath::root(), source);
 
-            processed_vrkais.push((
-                filename,
-                VRKai::from_base_vector_resource(resource, Some(source_map), None),
-            ))
+            processed_vrkais.push((filename, VRKai::from_base_vector_resource(resource, Some(source_map))))
         }
 
         Ok(processed_vrkais)
@@ -140,6 +142,7 @@ impl JobManager {
         agent: Option<SerializedAgent>,
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
         let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
@@ -158,6 +161,7 @@ impl JobManager {
             source,
             parsing_tags,
             max_node_size,
+            distribution_info,
         )
         .await
     }
@@ -195,6 +199,7 @@ impl ParsingHelper {
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
         let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), file_name.clone(), unstructured_api).await?;
@@ -210,6 +215,7 @@ impl ParsingHelper {
             source,
             parsing_tags,
             max_node_size,
+            distribution_info,
         )
         .await
     }
@@ -223,6 +229,7 @@ impl ParsingHelper {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
+        distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
         let name = Self::clean_name(&name);
         let resource = UnstructuredParser::process_elements_into_resource(
@@ -233,6 +240,7 @@ impl ParsingHelper {
             source,
             parsing_tags,
             max_node_size,
+            distribution_info,
         )
         .await?;
 

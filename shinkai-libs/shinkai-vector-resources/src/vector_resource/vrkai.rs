@@ -1,11 +1,9 @@
 use super::BaseVectorResource;
 use crate::{
     resource_errors::VRError,
-    source::{DistributionOrigin, SourceFileMap},
-    vector_resource::vrkai,
+    source::{DistributionInfo, SourceFileMap},
 };
-use base64::decode;
-use base64::encode;
+use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -24,13 +22,12 @@ impl VRKaiVersion {
     }
 }
 
-/// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap/DistributionOrigin.
-/// To save as a file or transfer the VRKai, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
+/// Represents a parsed VRKai file with a BaseVectorResource, and optional SourceFileMap.
+/// To save as a file or transfer the VRKai, call one of the `prepare_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
-    pub distribution_origin: Option<DistributionOrigin>,
     pub version: VRKaiVersion,
 }
 
@@ -40,16 +37,11 @@ impl VRKai {
         VRKaiVersion::V1
     }
 
-    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionOrigin.
-    pub fn from_base_vector_resource(
-        resource: BaseVectorResource,
-        sfm: Option<SourceFileMap>,
-        distribution_origin: Option<DistributionOrigin>,
-    ) -> Self {
+    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionInfo.
+    pub fn from_base_vector_resource(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
         VRKai {
             resource,
             sfm,
-            distribution_origin,
             version: Self::default_vrkai_version(),
         }
     }

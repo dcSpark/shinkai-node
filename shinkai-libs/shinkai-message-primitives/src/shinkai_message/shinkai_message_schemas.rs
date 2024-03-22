@@ -27,6 +27,7 @@ pub enum MessageSchemaType {
     VecFsRetrievePathSimplifiedJson,
     VecFsRetrieveVectorResource,
     VecFsRetrieveVectorSearchSimplifiedJson,
+    VecFsSearchItems,
     VecFsCreateFolder,
     VecFsDeleteFolder,
     VecFsMoveFolder,
@@ -34,6 +35,7 @@ pub enum MessageSchemaType {
     VecFsCreateItem,
     VecFsMoveItem,
     VecFsCopyItem,
+    VecFsDeleteItem,
     ConvertFilesAndSaveToFolder,
 }
 
@@ -59,6 +61,7 @@ impl MessageSchemaType {
             "VecFsRetrievePathSimplifiedJson" => Some(Self::VecFsRetrievePathSimplifiedJson),
             "VecFsRetrieveVectorResource" => Some(Self::VecFsRetrieveVectorResource),
             "VecFsRetrieveVectorSearchSimplifiedJson" => Some(Self::VecFsRetrieveVectorSearchSimplifiedJson),
+            "VecFsSearchItems" => Some(Self::VecFsSearchItems),
             "VecFsCreateFolder" => Some(Self::VecFsCreateFolder),
             "VecFsDeleteFolder" => Some(Self::VecFsDeleteFolder),
             "VecFsMoveFolder" => Some(Self::VecFsMoveFolder),
@@ -66,6 +69,7 @@ impl MessageSchemaType {
             "VecFsCreateItem" => Some(Self::VecFsCreateItem),
             "VecFsMoveItem" => Some(Self::VecFsMoveItem),
             "VecFsCopyItem" => Some(Self::VecFsCopyItem),
+            "VecFsDeleteItem" => Some(Self::VecFsDeleteItem),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
             _ => None,
         }
@@ -91,6 +95,7 @@ impl MessageSchemaType {
             Self::VecFsRetrievePathSimplifiedJson => "VecFsRetrievePathSimplifiedJson",
             Self::VecFsRetrieveVectorResource => "VecFsRetrieveVectorResource",
             Self::VecFsRetrieveVectorSearchSimplifiedJson => "VecFsRetrieveVectorSearchSimplifiedJson",
+            Self::VecFsSearchItems => "VecFsSearchItems",
             Self::VecFsCreateFolder => "VecFsCreateFolder",
             Self::VecFsDeleteFolder => "VecFsDeleteFolder",
             Self::VecFsMoveFolder => "VecFsMoveFolder",
@@ -98,6 +103,7 @@ impl MessageSchemaType {
             Self::VecFsCreateItem => "VecFsCreateItem",
             Self::VecFsMoveItem => "VecFsMoveItem",
             Self::VecFsCopyItem => "VecFsCopyItem",
+            Self::VecFsDeleteItem => "VecFsDeleteItem",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
             Self::Empty => "",
         }
@@ -250,6 +256,14 @@ pub struct APIVecFSRetrieveVectorResource {
 pub struct APIVecFsRetrieveVectorSearchSimplifiedJson {
     pub search: String,
     pub path: Option<String>,
+    pub max_results: Option<usize>,
+    pub max_files_to_scan: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFsSearchItems {
+    pub path: Option<String>,
+    pub search: String,
     pub max_results: Option<usize>,
     pub max_files_to_scan: Option<usize>,
 }

@@ -10,8 +10,9 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem,
-    APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, JobMessage, MessageSchemaType,
+    APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+    APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+    APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, JobMessage, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -730,6 +731,173 @@ fn vector_fs_api_tests() {
 
                 assert!(!resp.is_empty(), "Response is empty.");
                 assert!(check_first && check_second);
+            }
+            {
+                // Do file search
+                let payload = APIVecFsSearchItems {
+                    search: "shinkai".to_string(),
+                    path: Some("/".to_string()),
+                    max_results: Some(10),
+                    max_files_to_scan: Some(100),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsSearchItems,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSSearchItems { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp seach items: {:?}", resp);
+                assert_eq!(resp.len(), 2, "Expected 2 search results, but got {}", resp.len());
+                assert!(
+                    resp.contains(&"/test_folder2/test_folder/shinkai_intro".to_string()),
+                    "Response does not contain the expected file path: /test_folder2/test_folder/shinkai_intro"
+                );
+                assert!(
+                    resp.contains(&"/test_folder2/shinkai_intro".to_string()),
+                    "Response does not contain the expected file path: /test_folder2/shinkai_intro"
+                );
+            }
+            {
+                // Remove file
+                let payload = APIVecFsDeleteItem {
+                    path: "/test_folder2/test_folder/shinkai_intro".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsDeleteItem,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSDeleteItem { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp seach items delete item: {:?}", resp);
+            }
+            {
+                // remove folder
+                let payload = APIVecFsDeleteFolder {
+                    path: "/test_folder2/test_folder".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsDeleteFolder,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSDeleteFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("resp seach items delete folder: {:?}", resp);
+            }
+            {
+                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
+                    node1_identity_name.as_str(),
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+
+                let parsed_resp: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse JSON");
+
+                // Assert root contains 'test_folder2' and 'test_folder3'
+                let root_folders = parsed_resp["child_folders"]
+                    .as_array()
+                    .expect("Expected child_folders to be an array");
+                assert_eq!(
+                    root_folders.len(),
+                    2,
+                    "Expected 2 root folders, found {}",
+                    root_folders.len()
+                );
+
+                let test_folder2 = root_folders
+                    .iter()
+                    .find(|&f| f["name"] == "test_folder2")
+                    .expect("test_folder2 not found");
+                let test_folder3 = root_folders
+                    .iter()
+                    .find(|&f| f["name"] == "test_folder3")
+                    .expect("test_folder3 not found");
+
+                // Assert 'test_folder2' contains 'shinkai_intro'
+                let test_folder2_items = test_folder2["child_items"]
+                    .as_array()
+                    .expect("Expected child_items to be an array in test_folder2");
+                assert_eq!(
+                    test_folder2_items.len(),
+                    1,
+                    "Expected 1 item in test_folder2, found {}",
+                    test_folder2_items.len()
+                );
+                assert_eq!(
+                    test_folder2_items[0]["name"], "shinkai_intro",
+                    "Expected item 'shinkai_intro' in test_folder2"
+                );
+
+                // Assert 'test_folder3' is empty
+                let test_folder3_folders = test_folder3["child_folders"]
+                    .as_array()
+                    .expect("Expected child_folders to be an array in test_folder3");
+                let test_folder3_items = test_folder3["child_items"]
+                    .as_array()
+                    .expect("Expected child_items to be an array in test_folder3");
+                assert!(test_folder3_folders.is_empty(), "Expected no folders in test_folder3");
+                assert!(test_folder3_items.is_empty(), "Expected no items in test_folder3");
             }
             node1_abort_handler.abort();
         })

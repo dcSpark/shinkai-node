@@ -38,6 +38,7 @@ pub enum VRError {
 VRPackParsingError(String),
     UnsupportedVRKaiVersion(String),
     UnsupportedVRPackVersion(String),
+    InvalidSimplifiedFSEntryType(String),
 }
 
 impl fmt::Display for VRError {
@@ -88,7 +89,7 @@ impl fmt::Display for VRError {
             VRError::VRPackParsingError(ref s) => write!(f, "Failed to parse contents into VRKai struct: {}", s),
             VRError::UnsupportedVRKaiVersion(ref s) => write!(f, "Unsupported VRKai version: {}", s),
             VRError::UnsupportedVRPackVersion(ref s) => write!(f, "Unsupported VRPack version: {}", s),
- 
+            VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
         }
     }
 }
