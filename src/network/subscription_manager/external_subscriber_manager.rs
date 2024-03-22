@@ -24,6 +24,21 @@ use tokio::sync::{Mutex, MutexGuard};
 
 use super::fs_item_tree::FSItemTree;
 
+/*
+How to subscribe 
+- Node can scan multiple nodes and process what they offer. Endpoint: Node (External) -> Shareable stuff? (different than local node endpoint) 
+- User sees something that they like
+- They subscribe to it
+- Node validates and adds node to their subscriptors (maybe it should sync from the chain (?)) how do we know which subscription is which one?
+  - can you be switching so you dont pay multiple subscriptions? -> maybe minimal time is good enough to avoid this
+- Node processes the subscription and adds it to the queue
+  - node ask the subscriber what they state
+  - node calculates diff
+  - node sends the diff to the subscriber
+- Node checks for changes every X time and sends the diff to the subscriber in order to update the state 
+*/
+
+
 // Message
 
 // action: subscribe
@@ -54,7 +69,7 @@ use super::fs_item_tree::FSItemTree;
 
 const NUM_THREADS: usize = 2;
 
-pub struct SubscriberManager {
+pub struct ExternalSubscriberManager {
     pub node: Weak<Mutex<Node>>,
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
@@ -64,7 +79,7 @@ pub struct SubscriberManager {
     pub shared_folders_trees: HashMap<String, Arc<FSItemTree>>,
 }
 
-impl SubscriberManager {
+impl ExternalSubscriberManager {
     pub async fn new(
         node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
@@ -83,17 +98,17 @@ impl SubscriberManager {
             .parse::<usize>()
             .unwrap_or(NUM_THREADS); // Start processing the job queue
 
-        let subscription_queue_handler = SubscriberManager::process_subscription_queue(
+        let subscription_queue_handler = ExternalSubscriberManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
             thread_number,
             node.clone(),
-            |job, db, vector_fs, node| SubscriberManager::process_job_message_queued(job, db, vector_fs, node),
+            |job, db, vector_fs, node| ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs, node),
         )
         .await;
 
-        SubscriberManager {
+        ExternalSubscriberManager {
             node,
             db,
             vector_fs,

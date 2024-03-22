@@ -1,4 +1,4 @@
-use super::subscription_manager::subscriber_manager::SubscriberManager;
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
 use super::node_error::NodeError;
@@ -324,6 +324,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIAvailableSharedItemsExternalNode {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -382,7 +386,7 @@ pub struct Node {
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
     /// Subscription Manager
-    pub subscription_manager: Arc<Mutex<Option<SubscriberManager>>>,
+    pub subscription_manager: Arc<Mutex<Option<ExternalSubscriberManager>>>,
     // Network Job Manager
     pub network_job_manager: Arc<Mutex<Option<NetworkJobManager>>>,
 }
@@ -494,7 +498,7 @@ impl Node {
         }));
 
         // Create SubscriberManager with a weak reference to this node
-        let subscriber_manager = SubscriberManager::new(
+        let subscriber_manager = ExternalSubscriberManager::new(
             Arc::downgrade(&node),
             Arc::downgrade(&db_arc),
             Arc::downgrade(&vector_fs_arc),
@@ -676,6 +680,7 @@ impl Node {
                             Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
+                            Some(NodeCommand::APIAvailableSharedItemsExternalNode { msg, res }) => self.api_subscription_available_shared_items_external_node(msg, res).await?,
                             _ => {},
                         }
                     }

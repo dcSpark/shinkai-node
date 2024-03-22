@@ -29,10 +29,10 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
 
-use super::subscriber_manager::SubscriberManager;
+use super::external_subscriber_manager::ExternalSubscriberManager;
 use serde::ser::SerializeMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FSItemTree {
     pub name: String,
     pub path: String,

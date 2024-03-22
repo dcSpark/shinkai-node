@@ -5,8 +5,7 @@ use serde_json::to_string;
 use shinkai_message_primitives::shinkai_message::{
     shinkai_message::ShinkaiMessage,
     shinkai_message_schemas::{
-        APIAvailableSharedItems, APICreateShareableFolder, APIUnshareFolder, APIUpdateShareableFolder,
-        MessageSchemaType,
+        APIAvailableSharedItems, APIAvailableSharedItemsExternalNode, APICreateShareableFolder, APIUnshareFolder, APIUpdateShareableFolder, MessageSchemaType
     },
 };
 
@@ -229,6 +228,70 @@ impl Node {
             };
             let _ = res.send(Err(api_error)).await;
         }
+        Ok(())
+    }
+
+    pub async fn api_subscription_available_shared_items_external_node(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match self
+            .validate_and_extract_payload::<APIAvailableSharedItemsExternalNode>(
+                potentially_encrypted_msg,
+                MessageSchemaType::AvailableSharedItemsExternalNode
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // TODO: it should call my_subscription_manager for a cache response
+
+        // let mut subscription_manager = self.subscription_manager.lock().await;
+        // if let Some(manager) = &mut *subscription_manager {
+        //     let result = manager
+        //         .available_shared_folders_external_node(requester_name, input_payload.path)
+        //         .await;
+
+        //     match result {
+        //         Ok(result) => {
+        //             match to_string(&result) {
+        //                 Ok(json_string) => {
+        //                     let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+        //                 }
+        //                 Err(e) => {
+        //                     // Handle serialization error
+        //                     let api_error = APIError {
+        //                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                         error: "Internal Server Error".to_string(),
+        //                         message: format!("Failed to serialize response: {}", e),
+        //                     };
+        //                     let _ = res.send(Err(api_error)).await;
+        //                 }
+        //             }
+        //         }
+        //         Err(e) => {
+        //             let api_error = APIError {
+        //                 code: StatusCode::BAD_REQUEST.as_u16(),
+        //                 error: "Bad Request".to_string(),
+        //                 message: format!("Failed to convert path to VRPath: {}", e),
+        //             };
+        //             let _ = res.send(Err(api_error)).await;
+        //         }
+        //     }
+        // } else {
+        //     let api_error = APIError {
+        //         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //         error: "Internal Server Error".to_string(),
+        //         message: "Subscription manager unavailable".to_string(),
+        //     };
+        //     let _ = res.send(Err(api_error)).await;
+        // }
         Ok(())
     }
 }

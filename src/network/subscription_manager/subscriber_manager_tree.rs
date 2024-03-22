@@ -27,9 +27,9 @@ use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
 
 use super::fs_item_tree::FSItemTree;
-use super::subscriber_manager::SubscriberManager;
+use super::external_subscriber_manager::ExternalSubscriberManager;
 
-impl SubscriberManager {
+impl ExternalSubscriberManager {
     pub async fn shared_folders_to_tree(
         &self,
         requester_shinkai_identity: ShinkaiName,
@@ -282,7 +282,7 @@ mod tests {
             children: HashMap::new(),
         };
 
-        let differences = SubscriberManager::compare_fs_item_trees(&client_tree, &server_tree);
+        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree, &server_tree);
         eprintln!("Differences: {:#?}", differences);
         assert_eq!(
             differences.children.len(),
@@ -314,7 +314,7 @@ mod tests {
         // Modify the client_tree to simulate the removal of the "crypto" folder
         let client_tree_modified = remove_crypto_from_shared_test_folder(client_tree);
 
-        let differences = SubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_partial_client_tree Differences: {:#?}",
             differences
@@ -370,7 +370,7 @@ mod tests {
         let new_date = Utc.ymd(2024, 2, 25).and_hms(23, 6, 0); // Set to an older date
         let client_tree_modified = modify_zeko_intro_date(client_tree, new_date);
 
-        let differences = SubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_date_difference Differences: {:#?}",
             differences

@@ -44,6 +44,7 @@ pub enum MessageSchemaType {
     UpdateShareableFolder,
     UnshareFolder,
     ConvertFilesAndSaveToFolder,
+    AvailableSharedItemsExternalNode,
 }
 
 impl MessageSchemaType {
@@ -83,6 +84,7 @@ impl MessageSchemaType {
             "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
             "UnshareFolder" => Some(Self::UnshareFolder),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
+            "AvailableSharedItemsExternalNode" => Some(Self::AvailableSharedItemsExternalNode),
             _ => None,
         }
     }
@@ -122,6 +124,7 @@ impl MessageSchemaType {
             Self::UpdateShareableFolder => "UpdateShareableFolder",
             Self::UnshareFolder => "UnshareFolder",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
+            Self::AvailableSharedItemsExternalNode => "AvailableSharedItemsExternalNode",
             Self::Empty => "",
         }
     }
@@ -335,6 +338,12 @@ pub struct APIVecFsCopyItem {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAvailableSharedItems {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIAvailableSharedItemsExternalNode {
+    pub path: String,
+    pub node_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
