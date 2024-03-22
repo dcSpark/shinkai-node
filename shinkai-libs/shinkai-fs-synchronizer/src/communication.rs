@@ -1,10 +1,8 @@
-use ed25519_dalek::SigningKey;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::shinkai_manager::ShinkaiManager;
 use std::env;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PostDataResponse {
@@ -61,20 +59,6 @@ pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse,
     }
 }
 
-pub async fn generate_encryption_keys() -> (EncryptionStaticKey, EncryptionPublicKey) {
-    let seed = rand::rngs::OsRng;
-    let secret_key = EncryptionStaticKey::new(seed);
-    let public_key = EncryptionPublicKey::from(&secret_key);
-    (secret_key, public_key)
-}
-
-pub async fn generate_signature_keys() -> (x25519_dalek::StaticSecret, SigningKey) {
-    let mut csprng = rand::rngs::OsRng;
-    let secret_key = x25519_dalek::StaticSecret::new(&mut csprng);
-    let signing_key = SigningKey::generate(&mut csprng);
-    (secret_key, signing_key)
-}
-
 pub async fn node_init() -> anyhow::Result<ShinkaiManager> {
     loop {
         let check_health_result = ShinkaiManager::check_node_health().await;
@@ -83,7 +67,7 @@ pub async fn node_init() -> anyhow::Result<ShinkaiManager> {
         if check_health.status == "ok" {
             match ShinkaiManager::initialize_node_connection(check_health).await {
                 Ok(manager) => {
-                    return Ok(manager); // Directly return the manager here
+                    return Ok(manager);
                 }
                 Err(e) => {
                     eprintln!("Failed to initialize node connection: {}", e);

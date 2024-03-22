@@ -1,15 +1,11 @@
 use crate::shinkai_manager::ShinkaiManager;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::{path, thread};
 
-use std::fs::{self, DirEntry};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
-
-// Optional fields mean that there is possibility for `None` value upon first start. Then properties always will contain values
 pub struct SyncingFolder {
     pub profile_name: Option<String>,
     pub vector_fs_path: Option<String>,
@@ -17,7 +13,6 @@ pub struct SyncingFolder {
     pub last_synchronized_file_datetime: Option<u64>, // UTC with milliseconds
 }
 
-// for simplicity we don't use this wrapper right now
 #[derive(Clone, Debug)]
 pub struct LocalOSFolderPath(pub String);
 
@@ -48,9 +43,7 @@ pub struct FilesystemSynchronizer {
     // because we're just sending content, we should only need sender here
     sender: std::sync::mpsc::Sender<String>,
     shinkai_manager: ShinkaiManager,
-
     syncing_queue: Arc<Mutex<Vec<SyncQueueItem>>>,
-
     major_dir: String,
 }
 
@@ -117,7 +110,7 @@ impl FilesystemSynchronizer {
             println!("Syncing file: {:?}", node_fs_path);
 
             shinkai_manager.get_node_folder("/").await;
-            shinkai_manager.create_folder("/", "test/");
+            shinkai_manager.create_folder("test", "/").await;
 
             // every few seconds (configurable) save state of the SyncingFolder, so we can rebuild syncing queue
         }

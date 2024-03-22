@@ -1,7 +1,4 @@
-use crate::{
-    communication::{self, generate_encryption_keys, generate_signature_keys},
-    persistent::Storage,
-};
+use crate::{communication, persistent::Storage};
 use ed25519_dalek::SigningKey;
 use serde::Deserialize;
 use shinkai_message_primitives::{
@@ -110,12 +107,13 @@ impl ShinkaiManager {
 
         let storage = Storage::new(local_storage_path, "node_keys.json".to_string());
 
-        let sender_subidentity = env::var("DEVICE_NAME").expect("DEVICE_NAME must be set");
-        let sender = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
-        let receiver = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
+        let node_identity_name = env::var("NODE_NAME").expect("NODE_NAME must be set");
+        let device_name_for_profile = env::var("DEVICE_NAME").expect("DEVICE_NAME must be set");
+        let profile_name = env::var("PROFILE_NAME").expect("PROFILE_NAME must be set");
 
-        println!("sender_subidentity: {}", sender_subidentity);
-        println!("sender: {}", sender);
+        let recipient = node_identity_name.to_string();
+        let sender = recipient.clone();
+        let sender_subidentity = "main".to_string();
 
         if health_status.is_pristine {
             let (encryption_secret_key, encryption_public_key) = ephemeral_signature_keypair();
@@ -135,10 +133,10 @@ impl ShinkaiManager {
                 my_device_signature_sk.clone(),
                 profile_encryption_sk.clone(),
                 profile_signature_sk.clone(),
-                "registration_name".to_string(),
+                device_name_for_profile.clone(),
                 sender_subidentity.clone(),
                 sender.clone(),
-                receiver.clone(),
+                recipient.clone(),
             );
 
             if shinkai_message_result.is_err() {
@@ -160,7 +158,8 @@ impl ShinkaiManager {
                     let my_encryption_secret_key = my_device_encryption_sk.clone();
                     let my_signature_secret_key = my_device_signature_sk.clone();
 
-                    let encryption_public_key_bytes = hex::decode(encryption_public_key).expect("Decoding failed");
+                    let encryption_public_key_bytes =
+                        hex::decode(encryption_public_key).expect("encryption_public_key decoding failed");
                     let receiver_public_key_bytes: [u8; 32] = encryption_public_key_bytes
                         .try_into()
                         .expect("encryption_public_key_bytes with incorrect length");
@@ -178,7 +177,7 @@ impl ShinkaiManager {
                         sender_subidentity.clone(),
                         sender,
                         sender_subidentity,
-                        receiver,
+                        recipient,
                     );
 
                     // TODO: store keys received from the respone in persistent storage so we can reuse them
@@ -203,7 +202,7 @@ impl ShinkaiManager {
                 sender_subidentity.clone(),
                 sender,
                 sender_subidentity,
-                receiver,
+                recipient,
             );
 
             Ok(shinkai_manager)
@@ -268,27 +267,21 @@ impl ShinkaiManager {
             self.node_receiver_subidentity.to_string()
         );
 
-        let shinkai_message = self
-            .message_builder
-            .vecfs_retrieve_path_simplified(
-                path,
-                self.my_encryption_secret_key.clone(),
-                self.my_signature_secret_key.clone(),
-                self.receiver_public_key,
-                self.sender.clone(),
-                self.sender_subidentity.clone(),
-                self.node_receiver.clone(),
-                "".to_string(),
-            )
-            .unwrap();
-
-        dbg!(shinkai_message.clone());
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            "".to_string(),
+        )?;
 
         let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
         let response = crate::communication::request_post(payload, "/v1/vec_fs/retrieve_path_simplified_json").await;
 
-        dbg!(response.clone());
-        let shinkai_message = match response {
+        let simplified_path_json_response = match response {
             Ok(data) => Ok(data.data),
             Err(e) => {
                 eprintln!("Failed to retrieve node folder: {}", e);
@@ -296,21 +289,19 @@ impl ShinkaiManager {
             }
         };
 
-        match shinkai_message {
-            Ok(shinkai_message_value) => {
-                // Assuming `shinkai_message_value` is of type `serde_json::Value`
-                let shinkai_message: ShinkaiMessage =
-                    serde_json::from_value(shinkai_message_value).expect("Failed to deserialize to ShinkaiMessage");
-                let decoded_message = self.decode_message(shinkai_message).await;
-                dbg!(decoded_message.clone());
-                Ok(decoded_message)
+        match simplified_path_json_response {
+            Ok(response) => {
+                // let folder: FSFolder = serde_json::from_str(response.clone()).expect("Failed to parse FSFolder");
+                // let folder = serde_json::from_str(&response.to_string()).expect("Failed to parse FSFolder");
+                dbg!(response.clone());
+                return Ok(response.to_string());
             }
             Err(e) => Err(e),
         }
     }
 
-    pub fn create_folder(&mut self, folder_name: &str, path: &str) -> Result<(), &'static str> {
-        self.message_builder.vecfs_create_folder(
+    pub async fn create_folder(&mut self, folder_name: &str, path: &str) -> Result<(), &'static str> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_create_folder(
             folder_name,
             path,
             self.my_encryption_secret_key.clone(),
@@ -321,6 +312,22 @@ impl ShinkaiManager {
             self.node_receiver.clone(),
             self.node_receiver_subidentity.clone(),
         )?;
+
+        dbg!(shinkai_message.clone());
+
+        let folder_creation_message = serde_json::json!(shinkai_message);
+        let resp =
+            crate::communication::request_post(folder_creation_message.to_string(), "/v1/vec_fs/create_folder").await;
+
+        match resp {
+            Ok(response) => {
+                println!("Folder creation successful: {:?}", response);
+            }
+            Err(e) => {
+                eprintln!("Failed to create folder: {}", e);
+                return Err("Failed to create folder");
+            }
+        }
 
         Ok(())
     }
@@ -367,7 +374,7 @@ impl ShinkaiManager {
     }
 
     fn add_items_to_db(&mut self, destination_path: &str, file_inbox: &str) -> Result<(), &'static str> {
-        self.message_builder.vecfs_create_items(
+        ShinkaiMessageBuilder::vecfs_create_items(
             destination_path,
             file_inbox,
             self.my_encryption_secret_key.clone(),
