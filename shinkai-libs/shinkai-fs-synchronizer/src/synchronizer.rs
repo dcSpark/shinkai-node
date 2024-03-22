@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::shinkai_manager::ShinkaiManager;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -5,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncingFolder {
     pub profile_name: Option<String>,
     pub vector_fs_path: Option<String>,
@@ -13,7 +15,7 @@ pub struct SyncingFolder {
     pub last_synchronized_file_datetime: Option<u64>, // UTC with milliseconds
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LocalOSFolderPath(pub String);
 
 impl PartialEq for LocalOSFolderPath {
@@ -30,7 +32,7 @@ impl Hash for LocalOSFolderPath {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncQueueItem {
     pub syncing_folder: SyncingFolder,
     pub os_file_path: PathBuf,
