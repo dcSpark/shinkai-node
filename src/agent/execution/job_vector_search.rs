@@ -1,10 +1,13 @@
+use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
+use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
 use std::result::Result::Ok;
@@ -38,6 +41,121 @@ impl JobManager {
         }
 
         Ok(resources)
+    }
+
+    /// Performs multiple vector searches within the job scope based on extracting keywords from the query text.
+    /// Attempts to take at least 1 retrieved node per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
+    /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
+    pub async fn keyword_chained_job_scope_vector_search(
+        db: Arc<Mutex<ShinkaiDB>>,
+        vector_fs: Arc<Mutex<VectorFS>>,
+        job_scope: &JobScope,
+        query_text: String,
+        user_profile: &ShinkaiName,
+        generator: &dyn EmbeddingGenerator,
+        num_of_results: u64,
+    ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
+        // First perform a standard job scope vector search using the whole query text
+        let query = generator.generate_embedding_default(&query_text).await?;
+        let mut ret_nodes = JobManager::job_scope_vector_search(
+            db.clone(),
+            vector_fs.clone(),
+            job_scope,
+            query,
+            query_text.clone(),
+            num_of_results,
+            user_profile,
+            true,
+        )
+        .await?;
+
+        // Extract the summary text from the most similar
+        let summary_node_text = ret_nodes
+            .get(0)
+            .and_then(|node| node.node.get_text_content().ok())
+            .map(|text| text.to_string())
+            .unwrap_or_default();
+
+        // Extract top 3 keywords from the query_text
+        let keywords = Self::extract_keywords_from_text(&query_text, 3);
+
+        // Now we proceed to keyword search chaining logic.
+        for keyword in keywords {
+            let keyword_query = generator.generate_embedding_default(&keyword).await?;
+            let keyword_ret_nodes = JobManager::job_scope_vector_search(
+                db.clone(),
+                vector_fs.clone(),
+                job_scope,
+                keyword_query,
+                keyword.clone(),
+                num_of_results,
+                user_profile,
+                true,
+            )
+            .await?;
+
+            // Start looping through the vector search results for this keyword
+            let mut keyword_node_inserted = false;
+            let mut attempt_unique_vr_node_insert = false;
+            for keyword_node in keyword_ret_nodes {
+                if !ret_nodes
+                    .iter()
+                    .any(|node| node.node.content == keyword_node.node.content)
+                {
+                    // If the node is unique and we haven't inserted any keyword node yet
+                    if !keyword_node_inserted {
+                        // Insert the first unique node
+                        if ret_nodes.len() >= 3 {
+                            ret_nodes.insert(3, keyword_node.clone()); // Insert at the 3rd position
+                        } else {
+                            ret_nodes.push(keyword_node.clone()); // If less than 3 nodes, just append
+                        }
+                        keyword_node_inserted = true;
+
+                        // Check if this node is from a unique VR, if not, attempt to find one that is
+                        // Ensure safe access to the first element and default to false if it doesn't exist
+                        attempt_unique_vr_node_insert = ret_nodes.get(0).map_or(false, |first_node| {
+                            keyword_node.resource_header.resource_id == first_node.resource_header.resource_id
+                        });
+
+                        if !attempt_unique_vr_node_insert {
+                            // If the first unique node is from a unique VR, no need to continue searching
+                            break;
+                        }
+                    } else if attempt_unique_vr_node_insert
+                        && ret_nodes.get(0).map_or(false, |first_node| {
+                            keyword_node.resource_header.resource_id != first_node.resource_header.resource_id
+                        })
+                    {
+                        // If we're attempting to insert a unique VR node and found one
+                        if ret_nodes.len() >= 4 {
+                            ret_nodes.insert(4, keyword_node); // Insert at the 4th position if possible
+                        } else {
+                            ret_nodes.push(keyword_node); // Otherwise, just append
+                        }
+                        // Once a unique VR node is inserted, no need to continue for this keyword
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Remove the extra lowest scored search results to ensure the list does not exceed num_of_results
+        ret_nodes.truncate(num_of_results as usize);
+
+        Ok((ret_nodes, summary_node_text))
+    }
+
+    /// Extracts top N keywords from the given text.
+    fn extract_keywords_from_text(text: &str, num_keywords: usize) -> Vec<String> {
+        // Create a new KeyPhraseExtractor with a maximum of num_keywords keywords
+        let extractor = KeyPhraseExtractor::new(text, num_keywords);
+
+        // Get the keywords and their scores
+        let keywords = extractor.get_keywords();
+
+        // Return only the keywords, discarding the scores
+        keywords.into_iter().map(|(_score, keyword)| keyword).collect()
     }
 
     /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.

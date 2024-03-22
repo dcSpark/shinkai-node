@@ -6,6 +6,7 @@ use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
+use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -43,23 +44,16 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator.generate_embedding_default(&query_text).await?;
-        let ret_nodes = JobManager::job_scope_vector_search(
+        let (ret_nodes, summary_node_text) = JobManager::keyword_chained_job_scope_vector_search(
             db.clone(),
             vector_fs.clone(),
             full_job.scope(),
-            query,
             query_text.clone(),
-            20,
             &user_profile,
-            true,
+            generator.clone(),
+            20,
         )
         .await?;
-        // Text from the first node, which is the summary of the most similar VR
-        let summary_node_text = ret_nodes
-            .get(0)
-            .and_then(|node| node.node.get_text_content().ok())
-            .map(|text| text.to_string());
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let is_not_final = iteration_count < max_iterations && !full_job.scope.is_empty();
@@ -95,7 +89,7 @@ impl JobManager {
                 generator,
                 user_profile,
                 summary_text,
-                summary_node_text, // This needs to be defined or passed appropriately
+                Some(summary_node_text),
                 iteration_count,
                 max_iterations,
             )
