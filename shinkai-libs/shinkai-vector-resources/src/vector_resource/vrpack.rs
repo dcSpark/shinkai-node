@@ -1,9 +1,8 @@
-use super::{BaseVectorResource, MapVectorResource, Node, VRKai, VRPath, VRSource};
+use super::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRKai, VRPath, VRSource};
 use crate::{
     embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionOrigin, SourceFileMap},
-    vector_resource::vrkai,
 };
 use base64::decode;
 use base64::encode;
@@ -27,7 +26,7 @@ impl VRPackVersion {
 
 /// Represents a parsed VRPack file, which contains a Map Vector Resource that holds a tree structure of folders & encoded VRKai nodes.
 /// In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
-/// Of note, VRPacks are not compressed because the VRKais held inside already are. This improves performance for large VRPacks.
+/// Of note, VRPacks are not compressed at the top level because the VRKais held inside already are. This improves performance for large VRPacks.
 /// To save as a file or transfer the VRPack, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRPack {
@@ -148,6 +147,33 @@ impl VRPack {
             embedding,
         )?;
 
+        Ok(())
+    }
+
+    /// Parses a node into a VRKai.
+    fn parse_node_to_vrkai(node: &Node) -> Result<VRKai, VRError> {
+        match &node.content {
+            NodeContent::Text(content) => {
+                let vrkai_bytes = decode(content)
+                    .map_err(|e| VRError::VRPackParsingError(format!("Base64 decoding error: {}", e)))?;
+                let vrkai_str = String::from_utf8(vrkai_bytes)
+                    .map_err(|e| VRError::VRPackParsingError(format!("UTF-8 conversion error: {}", e)))?;
+                serde_json::from_str(&vrkai_str)
+                    .map_err(|e| VRError::VRPackParsingError(format!("VRKai parsing error: {}", e)))
+            }
+            _ => Err(VRError::VRKaiParsingError("Invalid node content type".to_string())),
+        }
+    }
+
+    /// Fetches the VRKai node at the specified path and parses it into a VRKai.
+    pub fn get_vrkai(&self, path: VRPath) -> Result<VRKai, VRError> {
+        let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
+        Self::parse_node_to_vrkai(&node.node)
+    }
+
+    /// Removes a node (VRKai or folder) from the VRPack at the specified path.
+    pub fn remove_at_path(&mut self, path: VRPath) -> Result<(), VRError> {
+        self.resource.as_trait_object_mut().remove_node_at_path(path)?;
         Ok(())
     }
 }
