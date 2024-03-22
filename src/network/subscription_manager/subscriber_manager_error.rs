@@ -16,6 +16,9 @@ pub enum SubscriberManagerError {
     DatabaseNotAvailable(String),
     VectorFSError(String),
     VRError(String),
+    SharedFolderNotFound(String),
+    IdentityManagerUnavailable,
+    AddressUnavailable(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -29,7 +32,10 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::NodeNotAvailable(e) => write!(f, "Node not available: {}", e),
             SubscriberManagerError::DatabaseNotAvailable(e) => write!(f, "Database not available: {}", e),
             SubscriberManagerError::VectorFSError(e) => write!(f, "VectorFS error: {}", e),
-            SubscriberManagerError::VRError(e) => write!(f, "VR error: {}", e)
+            SubscriberManagerError::VRError(e) => write!(f, "VR error: {}", e),
+            SubscriberManagerError::SharedFolderNotFound(e) => write!(f, "Shared folder not found: {}", e),
+            SubscriberManagerError::IdentityManagerUnavailable => write!(f, "Identity manager unavailable"),
+            SubscriberManagerError::AddressUnavailable(e) => write!(f, "Address unavailable: {}", e),
         }
     }
 }
@@ -45,5 +51,11 @@ impl From<VectorFSError> for SubscriberManagerError {
 impl From<VRError> for SubscriberManagerError {
     fn from(error: VRError) -> Self {
         SubscriberManagerError::VRError(error.to_string())
+    }
+}
+
+impl From<String> for SubscriberManagerError {
+    fn from(error: String) -> Self {
+        SubscriberManagerError::MessageProcessingError(error)
     }
 }

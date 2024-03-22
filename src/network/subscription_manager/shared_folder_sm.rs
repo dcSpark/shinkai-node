@@ -11,19 +11,14 @@ use super::fs_item_tree::FSItemTree;
 pub enum ExternalNodeState {
     ResponseAvailable,
     ResponseError(String),
-    WaitingForExtNodeResponse,
+    WaitingForExtNodeResponse, // TODO: Actually this may never be used
     CachedOutdatedRequesting,
+    CachedAvailableButStillRequesting,
+    CachedNotAvailableRequesting,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedFoldersExternalNodeSM {
-    // node name
-    // last ext node response Option<> time based
-    // last request to ext node Option<>
-    // last updated
-    // states: ResponseAvailable, ResponseError(String), WaitingForExtNodeResponse, CachedOutdatedRequesting
-    // response last updated Option<>
-    // response Option<HashMap<String, Arc<FSItemTree>>,
     pub node_name: ShinkaiName,
     pub last_ext_node_response: Option<DateTime<Utc>>,
     pub last_request_to_ext_node: Option<DateTime<Utc>>,
@@ -31,6 +26,50 @@ pub struct SharedFoldersExternalNodeSM {
     pub state: ExternalNodeState,
     pub response_last_updated: Option<DateTime<Utc>>,
     pub response: Option<HashMap<String, Arc<FSItemTree>>>,
+}
+
+impl SharedFoldersExternalNodeSM {
+    /// Creates a new placeholder `SharedFoldersExternalNodeSM` with a specified state.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_name` - A `ShinkaiName` representing the node name.
+    /// * `outdated` - A boolean flag indicating whether the placeholder should be for outdated data.
+    ///                If `true`, the state will be `CachedOutdatedRequesting`.
+    ///                If `false`, the state will be `CachedNotAvailableRequesting`.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `SharedFoldersExternalNodeSM` with minimal initialization.
+    pub fn new_placeholder(node_name: ShinkaiName, outdated: bool) -> Self {
+        SharedFoldersExternalNodeSM {
+            node_name,
+            last_ext_node_response: None,
+            last_request_to_ext_node: None,
+            last_updated: Utc::now(),
+            state: if outdated {
+                ExternalNodeState::CachedOutdatedRequesting
+            } else {
+                ExternalNodeState::CachedNotAvailableRequesting
+            },
+            response_last_updated: None,
+            response: None,
+        }
+    }
+
+    /// Updates the state of the `SharedFoldersExternalNodeSM`.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_state` - The new `ExternalNodeState` to set.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `SharedFoldersExternalNodeSM` with the updated state.
+    pub fn with_updated_state(mut self, new_state: ExternalNodeState) -> Self {
+        self.state = new_state;
+        self
+    }
 }
 
 impl Serialize for SharedFoldersExternalNodeSM {

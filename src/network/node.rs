@@ -1,7 +1,8 @@
-use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
 use super::node_error::NodeError;
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
@@ -385,8 +386,10 @@ pub struct Node {
     pub unstructured_api: UnstructuredAPI,
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
-    /// Subscription Manager
-    pub subscription_manager: Arc<Mutex<Option<ExternalSubscriberManager>>>,
+    /// External Subscription Manager (when others are subscribing to this node's data)
+    pub ext_subscription_manager: Arc<Mutex<Option<ExternalSubscriberManager>>>,
+    /// My Subscription Manager
+    pub my_subscription_manager: Arc<Mutex<Option<MySubscriptionsManager>>>,
     // Network Job Manager
     pub network_job_manager: Arc<Mutex<Option<NetworkJobManager>>>,
 }
@@ -493,7 +496,8 @@ impl Node {
             embedding_generator,
             unstructured_api,
             conn_limiter,
-            subscription_manager: Arc::new(Mutex::new(None)),
+            ext_subscription_manager: Arc::new(Mutex::new(None)),
+            my_subscription_manager: Arc::new(Mutex::new(None)),
             network_job_manager: Arc::new(Mutex::new(None)),
         }));
 
@@ -509,7 +513,22 @@ impl Node {
         // Store the SubscriberManager in the Node
         {
             let mut node_locked = node.lock().await;
-            *node_locked.subscription_manager.lock().await = Some(subscriber_manager);
+            *node_locked.ext_subscription_manager.lock().await = Some(subscriber_manager);
+        }
+
+        // Create MySubscriptionManager with a weak reference to this node
+        let my_subscription_manager = MySubscriptionsManager::new(
+            Arc::downgrade(&node),
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            Arc::downgrade(&identity_manager),
+        )
+        .await;
+
+        // Store the SubscriberManager in the Node
+        {
+            let mut node_locked = node.lock().await;
+            *node_locked.my_subscription_manager.lock().await = Some(my_subscription_manager);
         }
 
         // Create NetworkJobManager with a weak reference to this node
@@ -758,7 +777,7 @@ impl Node {
                     content: buffer.clone(),
                     date_created: Utc::now(),
                 };
-                
+
                 let mut network_job_manager = network_job_manager.lock().await;
                 if let Some(manager) = &mut *network_job_manager {
                     if let Err(e) = manager.add_network_job_to_queue(&network_job).await {

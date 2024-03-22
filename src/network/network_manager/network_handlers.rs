@@ -335,7 +335,7 @@ pub async fn handle_network_message_cases(
                     let node = node_lock.lock().await;
 
                     // Access the subscription_manager, which is of type Arc<Mutex<Option<SubscriberManager>>>
-                    let subscription_manager_lock = node.subscription_manager.lock().await;
+                    let subscription_manager_lock = node.ext_subscription_manager.lock().await;
 
                     // Now, the lock is released, and we can proceed without holding onto the `MutexGuard`
                     if let Some(subscription_manager) = &*subscription_manager_lock {

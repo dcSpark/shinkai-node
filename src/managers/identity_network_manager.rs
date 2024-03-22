@@ -1,5 +1,5 @@
 use shinkai_message_primitives::shinkai_utils::{
-    signatures::{signature_public_key_to_string, string_to_signature_public_key},
+    shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::{signature_public_key_to_string, string_to_signature_public_key}
 };
 use std::{collections::HashMap, env, net::SocketAddr, ptr::null, sync::Arc};
 use tokio::sync::Mutex;
@@ -15,7 +15,7 @@ impl IdentityNetworkManager {
         let rpc_url = env::var("RPC_URL").unwrap_or("https://rpc.sepolia.org".to_string());
         let contract_address = env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
         let abi_path = env::var("ABI_PATH").unwrap_or("".to_string());
-        eprintln!("ABI Path: {}", abi_path);
+        shinkai_log(ShinkaiLogOption::IdentityNetwork, ShinkaiLogLevel::Info, &format!("Identity Network Manager initialized with ABI path: {}", abi_path));
 
         let registry = ShinkaiRegistry::new(
             &rpc_url,

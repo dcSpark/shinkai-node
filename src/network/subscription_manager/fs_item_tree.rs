@@ -1,36 +1,12 @@
-use crate::agent::queue::job_queue_manager::JobQueueManager;
-use crate::db::{ShinkaiDB, Topic};
-use crate::managers::IdentityManager;
-use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::Node;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
-use crate::vector_fs::vector_fs_permissions::ReadPermission;
-use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
-use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
 use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::Serializer;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::json;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
-};
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
-use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
-use std::env;
-use std::fs::File;
-use std::io::Write;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use std::sync::Weak;
-use tokio::sync::{Mutex, MutexGuard};
-
-use super::external_subscriber_manager::ExternalSubscriberManager;
-use serde::ser::SerializeMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FSItemTree {

@@ -68,6 +68,7 @@ tiktoken-rs = "0.5.8"
 num_cpus = "1.16.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
+lru = "0.7.0"
 
 [dependencies.opentelemetry]
 version = "0.21.0"
