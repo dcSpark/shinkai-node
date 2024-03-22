@@ -24,10 +24,9 @@ pub struct ErrorResponse {
     pub status: String,
 }
 
-pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse, String> {
+pub async fn request_post(api_url: String, input: String, path: &str) -> Result<PostDataResponse, String> {
     let client = Client::new();
-    let shinkai_node_url = env::var("SHINKAI_NODE_URL").expect("SHINKAI_NODE_URL must be set");
-    let url = format!("{}{}", shinkai_node_url, path);
+    let url = format!("{}{}", api_url, path);
 
     match client
         .post(&url)
@@ -56,25 +55,5 @@ pub async fn request_post(input: String, path: &str) -> Result<PostDataResponse,
             eprintln!("Error when interacting with {}. Error: {:?}", path, e);
             Err(format!("Error when interacting with {}. Error: {:?}", path, e))
         }
-    }
-}
-
-pub async fn node_init() -> anyhow::Result<ShinkaiManager> {
-    loop {
-        let check_health_result = ShinkaiManager::check_node_health().await;
-        let check_health = check_health_result.map_err(anyhow::Error::msg)?;
-
-        if check_health.status == "ok" {
-            match ShinkaiManager::initialize_node_connection(check_health).await {
-                Ok(manager) => {
-                    return Ok(manager);
-                }
-                Err(e) => {
-                    eprintln!("Failed to initialize node connection: {}", e);
-                }
-            }
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 }

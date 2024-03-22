@@ -6,7 +6,6 @@ pub mod visitor;
 
 use crate::shinkai_manager::ShinkaiManager;
 use crate::synchronizer::FilesystemSynchronizer;
-use communication::node_init;
 use dotenv::dotenv;
 use std::{
     collections::HashMap,
@@ -15,23 +14,43 @@ use std::{
 };
 use visitor::{traverse_and_synchronize, SyncFolderVisitor};
 
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
 // TODO: move all envs to configuration variables initialized with custom values/yaml or default values
 
+// here we initialize standalone version
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+
+    let env_file_path = dotenv::dotenv().ok().map(|_| dotenv::from_filename(".env").ok());
+    if let Some(path) = env_file_path {
+        println!("Environment file loaded from: {:?}", path);
+    } else {
+        println!("No .env file found or failed to load.");
+    }
+
     let major_directory = "knowledge/";
     let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(major_directory);
 
-    let shinkai_manager = match node_init().await {
+    let shinkai_manager = match ShinkaiManager::initialize_from_encrypted_file() {
         Ok(manager) => manager,
         Err(e) => {
             eprintln!("Failed to initialize node: {}", e);
             return;
         }
     };
+
+    loop {
+        match shinkai_manager.check_node_health().await {
+            Ok(_) => {
+                println!("Node health check passed.");
+                break;
+            }
+            Err(e) => {
+                eprintln!("Node health check failed: {}. Retrying...", e);
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
 
     let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
     let sync_visitor = SyncFolderVisitor::new(syncing_folders);
