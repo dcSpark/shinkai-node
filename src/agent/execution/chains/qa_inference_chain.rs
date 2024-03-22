@@ -42,6 +42,12 @@ impl JobManager {
             &format!("start_qa_inference_chain>  message: {:?}", job_task),
         );
 
+        //
+        // TODO: If the job scope has least 1 VectorFS folder or at least 4 VRs, then add new logic only on first iteration of this chain.
+        // Instead of just doing keyword extraction, do an LLM inference and ask it to return a json list of strings to use for vector search (up to 10 maybe?)
+        // to be able to find all the information related to the user's questions. This will likely be needed when lots of VRs are part of the scope.
+        //
+
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let (ret_nodes, summary_node_text) = JobManager::keyword_chained_job_scope_vector_search(
