@@ -47,8 +47,20 @@ impl SimplifiedFSEntry {
         Ok(serde_json::to_string(self)?)
     }
 
-    /// Creates a SimplifiedFSEntry from a JSON string
+    /// Creates a SimplifiedFSEntry from a simplified FSEntry JSON string.
+    /// Attempts to parse all entry types directly, and then at the top level.
     pub fn from_json(s: &str) -> Result<Self, VRError> {
+        if let Ok(folder) = SimplifiedFSFolder::from_json(s) {
+            return Ok(SimplifiedFSEntry::Folder(folder));
+        }
+        if let Ok(item) = SimplifiedFSItem::from_json(s) {
+            return Ok(SimplifiedFSEntry::Item(item));
+        }
+        if let Ok(root) = SimplifiedFSRoot::from_json(s) {
+            return Ok(SimplifiedFSEntry::Root(root));
+        }
+
+        // If its not any of the specific entries JSON, then fall back on top level parsing
         Ok(serde_json::from_str(s)?)
     }
 }
