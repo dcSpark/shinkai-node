@@ -1,8 +1,6 @@
 use crate::{
     shinkai_message::shinkai_message_schemas::{
-        APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
-        APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-        APIVecFsRetrieveVectorSearchSimplifiedJson,
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson
     },
     shinkai_utils::job_scope::JobScope,
 };
@@ -348,6 +346,8 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_available_shared_items(
+        path: Option<String>,
+        node_name: String,       
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -356,10 +356,14 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIAvailableSharedItems {
+            path: path.unwrap_or_else(|| "/".to_string()),
+            node_name: node_name.to_string(),
+        };
 
         Self::create_vecfs_message(
-            "",
-            MessageSchemaType::AvailableSharedItemsExternalNode,
+            payload,
+            MessageSchemaType::AvailableSharedItems,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,

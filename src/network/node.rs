@@ -2,7 +2,7 @@ use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQ
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use super::subscription_manager::my_subscription_manager::{self, MySubscriptionsManager};
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
@@ -325,10 +325,6 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
-    APIAvailableSharedItemsExternalNode {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -387,11 +383,11 @@ pub struct Node {
     /// Rate Limiter
     pub conn_limiter: Arc<ConnectionLimiter>,
     /// External Subscription Manager (when others are subscribing to this node's data)
-    pub ext_subscription_manager: Arc<Mutex<Option<ExternalSubscriberManager>>>,
+    pub ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     /// My Subscription Manager
-    pub my_subscription_manager: Arc<Mutex<Option<MySubscriptionsManager>>>,
+    pub my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     // Network Job Manager
-    pub network_job_manager: Arc<Mutex<Option<NetworkJobManager>>>,
+    pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
 }
 
 impl Node {
@@ -475,6 +471,41 @@ impl Node {
 
         let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // TODO: allow for ENV to set this
 
+        let ext_subscriber_manager = Arc::new(Mutex::new(
+            ExternalSubscriberManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager),
+                node_name.clone(),
+            )
+            .await,
+        ));
+
+        let my_subscription_manager = Arc::new(Mutex::new(
+            MySubscriptionsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+            )
+            .await,
+        ));
+
+        // Create NetworkJobManager with a weak reference to this node
+        let network_manager = NetworkJobManager::new(
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            node_name.clone(),
+            clone_static_secret_key(&encryption_secret_key),
+            clone_signature_secret_key(&identity_secret_key),
+            identity_manager.clone(),
+            my_subscription_manager.clone(),
+            ext_subscriber_manager.clone(),
+        )
+        .await;
+
         let node = Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
@@ -496,58 +527,10 @@ impl Node {
             embedding_generator,
             unstructured_api,
             conn_limiter,
-            ext_subscription_manager: Arc::new(Mutex::new(None)),
-            my_subscription_manager: Arc::new(Mutex::new(None)),
-            network_job_manager: Arc::new(Mutex::new(None)),
+            ext_subscription_manager: ext_subscriber_manager,
+            my_subscription_manager: my_subscription_manager,
+            network_job_manager: Arc::new(Mutex::new(network_manager)),
         }));
-
-        // Create SubscriberManager with a weak reference to this node
-        let subscriber_manager = ExternalSubscriberManager::new(
-            Arc::downgrade(&node),
-            Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
-            Arc::downgrade(&identity_manager),
-        )
-        .await;
-
-        // Store the SubscriberManager in the Node
-        {
-            let mut node_locked = node.lock().await;
-            *node_locked.ext_subscription_manager.lock().await = Some(subscriber_manager);
-        }
-
-        // Create MySubscriptionManager with a weak reference to this node
-        let my_subscription_manager = MySubscriptionsManager::new(
-            Arc::downgrade(&node),
-            Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
-            Arc::downgrade(&identity_manager),
-        )
-        .await;
-
-        // Store the SubscriberManager in the Node
-        {
-            let mut node_locked = node.lock().await;
-            *node_locked.my_subscription_manager.lock().await = Some(my_subscription_manager);
-        }
-
-        // Create NetworkJobManager with a weak reference to this node
-        let network_manager = NetworkJobManager::new(
-            Arc::downgrade(&node),
-            Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
-            node_name.clone(),
-            clone_static_secret_key(&encryption_secret_key),
-            clone_signature_secret_key(&identity_secret_key),
-            identity_manager.clone(),
-        )
-        .await;
-
-        // Store the SubscriberManager in the Node
-        {
-            let mut node_locked = node.lock().await;
-            *node_locked.network_job_manager.lock().await = Some(network_manager);
-        }
 
         node
     }
@@ -699,7 +682,6 @@ impl Node {
                             Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
-                            Some(NodeCommand::APIAvailableSharedItemsExternalNode { msg, res }) => self.api_subscription_available_shared_items_external_node(msg, res).await?,
                             _ => {},
                         }
                     }
@@ -779,19 +761,11 @@ impl Node {
                 };
 
                 let mut network_job_manager = network_job_manager.lock().await;
-                if let Some(manager) = &mut *network_job_manager {
-                    if let Err(e) = manager.add_network_job_to_queue(&network_job).await {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to add network job to queue: {}", e),
-                        );
-                    }
-                } else {
+                if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
                     shinkai_log(
                         ShinkaiLogOption::Node,
                         ShinkaiLogLevel::Error,
-                        "NetworkJobManager is not initialized",
+                        &format!("Failed to add network job to queue: {}", e),
                     );
                 }
                 if let Err(e) = socket.flush().await {

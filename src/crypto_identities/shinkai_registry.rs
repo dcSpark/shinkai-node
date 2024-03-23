@@ -178,6 +178,7 @@ impl ShinkaiRegistry {
     }
 
     pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        eprintln!("Getting identity record for: {}", identity);
         let now = SystemTime::now();
 
         // If the cache is up-to-date, return the cached value

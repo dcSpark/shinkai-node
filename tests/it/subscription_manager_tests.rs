@@ -135,6 +135,7 @@ async fn make_folder_shareable(
 }
 
 async fn show_available_shared_items(
+    node_name: &str,
     commands_sender: &Sender<NodeCommand>,
     encryption_sk: EncryptionStaticKey,
     signature_sk: SigningKey,
@@ -144,6 +145,7 @@ async fn show_available_shared_items(
 ) {
     let payload = APIAvailableSharedItems {
         path: "/".to_string(), // Assuming you want to list items at the root
+        node_name: node_name.to_string(),
     };
 
     let msg = generate_message_with_payload(
@@ -716,6 +718,7 @@ fn subscription_manager_test() {
                 // Show available shared items
                 eprintln!("Show available shared items before making /shared_test_folder shareable");
                 show_available_shared_items(
+                    node1_identity_name,
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -830,6 +833,7 @@ fn subscription_manager_test() {
                 // Show available shared items
                 eprintln!("Show available shared items after making /shared_test_folder shareable");
                 show_available_shared_items(
+                    node1_identity_name,
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -913,40 +917,31 @@ fn subscription_manager_test() {
                 // eprintln!("\n\n");
             }
             {
-                let message_content = "".to_string();
-                let unchanged_message = ShinkaiMessageBuilder::new(
+                // Remove this after the other stuff is working
+                eprintln!("\n\n### Sending message from node 2 to node 1 requesting shared folders*\n");
+
+                let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
+                    None,
+                    node1_identity_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_profile_encryption_pk.clone(),
-                )
-                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
-                .message_raw_content(message_content.clone())
-                .body_encryption(EncryptionMethod::None)
-                .message_schema_type(MessageSchemaType::AvailableSharedItems)
-                .internal_metadata(
-                    node2_profile_name.to_string().clone(),
-                    node1_profile_name.to_string(),
-                    EncryptionMethod::None,
-                    None,
-                )
-                .external_metadata_with_other_and_intra_sender(
-                    node1_identity_name.to_string(),
+                    node2_encryption_pk.clone(),
                     node2_identity_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
+                    node2_identity_name.to_string(),
                     "".to_string(),
-                    node1_profile_name.to_string().clone(),
                 )
-                .build()
                 .unwrap();
 
-                eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
-                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
+                    async_channel::Sender<Result<String, APIError>>,
+                    async_channel::Receiver<Result<String, APIError>>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender
-                    .send(NodeCommand::SendOnionizedMessage {
+                    .send(NodeCommand::APIAvailableSharedItems {
                         msg: unchanged_message,
                         res: res_send_msg_sender,
                     })
@@ -954,22 +949,26 @@ fn subscription_manager_test() {
                     .unwrap();
 
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
-                assert!(send_result.is_ok(), "Failed to send onionized message");
+                eprint!("send_result: {:?}", send_result);
+                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
 
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                for _ in 0..10 {
+                    let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                        .await
+                        .expect("Failed to fetch last messages for node 2");
 
-                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 2");
+                    eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                    eprintln!("\n\n");
 
-                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 1");
+                    let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                        .await
+                        .expect("Failed to fetch last messages for node 1");
 
-                // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                // eprintln!("\n\n");
-                // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                // eprintln!("\n\n");
+                    eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                    eprintln!("\n\n");
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
             }
             {
                 // Dont forget to do this at the end

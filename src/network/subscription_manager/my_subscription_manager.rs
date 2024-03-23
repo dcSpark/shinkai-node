@@ -51,7 +51,6 @@ const REFRESH_THRESHOLD_MINUTES: usize = 10;
 const SOFT_REFRESH_THRESHOLD_MINUTES: usize = 2;
 
 pub struct MySubscriptionsManager {
-    pub node: Weak<Mutex<Node>>,
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
@@ -72,10 +71,12 @@ pub struct MySubscriptionsManager {
 
 impl MySubscriptionsManager {
     pub async fn new(
-        node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         identity_manager: Weak<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -97,8 +98,7 @@ impl MySubscriptionsManager {
             db.clone(),
             vector_fs.clone(),
             thread_number,
-            node.clone(),
-            |job, db, vector_fs, node| MySubscriptionsManager::process_job_message_queued(job, db, vector_fs, node),
+            |job, db, vector_fs | MySubscriptionsManager::process_job_message_queued(job, db, vector_fs),
         )
         .await;
 
@@ -109,23 +109,7 @@ impl MySubscriptionsManager {
 
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
-        // Extracting values from the Node
-        let node_name;
-        let my_signature_secret_key;
-        let my_encryption_secret_key;
-        if let Some(node_lock) = node.upgrade() {
-            let node = node_lock.lock().await;
-            node_name = node.node_name.clone(); // Assuming Node has a field `node_name`
-            my_signature_secret_key = node.identity_secret_key.clone(); // Assuming Node has a field `identity_secret_key`
-            my_encryption_secret_key = node.encryption_secret_key.clone(); // Assuming Node has a field `encryption_secret_key`
-        } else {
-            // Handle the case where the node is no longer available
-            // This might involve setting default values or returning an error
-            panic!("MySubscriptionsManager> Node is no longer available!");
-        }
-
         MySubscriptionsManager {
-            node,
             db,
             vector_fs,
             identity_manager,
@@ -153,13 +137,18 @@ impl MySubscriptionsManager {
         &mut self,
         name: &ShinkaiName,
     ) -> Result<SharedFoldersExternalNodeSM, SubscriberManagerError> {
+        eprintln!("node: {} get_shared_folder> : {}", self.node_name.get_node_name(), name.get_node_name());
         // Attempt to get the shared folder from the cache without holding onto the mutable borrow
         let (shareable_folder_ext_node, is_up_to_date, needs_refresh) = {
             let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
             if let Some(shareable_folder_ext_node) = external_node_shared_folders.get_mut(name) {
                 let current_time = Utc::now();
-                let duration_since_last_update =
-                    current_time.signed_duration_since(shareable_folder_ext_node.last_updated);
+                // Use response_last_updated for determining the time since the last update
+                let duration_since_last_update = shareable_folder_ext_node
+                    .response_last_updated
+                    .map(|last_updated| current_time.signed_duration_since(last_updated))
+                    // If response_last_updated is None, consider the duration since last update to be maximum to force a refresh
+                    .unwrap_or_else(|| chrono::Duration::max_value());
                 // Determine if the folder is up-to-date
                 let is_up_to_date =
                     duration_since_last_update < chrono::Duration::minutes(REFRESH_THRESHOLD_MINUTES as i64);
@@ -176,6 +165,10 @@ impl MySubscriptionsManager {
         // If the folder is up-to-date, return it directly
         if let Some(shareable_folder_ext_node) = shareable_folder_ext_node.clone() {
             if is_up_to_date {
+                eprintln!(
+                    "node {} get_shared_folder> : up-to-date",
+                    self.node_name.get_node_name()
+                );
                 return Ok(shareable_folder_ext_node);
             }
         }
@@ -193,6 +186,8 @@ impl MySubscriptionsManager {
             // then it should create and update the LRU cache with the current status (waiting for the network to respond)
 
             let msg_request_shared_folders = ShinkaiMessageBuilder::vecfs_available_shared_items(
+                None,
+                name.get_node_name(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
@@ -201,7 +196,11 @@ impl MySubscriptionsManager {
                 "".to_string(),
                 name.get_node_name(),
                 "".to_string(),
-            ).map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+            )
+            .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+            eprintln!("\n\nmsg sender: {}", self.node_name.get_node_name());
+            eprintln!("msg receiver: {}", name.get_node_name());
 
             // Return the current cache value because it's not too old but we still needed to refresh it in the background
             if let Some(shareable_folder_ext_node) = shareable_folder_ext_node.clone() {
@@ -217,7 +216,8 @@ impl MySubscriptionsManager {
                     }
                     // Send the message to the network queue
                     // TODO: move this process_subscription_queue
-                    self.send_message_to_peer(msg_request_shared_folders, standard_identity).await?;
+                    self.send_message_to_peer(msg_request_shared_folders, standard_identity)
+                        .await?;
 
                     // Return the placeholder to indicate the current state to the caller
                     return Ok(placeholder_shared_folder);
@@ -231,7 +231,8 @@ impl MySubscriptionsManager {
             }
             // Send the message to the network queue
             // TODO: move this process_subscription_queue
-            self.send_message_to_peer(msg_request_shared_folders, standard_identity).await?;
+            self.send_message_to_peer(msg_request_shared_folders, standard_identity)
+                .await?;
 
             return Ok(placeholder_shared_folder);
         } else {
@@ -245,6 +246,14 @@ impl MySubscriptionsManager {
         message: ShinkaiMessage,
         receiver_identity: StandardIdentity,
     ) -> Result<(), SubscriberManagerError> {
+        eprintln!("send_message_to_peer> : message: {:?}", message);
+        eprintln!(
+            "send_message_to_peer> : {}",
+            receiver_identity.full_identity_name.extract_node()
+        );
+        eprintln!("send_message_to_peer> : {:?}", receiver_identity.addr);
+        eprintln!("send_message_to_peer> : {:?}", receiver_identity.full_identity_name);
+
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
             SubscriberManagerError::AddressUnavailable(
@@ -271,6 +280,7 @@ impl MySubscriptionsManager {
 
         // Call the send function
         Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
+        eprintln!("send_message_to_peer> : message sent");
 
         Ok(())
     }
@@ -280,12 +290,10 @@ impl MySubscriptionsManager {
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         thread_number: usize,
-        node: Weak<Mutex<Node>>,
         process_job: impl Fn(
             ShinkaiSubscription,
             Weak<Mutex<ShinkaiDB>>,
             Weak<Mutex<VectorFS>>,
-            Weak<Mutex<Node>>,
         ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
@@ -294,7 +302,6 @@ impl MySubscriptionsManager {
                 let job_queue_manager = job_queue_manager.clone();
                 let db = db.clone();
                 let vector_fs = vector_fs.clone();
-                let node = node.clone();
                 let handle = tokio::spawn(async move {
                     loop {
                         match job_queue_manager.lock().await.dequeue("some_key").await {
@@ -323,7 +330,6 @@ impl MySubscriptionsManager {
         job: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
-        node: Weak<Mutex<Node>>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
             // Placeholder logic for processing a queued job message

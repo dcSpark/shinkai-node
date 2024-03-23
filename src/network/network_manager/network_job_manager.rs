@@ -1,6 +1,8 @@
 use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use crate::network::subscription_manager::my_subscription_manager::{self, MySubscriptionsManager};
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
 use chrono::{DateTime, Utc};
@@ -22,7 +24,9 @@ use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::network_handlers::{extract_message, handle_based_on_message_content_and_encryption, verify_message_signature};
+use super::network_handlers::{
+    extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
+};
 use super::network_job_manager_error::NetworkJobQueueError;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -52,20 +56,20 @@ impl Ord for NetworkJobQueue {
 const NUM_THREADS: usize = 2;
 
 pub struct NetworkJobManager {
-    pub node: Weak<Mutex<Node>>,
     pub network_job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
     pub network_job_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl NetworkJobManager {
     pub async fn new(
-        node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -95,7 +99,6 @@ impl NetworkJobManager {
 
         // Start processing the job queue
         let job_queue_handler = NetworkJobManager::process_job_queue(
-            node.clone(),
             db.clone(),
             vector_fs.clone(),
             my_node_name.clone(),
@@ -103,31 +106,34 @@ impl NetworkJobManager {
             clone_signature_secret_key(&my_signature_secret_key),
             thread_number,
             identity_manager.clone(),
+            my_subscription_manager,
+            external_subscription_manager,
             network_job_queue_manager.clone(),
             |job,
-             node,
              db,
              vector_fs,
              my_node_profile_name,
              my_encryption_secret_key,
              my_signature_secret_key,
-             identity_manager| {
+             identity_manager,
+             my_subscription_manager,
+             external_subscription_manager| {
                 Box::pin(NetworkJobManager::process_network_request_queued(
                     job,
-                    node,
                     db,
                     vector_fs,
                     my_node_profile_name,
                     my_encryption_secret_key,
                     my_signature_secret_key,
                     identity_manager,
+                    my_subscription_manager,
+                    external_subscription_manager,
                 ))
             },
         )
         .await;
 
         let network_job_manager = Self {
-            node,
             network_job_queue_manager,
             network_job_processing_task: Some(job_queue_handler),
         };
@@ -136,7 +142,6 @@ impl NetworkJobManager {
     }
 
     pub async fn process_job_queue(
-        node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         my_node_profile_name: ShinkaiName,
@@ -144,16 +149,19 @@ impl NetworkJobManager {
         my_signature_secret_key: SigningKey,
         max_parallel_jobs: usize,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         job_processing_fn: impl Fn(
-                NetworkJobQueue,             // job to process
-                Weak<Mutex<Node>>,           // node
-                Weak<Mutex<ShinkaiDB>>,      // db
-                Weak<Mutex<VectorFS>>,       // vector_fs
-                ShinkaiName,                 // my_profile_name
-                EncryptionStaticKey,         // my_encryption_secret_key
-                SigningKey,                  // my_signature_secret_key
-                Arc<Mutex<IdentityManager>>, // identity_manager
+                NetworkJobQueue,                       // job to process
+                Weak<Mutex<ShinkaiDB>>,                // db
+                Weak<Mutex<VectorFS>>,                 // vector_fs
+                ShinkaiName,                           // my_profile_name
+                EncryptionStaticKey,                   // my_encryption_secret_key
+                SigningKey,                            // my_signature_secret_key
+                Arc<Mutex<IdentityManager>>,           // identity_manager
+                Arc<Mutex<MySubscriptionsManager>>,    // my_subscription_manager
+                Arc<Mutex<ExternalSubscriberManager>>, // external_subscription_manager
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
             + Send
             + Sync
@@ -161,13 +169,14 @@ impl NetworkJobManager {
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
-        let node_clone = node.clone();
         let db_clone = db.clone();
         let vector_fs_clone = vector_fs.clone();
         let my_node_profile_name_clone = my_node_profile_name.clone();
         let my_encryption_sk_clone = clone_static_secret_key(&my_encryption_secret_key);
         let my_signature_sk_clone = clone_signature_secret_key(&my_signature_secret_key);
         let identity_manager_clone = identity_manager.clone();
+        let my_subscription_manager_clone = my_subscription_manager.clone();
+        let external_subscription_manager_clone = external_subscription_manager.clone();
 
         let job_processing_fn = Arc::new(job_processing_fn);
 
@@ -221,13 +230,14 @@ impl NetworkJobManager {
                     let job_queue_manager = Arc::clone(&job_queue_manager);
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = Arc::clone(&semaphore);
-                    let node_clone_2 = node_clone.clone();
                     let db_clone_2 = db_clone.clone();
                     let vector_fs_clone_2 = vector_fs_clone.clone();
                     let my_node_profile_name_clone_2 = my_node_profile_name_clone.clone();
                     let my_encryption_sk_clone_2 = clone_static_secret_key(&my_encryption_sk_clone);
                     let my_signature_sk_clone_2 = clone_signature_secret_key(&my_signature_sk_clone);
                     let identity_manager_clone_2 = identity_manager_clone.clone();
+                    let my_subscription_manager_clone_2 = my_subscription_manager_clone.clone();
+                    let external_subscription_manager_clone_2 = external_subscription_manager_clone.clone();
 
                     let job_processing_fn = Arc::clone(&job_processing_fn);
 
@@ -247,13 +257,14 @@ impl NetworkJobManager {
                                 let result = {
                                     let result = job_processing_fn(
                                         job,
-                                        node_clone_2,
                                         db_clone_2,
                                         vector_fs_clone_2,
                                         my_node_profile_name_clone_2,
                                         my_encryption_sk_clone_2,
                                         my_signature_sk_clone_2,
                                         identity_manager_clone_2,
+                                        my_subscription_manager_clone_2,
+                                        external_subscription_manager_clone_2,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -309,20 +320,19 @@ impl NetworkJobManager {
 
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<String, NetworkJobQueueError> {
-
         // TODO: Remove later
         eprintln!("Processing job {:?}", job.receiver_address.to_string());
 
-        Self::handle_message_internode(
-            node,
+        let _ = Self::handle_message_internode(
             job.receiver_address,
             job.unsafe_sender_address,
             &job.content,
@@ -331,7 +341,10 @@ impl NetworkJobManager {
             my_signature_secret_key,
             db,
             identity_manager,
-        ).await;
+            my_subscription_manager,
+            external_subscription_manager,
+        )
+        .await;
 
         Ok("OK".to_string())
     }
@@ -349,17 +362,18 @@ impl NetworkJobManager {
     }
 
     pub async fn handle_message_internode(
-        node: Weak<Mutex<Node>>,
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,
         bytes: &[u8],
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        maybe_db: Weak<Mutex<ShinkaiDB>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        shinkai_db: Weak<Mutex<ShinkaiDB>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<(), NetworkJobQueueError> {
-        let maybe_db = maybe_db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+        let maybe_db = shinkai_db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -379,7 +393,7 @@ impl NetworkJobManager {
         let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
             .unwrap()
             .get_node_name();
-        let sender_identity = maybe_identity_manager
+        let sender_identity = identity_manager
             .lock()
             .await
             .external_profile_to_global_identity(&sender_profile_name_string)
@@ -426,7 +440,6 @@ impl NetworkJobManager {
         );
 
         handle_based_on_message_content_and_encryption(
-            node.clone(),
             message.clone(),
             sender_identity.node_encryption_public_key,
             sender_identity.addr.clone().unwrap(),
@@ -435,9 +448,11 @@ impl NetworkJobManager {
             &my_signature_secret_key,
             &my_node_profile_name,
             maybe_db,
-            maybe_identity_manager,
+            identity_manager,
             receiver_address,
             unsafe_sender_address,
+            my_subscription_manager,
+            external_subscription_manager,
         )
         .await
     }

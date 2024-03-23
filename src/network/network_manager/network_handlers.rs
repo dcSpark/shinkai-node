@@ -1,7 +1,13 @@
 use crate::{
     db::ShinkaiDB,
     managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    network::{
+        node_error::NodeError,
+        subscription_manager::{
+            external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+        },
+        Node,
+    },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
@@ -31,7 +37,6 @@ pub enum PingPong {
 }
 
 pub async fn handle_based_on_message_content_and_encryption(
-    node: Weak<Mutex<Node>>,
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
@@ -43,6 +48,8 @@ pub async fn handle_based_on_message_content_and_encryption(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
+    my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
@@ -62,7 +69,6 @@ pub async fn handle_based_on_message_content_and_encryption(
     match (message_content.as_str(), message_encryption_status) {
         (_, EncryptionStatus::BodyEncrypted) => {
             handle_default_encryption(
-                node.clone(),
                 message,
                 sender_encryption_pk,
                 sender_address,
@@ -74,6 +80,8 @@ pub async fn handle_based_on_message_content_and_encryption(
                 unsafe_sender_address,
                 maybe_db,
                 maybe_identity_manager,
+                my_subscription_manager,
+                external_subscription_manager,
             )
             .await
         }
@@ -81,7 +89,6 @@ pub async fn handle_based_on_message_content_and_encryption(
             // TODO: save to db to send the profile when connected
             println!("{} > Content encrypted", receiver_address);
             handle_network_message_cases(
-                node.clone(),
                 message,
                 sender_encryption_pk,
                 sender_address,
@@ -93,6 +100,8 @@ pub async fn handle_based_on_message_content_and_encryption(
                 unsafe_sender_address,
                 maybe_db,
                 maybe_identity_manager,
+                my_subscription_manager,
+                external_subscription_manager,
             )
             .await
         }
@@ -117,7 +126,6 @@ pub async fn handle_based_on_message_content_and_encryption(
         }
         (_, EncryptionStatus::NotCurrentlyEncrypted) => {
             handle_network_message_cases(
-                node.clone(),
                 message,
                 sender_encryption_pk,
                 sender_address,
@@ -129,6 +137,8 @@ pub async fn handle_based_on_message_content_and_encryption(
                 unsafe_sender_address,
                 maybe_db,
                 maybe_identity_manager,
+                my_subscription_manager,
+                external_subscription_manager,
             )
             .await
         }
@@ -204,7 +214,6 @@ pub async fn handle_ping(
 }
 
 pub async fn handle_default_encryption(
-    node: Weak<Mutex<Node>>,
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
@@ -216,6 +225,8 @@ pub async fn handle_default_encryption(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
@@ -243,7 +254,6 @@ pub async fn handle_default_encryption(
                     if message_content != "ACK" {
                         // Call handle_other_cases after decrypting the payload
                         handle_network_message_cases(
-                            node,
                             decrypted_message,
                             sender_encryption_pk,
                             sender_address,
@@ -255,6 +265,8 @@ pub async fn handle_default_encryption(
                             unsafe_sender_address,
                             maybe_db,
                             maybe_identity_manager,
+                            my_subscription_manager,
+                            external_subscription_manager,
                         )
                         .await?;
                     }
@@ -270,6 +282,8 @@ pub async fn handle_default_encryption(
                         sender_profile_name,
                         maybe_db,
                         maybe_identity_manager,
+                        my_subscription_manager,
+                        external_subscription_manager,
                     )
                     .await;
                 }
@@ -285,7 +299,6 @@ pub async fn handle_default_encryption(
 }
 
 pub async fn handle_network_message_cases(
-    node: Weak<Mutex<Node>>,
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
@@ -297,8 +310,10 @@ pub async fn handle_network_message_cases(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
-    println!(
+    eprintln!(
         "{} > Got message from {:?}. Processing and sending ACK",
         receiver_address, unsafe_sender_address
     );
@@ -320,89 +335,87 @@ pub async fn handle_network_message_cases(
     // TODO: the message may be need to be added to an internal NetworkJobQueue
     // TODO: Create NetworkJobQueue Struct
     match message.get_message_content_schema() {
-        Ok(schema) => match schema {
-            MessageSchemaType::AvailableSharedItems => {
-                // Handle Schema1 specific logic
-                println!("Node {}: Handling Schema1 specific logic", my_node_profile_name);
+        Ok(schema) => {
+            match schema {
+                MessageSchemaType::AvailableSharedItems => {
+                    // Handle Schema1 specific logic
+                    eprintln!("Node {}: Handling Schema1 specific logic", my_node_profile_name);
 
-                // 1.- Get subscription results
-                // type: Vec<(String, String, Option<ShinkaiFolderSubscription>) -> String
+                    // 1.- Get subscription results
+                    // type: Vec<(String, String, Option<ShinkaiFolderSubscription>) -> String
 
-                // Upgrade the Weak reference to a strong reference
-                let mut response = "".to_string();
-                if let Some(node_lock) = node.upgrade() {
-                    // Lock the node to access its fields
-                    let node = node_lock.lock().await;
+                    // Upgrade the Weak reference to a strong reference
+                    let mut response = "".to_string();
 
                     // Access the subscription_manager, which is of type Arc<Mutex<Option<SubscriberManager>>>
-                    let subscription_manager_lock = node.ext_subscription_manager.lock().await;
+                    let subscription_manager = external_subscription_manager.lock().await;
 
                     // Now, the lock is released, and we can proceed without holding onto the `MutexGuard`
-                    if let Some(subscription_manager) = &*subscription_manager_lock {
-                        let path = "/"; // Define the path you want to query
-                        match subscription_manager.get_cached_shared_folder_tree(path).await {
-                            Some(tree) => {
-                                // Attempt to serialize FSItemTree to a JSON string
-                                let unref_tree = &*tree;
-                                match serde_json::to_string(unref_tree) {
-                                    Ok(tree_str) => {
-                                        println!("Successfully retrieved cached shared folder tree for path: {} with tree: {}", path, tree_str);
-                                        response = tree_str;
-                                    }
-                                    Err(e) => println!("Failed to serialize FSItemTree: {}", e),
+                    let path = "/"; // Define the path you want to query
+                    match subscription_manager.get_cached_shared_folder_tree(path).await {
+                        Some(tree) => {
+                            // Attempt to serialize FSItemTree to a JSON string
+                            let unref_tree = &*tree;
+                            match serde_json::to_string(unref_tree) {
+                                Ok(tree_str) => {
+                                    println!(
+                                        "Successfully retrieved cached shared folder tree for path: {} with tree: {}",
+                                        path, tree_str
+                                    );
+                                    response = tree_str;
                                 }
-                            }
-                            None => {
-                                // The requested path is not cached
-                                println!("No cached shared folder tree found for path: {}", path);
+                                Err(e) => println!("Failed to serialize FSItemTree: {}", e),
                             }
                         }
-                    } else {
-                        println!("Subscription manager is not initialized.");
+                        None => {
+                            // The requested path is not cached
+                            println!("No cached shared folder tree found for path: {}", path);
+                        }
                     }
-                } else {
-                    println!("Failed to upgrade node reference.");
+
+                    eprintln!("\n\n crafting a response for retrieved shares items (allegedly)");
+
+                    // 1.5- extract info from the original message
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+
+                    let request_node_name = requester.get_node_name();
+                    let request_profile_name = requester.get_profile_name().unwrap_or("".to_string());
+
+                    // 2.- Create message using vecfs_available_shared_items_response
+                    // Send message back with response
+                    let msg = ShinkaiMessageBuilder::vecfs_available_shared_items_response(
+                        response,
+                        clone_static_secret_key(&my_encryption_secret_key),
+                        clone_signature_secret_key(&my_signature_secret_key),
+                        sender_encryption_pk,
+                        my_node_profile_name.to_string(),
+                        "".to_string(),
+                        request_node_name.clone(),
+                        request_profile_name,
+                    )
+                    .unwrap();
+
+                    eprintln!("Sending message back with response {:?}", msg);
+
+                    // 3.- Send message back with response
+
+                    Node::send(
+                        msg,
+                        Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
+                        (sender_address, request_node_name),
+                        maybe_db,
+                        maybe_identity_manager,
+                        false,
+                        None,
+                    );
+                    return Ok(());
                 }
-
-                // 1.5- extract info from the original message
-                let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-
-                let request_node_name = requester.get_node_name();
-                let request_profile_name = requester.get_profile_name().unwrap_or("".to_string());
-
-                // 2.- Create message using vecfs_available_shared_items_response
-                // Send message back with response
-                let msg = ShinkaiMessageBuilder::vecfs_available_shared_items_response(
-                    response,
-                    clone_static_secret_key(&my_encryption_secret_key),
-                    clone_signature_secret_key(&my_signature_secret_key),
-                    sender_encryption_pk,
-                    my_node_profile_name.to_string(),
-                    "".to_string(),       // maybe read from the request message
-                    request_node_name,    // read from request message
-                    request_profile_name, // read from request message
-                )
-                .unwrap();
-
-                eprintln!("Sending message back with response {:?}", msg);
-
-                // // 3.- Send message back with response
-
-                // Node::send(
-                //     msg,
-                //     Arc::new(clone_static_secret_key(&encryption_secret_key)),
-                //     peer,
-                //     maybe_db,
-                //     maybe_identity_manager,
-                //     false,
-                //     None,
-                // );
+                _ => {
+                    // Ignore other schemas
+                    println!("Ignoring other schemas");
+                }
             }
-            _ => {
-                // Ignore other schemas
-                println!("Ignoring other schemas");
-            }
-        },
+        }
         Err(e) => {
             // Handle error case
             println!("Error getting message schema: {:?}", e);
@@ -418,6 +431,8 @@ pub async fn handle_network_message_cases(
         sender_profile_name,
         maybe_db,
         maybe_identity_manager,
+        my_subscription_manager,
+        external_subscription_manager,
     )
     .await
 }
@@ -431,6 +446,8 @@ pub async fn send_ack(
     receiver: ProfileName,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),

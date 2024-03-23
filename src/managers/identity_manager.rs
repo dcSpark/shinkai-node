@@ -266,6 +266,8 @@ impl IdentityManagerTrait for IdentityManager {
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
+        eprintln!("search_identity > node_name: {}", node_name);
+        eprintln!("local node name: {}", self.local_node_name);
     
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {

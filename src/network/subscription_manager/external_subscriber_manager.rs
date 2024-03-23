@@ -25,8 +25,8 @@ use tokio::sync::{Mutex, MutexGuard};
 use super::fs_item_tree::FSItemTree;
 
 /*
-How to subscribe 
-- Node can scan multiple nodes and process what they offer. Endpoint: Node (External) -> Shareable stuff? (different than local node endpoint) 
+How to subscribe
+- Node can scan multiple nodes and process what they offer. Endpoint: Node (External) -> Shareable stuff? (different than local node endpoint)
 - User sees something that they like
 - They subscribe to it
 - Node validates and adds node to their subscriptors (maybe it should sync from the chain (?)) how do we know which subscription is which one?
@@ -35,9 +35,8 @@ How to subscribe
   - node ask the subscriber what they state
   - node calculates diff
   - node sends the diff to the subscriber
-- Node checks for changes every X time and sends the diff to the subscriber in order to update the state 
+- Node checks for changes every X time and sends the diff to the subscriber in order to update the state
 */
-
 
 // Message
 
@@ -70,27 +69,30 @@ How to subscribe
 const NUM_THREADS: usize = 2;
 
 pub struct ExternalSubscriberManager {
-    pub node: Weak<Mutex<Node>>,
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub shared_folders_trees: HashMap<String, Arc<FSItemTree>>,
+    pub node_name: ShinkaiName,
 }
 
 impl ExternalSubscriberManager {
     pub async fn new(
-        node: Weak<Mutex<Node>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         identity_manager: Weak<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_";
-        let subscriptions_queue =
-            JobQueueManager::<ShinkaiSubscription>::new(db.clone(), Topic::AnyQueuesPrefixed.as_str(), Some(db_prefix.to_string()))
-                .await
-                .unwrap();
+        let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
+            db.clone(),
+            Topic::AnyQueuesPrefixed.as_str(),
+            Some(db_prefix.to_string()),
+        )
+        .await
+        .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
 
         let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
@@ -103,26 +105,22 @@ impl ExternalSubscriberManager {
             db.clone(),
             vector_fs.clone(),
             thread_number,
-            node.clone(),
-            |job, db, vector_fs, node| ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs, node),
+            |job, db, vector_fs| ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs),
         )
         .await;
 
         ExternalSubscriberManager {
-            node,
             db,
             vector_fs,
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
             shared_folders_trees: HashMap::new(),
+            node_name,
         }
     }
 
-    pub async fn get_cached_shared_folder_tree(
-        &self,
-        path: &str,
-    ) -> Option<Arc<FSItemTree>> {
+    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Option<Arc<FSItemTree>> {
         self.shared_folders_trees.get(path).cloned()
     }
 
@@ -132,7 +130,6 @@ impl ExternalSubscriberManager {
         job: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
-        node: Weak<Mutex<Node>>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
             // Placeholder logic for processing a queued job message
@@ -151,12 +148,10 @@ impl ExternalSubscriberManager {
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         thread_number: usize,
-        node: Weak<Mutex<Node>>,
         process_job: impl Fn(
             ShinkaiSubscription,
             Weak<Mutex<ShinkaiDB>>,
             Weak<Mutex<VectorFS>>,
-            Weak<Mutex<Node>>,
         ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
@@ -165,7 +160,6 @@ impl ExternalSubscriberManager {
                 let job_queue_manager = job_queue_manager.clone();
                 let db = db.clone();
                 let vector_fs = vector_fs.clone();
-                let node = node.clone();
                 let handle = tokio::spawn(async move {
                     loop {
                         match job_queue_manager.lock().await.dequeue("some_key").await {
@@ -239,7 +233,7 @@ impl ExternalSubscriberManager {
         }
 
         // TODO: convert eprintlns to shinkai_logs
-        eprintln!("Shared folders to tree...");
+        eprintln!("Node name: {} Shared folders to tree...", self.node_name.clone());
         let tree = self
             .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
             .await?;
@@ -404,19 +398,15 @@ impl ExternalSubscriberManager {
             ))?;
             let mut db = db.lock().await;
             db.remove_folder_requirements(&path)
-            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
-        }        
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+        }
 
         self.shared_folders_trees.remove(&path);
         Ok(true)
     }
 
     pub async fn call_subscriber_test_fn(&self) -> Result<String, SubscriberManagerError> {
-        let node_lock = self.node.upgrade().ok_or(SubscriberManagerError::NodeNotAvailable(
-            "Node instance is not available".to_string(),
-        ))?;
-        let node = node_lock.lock().await;
-        Ok(node.subscriber_test_fn())
+        Ok("".to_string())
     }
 
     // Schedule the job to be processed. Update the last time it was processed.

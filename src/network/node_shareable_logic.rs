@@ -58,7 +58,7 @@ pub async fn validate_message_main_logic(
                     &potentially_encrypted_msg.clone(),
                 )?;
 
-                // eprintln!("sender_name: {:?}", sender_name);
+                eprintln!("sender_name: {:?}", sender_name);
                 let sender_encryption_pk = match identity_manager
                     .lock()
                     .await
