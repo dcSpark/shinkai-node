@@ -43,7 +43,7 @@ uuid = { version = "0.8", features = ["v4"] }
 reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking"] }
 # llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 ordered-float = "3.7.0"
-keyphrases = "0.3.2"
+keyphrases = "0.3.3"
 byteorder = "1.4.3"
 shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives" }
 shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }

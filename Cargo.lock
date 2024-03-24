@@ -2639,9 +2639,9 @@ dependencies = [
 
 [[package]]
 name = "keyphrases"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3469baa50de5674276e5328795aec868ab2cbf2e52ae830b7c36d39b737a4a2"
+checksum = "4a4e171437b3fc556d1b338ee2f3ea7353fc566b1784439aa077ebfb55da4d0a"
 dependencies = [
  "regex",
 ]
