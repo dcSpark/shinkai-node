@@ -1,5 +1,5 @@
 use crate::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionRequest};
-use crate::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
+use crate::schemas::shinkai_subscription_req::{ShinkaiFolderSubscription, ShinkaiFolderSubscriptionPayment};
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -44,6 +44,7 @@ pub enum MessageSchemaType {
     UpdateShareableFolder,
     UnshareFolder,
     ConvertFilesAndSaveToFolder,
+    SubscribeToSharedFolder,
 }
 
 impl MessageSchemaType {
@@ -83,6 +84,7 @@ impl MessageSchemaType {
             "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
             "UnshareFolder" => Some(Self::UnshareFolder),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
+            "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
             _ => None,
         }
     }
@@ -122,6 +124,7 @@ impl MessageSchemaType {
             Self::UpdateShareableFolder => "UpdateShareableFolder",
             Self::UnshareFolder => "UnshareFolder",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
+            Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
             Self::Empty => "",
         }
     }
@@ -336,6 +339,14 @@ pub struct APIVecFsCopyItem {
 pub struct APIAvailableSharedItems {
     pub path: String,
     pub node_name: String,
+
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APISubscribeToSharedFolder {
+    pub path: String,
+    pub node_name: String,
+    pub payment: ShinkaiFolderSubscriptionPayment,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -325,6 +325,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APISubscribeToSharedFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -682,6 +686,7 @@ impl Node {
                             Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
+                            Some(NodeCommand::APISubscribeToSharedFolder { msg, res }) => self.api_subscription_subscribe_to_shared_folder(msg, res).await?,
                             _ => {},
                         }
                     }

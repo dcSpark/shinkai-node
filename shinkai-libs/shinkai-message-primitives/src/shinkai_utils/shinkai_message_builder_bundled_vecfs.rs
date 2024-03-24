@@ -1,8 +1,7 @@
 use crate::{
-    shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson
-    },
-    shinkai_utils::job_scope::JobScope,
+    schemas::shinkai_subscription_req::ShinkaiFolderSubscriptionPayment, shinkai_message::shinkai_message_schemas::{
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson
+    }, shinkai_utils::job_scope::JobScope
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::Serialize;
@@ -364,6 +363,36 @@ impl ShinkaiMessageBuilder {
         Self::create_vecfs_message(
             payload,
             MessageSchemaType::AvailableSharedItems,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn vecfs_subscribe_to_shared_folder(
+        shared_folder: String,
+        requirements: ShinkaiFolderSubscriptionPayment,    
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APISubscribeToSharedFolder {
+            path: shared_folder,
+            node_name: node_receiver.to_string(),
+            payment: requirements,
+        };
+
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::SubscribeToSharedFolder,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,

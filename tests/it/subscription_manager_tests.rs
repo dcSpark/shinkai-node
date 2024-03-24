@@ -1079,21 +1079,25 @@ fn subscription_manager_test() {
                     "Failed to match the expected shared folder information"
                 );
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 2");
-
-                eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                eprintln!("\n\n");
-
-                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 1");
-
-                eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                eprintln!("\n\n");
+            }
+            {
+                eprintln!("Subscribe to the shared folder");
+                // Subscribe to the shared folder
+                // TODO: create node endpoint to subscribe
+                // TODO: connect endpoint to the my_subscription_manager
+                // TODO: send request from my node to the subscription node
+                // TODO: process request from the subscription node and return the response (valid or error)
+                // --
+                // TODO: request current state from subscriber node
+                // TODO: process request from the subscriber node and compute diff
+                // TODO: generate the node network jobs to send the files
+                // TODO: subscriber node see the requests and check if it's from the subscription
+                // TODO: subscriber node save the files using vector fs
+                // --
+                // TODO: maybe check for connections over X amount if it's from a subscriber if not end the connection (avoid spam)
+                // Note(Nico): what happens if I'm trying to send a file (retry or whatever) 
+                // and another thing is also trying to send it (retry or new schedule)?
+                // maybe create a deterministic identifier so it's easier to track the process
             }
             {
                 // Dont forget to do this at the end

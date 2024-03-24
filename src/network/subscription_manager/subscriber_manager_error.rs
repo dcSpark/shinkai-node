@@ -19,6 +19,8 @@ pub enum SubscriberManagerError {
     SharedFolderNotFound(String),
     IdentityManagerUnavailable,
     AddressUnavailable(String),
+    PaymentNotValid(String),
+    SubscriptionFailed(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -36,6 +38,8 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::SharedFolderNotFound(e) => write!(f, "Shared folder not found: {}", e),
             SubscriberManagerError::IdentityManagerUnavailable => write!(f, "Identity manager unavailable"),
             SubscriberManagerError::AddressUnavailable(e) => write!(f, "Address unavailable: {}", e),
+            SubscriberManagerError::PaymentNotValid(e) => write!(f, "Payment not valid: {}", e),
+            SubscriberManagerError::SubscriptionFailed(e) => write!(f, "Subscription failed: {}", e),
         }
     }
 }

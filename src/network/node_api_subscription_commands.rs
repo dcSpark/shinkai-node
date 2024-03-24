@@ -7,8 +7,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APICreateShareableFolder, APIUnshareFolder, APIUpdateShareableFolder,
-            MessageSchemaType,
+            APIAvailableSharedItems, APICreateShareableFolder, APISubscribeToSharedFolder, APIUnshareFolder,
+            APIUpdateShareableFolder, MessageSchemaType,
         },
     },
 };
@@ -32,12 +32,8 @@ impl Node {
                 return Ok(());
             }
         };
-        eprintln!("\n\napi_subscription_available_shared_items");
-        eprintln!("input_payload.node_name: {:?}", input_payload.node_name);
-        eprintln!("self.node_name: {:?}", self.node_name.clone().get_node_name());
 
         if input_payload.node_name == self.node_name.clone().get_node_name() {
-            eprintln!("Requesting shared folders from self");
             // Lock the mutex and handle the Option
             let mut subscription_manager = self.ext_subscription_manager.lock().await;
             let result = subscription_manager
@@ -71,7 +67,6 @@ impl Node {
                 }
             }
         } else {
-            eprintln!("Requesting shared folders from external");
             let mut my_subscription_manager = self.my_subscription_manager.lock().await;
 
             match ShinkaiName::new(input_payload.node_name.clone()) {
@@ -115,6 +110,62 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn api_subscription_subscribe_to_shared_folder(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match self
+            .validate_and_extract_payload::<APISubscribeToSharedFolder>(
+                potentially_encrypted_msg,
+                MessageSchemaType::SubscribeToSharedFolder,
+            )
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let target_node = match ShinkaiName::new(input_payload.node_name.clone()) {
+            Ok(node) => node,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid node name provided".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut subscription_manager = self.my_subscription_manager.lock().await;
+        let result = subscription_manager
+            .subscribe_to_shared_folder(target_node, input_payload.path, input_payload.payment)
+            .await;
+
+        match result {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok("Successfully subscribed to shared folder".to_string()))
+                    .await
+                    .map_err(|_| ());
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to subscribe to shared folder: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 

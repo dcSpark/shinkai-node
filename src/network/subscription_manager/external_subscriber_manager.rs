@@ -9,12 +9,15 @@ use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
 };
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::{
+    ShinkaiFolderSubscription, ShinkaiFolderSubscriptionPayment,
+};
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
@@ -81,10 +84,10 @@ pub struct ExternalSubscriberManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
+    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+    pub node_name: ShinkaiName,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
-    pub shared_folders_trees: HashMap<String, Arc<SharedFolderInfo>>,
-    pub node_name: ShinkaiName,
 }
 
 impl ExternalSubscriberManager {
@@ -103,6 +106,7 @@ impl ExternalSubscriberManager {
         .await
         .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
+        let shared_folders_trees = Arc::new(DashMap::new());
 
         let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
@@ -113,8 +117,11 @@ impl ExternalSubscriberManager {
             subscriptions_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
+            shared_folders_trees.clone(),
             thread_number,
-            |job, db, vector_fs| ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs),
+            |job, db, vector_fs, shared_folders_trees| {
+                ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs, shared_folders_trees)
+            },
         )
         .await;
 
@@ -124,28 +131,35 @@ impl ExternalSubscriberManager {
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
-            shared_folders_trees: HashMap::new(),
+            shared_folders_trees,
             node_name,
         }
     }
 
-    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Vec<Arc<SharedFolderInfo>> {
+    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Vec<SharedFolderInfo> {
         if path == "/" {
-            self.shared_folders_trees.values().cloned().collect()
+            // Collect all values into a Vec
+            self.shared_folders_trees
+                .iter()
+                .map(|entry| entry.value().clone())
+                .collect()
         } else {
+            // Attempt to get a single value and wrap it in a Vec if it exists
             self.shared_folders_trees
                 .get(path)
-                .cloned()
-                .map_or_else(Vec::new, |v| vec![v])
+                .map(|value| vec![value.clone()])
+                .unwrap_or_else(Vec::new)
         }
     }
 
     // Placeholder for process_job_message_queued
     // Correct the return type of the function to match the expected type
+    // TODO: Remove? I don't think I need this. it could be helpful for testing?
     fn process_job_message_queued(
         job: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
             // Placeholder logic for processing a queued job message
@@ -163,16 +177,21 @@ impl ExternalSubscriberManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
+        // TODO: probably we want to pass a Weak Mutex of something in memory that we can use to store the state of the shared_folders
         process_job: impl Fn(
             ShinkaiSubscription,
             Weak<Mutex<ShinkaiDB>>,
             Weak<Mutex<VectorFS>>,
+            Arc<DashMap<String, SharedFolderInfo>>,
         ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut handles = Vec::new();
             for _ in 0..thread_number {
+                // TODO: check if any of the shared_folders has changed using the three diff
+                // TODO: iterate over all the subscriptors of that folder and create jobs in the network queue
                 let job_queue_manager = job_queue_manager.clone();
                 let db = db.clone();
                 let vector_fs = vector_fs.clone();
@@ -181,6 +200,7 @@ impl ExternalSubscriberManager {
                         match job_queue_manager.lock().await.dequeue("some_key").await {
                             Ok(Some(job)) => {
                                 "hey_replace_me".to_string();
+                                // process_job(job, db.clone(), vector_fs.clone()).await;
                             }
                             Ok(None) => break,
                             Err(err) => {
@@ -214,10 +234,8 @@ impl ExternalSubscriberManager {
                 ))?;
             let mut vector_fs = vector_fs.lock().await;
 
-            eprintln!("path: {:?}", path);
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            eprintln!("VR Path: {:?}", vr_path);
 
             let reader = vector_fs
                 .new_reader(
@@ -229,11 +247,9 @@ impl ExternalSubscriberManager {
 
             // Note: double-check that the Whitelist is correct here under these assumptions
             let results = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
-            eprintln!("\n\n\n >>> Results: {:?}", results);
 
             // Use the new function to filter results to only include top-level folders
             let filtered_results = self.filter_to_top_level_folders(results);
-            eprintln!("\n\n\n >>> Filtered Results: {:?}", filtered_results);
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -261,14 +277,16 @@ impl ExternalSubscriberManager {
                     subscription_requirement,
                 };
                 converted_results.push(result.clone());
-                eprintln!("Converted result: {:?}", result);
-                self.shared_folders_trees.insert(path_str, Arc::new(result));
+                self.shared_folders_trees.insert(path_str, result);
             }
         }
 
         // TODO: convert eprintlns to shinkai_logs
-        eprintln!("Node name: {} Shared folders to tree...", self.node_name.clone());
-        eprintln!("Converted results: {:?}", converted_results);
+        eprintln!(
+            "Node: {} Converted results: {:?}",
+            self.node_name.clone(),
+            converted_results
+        );
 
         Ok(converted_results)
     }
@@ -428,8 +446,46 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
-    pub async fn call_subscriber_test_fn(&self) -> Result<String, SubscriberManagerError> {
-        Ok("".to_string())
+    pub async fn subscribe_to_shared_folder(
+        &mut self,
+        requester_shinkai_identity: ShinkaiName,
+        shared_folder: String,
+        subscription_requirement: ShinkaiFolderSubscriptionPayment,
+    ) -> Result<bool, SubscriberManagerError> {
+        // Validate that the requester actually did the alleged payment
+        match subscription_requirement {
+            ShinkaiFolderSubscriptionPayment::Free => {
+                // No validation required
+            }
+            ShinkaiFolderSubscriptionPayment::DirectDelegation => {
+                // Validate direct delegation logic here
+                // If validation fails, you can return early with an error
+                // Placeholder for validation check
+                let is_valid_delegation = false; // This should be replaced with actual validation logic
+                if !is_valid_delegation {
+                    return Err(SubscriberManagerError::SubscriptionFailed(
+                        "Direct delegation validation failed".to_string(),
+                    ));
+                }
+            }
+            ShinkaiFolderSubscriptionPayment::Payment(payment_details) => {
+                // Validate payment logic here
+                // If validation fails, you can return early with an error
+                // Placeholder for payment validation
+                let is_valid_payment = false; // This should be replaced with actual payment validation logic
+                if !is_valid_payment {
+                    return Err(SubscriberManagerError::SubscriptionFailed(format!(
+                        "Payment validation failed: {}",
+                        payment_details
+                    )));
+                }
+            }
+        }
+
+        // The requester has passed the validation checks
+        // Proceed to add the requester to the list of subscribers
+
+        Ok(true)
     }
 
     // Schedule the job to be processed. Update the last time it was processed.

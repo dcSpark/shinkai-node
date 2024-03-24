@@ -13,3 +13,10 @@ pub enum PaymentOption {
     USD(f64),
     KAITokens(u64),
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ShinkaiFolderSubscriptionPayment {
+    Free,
+    DirectDelegation,
+    Payment(String),
+}

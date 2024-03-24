@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
 };
+use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscriptionPayment;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -59,6 +60,7 @@ pub struct MySubscriptionsManager {
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
     // TODO: add a new property to store the user's subscriptions
     pub subscribed_folders_trees: HashMap<String, Arc<FSItemTree>>, // We want it to be stored in the DB
+    // maybe we can just check directly in the db?
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
 
     // These values are already part of the node, but we want to minimize blocking the node mutex
@@ -99,14 +101,14 @@ impl MySubscriptionsManager {
             db.clone(),
             vector_fs.clone(),
             thread_number,
-            |job, db, vector_fs | MySubscriptionsManager::process_job_message_queued(job, db, vector_fs),
+            |job, db, vector_fs| MySubscriptionsManager::process_job_message_queued(job, db, vector_fs),
         )
         .await;
 
         let cache_capacity = env::var("MYSUBSCRIPTION_MANAGER_LRU_CAPACITY")
             .unwrap_or(LRU_CAPACITY.to_string())
             .parse::<usize>()
-            .unwrap_or(LRU_CAPACITY); // Start processing the job queue
+            .unwrap_or(LRU_CAPACITY);
 
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
@@ -149,13 +151,10 @@ impl MySubscriptionsManager {
         &mut self,
         name: &ShinkaiName,
     ) -> Result<SharedFoldersExternalNodeSM, SubscriberManagerError> {
-        eprintln!("node: {} get_shared_folder> : {}", self.node_name.get_node_name(), name.get_node_name());
         // Attempt to get the shared folder from the cache without holding onto the mutable borrow
         let (shareable_folder_ext_node, is_up_to_date, needs_refresh) = {
             let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
             if let Some(shareable_folder_ext_node) = external_node_shared_folders.get_mut(name) {
-                eprintln!("*** node: {} get_shared_folder> : found in cache", self.node_name.get_node_name());
-                eprintln!("node: {} get_shared_folder> : shareable_folder_ext_node: {:?}", self.node_name.get_node_name(), shareable_folder_ext_node);
                 let current_time = Utc::now();
                 // Use response_last_updated for determining the time since the last update
                 let duration_since_last_update = shareable_folder_ext_node
@@ -175,16 +174,10 @@ impl MySubscriptionsManager {
                 (None, false, false)
             }
         };
-        eprintln!("node: {} get_shared_folder> : is_up_to_date: {}", self.node_name.get_node_name(), is_up_to_date);
-        eprintln!("node: {} get_shared_folder> : needs_refresh: {}", self.node_name.get_node_name(), needs_refresh);
 
         // If the folder is up-to-date, return it directly
         if let Some(shareable_folder_ext_node) = shareable_folder_ext_node.clone() {
             if is_up_to_date {
-                eprintln!(
-                    "node {} get_shared_folder> : up-to-date",
-                    self.node_name.get_node_name()
-                );
                 return Ok(shareable_folder_ext_node);
             }
         }
@@ -214,9 +207,6 @@ impl MySubscriptionsManager {
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
-
-            eprintln!("\n\nmsg sender: {}", self.node_name.get_node_name());
-            eprintln!("msg receiver: {}", name.get_node_name());
 
             // Return the current cache value because it's not too old but we still needed to refresh it in the background
             if let Some(shareable_folder_ext_node) = shareable_folder_ext_node.clone() {
@@ -257,18 +247,65 @@ impl MySubscriptionsManager {
         }
     }
 
+    pub async fn subscribe_to_shared_folder(
+        &self,
+        node_name: ShinkaiName,
+        folder_name: String,
+        payment: ShinkaiFolderSubscriptionPayment,
+    ) -> Result<(), SubscriberManagerError> {
+        // TODO: Check locally if i'm already subscribed to the folder.
+        // Let's use a db method directly
+
+        // If not, create a shinkai message
+        // send the message to the network queue
+        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_lock.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&node_name.get_node_name())
+                .await?;
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            // If folder doesn't exist it should create a shinkai message and send it to the network queue
+            // then it should create and update a local cache with the current status (waiting for the network to respond)
+
+            let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
+                folder_name,
+                payment,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.get_node_name(),
+                // Note: the other node doesn't care about the sender's profile in this context
+                "".to_string(),
+                node_name.get_node_name(),
+                "".to_string(),
+            )
+            .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+            // TODO: update status
+
+            self.send_message_to_peer(msg_request_subscription, standard_identity)
+                .await?;
+
+            Ok(())
+        } else {
+            // Handle the case where the identity manager is no longer available
+            return Err(SubscriberManagerError::IdentityManagerUnavailable);
+        }
+    }
+
     async fn send_message_to_peer(
         &self,
         message: ShinkaiMessage,
         receiver_identity: StandardIdentity,
     ) -> Result<(), SubscriberManagerError> {
-        eprintln!("send_message_to_peer> : message: {:?}", message);
+        eprintln!("send_message_to_peer>: message: {:?}", message);
         eprintln!(
-            "send_message_to_peer> : {}",
+            "send_message_to_peer>: {}",
             receiver_identity.full_identity_name.extract_node()
         );
-        eprintln!("send_message_to_peer> : {:?}", receiver_identity.addr);
-        eprintln!("send_message_to_peer> : {:?}", receiver_identity.full_identity_name);
+        eprintln!("send_message_to_peer>: {:?}", receiver_identity.addr);
+        eprintln!("send_message_to_peer>: {:?}", receiver_identity.full_identity_name);
 
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
@@ -296,7 +333,6 @@ impl MySubscriptionsManager {
 
         // Call the send function
         Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
-        eprintln!("send_message_to_peer> : message sent");
 
         Ok(())
     }
