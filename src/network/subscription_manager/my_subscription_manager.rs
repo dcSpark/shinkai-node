@@ -371,17 +371,11 @@ impl MySubscriptionsManager {
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
                 db.update_my_subscription(new_subscription)?;
-
-                // Update the subscription status in the local cache
-
-                // Done!
             }
             _ => {
                 // For other actions, do nothing
             }
         }
-
-        //    let subscription_id =
         Ok(())
     }
 

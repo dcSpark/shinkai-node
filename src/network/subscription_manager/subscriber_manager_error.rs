@@ -22,6 +22,7 @@ pub enum SubscriberManagerError {
     PaymentNotValid(String),
     SubscriptionFailed(String),
     AlreadySubscribed(String),
+    
 }
 
 impl fmt::Display for SubscriberManagerError {

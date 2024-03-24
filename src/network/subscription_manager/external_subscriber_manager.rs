@@ -1,4 +1,5 @@
 use crate::agent::queue::job_queue_manager::JobQueueManager;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
@@ -10,19 +11,22 @@ use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionStatus,
+    ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
-use std::env;
+use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
-use tokio::sync::{Mutex, MutexGuard};
+use std::{env, mem};
+use tokio::sync::{Mutex, MutexGuard, Semaphore};
 
 use super::fs_item_tree::FSItemTree;
 
@@ -95,7 +99,7 @@ impl ExternalSubscriberManager {
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
     ) -> Self {
-        let db_prefix = "subscriptions_abcprefix_";
+        let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
@@ -158,8 +162,8 @@ impl ExternalSubscriberManager {
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
-    ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
-        Box::new(async move {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
+        Box::pin(async move {
             // Placeholder logic for processing a queued job message
             println!("Processing job: {:?}", job.subscription_id);
 
@@ -168,6 +172,13 @@ impl ExternalSubscriberManager {
 
             // Log completion of job processing
             println!("Completed processing job: {:?}", job.subscription_id);
+
+            // Assuming the processing is successful, return Ok with a message
+            // Adjust according to actual logic and possible error conditions
+            Ok(format!(
+                "Job {} processed successfully",
+                job.subscription_id.get_unique_id()
+            ))
         })
     }
 
@@ -179,39 +190,89 @@ impl ExternalSubscriberManager {
         thread_number: usize,
         // TODO: probably we want to pass a Weak Mutex of something in memory that we can use to store the state of the shared_folders
         process_job: impl Fn(
-            ShinkaiSubscription,
-            Weak<Mutex<ShinkaiDB>>,
-            Weak<Mutex<VectorFS>>,
-            Arc<DashMap<String, SharedFolderInfo>>,
-        ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
+                ShinkaiSubscription,
+                Weak<Mutex<ShinkaiDB>>,
+                Weak<Mutex<VectorFS>>,
+                Arc<DashMap<String, SharedFolderInfo>>,
+            ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
+            + Send
+            + Sync
+            + 'static,
     ) -> tokio::task::JoinHandle<()> {
+        // let job_queue_manager = Arc::clone(&job_queue_manager); // not needed?
+        let semaphore = Arc::new(Semaphore::new(thread_number));
+        let process_job = Arc::new(process_job);
+
+        let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
+            .unwrap_or("5".to_string()) // Default to 5 minutes if not set
+            .parse::<u64>()
+            .unwrap_or(5);
+
         tokio::spawn(async move {
+            shinkai_log(
+                ShinkaiLogOption::ExtSubscriptions,
+                ShinkaiLogLevel::Info,
+                "Starting subscribers processing loop",
+            );
+
             let mut handles = Vec::new();
-            for _ in 0..thread_number {
-                // TODO: check if any of the shared_folders has changed using the three diff
-                // TODO: iterate over all the subscriptors of that folder and create jobs in the network queue
-                let job_queue_manager = job_queue_manager.clone();
-                let db = db.clone();
-                let vector_fs = vector_fs.clone();
-                let handle = tokio::spawn(async move {
-                    loop {
-                        match job_queue_manager.lock().await.dequeue("some_key").await {
-                            Ok(Some(job)) => {
-                                "hey_replace_me".to_string();
-                                // process_job(job, db.clone(), vector_fs.clone()).await;
-                            }
-                            Ok(None) => break,
-                            Err(err) => {
-                                eprintln!("Error dequeuing job: {:?}", err);
-                                break;
-                            }
-                        }
-                    }
-                });
-                handles.push(handle);
-            }
-            for handle in handles {
-                handle.await.unwrap();
+            loop {
+                // TODO: we want to get all the subscribers id and process them
+
+                // // Scope for acquiring and releasing the lock quickly
+                // let subscriptions_ids_to_process: Vec<String> = {
+                //     // acquire the lock of the db
+                //     let shinkai_db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+                //         "Database instance is not available".to_string(),
+                //     ))?;
+                //     let db = shinkai_db.lock().await;
+                //     let subscribers = db.get_subscribers().unwrap_or_default();
+                //     subscribers.iter().map(|subscriber| subscriber.id.clone()).collect()
+
+                // };
+
+                for _ in 0..thread_number {
+                    let job_queue_manager = job_queue_manager.clone();
+                    let semaphore = semaphore.clone();
+                    let db = db.clone();
+                    let vector_fs = vector_fs.clone();
+                    let shared_folders_trees = shared_folders_trees.clone();
+                    let process_job = process_job.clone();
+
+                    let handle = tokio::spawn(async move {
+                        let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
+
+                        // match job_queue_manager.lock().await.dequeue("some_key").await {
+                        //     Ok(Some(job)) => {
+                        //         let result = process_job(job, db, vector_fs, shared_folders_trees).await;
+                        //         if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
+                        //             result
+                        //         } else {
+                        //             Err(SubscriberManagerError::)
+                        //         }
+                        //     }
+                        //     Ok(None) => {
+                        //         // No job to process, release the permit and exit the loop
+                        //         drop(_permit);
+                        //         return;
+                        //     }
+                        //     Err(err) => {
+                        //         eprintln!("Error dequeuing job: {:?}", err);
+                        //         // Error handling, release the permit and exit the loop
+                        //         drop(_permit);
+                        //         return;
+                        //     }
+                        // }
+                    });
+                    handles.push(handle);
+                }
+
+                // let handles_to_join = mem::replace(&mut handles, Vec::new());
+                // futures::future::join_all(handles).await;
+                // handles.clear();
+
+                // Wait for interval_minutes before the next iteration
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
             }
         })
     }
@@ -385,7 +446,10 @@ impl ExternalSubscriberManager {
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
-        // TODO: maybe call get shareable folders to trigger a refresh?
+        // Trigger a refresh of the shareable folders cache
+        let _ = self
+            .available_shared_folders(requester_shinkai_identity.clone(), "/".to_string())
+            .await;
 
         Ok(true)
     }
@@ -480,6 +544,12 @@ impl ExternalSubscriberManager {
             }
         }
 
+        let subscription_id = SubscriptionId::new(
+            self.node_name.extract_node(),
+            shared_folder.clone(),
+            requester_shinkai_identity.extract_node(),
+        );
+
         // The requester has passed the validation checks
         // Proceed to add the requester to the list of subscribers
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
@@ -487,7 +557,31 @@ impl ExternalSubscriberManager {
         ))?;
         let mut db = db.lock().await;
 
-        db.add_subscriber(&shared_folder, requester_shinkai_identity, subscription_requirement)
+        match db.get_subscription_by_id(&subscription_id) {
+            Ok(_) => {
+                // If subscription exists, return an error or a specific message indicating already subscribed
+                return Err(SubscriberManagerError::AlreadySubscribed(
+                    "Requester is already subscribed to this folder".to_string(),
+                ));
+            }
+            Err(ShinkaiDBError::DataNotFound) => {
+                // If subscription does not exist, proceed with adding the subscription
+            }
+            Err(e) => {
+                // Handle other database errors
+                return Err(SubscriberManagerError::DatabaseError(e.to_string()));
+            }
+        }
+
+        let subscription = ShinkaiSubscription::new(
+            shared_folder,
+            self.node_name.extract_node(),
+            requester_shinkai_identity.extract_node(),
+            ShinkaiSubscriptionStatus::SubscriptionConfirmed,
+            Some(subscription_requirement),
+        );
+
+        db.add_subscriber_subscription(subscription)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
         Ok(true)

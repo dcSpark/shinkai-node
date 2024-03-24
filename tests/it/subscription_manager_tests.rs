@@ -1049,23 +1049,6 @@ fn subscription_manager_test() {
             }
             {
                 eprintln!("Subscribe to the shared folder");
-                // Subscribe to the shared folder
-                // DONE: create node endpoint to subscribe
-                // DONE: connect endpoint to the my_subscription_manager
-                // DONE: send request from my node to the subscription node
-                // DONE: process request from the subscription node and return the response (valid or error)
-                // --
-                // TODO: request current state from subscriber node
-                // TODO: process request from the subscriber node and compute diff
-                // TODO: generate the node network jobs to send the files
-                // TODO: subscriber node see the requests and check if it's from the subscription
-                // TODO: subscriber node save the files using vector fs
-                // --
-                // TODO: maybe check for connections over X amount if it's from a subscriber if not end the connection (avoid spam)
-                // Note(Nico): what happens if I'm trying to send a file (retry or whatever)
-                // and another thing is also trying to send it (retry or new schedule)?
-                // maybe create a deterministic identifier so it's easier to track the process
-
                 eprintln!(
                     "\n\n### Sending message from node 2 to node 1 requesting: subscription to shared_test_folder\n"
                 );
@@ -1158,6 +1141,20 @@ fn subscription_manager_test() {
 
                 // Assert that the modified actual response matches the expected response template
                 assert_eq!(actual_resp_json, expected_resp_json, "The response does not match the expected subscriptions response without dates.");
+            }
+            {
+                eprintln!("Send updates to subscribers");
+                // --
+                // TODO: request current state from subscriber node
+                // TODO: process request from the subscriber node and compute diff
+                // TODO: generate the node network jobs to send the files
+                // TODO: subscriber node see the requests and check if it's from the subscription
+                // TODO: subscriber node save the files using vector fs
+                // --
+                // TODO: maybe check for connections over X amount if it's from a subscriber if not end the connection (avoid spam)
+                // Note(Nico): what happens if I'm trying to send a file (retry or whatever)
+                // and another thing is also trying to send it (retry or new schedule)?
+                // maybe create a deterministic identifier so it's easier to track the process
             }
             {
                 // Dont forget to do this at the end

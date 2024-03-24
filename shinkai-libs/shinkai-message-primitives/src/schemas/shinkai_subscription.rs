@@ -33,6 +33,36 @@ impl SubscriptionId {
         let full_hash = blake3::hash(self.get_unique_id().as_bytes()).to_hex().to_string();
         full_hash[..full_hash.len() / 2].to_string()
     }
+
+       /// Extracts the shared folder from the unique_id of the SubscriptionId.
+       pub fn extract_shared_folder(&self) -> Result<String, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 3 {
+            Ok(parts[1].to_string())
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Extracts the node name with shared folder from the unique_id of the SubscriptionId.
+    pub fn extract_node_name_with_shared_folder(&self) -> Result<ShinkaiName, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 3 {
+            Ok(ShinkaiName::new(parts[0].to_string())?)
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Extracts the node name of the subscriber from the unique_id of the SubscriptionId.
+    pub fn extract_node_name_subscriber(&self) -> Result<ShinkaiName, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 3 {
+            Ok(ShinkaiName::new(parts[2].to_string())?)
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
