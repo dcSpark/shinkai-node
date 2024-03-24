@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use serde::de::Error as SerdeError;
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::fs_item_tree::FSItemTree;
+use super::external_subscriber_manager::SharedFolderInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ExternalNodeState {
@@ -25,7 +27,7 @@ pub struct SharedFoldersExternalNodeSM {
     pub last_updated: DateTime<Utc>,
     pub state: ExternalNodeState,
     pub response_last_updated: Option<DateTime<Utc>>,
-    pub response: Option<HashMap<String, Arc<FSItemTree>>>,
+    pub response: HashMap<String, SharedFolderInfo>,
 }
 
 impl SharedFoldersExternalNodeSM {
@@ -53,7 +55,34 @@ impl SharedFoldersExternalNodeSM {
                 ExternalNodeState::CachedNotAvailableRequesting
             },
             response_last_updated: None,
-            response: None,
+            response: HashMap::new(),
+        }
+    }
+
+    /// Creates a new `SharedFoldersExternalNodeSM` with a specified node name and multiple `SharedFolderInfo` entries.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_name` - A `ShinkaiName` representing the node name.
+    /// * `folders_info` - A vector of `SharedFolderInfo` to be added to the response.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of `SharedFoldersExternalNodeSM`.
+    pub fn new_with_folders_info(node_name: ShinkaiName, folders_info: Vec<SharedFolderInfo>) -> Self {
+        let mut response = HashMap::new();
+        for folder_info in folders_info {
+            response.insert(folder_info.path.clone(), folder_info);
+        }
+
+        SharedFoldersExternalNodeSM {
+            node_name,
+            last_ext_node_response: Some(Utc::now()),
+            last_request_to_ext_node: Some(Utc::now()),
+            last_updated: Utc::now(),
+            state: ExternalNodeState::ResponseAvailable,
+            response_last_updated: Some(Utc::now()),
+            response,
         }
     }
 
@@ -86,14 +115,8 @@ impl Serialize for SharedFoldersExternalNodeSM {
         state.serialize_field("last_updated", &self.last_updated)?;
         state.serialize_field("state", &self.state)?;
         state.serialize_field("response_last_updated", &self.response_last_updated)?;
-
-        if let Some(ref response) = self.response {
-            let serialized_response: HashMap<_, _> =
-                response.iter().map(|(k, v)| (k.clone(), v.as_ref().clone())).collect();
-            state.serialize_field("response", &serialized_response)?;
-        } else {
-            state.serialize_field("response", &None::<HashMap<String, FSItemTree>>)?;
-        }
+        // Directly serialize the response as it now holds SharedFolderInfo
+        state.serialize_field("response", &self.response)?;
 
         state.end()
     }
@@ -112,21 +135,14 @@ impl<'de> Deserialize<'de> for SharedFoldersExternalNodeSM {
             last_updated: DateTime<Utc>,
             state: ExternalNodeState,
             response_last_updated: Option<DateTime<Utc>>,
-            response: Option<HashMap<String, FSItemTree>>,
+            response: Option<HashMap<String, SharedFolderInfo>>, // Updated to HashMap
         }
 
         let helper = Helper::deserialize(deserializer)?;
-        let response = helper
-            .response
-            .map(|r| r.into_iter().map(|(k, v)| (k, Arc::new(v))).collect());
 
-        // Handle the potential error from ShinkaiName::new manually
         let node_name = match ShinkaiName::new(helper.node_name) {
             Ok(name) => name,
-            Err(e) => {
-                // Convert the error into the deserializer's error type
-                return Err(D::Error::custom(e.to_string()));
-            }
+            Err(e) => return Err(D::Error::custom(e.to_string())),
         };
 
         Ok(SharedFoldersExternalNodeSM {
@@ -136,7 +152,7 @@ impl<'de> Deserialize<'de> for SharedFoldersExternalNodeSM {
             last_updated: helper.last_updated,
             state: helper.state,
             response_last_updated: helper.response_last_updated,
-            response,
+            response: helper.response.unwrap_or_default(), // Use the HashMap directly
         })
     }
 }
@@ -144,11 +160,15 @@ impl<'de> Deserialize<'de> for SharedFoldersExternalNodeSM {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::subscription_manager::fs_item_tree::FSItemTree;
     use chrono::{TimeZone, Utc};
     use serde_json;
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
     #[test]
     fn test_serialization_deserialization() {
+        // Setup for FSItemTree instances remains the same
         let child_item_tree_1 = FSItemTree {
             name: "child1.txt".to_string(),
             path: "/path/to/file1/child1.txt".to_string(),
@@ -181,9 +201,25 @@ mod tests {
             children: HashMap::new(),
         };
 
+        // Adjusted to create SharedFolderInfo instances
+        let shared_folder_info_1 = SharedFolderInfo {
+            path: "/path/to/file1".to_string(),
+            permission: "read_write".to_string(),
+            tree: item_tree_1,
+            subscription_requirement: None, // Assuming None for simplicity; adjust as needed
+        };
+
+        let shared_folder_info_2 = SharedFolderInfo {
+            path: "/path/to/file2".to_string(),
+            permission: "read_only".to_string(),
+            tree: item_tree_2,
+            subscription_requirement: None, // Assuming None for simplicity; adjust as needed
+        };
+
+        // Adjusted to insert SharedFolderInfo instances into the response HashMap
         let mut response = HashMap::new();
-        response.insert("file1".to_string(), Arc::new(item_tree_1));
-        response.insert("file2".to_string(), Arc::new(item_tree_2));
+        response.insert("file1".to_string(), shared_folder_info_1);
+        response.insert("file2".to_string(), shared_folder_info_2);
 
         let external_node_sm = SharedFoldersExternalNodeSM {
             node_name: ShinkaiName::new("@@node1.shinkai".to_string()).unwrap(),
@@ -192,16 +228,14 @@ mod tests {
             last_updated: Utc.ymd(2023, 6, 9).and_hms(12, 0, 0),
             state: ExternalNodeState::ResponseAvailable,
             response_last_updated: Some(Utc.ymd(2023, 6, 9).and_hms(12, 0, 0)),
-            response: Some(response),
+            response, // Correctly using the HashMap with SharedFolderInfo
         };
 
-        // Serialize the external_node_sm to JSON
+        // Serialization and deserialization steps remain the same
         let serialized = serde_json::to_string(&external_node_sm).unwrap();
-
-        // Deserialize the JSON back into SharedFoldersExternalNodeSM
         let deserialized: SharedFoldersExternalNodeSM = serde_json::from_str(&serialized).unwrap();
 
-        // Assert that the deserialized struct matches the original
+        // Assertions need to be adjusted to not check for Some/None
         assert_eq!(deserialized.node_name, external_node_sm.node_name);
         assert_eq!(
             deserialized.last_ext_node_response,
@@ -218,29 +252,31 @@ mod tests {
             external_node_sm.response_last_updated
         );
 
-        // Assert that the deserialized response matches the original
-        assert_eq!(deserialized.response.is_some(), external_node_sm.response.is_some());
-        if let (Some(deserialized_response), Some(original_response)) =
-            (deserialized.response, external_node_sm.response)
-        {
-            assert_eq!(deserialized_response.len(), original_response.len());
-            for (key, value) in deserialized_response {
-                assert!(original_response.contains_key(&key));
-                assert_eq!(value.name, original_response[&key].name);
-                assert_eq!(value.path, original_response[&key].path);
-                assert_eq!(value.last_modified, original_response[&key].last_modified);
+        // Adjusted to directly compare HashMaps
+        assert_eq!(deserialized.response.len(), external_node_sm.response.len());
+        for (key, value) in deserialized.response {
+            assert!(external_node_sm.response.contains_key(&key));
+            let original_value = &external_node_sm.response[&key];
+            // Adjusted to access the `name` field through the `tree` field of `SharedFolderInfo`
+            assert_eq!(value.tree.name, original_value.tree.name);
+            assert_eq!(value.path, original_value.path);
+            assert_eq!(value.permission, original_value.permission);
+            // Assuming `last_modified` is a field you want to compare, but it should be accessed correctly
+            // For example, if you're comparing the last modified date of the root item in the tree:
+            assert_eq!(value.tree.last_modified, original_value.tree.last_modified);
 
-                // Assert that the children are deserialized correctly
-                assert_eq!(value.children.len(), original_response[&key].children.len());
-                for (child_key, child_value) in &value.children {
-                    assert!(original_response[&key].children.contains_key(child_key));
-                    assert_eq!(child_value.name, original_response[&key].children[child_key].name);
-                    assert_eq!(child_value.path, original_response[&key].children[child_key].path);
-                    assert_eq!(
-                        child_value.last_modified,
-                        original_response[&key].children[child_key].last_modified
-                    );
-                }
+            // Assert that the children are compared correctly
+            // This assumes you want to compare the children of the `tree` field in `SharedFolderInfo`
+            assert_eq!(value.tree.children.len(), original_value.tree.children.len());
+            for (child_key, child_value_arc) in &value.tree.children {
+                assert!(original_value.tree.children.contains_key(child_key));
+                let original_child_value_arc = &original_value.tree.children[child_key];
+                // Since the values are wrapped in `Arc`, dereference them for comparison
+                let child_value = child_value_arc.as_ref();
+                let original_child_value = original_child_value_arc.as_ref();
+                assert_eq!(child_value.name, original_child_value.name);
+                assert_eq!(child_value.path, original_child_value.path);
+                assert_eq!(child_value.last_modified, original_child_value.last_modified);
             }
         }
     }

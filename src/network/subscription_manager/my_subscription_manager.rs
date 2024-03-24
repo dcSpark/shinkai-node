@@ -27,6 +27,7 @@ use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::{Mutex, MutexGuard};
 
+use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_item_tree::FSItemTree;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -126,6 +127,17 @@ impl MySubscriptionsManager {
     pub async fn insert_shared_folder(
         &mut self,
         name: ShinkaiName,
+        folders: Vec<SharedFolderInfo>,
+    ) -> Result<(), SubscriberManagerError> {
+        let shared_folder_sm = SharedFoldersExternalNodeSM::new_with_folders_info(name.clone(), folders);
+        let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
+        external_node_shared_folders.put(name, shared_folder_sm);
+        Ok(())
+    }
+
+    pub async fn insert_shared_folder_sm(
+        &mut self,
+        name: ShinkaiName,
         folder: SharedFoldersExternalNodeSM,
     ) -> Result<(), SubscriberManagerError> {
         let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
@@ -142,6 +154,8 @@ impl MySubscriptionsManager {
         let (shareable_folder_ext_node, is_up_to_date, needs_refresh) = {
             let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
             if let Some(shareable_folder_ext_node) = external_node_shared_folders.get_mut(name) {
+                eprintln!("*** node: {} get_shared_folder> : found in cache", self.node_name.get_node_name());
+                eprintln!("node: {} get_shared_folder> : shareable_folder_ext_node: {:?}", self.node_name.get_node_name(), shareable_folder_ext_node);
                 let current_time = Utc::now();
                 // Use response_last_updated for determining the time since the last update
                 let duration_since_last_update = shareable_folder_ext_node
@@ -161,6 +175,8 @@ impl MySubscriptionsManager {
                 (None, false, false)
             }
         };
+        eprintln!("node: {} get_shared_folder> : is_up_to_date: {}", self.node_name.get_node_name(), is_up_to_date);
+        eprintln!("node: {} get_shared_folder> : needs_refresh: {}", self.node_name.get_node_name(), needs_refresh);
 
         // If the folder is up-to-date, return it directly
         if let Some(shareable_folder_ext_node) = shareable_folder_ext_node.clone() {

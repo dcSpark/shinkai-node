@@ -4,7 +4,8 @@ use crate::{
     network::{
         node_error::NodeError,
         subscription_manager::{
-            external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
+            my_subscription_manager::MySubscriptionsManager,
         },
         Node,
     },
@@ -339,12 +340,8 @@ pub async fn handle_network_message_cases(
             match schema {
                 MessageSchemaType::AvailableSharedItems => {
                     // Handle Schema1 specific logic
-                    eprintln!("Node {}: Handling Schema1 specific logic", my_node_profile_name);
+                    eprintln!("Node {}: Handling AvailableSharedItems", my_node_profile_name);
 
-                    // 1.- Get subscription results
-                    // type: Vec<(String, String, Option<ShinkaiFolderSubscription>) -> String
-
-                    // Upgrade the Weak reference to a strong reference
                     let mut response = "".to_string();
 
                     // Access the subscription_manager, which is of type Arc<Mutex<Option<SubscriberManager>>>
@@ -352,28 +349,27 @@ pub async fn handle_network_message_cases(
 
                     // Now, the lock is released, and we can proceed without holding onto the `MutexGuard`
                     let path = "/"; // Define the path you want to query
-                    match subscription_manager.get_cached_shared_folder_tree(path).await {
-                        Some(tree) => {
-                            // Attempt to serialize FSItemTree to a JSON string
-                            let unref_tree = &*tree;
-                            match serde_json::to_string(unref_tree) {
-                                Ok(tree_str) => {
-                                    println!(
-                                        "Successfully retrieved cached shared folder tree for path: {} with tree: {}",
-                                        path, tree_str
-                                    );
-                                    response = tree_str;
-                                }
-                                Err(e) => println!("Failed to serialize FSItemTree: {}", e),
-                            }
-                        }
-                        None => {
-                            // The requested path is not cached
-                            println!("No cached shared folder tree found for path: {}", path);
-                        }
-                    }
+                    let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
+                    if !shared_folder_infos.is_empty() {
+                        // Transform Vec<Arc<SharedFolderInfo>> to Vec<&SharedFolderInfo> for serialization
+                        let shared_folder_infos_ref: Vec<&SharedFolderInfo> =
+                            shared_folder_infos.iter().map(AsRef::as_ref).collect();
 
-                    eprintln!("\n\n crafting a response for retrieved shares items (allegedly)");
+                        // Attempt to serialize the vector of SharedFolderInfo references to a JSON string
+                        match serde_json::to_string(&shared_folder_infos_ref) {
+                            Ok(shared_folder_info_str) => {
+                                println!(
+                "Node {}. Successfully retrieved cached shared folder information for path: {} with info: {}", my_node_profile_name,
+                path, shared_folder_info_str
+            );
+                                response = shared_folder_info_str;
+                            }
+                            Err(e) => println!("Failed to serialize SharedFolderInfo: {}", e),
+                        }
+                    } else {
+                        // The requested path is not cached
+                        println!("No cached shared folder information found for path: {}", path);
+                    }
 
                     // 1.5- extract info from the original message
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
@@ -395,10 +391,7 @@ pub async fn handle_network_message_cases(
                     )
                     .unwrap();
 
-                    eprintln!("Sending message back with response {:?}", msg);
-
                     // 3.- Send message back with response
-
                     Node::send(
                         msg,
                         Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
@@ -408,6 +401,51 @@ pub async fn handle_network_message_cases(
                         false,
                         None,
                     );
+                    return Ok(());
+                }
+                MessageSchemaType::AvailableSharedItemsResponse => {
+                    // 1.- extract info from the original message
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+
+                    let request_node_name = requester.get_node_name();
+                    let request_profile_name = requester.get_profile_name().unwrap_or("".to_string());
+
+                    // Handle Schema2 specific logic
+                    eprintln!(
+                        "AvailableSharedItemsResponse Node {}: Handling AvailableSharedItemsResponse from: {}",
+                        my_node_profile_name, request_node_name
+                    );
+
+                    // 2.- extract response from the message
+                    let response = message.get_message_content().unwrap_or("".to_string());
+                    println!(
+                        "AvailableSharedItemsResponse Node {}. Received response from {}: {}",
+                        my_node_profile_name, request_profile_name, response
+                    );
+
+                    // Convert the response string to Vec<SharedFolderInfo>
+                    match serde_json::from_str::<String>(&response) {
+                        Ok(json_string) => {
+                            // Now, deserialize the JSON string (without the outer quotes) to Vec<SharedFolderInfo>
+                            match serde_json::from_str::<Vec<SharedFolderInfo>>(&json_string) {
+                                Ok(shared_folder_infos) => {
+                                    // Successfully converted, you can now use shared_folder_infos
+                                    println!("Converted to Vec<SharedFolderInfo>: {:?}", shared_folder_infos);
+                                    let mut my_subscription_manager = my_subscription_manager.lock().await;
+                                    let _ = my_subscription_manager
+                                        .insert_shared_folder(requester.extract_node(), shared_folder_infos)
+                                        .await;
+                                }
+                                Err(e) => {
+                                    println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to deserialize outer JSON string: {}", e);
+                        }
+                    }
+
                     return Ok(());
                 }
                 _ => {

@@ -9,6 +9,7 @@ use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
@@ -68,13 +69,21 @@ How to subscribe
 
 const NUM_THREADS: usize = 2;
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SharedFolderInfo {
+    pub path: String,
+    pub permission: String,
+    pub tree: FSItemTree,
+    pub subscription_requirement: Option<ShinkaiFolderSubscription>,
+}
+
 pub struct ExternalSubscriberManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
-    pub shared_folders_trees: HashMap<String, Arc<FSItemTree>>,
+    pub shared_folders_trees: HashMap<String, Arc<SharedFolderInfo>>,
     pub node_name: ShinkaiName,
 }
 
@@ -120,8 +129,15 @@ impl ExternalSubscriberManager {
         }
     }
 
-    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Option<Arc<FSItemTree>> {
-        self.shared_folders_trees.get(path).cloned()
+    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Vec<Arc<SharedFolderInfo>> {
+        if path == "/" {
+            self.shared_folders_trees.values().cloned().collect()
+        } else {
+            self.shared_folders_trees
+                .get(path)
+                .cloned()
+                .map_or_else(Vec::new, |v| vec![v])
+        }
     }
 
     // Placeholder for process_job_message_queued
@@ -182,11 +198,12 @@ impl ExternalSubscriberManager {
         })
     }
 
+    /// The return type is (shareable_path, permission, tree, subscription_requirement)
     pub async fn available_shared_folders(
         &mut self,
         requester_shinkai_identity: ShinkaiName,
         path: String,
-    ) -> Result<Vec<(String, String, Option<ShinkaiFolderSubscription>)>, SubscriberManagerError> {
+    ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
         let mut converted_results = Vec::new();
         {
             let vector_fs = self
@@ -197,8 +214,10 @@ impl ExternalSubscriberManager {
                 ))?;
             let mut vector_fs = vector_fs.lock().await;
 
+            eprintln!("path: {:?}", path);
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+            eprintln!("VR Path: {:?}", vr_path);
 
             let reader = vector_fs
                 .new_reader(
@@ -216,6 +235,9 @@ impl ExternalSubscriberManager {
             let filtered_results = self.filter_to_top_level_folders(results);
             eprintln!("\n\n\n >>> Filtered Results: {:?}", filtered_results);
 
+            // Drop the lock on vector_fs before proceeding
+            drop(vector_fs);
+
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
@@ -228,22 +250,26 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                converted_results.push((path_str, permission_str, subscription_requirement));
+                let tree = self
+                    .shared_folders_to_tree(requester_shinkai_identity.clone(), path_str.clone())
+                    .await?;
+
+                let result = SharedFolderInfo {
+                    path: path_str.clone(),
+                    permission: permission_str,
+                    tree,
+                    subscription_requirement,
+                };
+                converted_results.push(result.clone());
+                eprintln!("Converted result: {:?}", result);
+                self.shared_folders_trees.insert(path_str, Arc::new(result));
             }
         }
 
         // TODO: convert eprintlns to shinkai_logs
         eprintln!("Node name: {} Shared folders to tree...", self.node_name.clone());
-        let tree = self
-            .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
-            .await?;
+        eprintln!("Converted results: {:?}", converted_results);
 
-        self.shared_folders_trees.insert(path.clone(), Arc::new(tree.clone()));
-        // TODO: Remove this
-        tree.pretty_print(0);
-
-        // TODO: should we return a tree? so you can see the structure of the folders?
-        // Maybe you can generate it yourself fwiw
         Ok(converted_results)
     }
 
@@ -343,10 +369,7 @@ impl ExternalSubscriberManager {
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
-        let tree = self
-            .shared_folders_to_tree(requester_shinkai_identity.clone(), path.clone())
-            .await?;
-        self.shared_folders_trees.insert(path.clone(), Arc::new(tree));
+        // TODO: maybe call get shareable folders to trigger a refresh?
 
         Ok(true)
     }
@@ -464,5 +487,36 @@ impl ExternalSubscriberManager {
                 "Unsupported action type".to_string(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::from_str;
+    use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
+
+    #[test]
+    fn test_convert_string_to_shared_folder_info() {
+        let json_str = r#"[{"path":"/shared_test_folder","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false}}]"#;
+
+        let shared_folder_info: Vec<SharedFolderInfo> = from_str(json_str).unwrap();
+
+        assert_eq!(shared_folder_info.len(), 1);
+        let folder_info = &shared_folder_info[0];
+        assert_eq!(folder_info.path, "/shared_test_folder");
+        assert_eq!(folder_info.permission, "Public");
+        assert!(folder_info.subscription_requirement.is_some());
+        let subscription_requirement = folder_info.subscription_requirement.as_ref().unwrap();
+        assert_eq!(subscription_requirement.minimum_token_delegation, Some(100));
+        assert_eq!(subscription_requirement.minimum_time_delegated_hours, Some(100));
+        assert_eq!(
+            match subscription_requirement.monthly_payment {
+                Some(PaymentOption::USD(amount)) => Some(amount),
+                _ => None,
+            },
+            Some(10.0)
+        );
+        assert_eq!(subscription_requirement.is_free, false);
     }
 }

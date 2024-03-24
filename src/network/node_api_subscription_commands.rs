@@ -139,7 +139,7 @@ impl Node {
 
         let mut subscription_manager = self.ext_subscription_manager.lock().await;
         let result = subscription_manager
-            .available_shared_folders(requester_name, input_payload.path)
+            .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req)
             .await;
 
         match result {
@@ -182,7 +182,7 @@ impl Node {
 
         let mut subscription_manager = self.ext_subscription_manager.lock().await;
         let result = subscription_manager
-            .available_shared_folders(requester_name, input_payload.path)
+            .update_shareable_folder_requirements(input_payload.path, requester_name, input_payload.subscription)
             .await;
 
         match result {
@@ -226,8 +226,9 @@ impl Node {
 
         let mut subscription_manager = self.ext_subscription_manager.lock().await;
         let result = subscription_manager
-            .available_shared_folders(requester_name, input_payload.path)
+            .unshare_folder(input_payload.path, requester_name)
             .await;
+
         match result {
             Ok(_) => {
                 let _ = res

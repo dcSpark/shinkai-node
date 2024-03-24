@@ -1,33 +1,16 @@
-use crate::agent::queue::job_queue_manager::JobQueueManager;
-use crate::db::{ShinkaiDB, Topic};
-use crate::managers::IdentityManager;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
-use crate::network::Node;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
-use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
+use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
-};
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
-use std::env;
-use std::fs::File;
-use std::io::Write;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use std::sync::Weak;
-use tokio::sync::{Mutex, MutexGuard};
 
-use super::fs_item_tree::FSItemTree;
 use super::external_subscriber_manager::ExternalSubscriberManager;
+use super::fs_item_tree::FSItemTree;
 
 impl ExternalSubscriberManager {
     pub async fn shared_folders_to_tree(
@@ -35,6 +18,9 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         path: String,
     ) -> Result<FSItemTree, SubscriberManagerError> {
+        eprintln!("shared_folders_to_tree: path: {}", path);
+        // let path = "/".to_string();
+        
         let vector_fs = self
             .vector_fs
             .upgrade()
@@ -44,6 +30,7 @@ impl ExternalSubscriberManager {
         let mut vector_fs = vector_fs.lock().await;
 
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+        eprintln!("shared_folders_to_tree: vr_path: {:#?}", vr_path);
         let reader = vector_fs
             .new_reader(
                 requester_shinkai_identity.clone(),
@@ -52,8 +39,10 @@ impl ExternalSubscriberManager {
             )
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
+        // TODO: need fix. this should return folders and items
         let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
-        let filtered_results = self.filter_to_top_level_folders(shared_folders);
+        eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
+        let filtered_results = self.filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
         let mut root_children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
@@ -83,12 +72,13 @@ impl ExternalSubscriberManager {
 
         // Construct the root of the tree
         let tree = FSItemTree {
-            name: "/".to_string(), // Adjust based on your root naming convention
+            name: "/".to_string(),
             path: path,
             last_modified: Utc::now(),
             children: root_children,
         };
 
+        eprintln!("\n\n shared_folders_to_tree: tree: {:#?}", tree);
         Ok(tree)
     }
 

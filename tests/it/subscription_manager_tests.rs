@@ -209,6 +209,26 @@ async fn create_folder(
     eprintln!("resp: {:?}", resp);
 }
 
+fn remove_timestamps_from_shared_folder_cache_response(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            map.remove("last_ext_node_response");
+            map.remove("last_request_to_ext_node");
+            map.remove("last_updated");
+            map.remove("response_last_updated");
+            map.remove("last_modified");
+            // Use a closure to explicitly call `remove_timestamps_from_response`
+            map.values_mut()
+                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+        }
+        serde_json::Value::Array(vec) => {
+            vec.iter_mut()
+                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+        }
+        _ => {}
+    }
+}
+
 async fn retrieve_file_info(
     commands_sender: &Sender<NodeCommand>,
     encryption_sk: EncryptionStaticKey,
@@ -856,65 +876,65 @@ fn subscription_manager_test() {
             //
             {
                 // Remove this after the other stuff is working
-                eprintln!("\n\n### Sending message from a node 2 profile to node 1 profile\n\n");
+                // eprintln!("\n\n### Sending message from a node 2 profile to node 1 profile\n\n");
 
-                let message_content = "test body content".to_string();
-                let unchanged_message = ShinkaiMessageBuilder::new(
-                    node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_profile_encryption_pk.clone(),
-                )
-                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
-                .message_raw_content(message_content.clone())
-                .body_encryption(EncryptionMethod::None)
-                .message_schema_type(MessageSchemaType::TextContent)
-                .internal_metadata(
-                    node2_profile_name.to_string().clone(),
-                    node1_profile_name.to_string(),
-                    EncryptionMethod::None,
-                    None,
-                )
-                .external_metadata_with_other_and_intra_sender(
-                    node1_identity_name.to_string(),
-                    node2_identity_name.to_string().clone(),
-                    "".to_string(),
-                    node1_profile_name.to_string().clone(),
-                )
-                .build()
-                .unwrap();
+                // let message_content = "test body content".to_string();
+                // let unchanged_message = ShinkaiMessageBuilder::new(
+                //     node2_subencryption_sk.clone(),
+                //     clone_signature_secret_key(&node2_subidentity_sk),
+                //     node1_profile_encryption_pk.clone(),
+                // )
+                // .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
+                // .message_raw_content(message_content.clone())
+                // .body_encryption(EncryptionMethod::None)
+                // .message_schema_type(MessageSchemaType::TextContent)
+                // .internal_metadata(
+                //     node2_profile_name.to_string().clone(),
+                //     node1_profile_name.to_string(),
+                //     EncryptionMethod::None,
+                //     None,
+                // )
+                // .external_metadata_with_other_and_intra_sender(
+                //     node1_identity_name.to_string(),
+                //     node2_identity_name.to_string().clone(),
+                //     "".to_string(),
+                //     node1_profile_name.to_string().clone(),
+                // )
+                // .build()
+                // .unwrap();
 
-                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+                // // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
-                let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<SendResponseBodyData, APIError>>,
-                    async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
-                ) = async_channel::bounded(1);
+                // let (res_send_msg_sender, res_send_msg_receiver): (
+                //     async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+                //     async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
+                // ) = async_channel::bounded(1);
 
-                node2_commands_sender
-                    .send(NodeCommand::SendOnionizedMessage {
-                        msg: unchanged_message,
-                        res: res_send_msg_sender,
-                    })
-                    .await
-                    .unwrap();
+                // node2_commands_sender
+                //     .send(NodeCommand::SendOnionizedMessage {
+                //         msg: unchanged_message,
+                //         res: res_send_msg_sender,
+                //     })
+                //     .await
+                //     .unwrap();
 
-                let send_result = res_send_msg_receiver.recv().await.unwrap();
-                assert!(send_result.is_ok(), "Failed to send onionized message");
+                // let send_result = res_send_msg_receiver.recv().await.unwrap();
+                // assert!(send_result.is_ok(), "Failed to send onionized message");
 
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                // tokio::time::sleep(Duration::from_secs(2)).await;
 
-                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 2");
+                // let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                //     .await
+                //     .expect("Failed to fetch last messages for node 2");
 
-                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 1");
+                // let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                //     .await
+                //     .expect("Failed to fetch last messages for node 1");
 
-                // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                // eprintln!("\n\n");
-                // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                // eprintln!("\n\n");
+                // // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                // // eprintln!("\n\n");
+                // // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                // // eprintln!("\n\n");
             }
             {
                 // Remove this after the other stuff is working
@@ -951,24 +971,129 @@ fn subscription_manager_test() {
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("send_result: {:?}", send_result);
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
+                tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
 
-                for _ in 0..10 {
-                    let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                        .await
-                        .expect("Failed to fetch last messages for node 2");
+                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 2");
 
-                    eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                    eprintln!("\n\n");
+                eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                eprintln!("\n\n");
 
-                    let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                        .await
-                        .expect("Failed to fetch last messages for node 1");
+                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 1");
 
-                    eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                    eprintln!("\n\n");
+                eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                eprintln!("\n\n");
+            }
+            {
+                // Remove this after the other stuff is working
+                eprintln!("\n\n### (RETRY!) Sending message from node 2 to node 1 requesting shared folders*\n");
+                eprintln!("shared folders should be updated this time!");
 
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                }
+                let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
+                    None,
+                    node1_identity_name.to_string(),
+                    node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_encryption_pk.clone(),
+                    node2_identity_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
+                    node2_identity_name.to_string(),
+                    "".to_string(),
+                )
+                .unwrap();
+
+                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<String, APIError>>,
+                    async_channel::Receiver<Result<String, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node2_commands_sender
+                    .send(NodeCommand::APIAvailableSharedItems {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                let send_result = res_send_msg_receiver.recv().await.unwrap();
+                eprint!("\n\nsend_result: {:?}", send_result);
+
+                let mut expected_response = serde_json::json!({
+                    "node_name": "@@node1_test.sepolia-shinkai",
+                    "last_ext_node_response": "2024-03-24T00:47:22.292345Z",
+                    "last_request_to_ext_node": "2024-03-24T00:47:22.292346Z",
+                    "last_updated": "2024-03-24T00:47:22.292346Z",
+                    "state": "ResponseAvailable",
+                    "response_last_updated": "2024-03-24T00:47:22.292347Z",
+                    "response": {
+                        "/shared_test_folder": {
+                            "path": "/shared_test_folder",
+                            "permission": "Public",
+                            "tree": {
+                                "name": "/",
+                                "path": "/shared_test_folder",
+                                "last_modified": "2024-03-24T00:47:20.713156+00:00",
+                                "children": {
+                                    "crypto": {
+                                        "name": "crypto",
+                                        "path": "/shared_test_folder/crypto",
+                                        "last_modified": "2024-03-24T00:47:18.657987+00:00",
+                                        "children": {
+                                            "shinkai_intro": {
+                                                "name": "shinkai_intro",
+                                                "path": "/shared_test_folder/crypto/shinkai_intro",
+                                                "last_modified": "2024-02-26T23:06:00.019065981+00:00",
+                                                "children": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "subscription_requirement": {
+                                "minimum_token_delegation": 100,
+                                "minimum_time_delegated_hours": 100,
+                                "monthly_payment": {
+                                    "USD": 10.0
+                                },
+                                "is_free": false
+                            }
+                        }
+                    }
+                });
+
+                let mut actual_response: serde_json::Value =
+                    serde_json::from_str(&send_result.clone().unwrap()).expect("Failed to parse send_result as JSON");
+
+                // Remove timestamps from both expected and actual responses using the new function
+                remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
+                remove_timestamps_from_shared_folder_cache_response(&mut actual_response);
+
+                // Perform the assertion
+                assert_eq!(
+                    actual_response, expected_response,
+                    "Failed to match the expected shared folder information"
+                );
+                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 2");
+
+                eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+                eprintln!("\n\n");
+
+                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
+                    .await
+                    .expect("Failed to fetch last messages for node 1");
+
+                eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
+                eprintln!("\n\n");
             }
             {
                 // Dont forget to do this at the end
