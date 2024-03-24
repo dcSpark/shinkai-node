@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ShinkaiFolderSubscription {
+pub struct FolderSubscription {
     pub minimum_token_delegation: Option<u64>,
     pub minimum_time_delegated_hours: Option<u64>,
     pub monthly_payment: Option<PaymentOption>,
@@ -14,8 +14,8 @@ pub enum PaymentOption {
     KAITokens(u64),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ShinkaiFolderSubscriptionPayment {
+#[derive(Debug, Eq, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubscriptionPayment {
     Free,
     DirectDelegation,
     Payment(String),

@@ -13,11 +13,9 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
+    ShinkaiSubscription, ShinkaiSubscriptionStatus,
 };
-use shinkai_message_primitives::schemas::shinkai_subscription_req::{
-    ShinkaiFolderSubscription, ShinkaiFolderSubscriptionPayment,
-};
+use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
@@ -77,7 +75,7 @@ pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
     pub tree: FSItemTree,
-    pub subscription_requirement: Option<ShinkaiFolderSubscription>,
+    pub subscription_requirement: Option<FolderSubscription>,
 }
 
 pub struct ExternalSubscriberManager {
@@ -295,7 +293,7 @@ impl ExternalSubscriberManager {
         &self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
-        subscription_requirement: ShinkaiFolderSubscription,
+        subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
         // TODO: check that you are actually an admin of the folder
         let vector_fs = self
@@ -336,7 +334,7 @@ impl ExternalSubscriberManager {
         &mut self,
         path: String,
         requester_shinkai_identity: ShinkaiName,
-        subscription_requirement: ShinkaiFolderSubscription,
+        subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
         // TODO: check that you are actually an admin of the folder
         // Note: I think is done automatically
@@ -450,14 +448,14 @@ impl ExternalSubscriberManager {
         &mut self,
         requester_shinkai_identity: ShinkaiName,
         shared_folder: String,
-        subscription_requirement: ShinkaiFolderSubscriptionPayment,
+        subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
         // Validate that the requester actually did the alleged payment
-        match subscription_requirement {
-            ShinkaiFolderSubscriptionPayment::Free => {
+        match subscription_requirement.clone() {
+            SubscriptionPayment::Free => {
                 // No validation required
             }
-            ShinkaiFolderSubscriptionPayment::DirectDelegation => {
+            SubscriptionPayment::DirectDelegation => {
                 // Validate direct delegation logic here
                 // If validation fails, you can return early with an error
                 // Placeholder for validation check
@@ -468,7 +466,7 @@ impl ExternalSubscriberManager {
                     ));
                 }
             }
-            ShinkaiFolderSubscriptionPayment::Payment(payment_details) => {
+            SubscriptionPayment::Payment(payment_details) => {
                 // Validate payment logic here
                 // If validation fails, you can return early with an error
                 // Placeholder for payment validation
@@ -484,6 +482,13 @@ impl ExternalSubscriberManager {
 
         // The requester has passed the validation checks
         // Proceed to add the requester to the list of subscribers
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let mut db = db.lock().await;
+
+        db.add_subscriber(&shared_folder, requester_shinkai_identity, subscription_requirement)
+            .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
         Ok(true)
     }
@@ -491,7 +496,7 @@ impl ExternalSubscriberManager {
     // Schedule the job to be processed. Update the last time it was processed.
     pub async fn process_action(
         &mut self,
-        action: ShinkaiSubscriptionRequest,
+        action: ShinkaiSubscription,
         profile: ShinkaiName,
     ) -> Result<String, SubscriberManagerError> {
         // TODO: Transform request to ShinkaiSubscription if it passes validation
@@ -500,49 +505,49 @@ impl ExternalSubscriberManager {
         // it comes from the actual node (API side) -> it should be validated before it gets here
         // vector_db path is valid and "shareable" (here)
 
-        match action.action {
-            ShinkaiSubscriptionAction::Subscribe => {
-                // Transform request to ShinkaiSubscription if it passes validation
-                let subscription = ShinkaiSubscription {
-                    action: action.action,
-                    subscription_id: action.subscription_id,
-                    vector_db_path: action.vector_db_path.ok_or(SubscriberManagerError::InvalidRequest(
-                        "vector_db_path is required".to_string(),
-                    ))?,
-                    subscriber_identity: profile,
-                    state: action.state,
-                    date_created: Utc::now(),
-                    last_modified: Utc::now(),
-                    last_sync: None,
-                };
+        // match action.action {
+        //     ShinkaiSubscriptionStatus::SubscriptionRequested => {
+        //         // Transform request to ShinkaiSubscription if it passes validation
+        //         let subscription = ShinkaiSubscription {
+        //             action: action.action,
+        //             subscription_id: action.subscription_id,
+        //             vector_db_path: action.vector_db_path.ok_or(SubscriberManagerError::InvalidRequest(
+        //                 "vector_db_path is required".to_string(),
+        //             ))?,
+        //             subscriber_identity: profile,
+        //             state: action.state,
+        //             date_created: Utc::now(),
+        //             last_modified: Utc::now(),
+        //             last_sync: None,
+        //         };
 
-                // TODO: vector_db path is valid and public
-                let vector_fs = self
-                    .vector_fs
-                    .upgrade()
-                    .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                        "VectorFS instance is not available".to_string(),
-                    ))?;
-                let vector_fs = vector_fs.lock().await;
+        //         // TODO: vector_db path is valid and public
+        //         let vector_fs = self
+        //             .vector_fs
+        //             .upgrade()
+        //             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+        //                 "VectorFS instance is not available".to_string(),
+        //             ))?;
+        //         let vector_fs = vector_fs.lock().await;
 
-                // it's not already registered (here)
-                // state is valid (here)
-                // delegation is enough (here -> yeah we need to do logic about what is what in terms of shareables)
+        // it's not already registered (here)
+        // state is valid (here)
+        // delegation is enough (here -> yeah we need to do logic about what is what in terms of shareables)
 
-                // TODO: Add fn to add allowed vector_db paths for externals
+        // TODO: Add fn to add allowed vector_db paths for externals
 
-                // -> Processing ->
-                // add node to the subscription_db
-                // schedule the job to be processed
-                // Further processing and validation here
+        // -> Processing ->
+        // add node to the subscription_db
+        // schedule the job to be processed
+        // Further processing and validation here
 
-                Ok("Subscription processed".to_string())
-            }
-            // Handle other actions as needed
-            _ => Err(SubscriberManagerError::InvalidRequest(
-                "Unsupported action type".to_string(),
-            )),
-        }
+        Ok("Subscription processed".to_string())
+        // }
+        // Handle other actions as needed
+        // _ => Err(SubscriberManagerError::InvalidRequest(
+        //     "Unsupported action type".to_string(),
+        // )),
+        // }
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    schemas::shinkai_subscription_req::ShinkaiFolderSubscriptionPayment, shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson
+    schemas::shinkai_subscription_req::SubscriptionPayment, shinkai_message::shinkai_message_schemas::{
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
     }, shinkai_utils::job_scope::JobScope
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -320,6 +320,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    // TODO: to be able to manage an error as well
+    // for that we need a new struct to manage the resp and error
     pub fn vecfs_available_shared_items_response(
         results: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -330,7 +332,6 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-
         Self::create_vecfs_message(
             results,
             MessageSchemaType::AvailableSharedItemsResponse,
@@ -375,7 +376,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
-        requirements: ShinkaiFolderSubscriptionPayment,    
+        requirements: SubscriptionPayment,    
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -393,6 +394,52 @@ impl ShinkaiMessageBuilder {
         Self::create_vecfs_message(
             payload,
             MessageSchemaType::SubscribeToSharedFolder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn my_subscriptions(
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        Self::create_vecfs_message( // Note(Nico): we could change this but it works for now
+            "".to_string(),
+            MessageSchemaType::MySubscriptions,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn p2p_subscription_generic_response(
+        response: SubscriptionGenericResponse,
+        schema_type: MessageSchemaType,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName, 
+    ) -> Result<ShinkaiMessage, &'static str> {
+        Self::create_vecfs_message(
+            response,
+            schema_type,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,

@@ -2,7 +2,7 @@ use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
-    shinkai_subscription_req::{ShinkaiFolderSubscription, ShinkaiFolderSubscriptionPayment},
+    shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
 };
 
 impl ShinkaiDB {
@@ -16,10 +16,8 @@ impl ShinkaiDB {
         &mut self,
         shared_folder: &str,
         node_name: ShinkaiName,
-        payment: ShinkaiFolderSubscriptionPayment,
+        payment: SubscriptionPayment,
     ) -> Result<(), ShinkaiDBError> {
-        let creation_date: DateTime<Utc> = Utc::now();
-
         let node_name_str = node_name.get_node_name();
 
         // Use shared CFs
@@ -51,7 +49,7 @@ impl ShinkaiDB {
     pub fn all_subscribers_for_folder(
         &self,
         shared_folder: &str,
-    ) -> Result<Vec<(String, ShinkaiFolderSubscriptionPayment)>, ShinkaiDBError> {
+    ) -> Result<Vec<(String, SubscriptionPayment)>, ShinkaiDBError> {
         let folder_hash = Self::folder_name_to_hash(shared_folder.to_string());
         let prefix_search_key = format!("subscriptions_{}_", folder_hash);
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -68,7 +66,7 @@ impl ShinkaiDB {
                 continue; // Skip if the key format is not as expected
             }
             let node_name_str = parts[2]; // Assuming the node name is the third part of the key
-            let payment: ShinkaiFolderSubscriptionPayment =
+            let payment: SubscriptionPayment =
                 bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
             subscribers.push((node_name_str.to_string(), payment));
@@ -105,7 +103,7 @@ impl ShinkaiDB {
     /// Retrieves all subscribers along with their subscription details.
     pub fn all_subscribers_subscription(
         &self,
-    ) -> Result<Vec<(String, String, ShinkaiFolderSubscriptionPayment)>, ShinkaiDBError> {
+    ) -> Result<Vec<(String, String, SubscriptionPayment)>, ShinkaiDBError> {
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
         let prefix_search_key = "user_shared_folders_subscriptions_abcde_prefix_".as_bytes();
 
@@ -123,7 +121,7 @@ impl ShinkaiDB {
             // Adjusting indices according to the prefix format
             let node_name_str = parts[6];
             let folder = parts[7];
-            let payment: ShinkaiFolderSubscriptionPayment =
+            let payment: SubscriptionPayment =
                 bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
             subscriptions.push((node_name_str.to_string(), folder.to_string(), payment));

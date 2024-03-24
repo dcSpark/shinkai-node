@@ -4,6 +4,7 @@ pub mod node_internal_commands;
 pub mod node_api_commands;
 pub mod node_local_commands;
 pub mod node_api;
+pub mod node_api_handlers;
 pub mod node_error;
 pub mod node_devops_api_commands;
 pub mod ws_manager;

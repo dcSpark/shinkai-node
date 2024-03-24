@@ -2,7 +2,7 @@ use std::fmt;
 
 use shinkai_vector_resources::resource_errors::VRError;
 
-use crate::vector_fs::vector_fs_error::VectorFSError;
+use crate::{db::db_errors::ShinkaiDBError, vector_fs::vector_fs_error::VectorFSError};
 
 // Define a custom error for SubscriberManager operations
 #[derive(Debug)]
@@ -21,6 +21,7 @@ pub enum SubscriberManagerError {
     AddressUnavailable(String),
     PaymentNotValid(String),
     SubscriptionFailed(String),
+    AlreadySubscribed(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -40,6 +41,7 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::AddressUnavailable(e) => write!(f, "Address unavailable: {}", e),
             SubscriberManagerError::PaymentNotValid(e) => write!(f, "Payment not valid: {}", e),
             SubscriberManagerError::SubscriptionFailed(e) => write!(f, "Subscription failed: {}", e),
+            SubscriberManagerError::AlreadySubscribed(e) => write!(f, "Already subscribed: {}", e),
         }
     }
 }
@@ -61,5 +63,22 @@ impl From<VRError> for SubscriberManagerError {
 impl From<String> for SubscriberManagerError {
     fn from(error: String) -> Self {
         SubscriberManagerError::MessageProcessingError(error)
+    }
+}
+
+impl From<&str> for SubscriberManagerError {
+    fn from(error: &str) -> Self {
+        SubscriberManagerError::MessageProcessingError(error.to_string())
+    }
+}
+
+impl From<ShinkaiDBError> for SubscriberManagerError {
+    fn from(error: ShinkaiDBError) -> Self {
+        match error {
+            ShinkaiDBError::RocksDBError(e) => SubscriberManagerError::DatabaseError(e.to_string()),
+            // Map other specific ShinkaiDBError variants to appropriate SubscriberManagerError variants
+            // For simplicity, using DatabaseError for all cases here, but you should map them appropriately
+            _ => SubscriberManagerError::DatabaseError(error.to_string()),
+        }
     }
 }

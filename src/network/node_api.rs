@@ -549,6 +549,17 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/subscribe_to_shared_folder
+    let subscribe_to_shared_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "subscribe_to_shared_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                subscribe_to_shared_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // POST v1/update_shareable_folder
     let api_update_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
@@ -618,6 +629,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(api_create_shareable_folder)
         .or(api_update_shareable_folder)
         .or(api_unshare_folder)
+        .or(subscribe_to_shared_folder)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -971,6 +983,21 @@ async fn api_convert_files_and_save_to_folder_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APIConvertFilesAndSaveToFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn subscribe_to_shared_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APISubscribeToSharedFolder {
             msg: message,
             res: res_sender,
         },

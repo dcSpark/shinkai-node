@@ -7,8 +7,8 @@ use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscription;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::{PaymentOption, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
@@ -103,7 +103,7 @@ async fn make_folder_shareable(
 ) {
     let payload = APICreateShareableFolder {
         path: folder_path.to_string(),
-        subscription_req: ShinkaiFolderSubscription {
+        subscription_req: FolderSubscription {
             minimum_token_delegation: Some(100),
             minimum_time_delegated_hours: Some(100),
             monthly_payment: Some(PaymentOption::USD(10.0)),
@@ -299,6 +299,36 @@ fn print_tree_simple(json_str: &str) {
     } else {
         eprintln!("Failed to parse JSON");
     }
+}
+
+async fn check_subscription_success(
+    commands_sender: &Sender<NodeCommand>,
+    attempts: usize,
+    delay_secs: u64,
+    success_message: &str,
+) -> bool {
+    for _ in 0..attempts {
+        tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+        let node2_last_messages = fetch_last_messages(commands_sender, 2)
+            .await
+            .expect("Failed to fetch last messages");
+
+        eprintln!("Node 2 last messages: {:?}", node2_last_messages);
+
+        for message in &node2_last_messages {
+            if message
+                .get_message_content()
+                .expect("should work")
+                .contains(success_message)
+            {
+                eprintln!("Subscription successful.");
+                return true;
+            }
+        }
+    }
+
+    eprintln!("Subscription was not successful within the expected time frame.");
+    false
 }
 
 fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
@@ -876,68 +906,6 @@ fn subscription_manager_test() {
             //
             {
                 // Remove this after the other stuff is working
-                // eprintln!("\n\n### Sending message from a node 2 profile to node 1 profile\n\n");
-
-                // let message_content = "test body content".to_string();
-                // let unchanged_message = ShinkaiMessageBuilder::new(
-                //     node2_subencryption_sk.clone(),
-                //     clone_signature_secret_key(&node2_subidentity_sk),
-                //     node1_profile_encryption_pk.clone(),
-                // )
-                // .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
-                // .message_raw_content(message_content.clone())
-                // .body_encryption(EncryptionMethod::None)
-                // .message_schema_type(MessageSchemaType::TextContent)
-                // .internal_metadata(
-                //     node2_profile_name.to_string().clone(),
-                //     node1_profile_name.to_string(),
-                //     EncryptionMethod::None,
-                //     None,
-                // )
-                // .external_metadata_with_other_and_intra_sender(
-                //     node1_identity_name.to_string(),
-                //     node2_identity_name.to_string().clone(),
-                //     "".to_string(),
-                //     node1_profile_name.to_string().clone(),
-                // )
-                // .build()
-                // .unwrap();
-
-                // // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
-
-                // let (res_send_msg_sender, res_send_msg_receiver): (
-                //     async_channel::Sender<Result<SendResponseBodyData, APIError>>,
-                //     async_channel::Receiver<Result<SendResponseBodyData, APIError>>,
-                // ) = async_channel::bounded(1);
-
-                // node2_commands_sender
-                //     .send(NodeCommand::SendOnionizedMessage {
-                //         msg: unchanged_message,
-                //         res: res_send_msg_sender,
-                //     })
-                //     .await
-                //     .unwrap();
-
-                // let send_result = res_send_msg_receiver.recv().await.unwrap();
-                // assert!(send_result.is_ok(), "Failed to send onionized message");
-
-                // tokio::time::sleep(Duration::from_secs(2)).await;
-
-                // let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                //     .await
-                //     .expect("Failed to fetch last messages for node 2");
-
-                // let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                //     .await
-                //     .expect("Failed to fetch last messages for node 1");
-
-                // // eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                // // eprintln!("\n\n");
-                // // eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                // // eprintln!("\n\n");
-            }
-            {
-                // Remove this after the other stuff is working
                 eprintln!("\n\n### Sending message from node 2 to node 1 requesting shared folders*\n");
 
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
@@ -988,7 +956,6 @@ fn subscription_manager_test() {
                 eprintln!("\n\n");
             }
             {
-                // Remove this after the other stuff is working
                 eprintln!("\n\n### (RETRY!) Sending message from node 2 to node 1 requesting shared folders*\n");
                 eprintln!("shared folders should be updated this time!");
 
@@ -1083,10 +1050,10 @@ fn subscription_manager_test() {
             {
                 eprintln!("Subscribe to the shared folder");
                 // Subscribe to the shared folder
-                // TODO: create node endpoint to subscribe
-                // TODO: connect endpoint to the my_subscription_manager
-                // TODO: send request from my node to the subscription node
-                // TODO: process request from the subscription node and return the response (valid or error)
+                // DONE: create node endpoint to subscribe
+                // DONE: connect endpoint to the my_subscription_manager
+                // DONE: send request from my node to the subscription node
+                // DONE: process request from the subscription node and return the response (valid or error)
                 // --
                 // TODO: request current state from subscriber node
                 // TODO: process request from the subscriber node and compute diff
@@ -1095,9 +1062,102 @@ fn subscription_manager_test() {
                 // TODO: subscriber node save the files using vector fs
                 // --
                 // TODO: maybe check for connections over X amount if it's from a subscriber if not end the connection (avoid spam)
-                // Note(Nico): what happens if I'm trying to send a file (retry or whatever) 
+                // Note(Nico): what happens if I'm trying to send a file (retry or whatever)
                 // and another thing is also trying to send it (retry or new schedule)?
                 // maybe create a deterministic identifier so it's easier to track the process
+
+                eprintln!(
+                    "\n\n### Sending message from node 2 to node 1 requesting: subscription to shared_test_folder\n"
+                );
+                let requirements = SubscriptionPayment::Free;
+
+                let unchanged_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
+                    "/shared_test_folder".to_string(),
+                    requirements,
+                    node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_encryption_pk.clone(),
+                    node2_identity_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
+                    node2_identity_name.to_string(),
+                    "".to_string(),
+                )
+                .unwrap();
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<String, APIError>>,
+                    async_channel::Receiver<Result<String, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node2_commands_sender
+                    .send(NodeCommand::APISubscribeToSharedFolder {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                let send_result = res_send_msg_receiver.recv().await.unwrap();
+                eprint!("\n\nsend_result: {:?}", send_result);
+
+                let subscription_success_message = "{\"subscription_details\":\"Subscribed to /shared_test_folder\",\"shared_folder\":\"/shared_test_folder\",\"status\":\"Success\",\"error\":null,\"metadata\":null}";
+                let subscription_success = check_subscription_success(
+                    &node2_commands_sender,
+                    4, // attempts
+                    2, // delay_secs
+                    subscription_success_message,
+                )
+                .await;
+                assert!(subscription_success, "Failed to subscribe to shared folder");
+            }
+            {
+                let msg = ShinkaiMessageBuilder::my_subscriptions(
+                    node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_encryption_pk.clone(),
+                    node2_identity_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
+                    node2_identity_name.to_string(),
+                    "".to_string(),
+                ).unwrap();
+            
+                // Prepare the response channel
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<String, APIError>>,
+                    async_channel::Receiver<Result<String, APIError>>,
+                ) = async_channel::bounded(1);
+            
+                // Send the command
+                node2_commands_sender
+                .send(NodeCommand::APIMySubscriptions {
+                    msg: msg,
+                    res: res_send_msg_sender,
+                })
+                .await
+                .unwrap();
+
+                let resp = res_send_msg_receiver.recv().await.unwrap().expect("Failed to receive response");    
+                
+                // Parse the actual response to JSON for comparison
+                let mut actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
+
+                // Expected response template without dates for comparison
+                let expected_resp_template = r#"[{"subscription_id":{"unique_id":"@@node2_test.sepolia-shinkai:::/shared_test_folder:::@@node2_test.sepolia-shinkai"},"shared_folder":"/shared_test_folder","shared_folder_owner":"@@node2_test.sepolia-shinkai","subscription_description":null,"subscriber_destination_path":null,"subscriber_identity":"@@node2_test.sepolia-shinkai","payment":"Free","state":"SubscriptionConfirmed"}]"#;
+                let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
+
+                // Remove dates from the actual response for comparison
+                if let Some(array) = actual_resp_json.as_array_mut() {
+                    for item in array.iter_mut() {
+                        if let Some(obj) = item.as_object_mut() {
+                            obj.remove("date_created");
+                            obj.remove("last_modified");
+                            obj.remove("last_sync");
+                        }
+                    }
+                }
+
+                // Assert that the modified actual response matches the expected response template
+                assert_eq!(actual_resp_json, expected_resp_json, "The response does not match the expected subscriptions response without dates.");
             }
             {
                 // Dont forget to do this at the end

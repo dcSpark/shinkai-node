@@ -12,11 +12,16 @@ use crate::{
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
+    schemas::{
+        shinkai_name::ShinkaiName,
+        shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId},
+    },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_extension::EncryptionStatus,
-        shinkai_message_schemas::{APISubscribeToSharedFolder, MessageSchemaType},
+        shinkai_message_schemas::{
+            APISubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
+        },
     },
     shinkai_utils::{
         encryption::{clone_static_secret_key, encryption_public_key_to_string},
@@ -404,7 +409,6 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::AvailableSharedItemsResponse => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-
                     let request_node_name = requester.get_node_name();
 
                     // Handle Schema2 specific logic
@@ -447,34 +451,116 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::SubscribeToSharedFolder => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    let request_node_name = requester.get_node_name();
-
                     let content = message.get_message_content().unwrap_or("".to_string());
+                    eprintln!(
+                        "SubscribeToSharedFolder Node {}: Handling SubscribeToSharedFolder from: {}",
+                        my_node_profile_name,
+                        requester.get_node_name()
+                    );
+                    eprintln!("SubscribeToSharedFolder Content: {}", content);
 
-                    // Convert the response string to Vec<SharedFolderInfo>
-                    match serde_json::from_str::<String>(&content) {
-                        Ok(json_string) => {
-                            // Now, deserialize the JSON string (without the outer quotes) to
-                            match serde_json::from_str::<APISubscribeToSharedFolder>(&json_string) {
-                                Ok(subscription_request) => {
-                                    // Successfully converted, you can now use shared_folder_infos
-                                    println!("Converted to APISubscribeToSharedFolder: {:?}", subscription_request);
-                                    let mut external_subscriber_manager = external_subscription_manager.lock().await;
-                                    let _ = external_subscriber_manager
-                                        .subscribe_to_shared_folder(
-                                            requester.extract_node(),
-                                            subscription_request.path,
-                                            subscription_request.payment,
-                                        )
-                                        .await;
+                    match serde_json::from_str::<APISubscribeToSharedFolder>(&content) {
+                        Ok(subscription_request) => {
+                            // Successfully converted, you can now use shared_folder_infos
+                            println!("Converted to APISubscribeToSharedFolder: {:?}", subscription_request);
+                            let mut external_subscriber_manager = external_subscription_manager.lock().await;
+                            let result = external_subscriber_manager
+                                .subscribe_to_shared_folder(
+                                    requester.extract_node(),
+                                    subscription_request.path.clone(),
+                                    subscription_request.payment,
+                                )
+                                .await;
+                            match result {
+                                Ok(_) => {
+                                    let response = SubscriptionGenericResponse {
+                                        subscription_details: format!("Subscribed to {}", subscription_request.path),
+                                        status: SubscriptionResponseStatus::Success,
+                                        shared_folder: subscription_request.path,
+                                        error: None,
+                                        metadata: None,
+                                    };
+
+                                    let request_profile = requester.get_profile_name().unwrap_or("".to_string());
+                                    let msg = ShinkaiMessageBuilder::p2p_subscription_generic_response(
+                                        response,
+                                        MessageSchemaType::SubscribeToSharedFolderResponse,
+                                        clone_static_secret_key(&my_encryption_secret_key),
+                                        clone_signature_secret_key(&my_signature_secret_key),
+                                        sender_encryption_pk,
+                                        my_node_profile_name.to_string(),
+                                        "".to_string(),
+                                        requester.get_node_name(),
+                                        request_profile,
+                                    )
+                                    .unwrap();
+
+                                    // 3.- Send message back with response
+                                    Node::send(
+                                        msg,
+                                        Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
+                                        (sender_address, requester.get_node_name()),
+                                        maybe_db,
+                                        maybe_identity_manager,
+                                        false,
+                                        None,
+                                    );
+                                    return Ok(());
                                 }
                                 Err(e) => {
-                                    println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                                    println!("Subscription failed: {}", e);
+                                    // TODO: Send error message back in APISubscribeToSharedFolderResponse
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("Failed to deserialize outer JSON string: {}", e);
+                            println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                            // TODO: Send error message back in APISubscribeToSharedFolderResponse
+                        }
+                    }
+
+                    return Ok(());
+                }
+                MessageSchemaType::SubscribeToSharedFolderResponse => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let request_node_name = requester.get_node_name();
+
+                    eprintln!(
+                        "SubscribeToSharedFolderResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
+                        my_node_profile_name, request_node_name
+                    );
+
+                    let content = message.get_message_content().unwrap_or("".to_string());
+                    println!(
+                        "SubscribeToSharedFolderResponse Node {}. Received response: {}",
+                        my_node_profile_name, content
+                    );
+
+                    match serde_json::from_str::<SubscriptionGenericResponse>(&content) {
+                        Ok(response) => {
+                            // Successfully converted, you can now use shared_folder_infos
+                            println!("Converted to SubscriptionGenericResponse: {:?}", response);
+
+                            let mut my_subscription_manager = my_subscription_manager.lock().await;
+                            let result = my_subscription_manager
+                                .update_subscription_status(
+                                    requester.extract_node(),
+                                    MessageSchemaType::SubscribeToSharedFolderResponse,
+                                    response,
+                                )
+                                .await;
+
+                            match result {
+                                Ok(_) => {
+                                    println!("Successfully updated subscription status");
+                                }
+                                Err(e) => {
+                                    println!("Failed to update subscription status: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to deserialize JSON to SubscriptionGenericResponse: {}", e);
                         }
                     }
 

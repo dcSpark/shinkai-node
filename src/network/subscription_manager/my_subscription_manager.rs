@@ -1,4 +1,5 @@
 use crate::agent::queue::job_queue_manager::JobQueueManager;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
@@ -15,10 +16,13 @@ use lru::LruCache;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
-    ShinkaiSubscription, ShinkaiSubscriptionAction, ShinkaiSubscriptionRequest,
+    ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
-use shinkai_message_primitives::schemas::shinkai_subscription_req::ShinkaiFolderSubscriptionPayment;
+use shinkai_message_primitives::schemas::shinkai_subscription_req::SubscriptionPayment;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    MessageSchemaType, SubscriptionGenericResponse,
+};
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
@@ -58,11 +62,14 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+
     // TODO: add a new property to store the user's subscriptions
     pub subscribed_folders_trees: HashMap<String, Arc<FSItemTree>>, // We want it to be stored in the DB
     // maybe we can just check directly in the db?
-    pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
+    // what was this for?
 
+    // Cache for shared folders including the ones that you are not subscribed to
+    pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
     // These values are already part of the node, but we want to minimize blocking the node mutex
     // The profile name of the node.
     pub node_name: ShinkaiName,
@@ -251,13 +258,34 @@ impl MySubscriptionsManager {
         &self,
         node_name: ShinkaiName,
         folder_name: String,
-        payment: ShinkaiFolderSubscriptionPayment,
+        payment: SubscriptionPayment,
     ) -> Result<(), SubscriberManagerError> {
-        // TODO: Check locally if i'm already subscribed to the folder.
-        // Let's use a db method directly
+        // Check locally if I'm already subscribed to the folder using the DB
+        if let Some(db_lock) = self.db.upgrade() {
+            let db = db_lock.lock().await;
+            let my_node_name = ShinkaiName::new(self.node_name.get_node_name())?;
+            let subscription_id = SubscriptionId::new(node_name.clone(), folder_name.clone(), my_node_name);
+            match db.get_my_subscription(&subscription_id.get_unique_id()) {
+                Ok(_) => {
+                    // Already subscribed, no need to proceed further
+                    return Err(SubscriberManagerError::AlreadySubscribed(
+                        "Already subscribed to the folder".to_string(),
+                    ));
+                }
+                Err(ShinkaiDBError::DataNotFound) => {
+                    // Subscription doesn't exist. Continue with the subscription process
+                }
+                Err(e) => {
+                    return Err(SubscriberManagerError::DatabaseError(e.to_string()));
+                }
+            }
+        } else {
+            return Err(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()));
+        }
 
-        // If not, create a shinkai message
-        // send the message to the network queue
+        // TODO: Check if the payment is valid so we don't waste sending a message for a rejection
+
+        // Continue
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
@@ -269,8 +297,8 @@ impl MySubscriptionsManager {
             // then it should create and update a local cache with the current status (waiting for the network to respond)
 
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
-                folder_name,
-                payment,
+                folder_name.clone(),
+                payment.clone(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
@@ -282,7 +310,23 @@ impl MySubscriptionsManager {
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
-            // TODO: update status
+            // Update local status
+            let new_subscription = ShinkaiSubscription::new(
+                folder_name,
+                node_name,
+                self.node_name.clone(),
+                ShinkaiSubscriptionStatus::SubscriptionRequested,
+                Some(payment),
+            );
+
+            if let Some(db_lock) = self.db.upgrade() {
+                let mut db = db_lock.lock().await;
+                db.add_my_subscription(new_subscription)?;
+            } else {
+                return Err(SubscriberManagerError::DatabaseError(
+                    "Unable to access DB for updating".to_string(),
+                ));
+            }
 
             self.send_message_to_peer(msg_request_subscription, standard_identity)
                 .await?;
@@ -292,6 +336,53 @@ impl MySubscriptionsManager {
             // Handle the case where the identity manager is no longer available
             return Err(SubscriberManagerError::IdentityManagerUnavailable);
         }
+    }
+
+    pub async fn update_subscription_status(
+        &self,
+        node_name: ShinkaiName,
+        action: MessageSchemaType,
+        payload: SubscriptionGenericResponse,
+    ) -> Result<(), SubscriberManagerError> {
+        let my_node_name = ShinkaiName::new(self.node_name.get_node_name())?;
+        let subscription_id = SubscriptionId::new(node_name, payload.shared_folder.clone(), my_node_name);
+
+        match action {
+            MessageSchemaType::SubscribeToSharedFolderResponse => {
+                println!(
+                    "Updating subscription status for folder: {} with payload: {:?}",
+                    payload.shared_folder.clone(),
+                    payload
+                );
+
+                // Validate that we requested the subscription
+                let db_lock = self
+                    .db
+                    .upgrade()
+                    .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
+                let mut db = db_lock.lock().await;
+                let subscription_result = db.get_my_subscription(&subscription_id.get_unique_id())?;
+                if subscription_result.state != ShinkaiSubscriptionStatus::SubscriptionRequested {
+                    // return error
+                    return Err(SubscriberManagerError::SubscriptionFailed(
+                        "Subscription was not requested".to_string(),
+                    ));
+                }
+                // Update the subscription status in the db
+                let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
+                db.update_my_subscription(new_subscription)?;
+
+                // Update the subscription status in the local cache
+
+                // Done!
+            }
+            _ => {
+                // For other actions, do nothing
+            }
+        }
+
+        //    let subscription_id =
+        Ok(())
     }
 
     async fn send_message_to_peer(

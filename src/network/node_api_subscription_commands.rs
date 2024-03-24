@@ -14,6 +14,66 @@ use shinkai_message_primitives::{
 };
 
 impl Node {
+    pub async fn api_subscription_my_subscriptions(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (_, requester_name) = match self
+            .validate_and_extract_payload::<String>(potentially_encrypted_msg, MessageSchemaType::MySubscriptions)
+            .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name() != self.node_name.clone().get_node_name() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let db_lock = self.db.lock().await;
+        let db_result = db_lock.list_all_my_subscriptions();
+
+        match db_result {
+            Ok(subscriptions) => {
+                match to_string(&subscriptions) {
+                    Ok(json_string) => {
+                        let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+                    }
+                    Err(e) => {
+                        // Handle serialization error
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize response: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to retrieve subscriptions: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn api_subscription_available_shared_items(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -152,10 +212,7 @@ impl Node {
 
         match result {
             Ok(_) => {
-                let _ = res
-                    .send(Ok("Successfully subscribed to shared folder".to_string()))
-                    .await
-                    .map_err(|_| ());
+                let _ = res.send(Ok("Subscription Requested".to_string())).await.map_err(|_| ());
             }
             Err(e) => {
                 let api_error = APIError {
