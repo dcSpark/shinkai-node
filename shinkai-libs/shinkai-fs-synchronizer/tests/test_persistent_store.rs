@@ -23,7 +23,7 @@ mod tests {
         folders.insert(
             LocalOSFolderPath("path/to/local/folder".to_string()),
             SyncingFolder {
-                profile_name: Some("profile1".to_string()),
+                profile_name: "profile1".to_string(),
                 vector_fs_path: Some("path/to/vector/fs".to_string()),
                 local_os_folder_path: LocalOSFolderPath("path/to/local/folder".to_string()),
                 last_synchronized_file_datetime: Some(1625097600),

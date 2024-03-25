@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 
 use crate::shinkai_manager::ShinkaiManager;
 use std::collections::HashMap;
@@ -9,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncingFolder {
-    pub profile_name: Option<String>,
+    pub profile_name: ProfileName,
     pub vector_fs_path: Option<String>,
     pub local_os_folder_path: LocalOSFolderPath,
     pub last_synchronized_file_datetime: Option<u64>, // UTC with milliseconds
@@ -152,35 +153,35 @@ impl FilesystemSynchronizer {
         self.syncing_folders.lock().unwrap().clone()
     }
 
-    pub fn visit_dirs(&self, dir: &Path) -> std::io::Result<()> {
-        let path_str = dir.to_str().unwrap_or_default().to_string();
-        let local_os_folder_path = LocalOSFolderPath(path_str.clone());
-        let syncing_folder = SyncingFolder {
-            profile_name: Some(self.shinkai_manager.profile_name.to_string()),
-            vector_fs_path: None,
-            local_os_folder_path: local_os_folder_path.clone(),
-            last_synchronized_file_datetime: None,
-        };
+    // pub fn visit_dirs(&self, dir: &Path) -> std::io::Result<()> {
+    //     let path_str = dir.to_str().unwrap_or_default().to_string();
+    //     let local_os_folder_path = LocalOSFolderPath(path_str.clone());
+    //     let syncing_folder = SyncingFolder {
+    //         profile_name: self.shinkai_manager.profile_name.to_string(),
+    //         vector_fs_path: None,
+    //         local_os_folder_path: local_os_folder_path.clone(),
+    //         last_synchronized_file_datetime: None,
+    //     };
 
-        {
-            let mut folders = self.syncing_folders.lock().unwrap();
-            folders.insert(local_os_folder_path, syncing_folder);
-        } // Release the lock immediately after use
+    //     {
+    //         let mut folders = self.syncing_folders.lock().unwrap();
+    //         folders.insert(local_os_folder_path, syncing_folder);
+    //     } // Release the lock immediately after use
 
-        // Recursively visit subdirectories
-        if dir.is_dir() {
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    println!("Directory: {:?}", path);
-                    self.visit_dirs(&path)?;
-                } else {
-                    // Placeholder for file processing logic
-                }
-            }
-        }
+    //     // Recursively visit subdirectories
+    //     if dir.is_dir() {
+    //         for entry in std::fs::read_dir(dir)? {
+    //             let entry = entry?;
+    //             let path = entry.path();
+    //             if path.is_dir() {
+    //                 println!("Directory: {:?}", path);
+    //                 self.visit_dirs(&path)?;
+    //             } else {
+    //                 // Placeholder for file processing logic
+    //             }
+    //         }
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

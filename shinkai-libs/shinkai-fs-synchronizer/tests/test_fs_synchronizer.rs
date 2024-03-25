@@ -84,7 +84,7 @@ mod tests {
             .expect("Couldn't initialize ShinkaiManager from the provided encrypted file.");
 
         let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
-        let sync_visitor = SyncFolderVisitor::new(syncing_folders, None);
+        let sync_visitor = SyncFolderVisitor::new(syncing_folders, None, shinkai_manager.profile_name.clone());
         traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
         let synchronizer = FilesystemSynchronizer::new(

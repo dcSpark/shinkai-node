@@ -4,11 +4,9 @@ use serde::Deserialize;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
-        encryption::{
-            encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
-        },
+        encryption::string_to_encryption_public_key,
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-        signatures::{ephemeral_signature_keypair, signature_secret_key_to_string, string_to_signature_secret_key},
+        signatures::string_to_signature_secret_key,
     },
 };
 use std::{convert::TryInto, fs};

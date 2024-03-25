@@ -48,7 +48,11 @@ async fn main() {
 
         // (re)initialize sync_visitor with the new state of syncing_folders at the beginning of each loop iteration
         let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
-        let sync_visitor = SyncFolderVisitor::new(syncing_folders.clone(), last_synced_time);
+        let sync_visitor = SyncFolderVisitor::new(
+            syncing_folders.clone(),
+            last_synced_time,
+            shinkai_manager.profile_name.clone(),
+        );
         traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
         // fetch last saved persistent state from the disk
