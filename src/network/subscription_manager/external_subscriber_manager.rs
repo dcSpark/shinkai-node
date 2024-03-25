@@ -154,30 +154,23 @@ impl ExternalSubscriberManager {
         }
     }
 
-    // Placeholder for process_job_message_queued
-    // Correct the return type of the function to match the expected type
-    // TODO: Remove? I don't think I need this. it could be helpful for testing?
     fn process_job_message_queued(
-        job: ShinkaiSubscription,
+        subscription: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             // Placeholder logic for processing a queued job message
-            println!("Processing job: {:?}", job.subscription_id);
+            println!("Processing job: {:?}", subscription.subscription_id);
 
-            // Simulate some processing work
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-            // Log completion of job processing
-            println!("Completed processing job: {:?}", job.subscription_id);
+            // TODO: access shared_folders_trees for the subscription path
 
             // Assuming the processing is successful, return Ok with a message
             // Adjust according to actual logic and possible error conditions
             Ok(format!(
                 "Job {} processed successfully",
-                job.subscription_id.get_unique_id()
+                subscription.subscription_id.get_unique_id()
             ))
         })
     }
@@ -188,7 +181,6 @@ impl ExternalSubscriberManager {
         vector_fs: Weak<Mutex<VectorFS>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
-        // TODO: probably we want to pass a Weak Mutex of something in memory that we can use to store the state of the shared_folders
         process_job: impl Fn(
                 ShinkaiSubscription,
                 Weak<Mutex<ShinkaiDB>>,
@@ -217,22 +209,53 @@ impl ExternalSubscriberManager {
 
             let mut handles = Vec::new();
             loop {
-                // TODO: we want to get all the subscribers id and process them
+                // Scope for acquiring and releasing the lock quickly
+                let subscriptions_ids_to_process: Vec<SubscriptionId> = {
+                    let db = match db.upgrade() {
+                        Some(db) => db,
+                        None => {
+                            shinkai_log(
+                                ShinkaiLogOption::ExtSubscriptions,
+                                ShinkaiLogLevel::Error,
+                                "Database instance is not available",
+                            );
+                            break; // or continue based on your error handling policy
+                        }
+                    };
+                    let db = db.lock().await;
+                    match db.all_subscribers_subscription() {
+                        Ok(subscriptions) => {
+                            // Note: this extract and sort subscriptions by folder
+                            // to avoid just focusing in the one user with multiple subscriptions
+                            // this also open the doors for us to implement some cache for specific sub-folders and items
+                            let mut subscriptions_with_folders: Vec<(String, SubscriptionId)> = subscriptions
+                                .into_iter()
+                                .map(|s| {
+                                    // Extract the shared folder for each subscription ID
+                                    let shared_folder = s.subscription_id.extract_shared_folder().unwrap_or_default();
+                                    (shared_folder, s.subscription_id)
+                                })
+                                .collect();
 
-                // // Scope for acquiring and releasing the lock quickly
-                // let subscriptions_ids_to_process: Vec<String> = {
-                //     // acquire the lock of the db
-                //     let shinkai_db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-                //         "Database instance is not available".to_string(),
-                //     ))?;
-                //     let db = shinkai_db.lock().await;
-                //     let subscribers = db.get_subscribers().unwrap_or_default();
-                //     subscribers.iter().map(|subscriber| subscriber.id.clone()).collect()
+                            // Sort the vector by shared_folder
+                            subscriptions_with_folders.sort_by(|a, b| a.0.cmp(&b.0));
 
-                // };
+                            // Extract and collect the SubscriptionId in sorted order
+                            subscriptions_with_folders.into_iter().map(|(_, id)| id).collect()
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::ExtSubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to fetch subscriptions: {:?}", e),
+                            );
+                            Vec::new() // Continue the loop, even if fetching subscriptions failed
+                        }
+                    }
+                };
 
-                for _ in 0..thread_number {
-                    let job_queue_manager = job_queue_manager.clone();
+                // Process each subscription ID
+                for subscription_id in subscriptions_ids_to_process {
                     let semaphore = semaphore.clone();
                     let db = db.clone();
                     let vector_fs = vector_fs.clone();
@@ -242,34 +265,55 @@ impl ExternalSubscriberManager {
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
-                        // match job_queue_manager.lock().await.dequeue("some_key").await {
-                        //     Ok(Some(job)) => {
-                        //         let result = process_job(job, db, vector_fs, shared_folders_trees).await;
-                        //         if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
-                        //             result
-                        //         } else {
-                        //             Err(SubscriberManagerError::)
-                        //         }
-                        //     }
-                        //     Ok(None) => {
-                        //         // No job to process, release the permit and exit the loop
-                        //         drop(_permit);
-                        //         return;
-                        //     }
-                        //     Err(err) => {
-                        //         eprintln!("Error dequeuing job: {:?}", err);
-                        //         // Error handling, release the permit and exit the loop
-                        //         drop(_permit);
-                        //         return;
-                        //     }
-                        // }
+                        let subscription = {
+                            let db = match db.upgrade() {
+                                Some(db) => db,
+                                None => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::ExtSubscriptions,
+                                        ShinkaiLogLevel::Error,
+                                        "Database instance is not available",
+                                    );
+                                    return;
+                                }
+                            };
+                            let db = db.lock().await;
+                            match db.get_subscription_by_id(&subscription_id) {
+                                Ok(subscription) => subscription,
+                                Err(e) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::ExtSubscriptions,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Failed to fetch subscription: {:?}", e),
+                                    );
+                                    return;
+                                }
+                            }
+                        };
+
+                        let _ = process_job(
+                            subscription,
+                            db.clone(),
+                            vector_fs.clone(),
+                            shared_folders_trees.clone(),
+                        )
+                        .await
+                        .unwrap_or_else(|e| {
+                            shinkai_log(
+                                ShinkaiLogOption::ExtSubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to process job: {:?}", e),
+                            );
+                            "Failed to process job".to_string()
+                        });
+                        drop(_permit);
                     });
                     handles.push(handle);
                 }
 
-                // let handles_to_join = mem::replace(&mut handles, Vec::new());
-                // futures::future::join_all(handles).await;
-                // handles.clear();
+                let handles_to_join = mem::replace(&mut handles, Vec::new());
+                futures::future::join_all(handles_to_join).await;
+                handles.clear();
 
                 // Wait for interval_minutes before the next iteration
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
@@ -587,61 +631,38 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
-    // Schedule the job to be processed. Update the last time it was processed.
-    pub async fn process_action(
-        &mut self,
-        action: ShinkaiSubscription,
-        profile: ShinkaiName,
-    ) -> Result<String, SubscriberManagerError> {
-        // TODO: Transform request to ShinkaiSubscription if it passes validation
-        // -> Validation ->
+    pub async fn subscriber_current_state_response(
+        &self,
+        subscription_unique_id: String,
+        subscriber_folder_tree: FSItemTree,
+        subscriber_node_name: ShinkaiName,
+    ) -> Result<(), SubscriberManagerError> {
+        // Placeholder: Log the received information
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}",
+                subscription_unique_id, subscriber_node_name, subscriber_folder_tree
+            ),
+        );
 
-        // it comes from the actual node (API side) -> it should be validated before it gets here
-        // vector_db path is valid and "shareable" (here)
+        // TODO: get subscription using subscription_unique_id
+        // TODO: check that the user is actually subscribed to the subscription
 
-        // match action.action {
-        //     ShinkaiSubscriptionStatus::SubscriptionRequested => {
-        //         // Transform request to ShinkaiSubscription if it passes validation
-        //         let subscription = ShinkaiSubscription {
-        //             action: action.action,
-        //             subscription_id: action.subscription_id,
-        //             vector_db_path: action.vector_db_path.ok_or(SubscriberManagerError::InvalidRequest(
-        //                 "vector_db_path is required".to_string(),
-        //             ))?,
-        //             subscriber_identity: profile,
-        //             state: action.state,
-        //             date_created: Utc::now(),
-        //             last_modified: Utc::now(),
-        //             last_sync: None,
-        //         };
+        // TODO: create a new struct to hold the subscription and the subscriber_folder_tree and add it to the queue
+        // TODO: the queue maybe should hold a diff struct rather than subscription
 
-        //         // TODO: vector_db path is valid and public
-        //         let vector_fs = self
-        //             .vector_fs
-        //             .upgrade()
-        //             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-        //                 "VectorFS instance is not available".to_string(),
-        //             ))?;
-        //         let vector_fs = vector_fs.lock().await;
-
-        // it's not already registered (here)
-        // state is valid (here)
-        // delegation is enough (here -> yeah we need to do logic about what is what in terms of shareables)
-
-        // TODO: Add fn to add allowed vector_db paths for externals
-
-        // -> Processing ->
-        // add node to the subscription_db
-        // schedule the job to be processed
-        // Further processing and validation here
-
-        Ok("Subscription processed".to_string())
+        // {
+        //     let mut queue_manager = self.subscriptions_queue_manager.lock().await;
+        //     queue_manager
+        //         .add_job(subscription)
+        //         .await
+        //         .map_err(|e| SubscriberManagerError::QueueError(e.to_string()))
         // }
-        // Handle other actions as needed
-        // _ => Err(SubscriberManagerError::InvalidRequest(
-        //     "Unsupported action type".to_string(),
-        // )),
-        // }
+
+        // Placeholder: Assume success if reached this point
+        Ok(())
     }
 }
 

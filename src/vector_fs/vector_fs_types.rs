@@ -453,8 +453,8 @@ impl FSItem {
         Ok(serde_json::to_string(self)?)
     }
 
-    /// Restores an FSItem from a JSON string
-    pub fn from_json(s: &str) -> Result<Self, VectorFSError> {
+    /// Deserializes from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VRError> {
         Ok(serde_json::from_str(s)?)
     }
 
