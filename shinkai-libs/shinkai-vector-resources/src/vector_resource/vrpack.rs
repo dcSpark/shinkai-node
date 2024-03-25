@@ -122,6 +122,16 @@ impl VRPack {
         serde_json::from_str(json_str)
     }
 
+    /// Sets the name of the VRPack.
+    pub fn set_name(&mut self, name: &str) {
+        self.name = name.to_string();
+    }
+
+    /// Sets the resource of the VRPack.
+    pub fn set_resource(&mut self, resource: BaseVectorResource) {
+        self.resource = resource;
+    }
+
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
     pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();

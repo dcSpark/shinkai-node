@@ -475,6 +475,22 @@ impl VectorFS {
         Ok(new_folder)
     }
 
+    /// Automatically creates new FSFolders along the given path that do not exist.
+    pub fn create_new_folder_auto(&mut self, writer: &VFSWriter, path: VRPath) -> Result<(), VectorFSError> {
+        let mut current_path = VRPath::root();
+        for segment in path.path_ids {
+            current_path.push(segment.clone());
+            if self
+                .validate_path_points_to_entry(current_path.clone(), &writer.profile)
+                .is_err()
+            {
+                let new_writer = writer.new_writer_copied_data(current_path.pop_cloned(), self)?;
+                self.create_new_folder(&new_writer, &segment)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Creates a new FSFolder underneath the writer's path.
     pub fn create_new_folder(&mut self, writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
