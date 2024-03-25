@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::{DistributionInfo, DistributionOrigin, SourceFileMap};
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai, VRPack};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSource, VectorResourceCore},
@@ -491,7 +491,7 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Creates a new FSFolder underneath the writer's path.
+    /// Creates a new FSFolder underneath the writer's path. Errors if the path in `writer` does not exist.
     pub fn create_new_folder(&mut self, writer: &VFSWriter, new_folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
         let current_datetime = ShinkaiTime::generate_time_now();
@@ -542,6 +542,30 @@ impl VectorFS {
         self.db.write_pb(write_batch)?;
 
         Ok(new_folder)
+    }
+
+    /// Extracts the VRPack into the VectorFS underneath the folder specified in the writer's path. Uses the VRPack's name
+    /// as the folder name which everything gets extracted into.
+    pub fn extract_vrpack_in_folder(&mut self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {
+        // Construct the base path for the VRPack extraction
+        let mut vec_fs_base_path = writer.path.clone();
+        vec_fs_base_path.push(vrpack.name.clone());
+
+        // Check if an entry already exists at vec_fs_base_path
+        self.validate_path_points_to_entry(vec_fs_base_path.clone(), &writer.profile)?;
+
+        let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
+
+        for (vrkai, parent_path) in vrkais_with_paths {
+            let real_path = vec_fs_base_path.append_path_cloned(&parent_path);
+            let new_writer = writer.new_writer_copied_data(real_path.clone(), self)?;
+            self.create_new_folder_auto(&new_writer, real_path.clone())?;
+
+            // Save the VRKai in its final location
+            self.save_vrkai_in_folder(&new_writer, vrkai)?;
+        }
+
+        Ok(())
     }
 
     /// Saves a VRKai into an FSItem, underneath the FSFolder at the writer's path.
