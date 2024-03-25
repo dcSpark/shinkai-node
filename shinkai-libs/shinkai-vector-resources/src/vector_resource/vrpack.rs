@@ -176,4 +176,22 @@ impl VRPack {
         self.resource.as_trait_object_mut().remove_node_at_path(path)?;
         Ok(())
     }
+
+    /// Unpacks all VRKais in the VRPack, each as a tuple containing a VRKai and its corresponding VRPath where it was held at.
+    pub fn unpack_all_vrkais(&self) -> Result<Vec<(VRKai, VRPath)>, VRError> {
+        let nodes = self.resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+
+        let mut vrkais_with_paths = Vec::new();
+        for retrieved_node in nodes {
+            match retrieved_node.node.content {
+                NodeContent::Text(_) => match Self::parse_node_to_vrkai(&retrieved_node.node) {
+                    Ok(vrkai) => vrkais_with_paths.push((vrkai, retrieved_node.path)),
+                    Err(e) => return Err(e),
+                },
+                _ => continue,
+            }
+        }
+
+        Ok(vrkais_with_paths)
+    }
 }
