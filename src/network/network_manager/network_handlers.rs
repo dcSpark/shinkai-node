@@ -566,6 +566,13 @@ pub async fn handle_network_message_cases(
 
                     return Ok(());
                 }
+                MessageSchemaType::SubscriptionRequiresTreeUpdate => {
+                    // TODO: implement this from the perspective of the subscriber
+                    // TODO: implement the fn on the my_subscription_manager
+                }
+                MessageSchemaType::SubscriptionRequiresTreeUpdateResponse => {
+                    // TODO: implement this from the perspective of the subscription owner
+                }
                 _ => {
                     // Ignore other schemas
                     println!("Ignoring other schemas");

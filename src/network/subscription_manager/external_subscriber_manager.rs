@@ -20,6 +20,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::VRPath;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -74,6 +75,24 @@ How to subscribe
 
 const NUM_THREADS: usize = 2;
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct SubscriptionWithTree {
+    pub subscription: ShinkaiSubscription,
+    pub subscriber_folder_tree: FSItemTree,
+}
+
+impl Ord for SubscriptionWithTree {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.subscription.cmp(&other.subscription)
+    }
+}
+
+impl PartialOrd for SubscriptionWithTree {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SharedFolderInfo {
     pub path: String,
@@ -88,7 +107,7 @@ pub struct ExternalSubscriberManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
     pub node_name: ShinkaiName,
-    pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
+    pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -100,7 +119,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
-        let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
+        let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
             db.clone(),
             Topic::AnyQueuesPrefixed.as_str(),
             Some(db_prefix.to_string()),
@@ -155,14 +174,14 @@ impl ExternalSubscriberManager {
     }
 
     fn process_job_message_queued(
-        subscription: ShinkaiSubscription,
+        subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             // Placeholder logic for processing a queued job message
-            println!("Processing job: {:?}", subscription.subscription_id);
+            println!("Processing job: {:?}", subscription_with_tree.subscription.subscription_id);
 
             // TODO: access shared_folders_trees for the subscription path
 
@@ -170,19 +189,19 @@ impl ExternalSubscriberManager {
             // Adjust according to actual logic and possible error conditions
             Ok(format!(
                 "Job {} processed successfully",
-                subscription.subscription_id.get_unique_id()
+                subscription_with_tree.subscription.subscription_id.get_unique_id()
             ))
         })
     }
 
     pub async fn process_subscription_queue(
-        job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
+        job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         thread_number: usize,
         process_job: impl Fn(
-                ShinkaiSubscription,
+                SubscriptionWithTree,
                 Weak<Mutex<ShinkaiDB>>,
                 Weak<Mutex<VectorFS>>,
                 Arc<DashMap<String, SharedFolderInfo>>,
@@ -291,8 +310,18 @@ impl ExternalSubscriberManager {
                             }
                         };
 
-                        let _ = process_job(
+                        let subscription_with_tree = SubscriptionWithTree {
                             subscription,
+                            subscriber_folder_tree: FSItemTree {
+                                name: "/".to_string(),
+                                path: "/".to_string(),
+                                last_modified: Utc::now(),
+                                children: HashMap::new(),
+                            },
+                        };
+
+                        let _ = process_job(
+                            subscription_with_tree,
                             db.clone(),
                             vector_fs.clone(),
                             shared_folders_trees.clone(),
@@ -637,7 +666,6 @@ impl ExternalSubscriberManager {
         subscriber_folder_tree: FSItemTree,
         subscriber_node_name: ShinkaiName,
     ) -> Result<(), SubscriberManagerError> {
-        // Placeholder: Log the received information
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Debug,
@@ -647,21 +675,43 @@ impl ExternalSubscriberManager {
             ),
         );
 
-        // TODO: get subscription using subscription_unique_id
-        // TODO: check that the user is actually subscribed to the subscription
+        // Validate Subscription Exists and that Requesting Node matches the subscription
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+        let db = db.lock().await;
 
-        // TODO: create a new struct to hold the subscription and the subscriber_folder_tree and add it to the queue
-        // TODO: the queue maybe should hold a diff struct rather than subscription
+        let subscription = db
+            .get_subscription_by_id(&SubscriptionId::from_unique_id(subscription_unique_id.clone()))
+            .map_err(|e| match e {
+                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+                    "Subscription with ID {} not found",
+                    subscription_unique_id
+                )),
+                _ => SubscriberManagerError::DatabaseError(e.to_string()),
+            })?;
 
-        // {
-        //     let mut queue_manager = self.subscriptions_queue_manager.lock().await;
-        //     queue_manager
-        //         .add_job(subscription)
-        //         .await
-        //         .map_err(|e| SubscriberManagerError::QueueError(e.to_string()))
-        // }
+        if subscription.subscriber_identity.get_node_name() != subscriber_node_name.get_node_name() {
+            return Err(SubscriberManagerError::InvalidSubscriber(
+                "Subscriber does not match the subscription".to_string(),
+            ));
+        }
 
-        // Placeholder: Assume success if reached this point
+        let subscription_id_clone = subscription.subscription_id.clone();
+        let unique_id = subscription_id_clone.get_unique_id();
+
+        let subscription_with_tree = SubscriptionWithTree {
+            subscription,
+            subscriber_folder_tree,
+        };
+
+        {
+            let mut queue_manager = self.subscriptions_queue_manager.lock().await;
+            if queue_manager.peek(&unique_id).await?.is_none() {
+                let _ = queue_manager.push(&unique_id, subscription_with_tree).await;
+            }
+        }
+
         Ok(())
     }
 }

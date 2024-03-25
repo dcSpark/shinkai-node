@@ -47,6 +47,8 @@ pub enum MessageSchemaType {
     SubscribeToSharedFolder,
     SubscribeToSharedFolderResponse,
     MySubscriptions,
+    SubscriptionRequiresTreeUpdate,
+    SubscriptionRequiresTreeUpdateResponse,
 }
 
 impl MessageSchemaType {
@@ -89,6 +91,8 @@ impl MessageSchemaType {
             "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
             "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
             "MySubscriptions" => Some(Self::MySubscriptions),
+            "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
+            "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
             _ => None,
         }
     }
@@ -131,6 +135,8 @@ impl MessageSchemaType {
             Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
             Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
             Self::MySubscriptions => "MySubscriptions",
+            Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
+            Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
             Self::Empty => "",
         }
     }

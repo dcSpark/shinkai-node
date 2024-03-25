@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FSItemTree {
     pub name: String,
     pub path: String,

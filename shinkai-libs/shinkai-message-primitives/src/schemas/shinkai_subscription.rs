@@ -25,6 +25,10 @@ impl SubscriptionId {
         SubscriptionId { unique_id }
     }
 
+    pub fn from_unique_id(unique_id: String) -> Self {
+        SubscriptionId { unique_id }
+    }
+
     pub fn get_unique_id(&self) -> &str {
         &self.unique_id
     }

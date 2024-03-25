@@ -22,6 +22,8 @@ pub enum SubscriberManagerError {
     PaymentNotValid(String),
     SubscriptionFailed(String),
     AlreadySubscribed(String),
+    SubscriptionNotFound(String),
+    InvalidSubscriber(String)
     
 }
 
@@ -43,6 +45,8 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::PaymentNotValid(e) => write!(f, "Payment not valid: {}", e),
             SubscriberManagerError::SubscriptionFailed(e) => write!(f, "Subscription failed: {}", e),
             SubscriberManagerError::AlreadySubscribed(e) => write!(f, "Already subscribed: {}", e),
+            SubscriberManagerError::SubscriptionNotFound(e) => write!(f, "Subscription not found: {}", e),
+            SubscriberManagerError::InvalidSubscriber(e) => write!(f, "Invalid subscriber: {}", e),
         }
     }
 }
