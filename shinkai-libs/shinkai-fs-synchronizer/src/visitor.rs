@@ -40,62 +40,63 @@ impl DirectoryVisitor for SyncFolderVisitor {
             // Sort entries by their modification time, oldest first
             entries.sort_by_cached_key(|entry| entry.metadata().and_then(|metadata| metadata.modified()).ok());
 
-            // we reverse it, because otherwise we don't have oldest OSFilePaths first
-            entries.reverse();
-
             for entry in entries {
                 let path = entry.path();
-                let metadata = entry.metadata()?;
+                if path.is_file() {
+                    // Check if the entry is a file
+                    let metadata = entry.metadata()?;
 
-                let modified_time = metadata
-                    .modified()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .elapsed()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .as_secs();
+                    let modified_time = metadata
+                        .modified()
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                        .elapsed()
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                        .as_secs();
 
-                let created_time = metadata
-                    .created()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .elapsed()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .as_secs();
+                    let created_time = metadata
+                        .created()
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                        .elapsed()
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                        .as_secs();
 
-                let path_str = path.to_str().unwrap_or_default().to_string();
-                let local_os_folder_path = LocalOSFolderPath(path_str.clone());
+                    let path_str = path.to_str().unwrap_or_default().to_string();
+                    let local_os_folder_path = LocalOSFolderPath(path_str.clone());
 
-                let mut insert_file = false;
-                let syncing_folder = {
-                    let folders = self.syncing_folders.lock().unwrap();
-                    if let Some(folder) = folders.get(&local_os_folder_path) {
-                        match folder.last_synchronized_file_datetime {
-                            Some(last_sync_time) if modified_time > last_sync_time || created_time > last_sync_time => {
-                                insert_file = true;
+                    let mut insert_file = false;
+                    let syncing_folder = {
+                        let folders = self.syncing_folders.lock().unwrap();
+                        if let Some(folder) = folders.get(&local_os_folder_path) {
+                            match folder.last_synchronized_file_datetime {
+                                Some(last_sync_time)
+                                    if modified_time > last_sync_time || created_time > last_sync_time =>
+                                {
+                                    insert_file = true;
+                                }
+                                None => {
+                                    insert_file = true;
+                                }
+                                _ => {}
                             }
-                            None => {
-                                insert_file = true;
+                            folder.clone()
+                        } else {
+                            insert_file = true;
+                            SyncingFolder {
+                                profile_name: self.node_profile_assigned.clone(),
+                                vector_fs_path: Some(generate_relative_path(&Path::new(&local_os_folder_path.0))),
+                                local_os_folder_path: local_os_folder_path.clone(),
+                                last_synchronized_file_datetime: None,
                             }
-                            _ => {}
                         }
-                        folder.clone()
-                    } else {
-                        insert_file = true;
-                        SyncingFolder {
-                            profile_name: self.node_profile_assigned.clone(),
-                            vector_fs_path: Some(generate_relative_path(&Path::new(&local_os_folder_path.0))),
-                            local_os_folder_path: local_os_folder_path.clone(),
-                            last_synchronized_file_datetime: None,
-                        }
+                    };
+
+                    // we only insert if something is newer than or new
+                    if insert_file {
+                        let mut folders = self.syncing_folders.lock().unwrap();
+                        folders.insert(local_os_folder_path, syncing_folder);
                     }
-                };
-
-                // we only insert if something is newer than or new
-                if insert_file {
-                    let mut folders = self.syncing_folders.lock().unwrap();
-                    folders.insert(local_os_folder_path, syncing_folder);
-                }
-
-                if path.is_dir() {
+                } else if path.is_dir() {
+                    // Recursively visit subdirectories
                     self.visit_dirs(&path, last_synchronized_file_datetime)?;
                 }
             }

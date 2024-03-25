@@ -191,8 +191,16 @@ impl ShinkaiManager {
     }
 
     pub async fn get_node_folder(&mut self, path: &str) -> Result<SimplifiedFSEntry, &'static str> {
+        // let formatted_folder_name = if path.starts_with("/") {
+        //     path.to_string()
+        // } else {
+        //     format!("/{}", path)
+        // };
+
+        dbg!(path.clone());
+
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
-            path,
+            &path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,
@@ -212,15 +220,11 @@ impl ShinkaiManager {
 
         let simplified_path_json_response = match response {
             Ok(data) => Ok(data.data),
-            Err(e) => {
-                eprintln!("Failed to retrieve node folder: {}", e);
-                Err("Failed to retrieve node folder")
-            }
+            Err(e) => Err("Failed to retrieve node folder"),
         };
 
         match simplified_path_json_response {
             Ok(response) => {
-                dbg!(&response);
                 let fs_entry = SimplifiedFSEntry::from_json(&response.as_str().unwrap_or("")).unwrap();
                 Ok(fs_entry)
             }
@@ -229,9 +233,24 @@ impl ShinkaiManager {
     }
 
     pub async fn create_folder(&mut self, folder_name: &str, path: &str) -> Result<(), &'static str> {
+        let formatted_path = {
+            let mut name = if path.starts_with("/") {
+                path.to_string()
+            } else {
+                format!("/{}", path)
+            };
+            if name.ends_with("/") {
+                name.pop();
+            }
+            name
+        };
+
+        dbg!(&folder_name.to_string());
+        dbg!(&path);
+
         let shinkai_message = ShinkaiMessageBuilder::vecfs_create_folder(
-            folder_name,
-            path,
+            &folder_name,
+            &formatted_path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,
@@ -254,7 +273,6 @@ impl ShinkaiManager {
                 println!("Folder creation successful: {:?}", response);
             }
             Err(e) => {
-                eprintln!("Failed to create folder: {}", e);
                 return Err("Failed to create folder");
             }
         }

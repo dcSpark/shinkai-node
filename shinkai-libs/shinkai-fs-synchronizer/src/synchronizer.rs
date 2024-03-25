@@ -74,9 +74,6 @@ impl FilesystemSynchronizer {
         // inside syncing_folders we already store all directories and files from the disk that are newer (or were modified later) than last synced folder
         // here we have our list of tuples
         let syncing_folders = self.syncing_folders.clone();
-        // let syncing_queue = Arc::clone(&self.syncing_queue);
-
-        dbg!(syncing_folders.clone());
 
         // go through each syncing folder and add it to the syncing queue (oldest first in regards to OSFilePath)
         let syncing_folders_lock = syncing_folders.lock().unwrap();
@@ -95,21 +92,50 @@ impl FilesystemSynchronizer {
         // Sort the queue by file_datetime, oldest first
         syncing_queue_lock.sort_by_key(|item| item.file_datetime);
 
-        dbg!(self.syncing_queue.clone());
+        dbg!(syncing_queue_lock.clone());
 
-        // TODO: proceed with processsing syncing queue
+        while let Some(sync_queue_item) = syncing_queue_lock.pop() {
+            let file_bytes = std::fs::read(&sync_queue_item.os_file_path).expect("Failed to read file");
+
+            // Check if the folder exists on the node, if not, create it
+            let folder_path = &sync_queue_item
+                .syncing_folder
+                .vector_fs_path
+                .clone()
+                .unwrap_or_default();
+
+            self.ensure_folder_path_exists(folder_path).await?;
+
+            // let destination_path = format!(
+            //     "{}/{}",
+            //     folder_path,
+            //     sync_queue_item.os_file_path.file_name().unwrap().to_str().unwrap()
+            // );
+            // self.shinkai_manager
+            //     .clone()
+            //     .upload_file(&file_bytes, &destination_path)
+            //     .await
+            //     .expect("Failed to upload file to the node");
+
+            // Add the uploaded file to the database
+            // let file_inbox = "inbox"; // Assuming 'inbox' is the destination folder in the database for new files
+            // self.shinkai_manager
+            //     .clone()
+            //     .add_items_to_db(&destination_path, file_inbox)
+            //     .expect("Failed to add file to the database");
+        }
 
         Ok(())
     }
 
-    pub fn add_syncing_folder(&mut self, path: String, folder: SyncingFolder) -> Result<(), String> {
+    pub fn add_syncing_folder(&mut self, folder: SyncingFolder) -> Result<(), String> {
         let path_buf = PathBuf::from(&folder.local_os_folder_path.0);
         if !path_buf.exists() || !path_buf.is_dir() {
             return Err("Specified path does not exist or is not a directory".to_string());
         }
 
         let mut folders = self.syncing_folders.lock().unwrap();
-        let local_os_folder_path = LocalOSFolderPath(path);
+        let local_os_folder_path = folder.local_os_folder_path.clone(); // Use the path from SyncingFolder directly
         if let std::collections::hash_map::Entry::Vacant(e) = folders.entry(local_os_folder_path) {
             e.insert(folder);
             Ok(())
@@ -119,13 +145,39 @@ impl FilesystemSynchronizer {
     }
 
     pub fn get_current_syncing_folders_map(&self) -> HashMap<LocalOSFolderPath, SyncingFolder> {
-        // TODO: save the current state of sync somewhere
         let folders_lock = self.syncing_folders.lock().unwrap();
         folders_lock.clone()
     }
 
-    pub fn stop(self) -> HashMap<LocalOSFolderPath, SyncingFolder> {
+    pub fn stop(self) -> Result<HashMap<LocalOSFolderPath, SyncingFolder>, String> {
         drop(self.sender); // This will close the thread
-        self.syncing_folders.lock().unwrap().clone()
+        self.syncing_folders
+            .lock()
+            .map_err(|e| format!("Failed to lock syncing_folders: {}", e))
+            .map(|folders| folders.clone())
+    }
+
+    pub async fn ensure_folder_path_exists(&self, folder_path: &str) -> anyhow::Result<()> {
+        let parts: Vec<&str> = folder_path
+            .split('/')
+            .filter(|p| !p.is_empty() && !p.contains('.'))
+            .collect();
+        let mut current_path = String::from("/");
+
+        for part in parts.iter() {
+            let check_path = format!("{}{}", current_path, part);
+
+            match self.shinkai_manager.clone().get_node_folder(&check_path).await {
+                Ok(_) => println!("{} already exists on the node.", check_path),
+                Err(e) => {
+                    if let Err(e) = self.shinkai_manager.clone().create_folder(part, &current_path).await {
+                        eprintln!("Failed to create folder {} on the node: {:?}", check_path, e);
+                    }
+                }
+            }
+            current_path = format!("{}/", check_path); // Prepare the path for the next iteration
+        }
+
+        Ok(())
     }
 }
