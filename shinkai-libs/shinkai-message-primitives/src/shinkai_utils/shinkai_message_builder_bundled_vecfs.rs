@@ -404,6 +404,52 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    pub fn vecfs_request_share_current_shared_folder_state(
+        shared_folder_path: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        Self::create_vecfs_message(
+            shared_folder_path,
+            MessageSchemaType::SubscriptionRequiresTreeUpdate,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn vecfs_share_current_shared_folder_state(
+        tree_item_json: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        sender_subidentity: String,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        Self::create_vecfs_message(
+            tree_item_json,
+            MessageSchemaType::SubscriptionRequiresTreeUpdateResponse,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
     pub fn my_subscriptions(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,

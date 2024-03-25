@@ -2,18 +2,14 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::subscription_manager::fs_item_tree_generator::FSItemTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
-use crate::vector_fs::vector_fs_permissions::ReadPermission;
-use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
-use chrono::NaiveDateTime;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use lru::LruCache;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
@@ -30,7 +26,7 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Weak;
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::Mutex;
 
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_item_tree::FSItemTree;
@@ -196,6 +192,7 @@ impl MySubscriptionsManager {
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&name.get_node_name())
                 .await?;
+            drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
@@ -229,8 +226,14 @@ impl MySubscriptionsManager {
                     }
                     // Send the message to the network queue
                     // TODO: move this process_subscription_queue
-                    self.send_message_to_peer(msg_request_shared_folders, standard_identity)
-                        .await?;
+                    Self::send_message_to_peer(
+                        msg_request_shared_folders,
+                        self.db.clone(),
+                        standard_identity,
+                        self.my_encryption_secret_key.clone(),
+                        self.identity_manager.clone(),
+                    )
+                    .await?;
 
                     // Return the placeholder to indicate the current state to the caller
                     return Ok(placeholder_shared_folder);
@@ -244,8 +247,14 @@ impl MySubscriptionsManager {
             }
             // Send the message to the network queue
             // TODO: move this process_subscription_queue
-            self.send_message_to_peer(msg_request_shared_folders, standard_identity)
-                .await?;
+            Self::send_message_to_peer(
+                msg_request_shared_folders,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+            )
+            .await?;
 
             return Ok(placeholder_shared_folder);
         } else {
@@ -291,6 +300,7 @@ impl MySubscriptionsManager {
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&node_name.get_node_name())
                 .await?;
+            drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
@@ -328,8 +338,14 @@ impl MySubscriptionsManager {
                 ));
             }
 
-            self.send_message_to_peer(msg_request_subscription, standard_identity)
-                .await?;
+            Self::send_message_to_peer(
+                msg_request_subscription,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+            )
+            .await?;
 
             Ok(())
         } else {
@@ -379,10 +395,94 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
-    async fn send_message_to_peer(
+    pub async fn share_local_shared_folder_copy_state(
         &self,
+        node_name: ShinkaiName,
+        subscription_id: String,
+    ) -> Result<(), SubscriberManagerError> {
+        let mut subscription_folder_path: Option<String> = None;
+        {
+            // Attempt to upgrade the weak pointer to the DB and lock it
+            let db = self
+                .db
+                .upgrade()
+                .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
+            let db_lock = db.lock().await;
+
+            // Attempt to get the subscription from the DB
+            let subscription = db_lock.get_my_subscription(&subscription_id).map_err(|e| match e {
+                ShinkaiDBError::DataNotFound => {
+                    SubscriberManagerError::SubscriptionNotFound(subscription_id.to_string())
+                }
+                _ => SubscriberManagerError::DatabaseError(e.to_string()),
+            })?;
+
+            // Check that the subscription is for the correct node
+            if subscription.shared_folder_owner.get_node_name() != node_name.get_node_name() {
+                return Err(SubscriberManagerError::InvalidSubscriber(
+                    "Subscription doesn't belong to the subscriber".to_string(),
+                ));
+            }
+
+            subscription_folder_path = Some(subscription.shared_folder.clone());
+        }
+
+        let folder_path = subscription_folder_path.ok_or_else(|| {
+            SubscriberManagerError::SubscriptionNotFound("Subscription folder path not found".to_string())
+        })?;
+
+        let result =
+            FSItemTreeGenerator::shared_folders_to_tree(self.vector_fs.clone(), self.node_name.clone(), folder_path)
+                .await
+                .map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+
+        let result_json =
+            serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+
+        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_lock.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&node_name.get_node_name())
+                .await?;
+            drop(identity_manager);
+
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            // Update to use SubscriptionRequiresTreeUpdateResponse instead
+            let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
+                result_json,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.get_node_name(),
+                // Note: the other node doesn't care about the sender's profile in this context
+                "".to_string(),
+                node_name.get_node_name(),
+                "".to_string(),
+            )
+            .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+            Self::send_message_to_peer(
+                msg_request_subscription,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+            )
+            .await?;
+        } else {
+            return Err(SubscriberManagerError::IdentityManagerUnavailable);
+        }
+
+        Ok(())
+    }
+
+    pub async fn send_message_to_peer(
         message: ShinkaiMessage,
+        db: Weak<Mutex<ShinkaiDB>>,
         receiver_identity: StandardIdentity,
+        my_encryption_secret_key: EncryptionStaticKey,
+        maybe_identity_manager: Weak<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
         eprintln!("send_message_to_peer>: message: {:?}", message);
         eprintln!(
@@ -406,13 +506,12 @@ impl MySubscriptionsManager {
 
         // Upgrade the weak reference to Node
         // Prepare the parameters for the send function
-        let my_encryption_sk = Arc::new(self.my_encryption_secret_key.clone());
+        let my_encryption_sk = Arc::new(my_encryption_secret_key.clone());
         let peer = (receiver_socket_addr, receiver_profile_name);
-        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseError(
+        let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseError(
             "DB not available to be upgraded".to_string(),
         ))?;
-        let maybe_identity_manager = self
-            .identity_manager
+        let maybe_identity_manager = maybe_identity_manager
             .upgrade()
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 

@@ -4,8 +4,7 @@ use crate::{
     network::{
         node_error::NodeError,
         subscription_manager::{
-            external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo},
-            my_subscription_manager::MySubscriptionsManager,
+            external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo}, fs_item_tree::FSItemTree, my_subscription_manager::MySubscriptionsManager
         },
         Node,
     },
@@ -555,7 +554,7 @@ pub async fn handle_network_message_cases(
                                     println!("Successfully updated subscription status");
                                 }
                                 Err(e) => {
-                                    println!("Failed to update subscription status: {}", e);
+                                    println!("SubscriptionGenericResponse Failed to update subscription status: {}", e);
                                 }
                             }
                         }
@@ -567,11 +566,67 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscriptionRequiresTreeUpdate => {
-                    // TODO: implement this from the perspective of the subscriber
-                    // TODO: implement the fn on the my_subscription_manager
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let request_node_name = requester.get_node_name();
+
+                    eprintln!(
+                        "SubscriptionRequiresTreeUpdate Node {}: Handling SubscribeToSharedFolderResponse from: {}",
+                        my_node_profile_name, request_node_name
+                    );
+
+                    // TODO: convert to SubscriptionGenericResponse type
+                    let content = message.get_message_content().unwrap_or("".to_string()).trim_matches('"').to_string();
+                    println!(
+                        "SubscribeToSharedFolderResponse Node {}. Received response: {}",
+                        my_node_profile_name, content
+                    );
+
+                    let my_node_name = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
+                    let shared_folder = content.clone();
+                    let subscription_id = SubscriptionId::new(requester.extract_node(), shared_folder, my_node_name);
+
+                    let my_subscription_manager = my_subscription_manager.lock().await;
+                    let result = my_subscription_manager
+                        .share_local_shared_folder_copy_state(requester.extract_node(), subscription_id.get_unique_id().to_string())
+                        .await;
+
+                    match result {
+                        Ok(_) => {
+                            println!("Successfully updated subscription status");
+                        }
+                        Err(e) => {
+                            println!("SubscriptionRequiresTreeUpdate Failed to update subscription status: {}", e);
+                        }
+                    }
+
+                    return Ok(());
                 }
                 MessageSchemaType::SubscriptionRequiresTreeUpdateResponse => {
-                    // TODO: implement this from the perspective of the subscription owner
+                    // Note(Nico): This is usually coming from a request but we also can allow it without the request
+                    // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let request_node_name = requester.get_node_name();
+
+                    // TODO: convert to SubscriptionGenericResponse type
+                    let item_tree_json_content = message.get_message_content().unwrap_or("".to_string()); 
+
+                    match serde_json::from_str::<FSItemTree>(&item_tree_json_content) {
+                        Ok(item_tree) => {
+                            // Successfully converted, you can now use shared_folder_infos
+                            println!("Converted to FSItemTree: {:?}", item_tree);
+                            panic!("end of the constructed road");
+                            // let mut external_subscriber_manager = external_subscription_manager.lock().await;
+
+                        }
+                        Err(e) => {
+                            println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                        }
+                    }
+
+                    eprintln!(
+                        "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
+                        my_node_profile_name, request_node_name
+                    );
                 }
                 _ => {
                     // Ignore other schemas

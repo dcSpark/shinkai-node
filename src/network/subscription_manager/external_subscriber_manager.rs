@@ -2,6 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::subscription_manager::fs_item_tree_generator::FSItemTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -11,6 +12,7 @@ use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use chrono::NaiveDateTime;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -18,7 +20,10 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -30,6 +35,8 @@ use std::{env, mem};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 
 use super::fs_item_tree::FSItemTree;
+use super::my_subscription_manager::MySubscriptionsManager;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 /*
 How to subscribe
@@ -104,9 +111,19 @@ pub struct SharedFolderInfo {
 pub struct ExternalSubscriberManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
     pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub node_name: ShinkaiName,
+    // The secret key used for signing operations.
+    pub my_signature_secret_key: SigningKey,
+    // The secret key used for encryption and decryption.
+    pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
-    pub node_name: ShinkaiName,
+    /// Maps subscription IDs to their sync status, where the `String` represents the folder path
+    /// and the `usize` is the last sync version of the folder. The version is a counter that increments
+    /// with each change in the folder, providing a non-deterministic but sequential tracking of updates.
+    pub subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+    pub shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+    // todo: implement need fn that receives responses from subscribers to process and another one to update the state after successfully sync
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
@@ -117,6 +134,8 @@ impl ExternalSubscriberManager {
         vector_fs: Weak<Mutex<VectorFS>>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
@@ -128,6 +147,8 @@ impl ExternalSubscriberManager {
         .unwrap();
         let subscriptions_queue_manager = Arc::new(Mutex::new(subscriptions_queue));
         let shared_folders_trees = Arc::new(DashMap::new());
+        let subscription_ids_are_sync = Arc::new(DashMap::new());
+        let shared_folders_to_ephemeral_versioning = Arc::new(DashMap::new());
 
         let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
@@ -138,10 +159,36 @@ impl ExternalSubscriberManager {
             subscriptions_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
+            node_name.clone(),
+            my_signature_secret_key.clone(),
+            my_encryption_secret_key.clone(),
+            identity_manager.clone(),
             shared_folders_trees.clone(),
+            subscription_ids_are_sync.clone(),
+            shared_folders_to_ephemeral_versioning.clone(),
             thread_number,
-            |job, db, vector_fs, shared_folders_trees| {
-                ExternalSubscriberManager::process_job_message_queued(job, db, vector_fs, shared_folders_trees)
+            |job,
+             db,
+             vector_fs,
+             node_name,
+             my_signature_secret_key,
+             my_encryption_secret_key,
+             identity_manager,
+             shared_folders_trees,
+             subscription_ids_are_sync,
+             shared_folders_to_ephemeral_versioning| {
+                ExternalSubscriberManager::process_job_message_queued(
+                    job,
+                    db,
+                    vector_fs,
+                    node_name,
+                    my_signature_secret_key,
+                    my_encryption_secret_key,
+                    identity_manager,
+                    shared_folders_trees,
+                    subscription_ids_are_sync,
+                    shared_folders_to_ephemeral_versioning,
+                )
             },
         )
         .await;
@@ -153,7 +200,11 @@ impl ExternalSubscriberManager {
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
             shared_folders_trees,
+            subscription_ids_are_sync,
+            shared_folders_to_ephemeral_versioning,
             node_name,
+            my_signature_secret_key,
+            my_encryption_secret_key,
         }
     }
 
@@ -177,11 +228,20 @@ impl ExternalSubscriberManager {
         subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Weak<Mutex<IdentityManager>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             // Placeholder logic for processing a queued job message
-            println!("Processing job: {:?}", subscription_with_tree.subscription.subscription_id);
+            println!(
+                "Processing job: {:?}",
+                subscription_with_tree.subscription.subscription_id
+            );
 
             // TODO: access shared_folders_trees for the subscription path
 
@@ -198,13 +258,25 @@ impl ExternalSubscriberManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Weak<Mutex<IdentityManager>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         thread_number: usize,
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<Mutex<ShinkaiDB>>,
                 Weak<Mutex<VectorFS>>,
+                ShinkaiName,
+                SigningKey,
+                EncryptionStaticKey,
+                Weak<Mutex<IdentityManager>>,
                 Arc<DashMap<String, SharedFolderInfo>>,
+                Arc<DashMap<String, (String, usize)>>,
+                Arc<DashMap<String, usize>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
             + Send
             + Sync
@@ -219,6 +291,8 @@ impl ExternalSubscriberManager {
             .parse::<u64>()
             .unwrap_or(5);
 
+        let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+
         tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
@@ -227,7 +301,30 @@ impl ExternalSubscriberManager {
             );
 
             let mut handles = Vec::new();
+            if is_testing {
+                // Wait until subscription_ids_are_sync has at least 1 value
+                loop {
+                    if !subscription_ids_are_sync.is_empty() {
+                        eprintln!(
+                            ">> subscription_ids_are_sync moving to the loop: {:?}",
+                            subscription_ids_are_sync
+                        );
+                        break;
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
+            }
+
             loop {
+                eprintln!("Starting subscribers processing loop");
+                // Game Plan:
+                // Phase 1
+                // 1. Find all subscriptions
+                // 2. Filter out subscriptions that are already on sync
+                // 3. Request subscribers folder state (async)
+                // Phase 2
+                // 4. Calc. diff and schedule network requests (async) -> Process
+
                 // Scope for acquiring and releasing the lock quickly
                 let subscriptions_ids_to_process: Vec<SubscriptionId> = {
                     let db = match db.upgrade() {
@@ -243,25 +340,7 @@ impl ExternalSubscriberManager {
                     };
                     let db = db.lock().await;
                     match db.all_subscribers_subscription() {
-                        Ok(subscriptions) => {
-                            // Note: this extract and sort subscriptions by folder
-                            // to avoid just focusing in the one user with multiple subscriptions
-                            // this also open the doors for us to implement some cache for specific sub-folders and items
-                            let mut subscriptions_with_folders: Vec<(String, SubscriptionId)> = subscriptions
-                                .into_iter()
-                                .map(|s| {
-                                    // Extract the shared folder for each subscription ID
-                                    let shared_folder = s.subscription_id.extract_shared_folder().unwrap_or_default();
-                                    (shared_folder, s.subscription_id)
-                                })
-                                .collect();
-
-                            // Sort the vector by shared_folder
-                            subscriptions_with_folders.sort_by(|a, b| a.0.cmp(&b.0));
-
-                            // Extract and collect the SubscriptionId in sorted order
-                            subscriptions_with_folders.into_iter().map(|(_, id)| id).collect()
-                        }
+                        Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
                         Err(e) => {
                             shinkai_log(
                                 ShinkaiLogOption::ExtSubscriptions,
@@ -272,13 +351,80 @@ impl ExternalSubscriberManager {
                         }
                     }
                 };
+                eprintln!(">> Subscriptions to process: {:?}", subscriptions_ids_to_process);
 
-                // Process each subscription ID
-                for subscription_id in subscriptions_ids_to_process {
+                // We keep a ephemeral versioning of the shared folders to know if a specific subscription is already sync
+                // This is useful to avoid processing the same subscription multiple times
+                let filtered_subscription_ids = subscriptions_ids_to_process
+                    .into_iter()
+                    .filter(|subscription_id| {
+                        let subscription_id_str = subscription_id.get_unique_id().to_string();
+                        if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
+                            let folder_path = &arc_tuple.0;
+                            let last_sync_version = &arc_tuple.1;
+                            // Use the cloned version here
+                            if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(folder_path) {
+                                let current_version = *current_version_arc.value();
+                                return current_version != *last_sync_version;
+                            }
+                        }
+                        true
+                    })
+                    .collect::<Vec<SubscriptionId>>();
+
+                // Check if a job with this subscription_id is already queued in the job_manager
+                let mut post_filtered_subscription_ids = Vec::new();
+                for subscription_id in filtered_subscription_ids {
+                    let subscription_id_str = subscription_id.get_unique_id().to_string();
+                    // Perform the asynchronous check
+                    let is_not_queued = job_queue_manager
+                        .lock()
+                        .await
+                        .peek(&subscription_id_str)
+                        .await
+                        .map_or(true, |opt| opt.is_none());
+                    if is_not_queued {
+                        post_filtered_subscription_ids.push(subscription_id);
+                    }
+                }
+                // Now we send requests to the subscribers to get their current state
+                // TODO: implement function
+
+                for subscription_id in post_filtered_subscription_ids.clone() {
+                    // pub async fn create_and_send_request_updated_state(
+                    //     subscription_id: SubscriptionId,
+                    //     db: Weak<Mutex<ShinkaiDB>>,
+                    //     my_encryption_secret_key: EncryptionStaticKey,
+                    //     my_signature_secret_key: SigningKey,
+                    //     node_name: ShinkaiName,
+                    //     maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+                    let _ = Self::create_and_send_request_updated_state(
+                        subscription_id,
+                        db.clone(),
+                        my_encryption_secret_key.clone(),
+                        my_signature_secret_key.clone(),
+                        node_name.clone(),
+                        identity_manager.clone(),
+                    )
+                    .await;
+                }
+
+                // End Phase 1
+                // Start Phase 2: We check current jobs that are ready to go
+
+                // *******
+                // TODO: this should be for only the ones that are in the queue
+                for subscription_id in post_filtered_subscription_ids {
                     let semaphore = semaphore.clone();
                     let db = db.clone();
                     let vector_fs = vector_fs.clone();
+                    let node_name = node_name.clone();
+                    let my_signature_secret_key = my_signature_secret_key.clone();
+                    let my_encryption_secret_key = my_encryption_secret_key.clone();
+                    let identity_manager = identity_manager.clone();
                     let shared_folders_trees = shared_folders_trees.clone();
+                    let subscription_ids_are_sync = subscription_ids_are_sync.clone();
+                    let shared_folders_to_ephemeral_versioning_clone = shared_folders_to_ephemeral_versioning.clone();
                     let process_job = process_job.clone();
 
                     let handle = tokio::spawn(async move {
@@ -310,6 +456,7 @@ impl ExternalSubscriberManager {
                             }
                         };
 
+                        // TODO: replace this with the actual one. if we don't have it, wee need to request it
                         let subscription_with_tree = SubscriptionWithTree {
                             subscription,
                             subscriber_folder_tree: FSItemTree {
@@ -324,7 +471,13 @@ impl ExternalSubscriberManager {
                             subscription_with_tree,
                             db.clone(),
                             vector_fs.clone(),
+                            node_name.clone(),
+                            my_signature_secret_key.clone(),
+                            my_encryption_secret_key.clone(),
+                            identity_manager.clone(),
                             shared_folders_trees.clone(),
+                            subscription_ids_are_sync.clone(),
+                            shared_folders_to_ephemeral_versioning_clone.clone(),
                         )
                         .await
                         .unwrap_or_else(|e| {
@@ -381,7 +534,7 @@ impl ExternalSubscriberManager {
             let results = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
 
             // Use the new function to filter results to only include top-level folders
-            let filtered_results = self.filter_to_top_level_folders(results);
+            let filtered_results = FSItemTreeGenerator::filter_to_top_level_folders(results);
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -398,9 +551,12 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                let tree = self
-                    .shared_folders_to_tree(requester_shinkai_identity.clone(), path_str.clone())
-                    .await?;
+                let tree = FSItemTreeGenerator::shared_folders_to_tree(
+                    self.vector_fs.clone(),
+                    requester_shinkai_identity.clone(),
+                    path_str.clone(),
+                )
+                .await?;
 
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
@@ -408,6 +564,21 @@ impl ExternalSubscriberManager {
                     tree,
                     subscription_requirement,
                 };
+
+                // Check if the value of shared_folders_trees is different than the new value inserted
+                let should_update_version = self
+                    .shared_folders_trees
+                    .get(&path_str)
+                    .map_or(true, |existing| *existing.value() != result);
+
+                if should_update_version {
+                    // Update shared_folders_to_ephemeral_versioning
+                    self.shared_folders_to_ephemeral_versioning
+                        .entry(path_str.clone())
+                        .and_modify(|e| *e += 1)
+                        .or_insert(1); // the first version starts at one
+                }
+
                 converted_results.push(result.clone());
                 self.shared_folders_trees.insert(path_str, result);
             }
@@ -647,7 +818,7 @@ impl ExternalSubscriberManager {
         }
 
         let subscription = ShinkaiSubscription::new(
-            shared_folder,
+            shared_folder.clone(),
             self.node_name.extract_node(),
             requester_shinkai_identity.extract_node(),
             ShinkaiSubscriptionStatus::SubscriptionConfirmed,
@@ -657,7 +828,81 @@ impl ExternalSubscriberManager {
         db.add_subscriber_subscription(subscription)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
+        // Check if we are in testing mode and update subscription_ids_are_sync accordingly
+        if std::env::var("IS_TESTING").unwrap_or_default() == "1" {
+            let subscription_id_str = subscription_id.get_unique_id().to_string();
+            // Assuming the initial version for a new subscription should be 0
+            // and using the shared_folder as the path. Adjust as necessary.
+            self.subscription_ids_are_sync
+                .insert(subscription_id_str, (shared_folder.clone(), 0));
+        }
         Ok(true)
+    }
+
+    pub async fn create_and_send_request_updated_state(
+        subscription_id: SubscriptionId,
+        db: Weak<Mutex<ShinkaiDB>>,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        node_name: ShinkaiName,
+        maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+    ) -> Result<(), SubscriberManagerError> {
+        let subscription = {
+            let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+                "Database instance is not available".to_string(),
+            ))?;
+            let db = db.lock().await;
+
+            let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
+                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+                    "Subscription with ID {} not found",
+                    subscription_id.get_unique_id()
+                )),
+                _ => SubscriberManagerError::DatabaseError(e.to_string()),
+            })?;
+            subscription
+        };
+
+        // create message to request updated state
+
+        if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
+            let subscriber_node_name = subscription.subscriber_identity.clone();
+            let identity_manager = identity_manager_lock.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&subscriber_node_name.get_node_name())
+                .await?;
+            drop(identity_manager);
+
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            // Update to use SubscriptionRequiresTreeUpdateResponse instead
+            let msg_request_subscription = ShinkaiMessageBuilder::vecfs_request_share_current_shared_folder_state(
+                subscription.shared_folder.clone(),
+                clone_static_secret_key(&my_encryption_secret_key),
+                clone_signature_secret_key(&my_signature_secret_key),
+                receiver_public_key,
+                node_name.get_node_name(),
+                // Note: the other node doesn't care about the sender's profile in this context
+                "".to_string(),
+                subscriber_node_name.get_node_name(),
+                "".to_string(),
+            )
+            .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+            // TODO: move send_message_to_peer to a separate file
+            MySubscriptionsManager::send_message_to_peer(
+                msg_request_subscription,
+                db.clone(),
+                standard_identity,
+                my_encryption_secret_key.clone(),
+                maybe_identity_manager.clone(),
+            )
+            .await?;
+        } else {
+            return Err(SubscriberManagerError::IdentityManagerUnavailable);
+        }
+
+        Ok(())
     }
 
     pub async fn subscriber_current_state_response(

@@ -23,7 +23,9 @@ pub enum SubscriberManagerError {
     SubscriptionFailed(String),
     AlreadySubscribed(String),
     SubscriptionNotFound(String),
-    InvalidSubscriber(String)
+    InvalidSubscriber(String),
+    FileSystemUnavailable,
+    OperationFailed(String),
     
 }
 
@@ -47,6 +49,8 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::AlreadySubscribed(e) => write!(f, "Already subscribed: {}", e),
             SubscriberManagerError::SubscriptionNotFound(e) => write!(f, "Subscription not found: {}", e),
             SubscriberManagerError::InvalidSubscriber(e) => write!(f, "Invalid subscriber: {}", e),
+            SubscriberManagerError::FileSystemUnavailable => write!(f, "File system unavailable"),
+            SubscriberManagerError::OperationFailed(e) => write!(f, "Operation failed: {}", e),
         }
     }
 }

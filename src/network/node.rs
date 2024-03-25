@@ -331,8 +331,8 @@ pub enum NodeCommand {
     },
     APIMySubscriptions {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>, 
-    }
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -485,6 +485,8 @@ impl Node {
                 Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager),
                 node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
             )
             .await,
         ));
@@ -836,6 +838,11 @@ impl Node {
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
+
+    // TODO: Add a new send that schedules messages to be sent at a later time.
+    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were already generated
+    // and the time associated with the message may be too old to be recognized by the other node.
+    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the time to the current time
 
     // Send a message to a peer.
     pub fn send(

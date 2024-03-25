@@ -1,4 +1,5 @@
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder};
 use chrono::NaiveDateTime;
@@ -7,26 +8,25 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::result::Result::Ok;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use tokio::sync::Mutex;
 
-use super::external_subscriber_manager::ExternalSubscriberManager;
 use super::fs_item_tree::FSItemTree;
 
-impl ExternalSubscriberManager {
+pub struct FSItemTreeGenerator {}
+
+impl FSItemTreeGenerator {
     pub async fn shared_folders_to_tree(
-        &self,
+        vector_fs: Weak<Mutex<VectorFS>>,
         requester_shinkai_identity: ShinkaiName,
         path: String,
     ) -> Result<FSItemTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
         // let path = "/".to_string();
-        
-        let vector_fs = self
-            .vector_fs
-            .upgrade()
-            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                "VectorFS instance is not available".to_string(),
-            ))?;
+
+        let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
+            "VectorFS instance is not available".to_string(),
+        ))?;
         let mut vector_fs = vector_fs.lock().await;
 
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -42,7 +42,7 @@ impl ExternalSubscriberManager {
         // TODO: need fix. this should return folders and items
         let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
-        let filtered_results = self.filter_to_top_level_folders(shared_folders); // Note: do we need this?
+        let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
         let mut root_children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
@@ -169,7 +169,7 @@ impl ExternalSubscriberManager {
         differences
     }
 
-    pub fn filter_to_top_level_folders(&self, results: Vec<(VRPath, ReadPermission)>) -> Vec<(VRPath, ReadPermission)> {
+    pub fn filter_to_top_level_folders(results: Vec<(VRPath, ReadPermission)>) -> Vec<(VRPath, ReadPermission)> {
         let mut filtered_results: Vec<(VRPath, ReadPermission)> = Vec::new();
         for (path, permission) in results {
             let is_subpath = filtered_results.iter().any(|(acc_path, _): &(VRPath, ReadPermission)| {
@@ -272,7 +272,7 @@ mod tests {
             children: HashMap::new(),
         };
 
-        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree, &server_tree);
+        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree, &server_tree);
         eprintln!("Differences: {:#?}", differences);
         assert_eq!(
             differences.children.len(),
@@ -304,7 +304,7 @@ mod tests {
         // Modify the client_tree to simulate the removal of the "crypto" folder
         let client_tree_modified = remove_crypto_from_shared_test_folder(client_tree);
 
-        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_partial_client_tree Differences: {:#?}",
             differences
@@ -360,7 +360,7 @@ mod tests {
         let new_date = Utc.ymd(2024, 2, 25).and_hms(23, 6, 0); // Set to an older date
         let client_tree_modified = modify_zeko_intro_date(client_tree, new_date);
 
-        let differences = ExternalSubscriberManager::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_date_difference Differences: {:#?}",
             differences
