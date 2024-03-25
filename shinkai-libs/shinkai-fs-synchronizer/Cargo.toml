@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 tempfile = "3.10.1"
 serde = "1.0.188"
 serde_derive = "1.0.188"

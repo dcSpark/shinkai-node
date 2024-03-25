@@ -19,6 +19,8 @@ use hex::decode;
 use libsodium_sys::*;
 use std::str;
 
+use shinkai_vector_resources::vector_resource::SimplifiedFSEntry;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct NodeHealthStatus {
     pub is_pristine: bool,
@@ -190,30 +192,7 @@ impl ShinkaiManager {
         }
     }
 
-    pub async fn get_node_folder(&mut self, path: &str) -> Result<String, &'static str> {
-        println!("vecfs_retrieve_path_simplified");
-
-        println!("Path: {}", path);
-        println!(
-            "My Encryption Secret Key: {}",
-            encryption_secret_key_to_string(self.my_encryption_secret_key.clone())
-        );
-        println!(
-            "My Signature Secret Key: {}",
-            signature_secret_key_to_string(self.my_signature_secret_key.clone())
-        );
-        println!(
-            "Receiver Public Key: {}",
-            encryption_public_key_to_string(self.receiver_public_key)
-        );
-        println!("Sender: {}", self.sender.to_string());
-        println!("Sender Subidentity: {}", self.sender_subidentity);
-        println!("Node Receiver: {}", self.node_receiver.to_string());
-        println!(
-            "Node Receiver Subidentity: {}",
-            self.node_receiver_subidentity.to_string()
-        );
-
+    pub async fn get_node_folder(&mut self, path: &str) -> Result<SimplifiedFSEntry, &'static str> {
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
             path,
             self.my_encryption_secret_key.clone(),
@@ -243,9 +222,11 @@ impl ShinkaiManager {
 
         match simplified_path_json_response {
             Ok(response) => {
-                // let folder: FSFolder = serde_json::from_str(response.clone()).expect("Failed to parse FSFolder");
-                // let folder = serde_json::from_str(&response.to_string()).expect("Failed to parse FSFolder");
-                return Ok(response.to_string());
+                dbg!(&response);
+                let fs_entry = SimplifiedFSEntry::from_json(&response.as_str().unwrap_or("")).unwrap();
+
+                dbg!(&fs_entry);
+                Ok(fs_entry)
             }
             Err(e) => Err(e),
         }

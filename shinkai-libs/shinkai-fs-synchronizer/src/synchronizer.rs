@@ -111,8 +111,9 @@ impl FilesystemSynchronizer {
                 .unwrap_or(&relative_path);
             println!("Syncing file: {:?}", node_fs_path);
 
-            shinkai_manager.get_node_folder("/").await;
-            shinkai_manager.create_folder("test", "/").await;
+            let folder_found = shinkai_manager.get_node_folder("/test").await.unwrap();
+
+            // shinkai_manager.create_folder("test", "/").await;
 
             // every few seconds (configurable) save state of the SyncingFolder, so we can rebuild syncing queue
         }
