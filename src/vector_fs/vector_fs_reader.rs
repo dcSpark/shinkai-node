@@ -151,7 +151,7 @@ impl VectorFS {
         Ok(VRKai::from_base_vector_resource(resource, sfm))
     }
 
-    /// Attempts to pack & retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).
+    /// Attempts to retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).
     pub fn retrieve_vrpack(&mut self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
         let fs_entry = self.retrieve_fs_entry(reader)?;
         let mut vrpack = VRPack::new_empty(); // Assuming a constructor for VRPack exists
@@ -181,6 +181,7 @@ impl VectorFS {
                     }
                 }
                 FSEntry::Folder(folder) => {
+                    println!("\n {}'s child folders: {:?}", folder.path, folder.child_folders);
                     let inner_path = current_path.push_cloned(folder.name.clone());
                     vrpack.create_folder(&folder.name, current_path.clone())?;
                     for child in &folder.child_folders {

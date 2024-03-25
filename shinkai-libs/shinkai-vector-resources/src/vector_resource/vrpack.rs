@@ -122,7 +122,6 @@ impl VRPack {
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
     pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();
-        println!("VRKai resource name: {}", resource_name);
         let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
         let metadata = None;
         let enc_vrkai = vrkai.encode_as_base64()?;
