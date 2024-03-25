@@ -72,6 +72,8 @@ impl FilesystemSynchronizer {
         let mut shinkai_manager = self.shinkai_manager.clone();
         let syncing_queue = Arc::clone(&self.syncing_queue);
 
+        dbg!(syncing_folders.clone());
+
         for (path, folder) in syncing_folders.lock().unwrap().iter() {
             let dir_entries = std::fs::read_dir(&path.0)?;
             for entry in dir_entries {

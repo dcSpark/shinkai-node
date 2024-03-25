@@ -7,7 +7,7 @@ mod tests {
     use shinkai_file_synchronizer::{
         shinkai_manager::ShinkaiManager,
         synchronizer::{FilesystemSynchronizer, LocalOSFolderPath, SyncingFolder},
-        visitor::{traverse_and_synchronize, DirectoryVisitor, SyncFolderVisitor},
+        visitor::{traverse_and_initialize_local_state, DirectoryVisitor, SyncFolderVisitor},
     };
 
     use std::{
@@ -24,7 +24,7 @@ mod tests {
 
     impl DirectoryVisitor for MockDirectoryVisitor {
         // TODO: identify what's better wayt to reue visit_dirs function
-        fn visit_dirs(&self, dir: &Path) -> std::io::Result<()> {
+        fn visit_dirs(&self, dir: &Path, last_synced_time: Option<u64>) -> std::io::Result<()> {
             if dir.is_dir() {
                 for entry in fs::read_dir(dir)? {
                     let entry = entry?;
@@ -34,7 +34,7 @@ mod tests {
                         println!("Directory: {:?}", path);
 
                         // Recursively visit subdirectories
-                        self.visit_dirs(&path)?;
+                        self.visit_dirs(&path, None)?;
                     } else {
                         // After handling the file, add it to the visited list
                         let mut visited = self.visited_files.lock().unwrap();
@@ -65,7 +65,7 @@ mod tests {
             visited_files: visited_files.clone(),
         };
 
-        traverse_and_synchronize::<(), MockDirectoryVisitor>(knowledge_dir.to_str().unwrap(), &mock_visitor);
+        traverse_and_initialize_local_state::<(), MockDirectoryVisitor>(knowledge_dir.to_str().unwrap(), &mock_visitor);
         let visited = visited_files.lock().unwrap();
 
         assert_eq!(visited.len(), 7);
@@ -80,11 +80,12 @@ mod tests {
         let major_directory = "tests/knowledge/";
         let knowledge_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(major_directory);
 
-        let shinkai_manager = ShinkaiManager::initialize_from_encrypted_file().unwrap();
+        let shinkai_manager = ShinkaiManager::initialize_from_encrypted_file()
+            .expect("Couldn't initialize ShinkaiManager from the provided encrypted file.");
 
         let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
-        let sync_visitor = SyncFolderVisitor::new(syncing_folders);
-        traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
+        let sync_visitor = SyncFolderVisitor::new(syncing_folders, None);
+        traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
         let synchronizer = FilesystemSynchronizer::new(
             shinkai_manager,

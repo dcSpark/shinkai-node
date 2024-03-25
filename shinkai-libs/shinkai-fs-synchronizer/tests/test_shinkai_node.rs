@@ -13,7 +13,7 @@ mod tests {
 
         let result = shinkai_manager.get_node_folder(path).await;
 
-        assert!(result.is_ok(), "Failed to get node folder");
+        assert!(result.is_ok());
         let folder_path = result.unwrap();
         dbg!(folder_path.as_folder().unwrap());
         // assert_eq!(folder_path, "The returned folder path does not match the expected path");

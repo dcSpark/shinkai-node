@@ -12,7 +12,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use visitor::{traverse_and_synchronize, SyncFolderVisitor};
+use visitor::{traverse_and_initialize_local_state, SyncFolderVisitor};
 
 // TODO: move all envs to configuration variables initialized with custom values/yaml or default values
 
@@ -39,38 +39,34 @@ async fn main() {
         }
     };
 
-    loop {
-        match shinkai_manager.check_node_health().await {
-            Ok(_) => {
-                println!("Node health check passed.");
-                break;
-            }
-            Err(e) => {
-                eprintln!("Node health check failed: {}. Retrying...", e);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            }
-        }
-    }
-
-    let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
-    let sync_visitor = SyncFolderVisitor::new(syncing_folders);
-    traverse_and_synchronize::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
-
-    let synchronizer = FilesystemSynchronizer::new(
-        shinkai_manager,
-        sync_visitor.syncing_folders,
-        major_directory.to_string(),
-    );
-
     const MAX_RETRIES: u32 = 3;
     let mut attempts = 0;
 
     loop {
+        // get last synced timestamp - if none provided, then assign None
+        let last_synced_time = None;
+
+        // (re)initialize sync_visitor with the new state of syncing_folders at the beginning of each loop iteration
+        let syncing_folders = Arc::new(Mutex::new(HashMap::new()));
+        let sync_visitor = SyncFolderVisitor::new(syncing_folders.clone(), last_synced_time);
+        traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
+
+        // fetch last saved persistent state from the disk
+
+        // fetch last saved persistent state from the node
+
+        // Update the synchronizer with the new state of syncing_folders
+        let synchronizer = FilesystemSynchronizer::new(
+            shinkai_manager.clone(),
+            sync_visitor.syncing_folders.clone(),
+            major_directory.to_string(),
+        );
+
         attempts += 1;
         match synchronizer.synchronize().await {
             Ok(_) => {
-                println!("Synchronization successful.");
-                break;
+                println!("Synchronization successful. Waiting for the next synchronization cycle...");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
             Err(e) => {
                 eprintln!("Failed to synchronize on attempt {}: {}", attempts, e);
@@ -78,8 +74,24 @@ async fn main() {
                     eprintln!("Reached maximum retry limit. Aborting.");
                     break;
                 }
-                // TODO: implement a backoff strategy or a delay before retrying
-                // for now keep constant max retries and constant time to keep things simple for now
+                // Check node health before retrying
+                let mut node_health_check_passed = false;
+                while !node_health_check_passed {
+                    match shinkai_manager.check_node_health().await {
+                        Ok(_) => {
+                            println!("Node health check passed. Proceeding to retry synchronization.");
+                            node_health_check_passed = true;
+                        }
+                        Err(health_check_error) => {
+                            eprintln!(
+                                "Node health check failed: {}. Retrying node health check...",
+                                health_check_error
+                            );
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        }
+                    }
+                }
+                // Retry synchronization after node health check passes
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
