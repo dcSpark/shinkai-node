@@ -552,7 +552,12 @@ impl VectorFS {
         vec_fs_base_path.push(vrpack.name.clone());
 
         // Check if an entry already exists at vec_fs_base_path
-        self.validate_path_points_to_entry(vec_fs_base_path.clone(), &writer.profile)?;
+        if self
+            .validate_path_points_to_entry(vec_fs_base_path.clone(), &writer.profile)
+            .is_ok()
+        {
+            return Err(VectorFSError::CannotOverwriteFSEntry(vec_fs_base_path.clone()));
+        }
 
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
 
