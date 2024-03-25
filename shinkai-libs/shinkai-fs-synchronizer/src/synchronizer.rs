@@ -1,5 +1,7 @@
+// use alloc::sync;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
+use shinkai_vector_resources::vector_resource::SimplifiedFSRoot;
 
 use crate::shinkai_manager::ShinkaiManager;
 use std::collections::HashMap;
@@ -68,60 +70,34 @@ impl FilesystemSynchronizer {
     }
 
     // start synchronization
-    pub async fn synchronize(&self) -> anyhow::Result<()> {
+    pub async fn synchronize(&self, fs_root: SimplifiedFSRoot) -> anyhow::Result<()> {
+        // inside syncing_folders we already store all directories and files from the disk that are newer (or were modified later) than last synced folder
+        // here we have our list of tuples
         let syncing_folders = self.syncing_folders.clone();
-        let mut shinkai_manager = self.shinkai_manager.clone();
-        let syncing_queue = Arc::clone(&self.syncing_queue);
+        // let syncing_queue = Arc::clone(&self.syncing_queue);
 
         dbg!(syncing_folders.clone());
 
-        for (path, folder) in syncing_folders.lock().unwrap().iter() {
-            let dir_entries = std::fs::read_dir(&path.0)?;
-            for entry in dir_entries {
-                let entry = entry?;
-                let metadata = entry.metadata()?;
-
-                let modified_time = metadata.modified()?.elapsed()?.as_secs();
-                let file_datetime = match folder.last_synchronized_file_datetime {
-                    Some(last_sync_time) if modified_time > last_sync_time => Some(modified_time),
-                    None => Some(metadata.created()?.elapsed()?.as_secs()),
-                    _ => None,
-                };
-
-                if let Some(datetime) = file_datetime {
-                    let sync_item = SyncQueueItem {
-                        syncing_folder: folder.clone(),
-                        os_file_path: entry.path(),
-                        file_datetime: datetime,
-                    };
-                    syncing_queue.lock().unwrap().push(sync_item);
-                }
-            }
+        // go through each syncing folder and add it to the syncing queue (oldest first in regards to OSFilePath)
+        let syncing_folders_lock = syncing_folders.lock().unwrap();
+        let mut syncing_queue_lock = self.syncing_queue.lock().unwrap();
+        syncing_queue_lock.clear(); // Clear the existing queue before repopulating
+        for (local_os_folder_path, syncing_folder) in syncing_folders_lock.iter() {
+            let os_file_path = PathBuf::from(&local_os_folder_path.0);
+            let file_datetime = syncing_folder.last_synchronized_file_datetime.unwrap_or(0);
+            let sync_queue_item = SyncQueueItem {
+                syncing_folder: syncing_folder.clone(),
+                os_file_path,
+                file_datetime,
+            };
+            syncing_queue_lock.push(sync_queue_item);
         }
+        // Sort the queue by file_datetime, oldest first
+        syncing_queue_lock.sort_by_key(|item| item.file_datetime);
 
-        // Sort the syncing queue based on file_datetime
-        syncing_queue.lock().unwrap().sort_by_key(|k| k.file_datetime);
+        dbg!(self.syncing_queue.clone());
 
-        let queue = syncing_queue.lock().unwrap().clone();
-        let major_dir_path = Path::new(&self.major_dir);
-        for item in queue.iter() {
-            let relative_path = item
-                .os_file_path
-                .strip_prefix(major_dir_path)
-                .map_or_else(|_| item.os_file_path.clone(), PathBuf::from);
-            let node_fs_path = relative_path
-                .strip_prefix(env!("CARGO_MANIFEST_DIR"))
-                .unwrap_or(&relative_path);
-            println!("Syncing file: {:?}", node_fs_path);
-
-            let folder_found = shinkai_manager.get_node_folder("/test").await.unwrap();
-
-            // shinkai_manager.create_folder("test", "/").await;
-
-            // every few seconds (configurable) save state of the SyncingFolder, so we can rebuild syncing queue
-        }
-        // clear the queue after processing
-        syncing_queue.lock().unwrap().clear();
+        // TODO: proceed with processsing syncing queue
 
         Ok(())
     }
@@ -152,36 +128,4 @@ impl FilesystemSynchronizer {
         drop(self.sender); // This will close the thread
         self.syncing_folders.lock().unwrap().clone()
     }
-
-    // pub fn visit_dirs(&self, dir: &Path) -> std::io::Result<()> {
-    //     let path_str = dir.to_str().unwrap_or_default().to_string();
-    //     let local_os_folder_path = LocalOSFolderPath(path_str.clone());
-    //     let syncing_folder = SyncingFolder {
-    //         profile_name: self.shinkai_manager.profile_name.to_string(),
-    //         vector_fs_path: None,
-    //         local_os_folder_path: local_os_folder_path.clone(),
-    //         last_synchronized_file_datetime: None,
-    //     };
-
-    //     {
-    //         let mut folders = self.syncing_folders.lock().unwrap();
-    //         folders.insert(local_os_folder_path, syncing_folder);
-    //     } // Release the lock immediately after use
-
-    //     // Recursively visit subdirectories
-    //     if dir.is_dir() {
-    //         for entry in std::fs::read_dir(dir)? {
-    //             let entry = entry?;
-    //             let path = entry.path();
-    //             if path.is_dir() {
-    //                 println!("Directory: {:?}", path);
-    //                 self.visit_dirs(&path)?;
-    //             } else {
-    //                 // Placeholder for file processing logic
-    //             }
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
 }

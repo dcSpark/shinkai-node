@@ -222,8 +222,6 @@ impl ShinkaiManager {
             Ok(response) => {
                 dbg!(&response);
                 let fs_entry = SimplifiedFSEntry::from_json(&response.as_str().unwrap_or("")).unwrap();
-
-                dbg!(&fs_entry);
                 Ok(fs_entry)
             }
             Err(e) => Err(e),

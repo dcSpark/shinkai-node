@@ -87,12 +87,22 @@ mod tests {
         let sync_visitor = SyncFolderVisitor::new(syncing_folders, None, shinkai_manager.profile_name.clone());
         traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
+        let fs_root = shinkai_manager
+            .clone()
+            .get_node_folder("/")
+            .await
+            .unwrap()
+            .as_root()
+            .unwrap();
+
         let synchronizer = FilesystemSynchronizer::new(
             shinkai_manager,
             sync_visitor.syncing_folders,
             major_directory.to_string(),
         );
-        synchronizer.synchronize().await;
+
+        dbg!(fs_root.clone());
+        synchronizer.synchronize(fs_root).await;
     }
 
     // #[tokio::test]

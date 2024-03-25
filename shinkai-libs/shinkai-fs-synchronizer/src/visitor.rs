@@ -35,12 +35,18 @@ impl SyncFolderVisitor {
 impl DirectoryVisitor for SyncFolderVisitor {
     fn visit_dirs(&self, dir: &Path, last_synchronized_file_datetime: Option<u64>) -> std::io::Result<()> {
         if dir.is_dir() {
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
+            let mut entries = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect::<Vec<_>>();
+
+            // Sort entries by their modification time, oldest first
+            entries.sort_by_cached_key(|entry| entry.metadata().and_then(|metadata| metadata.modified()).ok());
+
+            // we reverse it, because otherwise we don't have oldest OSFilePaths first
+            entries.reverse();
+
+            for entry in entries {
                 let path = entry.path();
                 let metadata = entry.metadata()?;
 
-                // TODO: change comparison time to milliseconds
                 let modified_time = metadata
                     .modified()
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
@@ -83,6 +89,7 @@ impl DirectoryVisitor for SyncFolderVisitor {
                     }
                 };
 
+                // we only insert if something is newer than or new
                 if insert_file {
                     let mut folders = self.syncing_folders.lock().unwrap();
                     folders.insert(local_os_folder_path, syncing_folder);
