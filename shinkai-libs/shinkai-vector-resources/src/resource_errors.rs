@@ -12,7 +12,7 @@ pub enum VRError {
     FailedEmbeddingGeneration(String),
     NoNodeFound,
     InvalidModelArchitecture,
-    FailedJSONParsing,
+    FailedJSONParsing(String),
     FailedCSVParsing,
     FailedPDFParsing,
     InvalidVRBaseType,
@@ -52,7 +52,7 @@ impl fmt::Display for VRError {
             VRError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
             }
-            VRError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
+            VRError::FailedJSONParsing(ref e) => write!(f, "Failed JSON parsing: {}", e),
             VRError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             VRError::NoEmbeddingProvided => write!(f, "No embedding provided."),
@@ -107,10 +107,10 @@ impl From<regex::Error> for VRError {
 impl From<SerdeError> for VRError {
     fn from(error: SerdeError) -> Self {
         match error.classify() {
-            serde_json::error::Category::Io => VRError::FailedJSONParsing,
-            serde_json::error::Category::Syntax => VRError::FailedJSONParsing,
-            serde_json::error::Category::Data => VRError::FailedJSONParsing,
-            serde_json::error::Category::Eof => VRError::FailedJSONParsing,
+            serde_json::error::Category::Io => VRError::FailedJSONParsing("IO error during JSON parsing".to_string()),
+            serde_json::error::Category::Syntax => VRError::FailedJSONParsing("Syntax error during JSON parsing".to_string()),
+            serde_json::error::Category::Data => VRError::FailedJSONParsing("Data error during JSON parsing".to_string()),
+            serde_json::error::Category::Eof => VRError::FailedJSONParsing("IEof error during JSON parsing".to_string())
         }
     }
 }

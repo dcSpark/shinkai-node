@@ -1,6 +1,4 @@
-use super::MapVectorResource;
 use crate::resource_errors::VRError;
-use crate::source::DistributionOrigin;
 pub use crate::source::{DistributionInfo, VRSource};
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
@@ -50,14 +48,19 @@ impl SimplifiedFSEntry {
     /// Creates a SimplifiedFSEntry from a simplified FSEntry JSON string.
     /// Attempts to parse all entry types directly, and then at the top level.
     pub fn from_json(s: &str) -> Result<Self, VRError> {
-        if let Ok(folder) = SimplifiedFSFolder::from_json(s) {
-            return Ok(SimplifiedFSEntry::Folder(folder));
+        match SimplifiedFSFolder::from_json(s) {
+            Ok(folder) => return Ok(SimplifiedFSEntry::Folder(folder)),
+            Err(e) => eprintln!("Failed to parse folder: {}", e),
         }
-        if let Ok(item) = SimplifiedFSItem::from_json(s) {
-            return Ok(SimplifiedFSEntry::Item(item));
+        match SimplifiedFSItem::from_json(s) {
+            Ok(item) => return Ok(SimplifiedFSEntry::Item(item)),
+            Err(e) => eprintln!("Failed to parse item: {}", e),
         }
-        if let Ok(root) = SimplifiedFSRoot::from_json(s) {
-            return Ok(SimplifiedFSEntry::Root(root));
+        match SimplifiedFSRoot::from_json(s) {
+            Ok(root) => {
+                return Ok(SimplifiedFSEntry::Root(root));
+            }
+            Err(e) => eprintln!("Failed to parse root: {}", e),
         }
 
         // If its not any of the specific entries JSON, then fall back on top level parsing
@@ -87,7 +90,7 @@ impl SimplifiedFSRoot {
 
     /// Deserializes from a JSON string
     pub fn from_json(s: &str) -> Result<Self, VRError> {
-        Ok(serde_json::from_str(s)?)
+        serde_json::from_str(s).map_err(|e| VRError::FailedJSONParsing(e.to_string()))
     }
 }
 
@@ -124,7 +127,7 @@ impl SimplifiedFSFolder {
 
     /// Deserializes from a JSON string
     pub fn from_json(s: &str) -> Result<Self, VRError> {
-        Ok(serde_json::from_str(s)?)
+        serde_json::from_str(s).map_err(|e| VRError::FailedJSONParsing(e.to_string()))
     }
 }
 
@@ -176,6 +179,6 @@ impl SimplifiedFSItem {
 
     /// Deserializes from a JSON string
     pub fn from_json(s: &str) -> Result<Self, VRError> {
-        Ok(serde_json::from_str(s)?)
+        serde_json::from_str(s).map_err(|e| VRError::FailedJSONParsing(e.to_string()))
     }
 }

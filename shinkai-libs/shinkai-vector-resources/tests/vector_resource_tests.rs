@@ -845,3 +845,61 @@ async fn test_embeddings_coherence() {
     assert!(doc.verify_internal_embeddings_coherence(&generator, 0.0).await.is_ok());
     assert!(doc.verify_internal_embeddings_coherence(&generator, 23.4).await.is_ok());
 }
+
+#[cfg(test)]
+mod simplified_fs_entry_tests {
+    use chrono::{DateTime, Utc};
+    use shinkai_vector_resources::vector_resource::{simplified_fs_types::SimplifiedFSEntry, VRPath};
+
+    #[test]
+    fn test_deserialize_simplified_fs_entry_root() {
+        let json_str = "{\"path\":\"/\",\"child_folders\":[{\"name\":\"test\",\"path\":\"/test\",\"child_folders\":[],\"child_items\":[],\"created_datetime\":\"2024-03-25T09:03:37.014258Z\",\"last_read_datetime\":\"2024-03-25T09:03:37.014257Z\",\"last_modified_datetime\":\"2024-03-25T09:03:37.014257Z\",\"last_written_datetime\":\"2024-03-25T09:03:37.014295Z\",\"merkle_hash\":\"af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262\"}],\"created_datetime\":\"2024-03-25T08:58:33.136565Z\",\"last_written_datetime\":\"2024-03-25T09:03:37.014344Z\",\"merkle_root\":\"dba5865c0d91b17958e4d2cac98c338f85cbbda07b71a020ab16c391b5e7af4b\"}";
+        let entry = SimplifiedFSEntry::from_json(json_str);
+
+        assert!(entry.is_ok(), "Failed to deserialize SimplifiedFSEntry");
+
+        let entry = entry.unwrap().as_root().unwrap();
+
+        assert_eq!(entry.child_folders.len(), 1);
+        assert_eq!(entry.child_folders[0].name, "test");
+        assert_eq!(
+            entry.child_folders[0].path,
+            VRPath {
+                path_ids: vec!["test".to_string()]
+            }
+        );
+        assert_eq!(entry.child_folders[0].child_folders.len(), 0);
+        assert_eq!(entry.child_folders[0].child_items.len(), 0);
+
+        let created_datetime_str = "2024-03-25T09:03:37.014258Z";
+        let created_datetime: DateTime<Utc> = created_datetime_str.parse().expect("Failed to parse datetime");
+
+        assert_eq!(entry.child_folders[0].created_datetime, created_datetime);
+    }
+
+    #[test]
+    fn test_deserialize_simplified_fs_entry_folder() {
+        let json_str = "{\"name\":\"test\",\"path\":\"/test\",\"child_folders\":[],\"child_items\":[],\"created_datetime\":\"2024-03-25T09:03:37.014258Z\",\"last_read_datetime\":\"2024-03-25T10:57:59.245455Z\",\"last_modified_datetime\":\"2024-03-25T09:03:37.014257Z\",\"last_written_datetime\":\"2024-03-25T09:03:37.014295Z\",\"merkle_hash\":\"af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262\"}";
+
+        let entry = SimplifiedFSEntry::from_json(json_str);
+        assert!(entry.is_ok(), "Failed to deserialize SimplifiedFSEntry");
+
+        let entry = entry.unwrap().as_folder().unwrap();
+
+        assert_eq!(entry.name, "test");
+        assert_eq!(entry.child_folders.len(), 0);
+        assert_eq!(entry.child_items.len(), 0);
+
+        assert_eq!(
+            entry.path,
+            VRPath {
+                path_ids: vec!["test".to_string()]
+            }
+        );
+
+        let created_datetime_str = "2024-03-25T09:03:37.014258Z";
+        let created_datetime: DateTime<Utc> = created_datetime_str.parse().expect("Failed to parse datetime");
+
+        assert_eq!(entry.created_datetime, created_datetime);
+    }
+}
