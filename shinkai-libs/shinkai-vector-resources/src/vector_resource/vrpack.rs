@@ -154,12 +154,7 @@ impl VRPack {
     fn parse_node_to_vrkai(node: &Node) -> Result<VRKai, VRError> {
         match &node.content {
             NodeContent::Text(content) => {
-                let vrkai_bytes = decode(content)
-                    .map_err(|e| VRError::VRPackParsingError(format!("Base64 decoding error: {}", e)))?;
-                let vrkai_str = String::from_utf8(vrkai_bytes)
-                    .map_err(|e| VRError::VRPackParsingError(format!("UTF-8 conversion error: {}", e)))?;
-                serde_json::from_str(&vrkai_str)
-                    .map_err(|e| VRError::VRPackParsingError(format!("VRKai parsing error: {}", e)))
+                return VRKai::from_base64(content);
             }
             _ => Err(VRError::VRKaiParsingError("Invalid node content type".to_string())),
         }

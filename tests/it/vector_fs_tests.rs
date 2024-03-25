@@ -708,6 +708,28 @@ async fn test_vector_fs_operations() {
         .as_trait_object()
         .print_all_nodes_exhaustive(None, true, false);
 
+    let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+
+    assert_eq!(unpacked_kais.len(), 4);
+
+    // Now retrieve vrpack for non-root folder
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::root().push_cloned("new_root_folder".to_string()),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+
+    vrpack
+        .resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, true, false);
+
+    let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+
+    assert_eq!(unpacked_kais.len(), 3);
+
     assert!(1 == 2);
 
     //

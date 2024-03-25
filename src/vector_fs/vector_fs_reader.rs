@@ -155,7 +155,7 @@ impl VectorFS {
     pub fn retrieve_vrpack(&mut self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
         let fs_entry = self.retrieve_fs_entry(reader)?;
         let mut vrpack = VRPack::new_empty(); // Assuming a constructor for VRPack exists
-        let vec_fs_base_path = reader.path.clone();
+        let vec_fs_base_path_parent = reader.path.pop_cloned();
 
         // Recursive function to process each entry and populate the VRPack
         fn process_entry(
@@ -221,7 +221,14 @@ impl VectorFS {
         }
 
         // Start processing from the root or folder of the FSEntry
-        process_entry(&fs_entry, &mut vrpack, VRPath::root(), self, reader, vec_fs_base_path)?;
+        process_entry(
+            &fs_entry,
+            &mut vrpack,
+            VRPath::root(),
+            self,
+            reader,
+            vec_fs_base_path_parent,
+        )?;
 
         Ok(vrpack)
     }
