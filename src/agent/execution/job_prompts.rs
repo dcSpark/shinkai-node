@@ -805,7 +805,7 @@ impl Prompt {
     pub fn new() -> Self {
         Self {
             sub_prompts: Vec::new(),
-            lowest_priority: 0,
+            lowest_priority: 100,
             highest_priority: 0,
         }
     }
@@ -863,17 +863,10 @@ impl Prompt {
         self.add_sub_prompt(sub_prompt);
     }
 
-    /// Adds a single sub-prompt.
-    /// Updates the lowest and highest priority values of self using the existing priority value.
-    pub fn add_sub_prompt(&mut self, sub_prompt: SubPrompt) {
-        self.add_sub_prompts(vec![sub_prompt]);
-    }
-
-    /// Adds multiple pre-prepared sub-prompts.
     /// Updates the lowest and highest priority values of self using the
     /// existing priority values of the sub_prompts.
-    pub fn add_sub_prompts(&mut self, sub_prompts: Vec<SubPrompt>) {
-        for sub_prompt in sub_prompts {
+    fn update_sub_prompts_priorities(&mut self) {
+        for sub_prompt in self.sub_prompts.iter() {
             match &sub_prompt {
                 SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
                     self.lowest_priority = self.lowest_priority.min(*priority);
@@ -884,8 +877,29 @@ impl Prompt {
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
             }
-            self.sub_prompts.push(sub_prompt);
         }
+    }
+
+    /// Adds a single sub-prompt.
+    /// Updates the lowest and highest priority values of self
+    pub fn add_sub_prompt(&mut self, sub_prompt: SubPrompt) {
+        self.add_sub_prompts(vec![sub_prompt]);
+    }
+
+    /// Adds multiple pre-prepared sub-prompts.
+    /// Updates the lowest and highest priority values of self
+    pub fn add_sub_prompts(&mut self, mut sub_prompts: Vec<SubPrompt>) {
+        self.sub_prompts.append(&mut sub_prompts);
+        self.update_sub_prompts_priorities();
+    }
+
+    /// Remove sub prompt at index
+    /// Adds multiple pre-prepared sub-prompts.
+    /// Updates the lowest and highest priority values of self
+    pub fn remove_sub_prompt(&mut self, index: usize) -> SubPrompt {
+        let element = self.sub_prompts.remove(index);
+        self.update_sub_prompts_priorities();
+        element
     }
 
     /// Adds multiple pre-prepared sub-prompts with a new priority value.
@@ -941,7 +955,7 @@ impl Prompt {
             SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
         }) {
-            return Some(self.sub_prompts.remove(position));
+            return Some(self.remove_sub_prompt(position));
         }
         None
     }

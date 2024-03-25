@@ -147,11 +147,7 @@ impl VectorFS {
         let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
         let sfm = self.retrieve_source_file_map(reader).ok();
 
-        Ok(VRKai::from_base_vector_resource(
-            resource,
-            sfm,
-            fs_item.distribution_origin,
-        ))
+        Ok(VRKai::from_base_vector_resource(resource, sfm))
     }
 
     /// Attempts to retrieve a VectorResource from inside an FSItem within the folder specified at reader path.

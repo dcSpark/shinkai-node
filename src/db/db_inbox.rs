@@ -3,6 +3,7 @@ use chrono::Utc;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
@@ -522,11 +523,14 @@ impl ShinkaiDB {
                 None => inbox_id.clone(), // Use the inbox_id as the default value if the custom name is not found
             };
 
+            let mut job_scope: Option<JobScope> = None;
+
             // Determine if the inbox is finished
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone())? {
                     InboxName::JobInbox { unique_id, .. } => {
                         let job = self.get_job(&unique_id)?;
+                        job_scope = Some(job.scope);
                         job.is_finished
                     }
                     _ => false,
@@ -540,6 +544,7 @@ impl ShinkaiDB {
                 custom_name,
                 last_message,
                 is_finished,
+                job_scope
             };
 
             smart_inboxes.push(smart_inbox);

@@ -12,9 +12,10 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{
-    DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
+    DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::simplified_fs_types::*;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
@@ -72,6 +73,7 @@ pub async fn get_shinkai_intro_doc_async(
         data_tags,
         500,
         UnstructuredAPI::new_default(),
+        DistributionInfo::new_empty(),
     )
     .await
     .unwrap();
@@ -160,7 +162,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
         .unwrap();
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
@@ -250,7 +252,6 @@ async fn test_vector_fs_saving_reading() {
             &writer,
             BaseVectorResource::Document(doc),
             Some(source_file_map.clone()),
-            None,
         )
         .unwrap();
 
@@ -513,7 +514,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let first_folder_item = vector_fs
-        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()), None)
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
         .unwrap();
 
     //
@@ -765,4 +766,40 @@ async fn test_vector_fs_operations() {
     let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
 
     assert_eq!(current_state, new_state);
+
+    //
+    // Verify Simplified FSEntry types parse properly
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let root_json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+
+    let simplified_root = SimplifiedFSEntry::from_json(&root_json);
+
+    assert!(simplified_root.is_ok());
+
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    println!("\n\n folder: {:?}", json);
+
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
+
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    println!("\n\n item: {:?}", json);
+
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
 }

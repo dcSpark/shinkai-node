@@ -343,22 +343,22 @@ impl ShinkaiMessageBuilder {
                 if let Some(external_metadata) = &new_self.external_metadata {
                     // Generate a new inbox name
                     // Print the value of external_metadata.sender to the browser console
-                    let new_inbox_name = InboxName::get_regular_inbox_name_from_params(
+                    let new_inbox_name_result = InboxName::get_regular_inbox_name_from_params(
                         external_metadata.sender.clone(),
                         internal_metadata.sender_subidentity.clone(),
                         external_metadata.recipient.clone(),
                         internal_metadata.recipient_subidentity.clone(),
                         internal_metadata.encryption != EncryptionMethod::None,
-                    )
-                    .map_err(|_| "Failed to generate inbox name")?;
+                    );
 
-                    // Update the inbox name in the internal metadata
-                    internal_metadata.inbox = match new_inbox_name {
-                        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
-                    };
-                } else {
-                    return Err("Inbox is required");
+                    if let Ok(new_inbox_name) = new_inbox_name_result {
+                        // Update the inbox name in the internal metadata if generation was successful
+                        internal_metadata.inbox = match new_inbox_name {
+                            InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+                        };
+                    }
                 }
+                // If the inbox name generation fails, do not return an error and allow the inbox to remain empty
             }
         }
 
