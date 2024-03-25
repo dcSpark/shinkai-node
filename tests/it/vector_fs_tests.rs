@@ -802,4 +802,20 @@ async fn test_vector_fs_operations() {
 
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());
+
+    //
+    // VRPack creation & unpacking into VecFS tests
+    //
+
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+
+    vrpack
+        .resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, true, false);
+
+    assert!(1 == 2);
 }

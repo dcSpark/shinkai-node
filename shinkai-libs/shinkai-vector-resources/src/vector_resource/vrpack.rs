@@ -122,6 +122,7 @@ impl VRPack {
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
     pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();
+        println!("VRKai resource name: {}", resource_name);
         let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
         let metadata = None;
         let enc_vrkai = vrkai.encode_as_base64()?;
@@ -136,7 +137,7 @@ impl VRPack {
 
     /// Creates a folder inside the VRPack at the specified parent path.
     pub fn create_folder(&mut self, folder_name: &str, parent_path: VRPath) -> Result<(), VRError> {
-        let resource = BaseVectorResource::Map(MapVectorResource::new_empty("vrpack", None, VRSource::None, true));
+        let resource = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None, true));
         let node = Node::new_vector_resource(folder_name.to_string(), &resource, None);
         let embedding = Embedding::new_empty();
 
@@ -185,7 +186,7 @@ impl VRPack {
         for retrieved_node in nodes {
             match retrieved_node.node.content {
                 NodeContent::Text(_) => match Self::parse_node_to_vrkai(&retrieved_node.node) {
-                    Ok(vrkai) => vrkais_with_paths.push((vrkai, retrieved_node.path)),
+                    Ok(vrkai) => vrkais_with_paths.push((vrkai, retrieved_node.retrieval_path.clone())),
                     Err(e) => return Err(e),
                 },
                 _ => continue,

@@ -9,7 +9,8 @@ use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::{SourceFile, SourceFileMap};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, NodeContent, RetrievedNode, VRKai, VectorResource, VectorResourceCore, VectorResourceSearch,
+    BaseVectorResource, NodeContent, RetrievedNode, VRKai, VRPack, VectorResource, VectorResourceCore,
+    VectorResourceSearch,
 };
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};
 
@@ -148,6 +149,80 @@ impl VectorFS {
         let sfm = self.retrieve_source_file_map(reader).ok();
 
         Ok(VRKai::from_base_vector_resource(resource, sfm))
+    }
+
+    /// Attempts to pack & retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).
+    pub fn retrieve_vrpack(&mut self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
+        let fs_entry = self.retrieve_fs_entry(reader)?;
+        let mut vrpack = VRPack::new_empty(); // Assuming a constructor for VRPack exists
+        let vec_fs_base_path = reader.path.clone();
+
+        // Recursive function to process each entry and populate the VRPack
+        fn process_entry(
+            entry: &FSEntry,
+            vrpack: &mut VRPack,
+            current_path: VRPath,
+            vector_fs: &mut VectorFS,
+            reader: &VFSReader,
+            vec_fs_base_path: VRPath,
+        ) -> Result<(), VectorFSError> {
+            match entry {
+                FSEntry::Root(folder) => {
+                    for child in &folder.child_folders {
+                        let entry = FSEntry::Folder(child.clone());
+                        process_entry(
+                            &entry,
+                            vrpack,
+                            current_path.clone(),
+                            vector_fs,
+                            reader,
+                            vec_fs_base_path.clone(),
+                        )?;
+                    }
+                }
+                FSEntry::Folder(folder) => {
+                    let inner_path = current_path.push_cloned(folder.name.clone());
+                    vrpack.create_folder(&folder.name, current_path.clone())?;
+                    for child in &folder.child_folders {
+                        let entry = FSEntry::Folder(child.clone());
+                        process_entry(
+                            &entry,
+                            vrpack,
+                            inner_path.clone(),
+                            vector_fs,
+                            reader,
+                            vec_fs_base_path.clone(),
+                        )?;
+                    }
+                    for child in &folder.child_items {
+                        let entry = FSEntry::Item(child.clone());
+                        process_entry(
+                            &entry,
+                            vrpack,
+                            inner_path.clone(),
+                            vector_fs,
+                            reader,
+                            vec_fs_base_path.clone(),
+                        )?;
+                    }
+                }
+                FSEntry::Item(item) => {
+                    // For each item, use retrieve_vrkai to get the VRKai object
+                    let item_path = vec_fs_base_path.append_path_cloned(&current_path.push_cloned(item.name.clone()));
+                    let item_reader = reader.new_reader_copied_data(item_path, vector_fs)?;
+                    match vector_fs.retrieve_vrkai(&item_reader) {
+                        Ok(vrkai) => vrpack.insert_vrkai(&vrkai, current_path.clone())?,
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        // Start processing from the root or folder of the FSEntry
+        process_entry(&fs_entry, &mut vrpack, VRPath::root(), self, reader, vec_fs_base_path)?;
+
+        Ok(vrpack)
     }
 
     /// Attempts to retrieve a VectorResource from inside an FSItem within the folder specified at reader path.
