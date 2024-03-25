@@ -30,6 +30,7 @@ impl VRPackVersion {
 /// To save as a file or transfer the VRPack, call one of the `encode_as_` methods. To parse from a file/transfer, use the `from_` methods.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct VRPack {
+    pub name: String,
     pub resource: BaseVectorResource,
     pub version: VRPackVersion,
 }
@@ -41,16 +42,18 @@ impl VRPack {
     }
 
     /// Creates a new VRPack with the provided BaseVectorResource and the default version.
-    pub fn new(resource: BaseVectorResource) -> Self {
+    pub fn new(name: &str, resource: BaseVectorResource) -> Self {
         VRPack {
+            name: name.to_string(),
             resource,
             version: Self::default_vrpack_version(),
         }
     }
 
     /// Creates a new empty VRPack with an empty BaseVectorResource and the default version.
-    pub fn new_empty() -> Self {
+    pub fn new_empty(name: &str) -> Self {
         VRPack {
+            name: name.to_string(),
             resource: BaseVectorResource::Map(MapVectorResource::new_empty("vrpack", None, VRSource::None, true)),
             version: Self::default_vrpack_version(),
         }

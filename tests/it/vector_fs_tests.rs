@@ -730,7 +730,9 @@ async fn test_vector_fs_operations() {
 
     assert_eq!(unpacked_kais.len(), 3);
 
-    assert!(1 == 2);
+    // Now testing unpacking back into the VectorFS
+
+    // assert!(1 == 2);
 
     //
     // Move/Deletion Tests for Folders

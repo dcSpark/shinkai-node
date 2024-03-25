@@ -154,8 +154,10 @@ impl VectorFS {
     /// Attempts to retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).
     pub fn retrieve_vrpack(&mut self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
         let fs_entry = self.retrieve_fs_entry(reader)?;
-        let mut vrpack = VRPack::new_empty(); // Assuming a constructor for VRPack exists
         let vec_fs_base_path_parent = reader.path.pop_cloned();
+        let default_root_name = format!("{}-root", reader.profile.to_string());
+        let folder_name = &reader.path.last_path_id().unwrap_or(default_root_name);
+        let mut vrpack = VRPack::new_empty(folder_name);
 
         // Recursive function to process each entry and populate the VRPack
         fn process_entry(
