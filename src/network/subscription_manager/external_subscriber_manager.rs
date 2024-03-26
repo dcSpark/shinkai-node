@@ -126,6 +126,7 @@ pub struct ExternalSubscriberManager {
     // todo: implement need fn that receives responses from subscribers to process and another one to update the state after successfully sync
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
+    pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ExternalSubscriberManager {
@@ -154,6 +155,22 @@ impl ExternalSubscriberManager {
             .unwrap_or(NUM_THREADS.to_string())
             .parse::<usize>()
             .unwrap_or(NUM_THREADS); // Start processing the job queue
+
+        let process_state_updates_queue_handler =
+            ExternalSubscriberManager::process_subscription_request_state_updates(
+                subscriptions_queue_manager.clone(),
+                db.clone(),
+                vector_fs.clone(),
+                node_name.clone(),
+                my_signature_secret_key.clone(),
+                my_encryption_secret_key.clone(),
+                identity_manager.clone(),
+                shared_folders_trees.clone(),
+                subscription_ids_are_sync.clone(),
+                shared_folders_to_ephemeral_versioning.clone(),
+                thread_number,
+            )
+            .await;
 
         let subscription_queue_handler = ExternalSubscriberManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
@@ -199,6 +216,7 @@ impl ExternalSubscriberManager {
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
+            process_state_updates_queue_handler: Some(process_state_updates_queue_handler),
             shared_folders_trees,
             subscription_ids_are_sync,
             shared_folders_to_ephemeral_versioning,
@@ -224,37 +242,7 @@ impl ExternalSubscriberManager {
         }
     }
 
-    fn process_job_message_queued(
-        subscription_with_tree: SubscriptionWithTree,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
-        node_name: ShinkaiName,
-        my_signature_secret_key: SigningKey,
-        my_encryption_secret_key: EncryptionStaticKey,
-        identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
-        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
-        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
-        Box::pin(async move {
-            // Placeholder logic for processing a queued job message
-            println!(
-                "Processing job: {:?}",
-                subscription_with_tree.subscription.subscription_id
-            );
-
-            // TODO: access shared_folders_trees for the subscription path
-
-            // Assuming the processing is successful, return Ok with a message
-            // Adjust according to actual logic and possible error conditions
-            Ok(format!(
-                "Job {} processed successfully",
-                subscription_with_tree.subscription.subscription_id.get_unique_id()
-            ))
-        })
-    }
-
-    pub async fn process_subscription_queue(
+    pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
@@ -266,27 +254,8 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         thread_number: usize,
-        process_job: impl Fn(
-                SubscriptionWithTree,
-                Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
-                ShinkaiName,
-                SigningKey,
-                EncryptionStaticKey,
-                Weak<Mutex<IdentityManager>>,
-                Arc<DashMap<String, SharedFolderInfo>>,
-                Arc<DashMap<String, (String, usize)>>,
-                Arc<DashMap<String, usize>>,
-            ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
-        let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
-        let semaphore = Arc::new(Semaphore::new(thread_number));
-        let process_job = Arc::new(process_job);
-
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
             .unwrap_or("5".to_string()) // Default to 5 minutes if not set
             .parse::<u64>()
@@ -298,10 +267,9 @@ impl ExternalSubscriberManager {
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Info,
-                "Starting subscribers processing loop",
+                "process_subscription_request_state_updates> Starting subscribers processing loop",
             );
 
-            let mut handles = Vec::new();
             if is_testing {
                 // Wait until subscription_ids_are_sync has at least 1 value
                 loop {
@@ -318,15 +286,12 @@ impl ExternalSubscriberManager {
             }
 
             loop {
-                let mut continue_immediately = false;
-                eprintln!("Starting subscribers processing loop");
+                eprintln!("process_subscription_request_state_updates> Starting subscribers processing loop");
                 // Game Plan:
                 // Phase 1
                 // 1. Find all subscriptions
                 // 2. Filter out subscriptions that are already on sync
                 // 3. Request subscribers folder state (async)
-                // Phase 2
-                // 4. Calc. diff and schedule network requests (async) -> Process
 
                 // Scope for acquiring and releasing the lock quickly
                 let subscriptions_ids_to_process: Vec<SubscriptionId> = {
@@ -374,6 +339,7 @@ impl ExternalSubscriberManager {
                         true
                     })
                     .collect::<Vec<SubscriptionId>>();
+                eprintln!(">> Filtered subscriptions: {:?}", filtered_subscription_ids);
 
                 // Check if a job with this subscription_id is already queued in the job_manager
                 let mut post_filtered_subscription_ids = Vec::new();
@@ -381,13 +347,16 @@ impl ExternalSubscriberManager {
                     let subscription_id_str = subscription_id.get_unique_id().to_string();
                     // Perform the asynchronous check
                     let is_not_queued = {
+                        eprintln!("process_subscription_request_state_updates >> Checking if subscription is already queued: {:?}", subscription_id);
                         let job_queue_manager_clone = Arc::clone(&job_queue_manager);
+                        eprintln!("process_subscription_request_state_updates >> Acquiring lock");
                         let result = job_queue_manager_clone
-                        .lock()
-                        .await
-                        .peek(&subscription_id_str)
-                        .await
-                        .map_or(true, |opt| opt.is_none());
+                            .lock()
+                            .await
+                            .peek(&subscription_id_str)
+                            .await
+                            .map_or(true, |opt| opt.is_none());
+                        eprintln!("process_subscription_request_state_updates >> Lock acquired and relased");
                         result
                     };
                     if is_not_queued {
@@ -408,19 +377,107 @@ impl ExternalSubscriberManager {
                 }
 
                 // End Phase 1
+
+                // Note: maybe we could treat every send as its own future and then join them all in group batches
+                // let handles_to_join = mem::replace(&mut handles, Vec::new());
+                // futures::future::join_all(handles_to_join).await;
+                // handles.clear();
+
+                // Wait for interval_minutes before the next iteration
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+            }
+        })
+    }
+
+    fn process_job_message_queued(
+        subscription_with_tree: SubscriptionWithTree,
+        db: Weak<Mutex<ShinkaiDB>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Weak<Mutex<IdentityManager>>,
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
+        Box::pin(async move {
+            // Placeholder logic for processing a queued job message
+            println!(
+                "process_job_message_queued> Processing job: {:?}",
+                subscription_with_tree.subscription.subscription_id
+            );
+
+            // TODO: access shared_folders_trees for the subscription path
+
+            // Assuming the processing is successful, return Ok with a message
+            // Adjust according to actual logic and possible error conditions
+            Ok(format!(
+                "Job {} processed successfully",
+                subscription_with_tree.subscription.subscription_id.get_unique_id()
+            ))
+        })
+    }
+
+    pub async fn process_subscription_queue(
+        job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
+        db: Weak<Mutex<ShinkaiDB>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Weak<Mutex<IdentityManager>>,
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        thread_number: usize,
+        process_job: impl Fn(
+                SubscriptionWithTree,
+                Weak<Mutex<ShinkaiDB>>,
+                Weak<Mutex<VectorFS>>,
+                ShinkaiName,
+                SigningKey,
+                EncryptionStaticKey,
+                Weak<Mutex<IdentityManager>>,
+                Arc<DashMap<String, SharedFolderInfo>>,
+                Arc<DashMap<String, (String, usize)>>,
+                Arc<DashMap<String, usize>>,
+            ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    ) -> tokio::task::JoinHandle<()> {
+        let job_queue_manager = Arc::clone(&job_queue_manager);
+        let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
+        let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
+        let semaphore = Arc::new(Semaphore::new(thread_number));
+        let process_job = Arc::new(process_job);
+
+        tokio::spawn(async move {
+            shinkai_log(
+                ShinkaiLogOption::ExtSubscriptions,
+                ShinkaiLogLevel::Info,
+                "process_subscription_queue> Starting subscribers processing loop",
+            );
+
+            let mut handles = Vec::new();
+            loop {
+                let mut continue_immediately = false;
+                eprintln!("process_subscription_queue> Starting subscribers processing loop");
+                // Phase 2
+                // 4. Calc. diff and schedule network requests (async) -> Process
+
                 // Start Phase 2: We check current jobs that are ready to go
                 let job_ids_to_perform_comparisons_and_send_files = {
                     let mut processing_jobs_lock = processing_jobs.lock().await;
-                    let job_queue_manager_clone = Arc::clone(&job_queue_manager);
-                    let job_queue_manager_lock = job_queue_manager_clone.lock().await;
-                    let all_jobs = job_queue_manager_lock
-                        .get_all_elements_interleave()
-                        .await
-                        .unwrap_or(Vec::new());
+                    let job_queue_manager_lock = job_queue_manager.lock().await;
+                    eprintln!("process_subscription_queue>> Processing jobs before interleave");
+                    let all_jobs = job_queue_manager_lock.get_all_elements_interleave().await;
                     drop(job_queue_manager_lock);
-                    std::mem::drop(job_queue_manager_clone);
+                    eprintln!("process_subscription_queue>> All jobs: {:?}", all_jobs);
 
                     let filtered_jobs = all_jobs
+                        .unwrap_or(Vec::new())
                         .into_iter()
                         .filter_map(|job| {
                             let job_id = job.subscription.subscription_id.clone().get_unique_id().to_string();
@@ -440,9 +497,15 @@ impl ExternalSubscriberManager {
                     std::mem::drop(processing_jobs_lock);
                     filtered_jobs
                 };
+                eprintln!(
+                    "process_subscription_queue>> Jobs to process: {:?}",
+                    job_ids_to_perform_comparisons_and_send_files
+                );
 
                 for subscription_id in job_ids_to_perform_comparisons_and_send_files {
+                    eprintln!("process_subscription_queue>> Processing job: {}", subscription_id);
                     let job_queue_manager = Arc::clone(&job_queue_manager);
+                    let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = semaphore.clone();
                     let db = db.clone();
                     let vector_fs = vector_fs.clone();
@@ -459,11 +522,16 @@ impl ExternalSubscriberManager {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
                         // Acquire the lock, dequeue the job, and immediately release the lock
+                        eprintln!("process_subscription_queue>> Dequeuing job: {}", subscription_id);
                         let subscription_with_tree = {
                             let job_queue_manager = job_queue_manager.lock().await;
                             let subscription_with_tree = job_queue_manager.peek(&subscription_id).await;
                             subscription_with_tree
                         };
+                        eprintln!(
+                            "process_subscription_queue>> Job dequeued: {:?}",
+                            subscription_with_tree
+                        );
 
                         match subscription_with_tree {
                             Ok(Some(job)) => {
@@ -512,8 +580,8 @@ impl ExternalSubscriberManager {
                                 // Log the error
                             }
                         }
-
                         drop(_permit);
+                        processing_jobs.lock().await.remove(&subscription_id);
                     });
                     handles.push(handle);
                 }
@@ -522,10 +590,29 @@ impl ExternalSubscriberManager {
                 futures::future::join_all(handles_to_join).await;
                 handles.clear();
 
-                // Wait for interval_minutes before the next iteration
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+                // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
+                // without waiting for a new job from receiver.recv().await
+                if continue_immediately {
+                    continue;
+                }
 
-                // TODO: the continue_immediately logic is a temporary solution to avoid waiting for the interval
+                eprintln!("process_subscription_queue>> Waiting for new jobs");
+                // Receive new jobs
+                if let Some(new_job) = receiver.recv().await {
+                    eprintln!(
+                        "process_subscription_queue>> Received new job: {:?}",
+                        new_job.subscription.subscription_id
+                    );
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Info,
+                        format!(
+                            "Received new subscription job {:?}",
+                            new_job.subscription.subscription_id.clone().get_unique_id().to_string()
+                        )
+                        .as_str(),
+                    );
+                }
             }
         })
     }
@@ -947,21 +1034,22 @@ impl ExternalSubscriberManager {
             ),
         );
 
-        // Validate Subscription Exists and that Requesting Node matches the subscription
-        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
-            "Database instance is not available".to_string(),
-        ))?;
-        let db = db.lock().await;
+        let subscription = {
+            // Validate Subscription Exists and that Requesting Node matches the subscription
+            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+                "Database instance is not available".to_string(),
+            ))?;
+            let db = db.lock().await;
 
-        let subscription = db
-            .get_subscription_by_id(&SubscriptionId::from_unique_id(subscription_unique_id.clone()))
-            .map_err(|e| match e {
-                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
-                    "Subscription with ID {} not found",
-                    subscription_unique_id
-                )),
-                _ => SubscriberManagerError::DatabaseError(e.to_string()),
-            })?;
+            db.get_subscription_by_id(&SubscriptionId::from_unique_id(subscription_unique_id.clone()))
+                .map_err(|e| match e {
+                    ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+                        "Subscription with ID {} not found",
+                        subscription_unique_id
+                    )),
+                    _ => SubscriberManagerError::DatabaseError(e.to_string()),
+                })?
+        };
 
         if subscription.subscriber_identity.get_node_name() != subscriber_node_name.get_node_name() {
             return Err(SubscriberManagerError::InvalidSubscriber(
@@ -982,6 +1070,7 @@ impl ExternalSubscriberManager {
             if queue_manager.peek(&unique_id).await?.is_none() {
                 eprintln!("Adding to queue: {:?}", subscription_with_tree);
                 let _ = queue_manager.push(&unique_id, subscription_with_tree).await;
+                eprintln!("*** Added to queue!");
             }
         }
 

@@ -1145,7 +1145,9 @@ fn subscription_manager_test() {
             {
                 eprintln!("Send updates to subscribers");
                 // add delay of 5 seconds
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                eprintln!("next sleep");
+                tokio::time::sleep(Duration::from_secs(5)).await; 
                 // --
                 // TODO: request current state from subscriber node
                 // TODO: process request from the subscriber node and compute diff

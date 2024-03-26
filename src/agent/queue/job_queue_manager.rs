@@ -137,6 +137,8 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let db = db_arc.lock().await;
         db.persist_queue(&self.cf_name, key, &guarded_queue, self.prefix.clone())?;
         drop(db);
+        eprintln!("key: {:?}", key);
+        eprintln!("prefix: {:?}", self.prefix);
 
         // Notify subscribers
         let subscribers = self.subscribers.lock().await;
@@ -198,12 +200,16 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
     }
 
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
+        eprintln!("Getting all elements");
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let db_lock = db_arc.lock().await;
         let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>(&self.cf_name, self.prefix.clone())?;
+        eprintln!("prefix: {:?}", self.prefix);
+        eprintln!("DB Queues: {:?}", db_queues);
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
+        eprintln!("Keys: {:?}", keys);
         keys.sort_by(|a, b| {
             let a_first = db_queues.get(a).and_then(|q| q.first());
             let b_first = db_queues.get(b).and_then(|q| q.first());
@@ -270,7 +276,6 @@ mod tests {
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
     use std::{fs, path::Path};
 
-    #[test]
     fn setup() {
         let path = Path::new("db_tests/");
         let _ = fs::remove_dir_all(&path);
