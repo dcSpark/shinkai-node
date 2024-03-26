@@ -180,7 +180,7 @@ async fn test_vector_fs_saving_reading() {
     let internals = vector_fs
         .get_profile_fs_internals_read_only(&default_test_profile())
         .unwrap();
-    internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
+    // internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
     // Sets the permission to private from default Whitelist (for later test cases)
     let perm_writer = vector_fs
@@ -769,7 +769,8 @@ async fn test_vector_fs_operations() {
 
     // Compare original vrpack with new re-created vrpack
 
-    let mut old_vrpack_contents = vrpack.unpack_all_vrkais().unwrap();
+    let old_vrpack = vrpack.clone();
+    let mut old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
 
     let reader = orig_writer
         .new_reader_copied_data(
@@ -777,7 +778,13 @@ async fn test_vector_fs_operations() {
             &mut vector_fs,
         )
         .unwrap();
-    let mut new_vrpack_contents = vector_fs.retrieve_vrpack(&reader).unwrap().unpack_all_vrkais().unwrap();
+    let mut new_vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+    let mut new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
+
+    println!("\n\nOld VRPack:");
+    old_vrpack.print_internal_structure(None, true);
+    println!("\n\nNew VRPack:");
+    new_vrpack.print_internal_structure(None, true);
 
     old_vrpack_contents.sort_by(|a, b| {
         a.0.resource
@@ -793,126 +800,126 @@ async fn test_vector_fs_operations() {
             .cmp(&b.0.resource.as_trait_object().reference_string())
     });
 
-    for oc in &old_vrpack_contents {
-        for nc in &new_vrpack_contents {
-            println!("old: {}", oc.1);
-            println!("new: {}", nc.1);
-            // assert_eq!(oc.1, nc.1);
-            // assert_eq!(
-            //     oc.0.resource.as_trait_object().reference_string(),
-            //     nc.0.resource.as_trait_object().reference_string()
-            // );
-        }
-    }
+    // for oc in &old_vrpack_contents {
+    //     for nc in &new_vrpack_contents {
+    //         println!("old: {}", oc.1);
+    //         println!("new: {}", nc.1);
+    //         // assert_eq!(oc.1, nc.1);
+    //         // assert_eq!(
+    //         //     oc.0.resource.as_trait_object().reference_string(),
+    //         //     nc.0.resource.as_trait_object().reference_string()
+    //         // );
+    //     }
+    // }
 
-    // //
-    // // Move/Deletion Tests for Folders
-    // //
+    //
+    // Move/Deletion Tests for Folders
+    //
 
-    // // Moving a folder from one location to another means the previous path is empty & the folder is in the new location
-    // let folder_name = "new_root_folder".to_string();
-    // let folder_to_move_path = VRPath::root().push_cloned(folder_name.to_string());
-    // let destination_folder_path = second_folder_path.clone();
-    // let new_folder_location_path = destination_folder_path.push_cloned(folder_name.to_string());
+    // Moving a folder from one location to another means the previous path is empty & the folder is in the new location
+    let folder_name = "new_root_folder".to_string();
+    let folder_to_move_path = VRPath::root().push_cloned(folder_name.to_string());
+    let destination_folder_path = second_folder_path.clone();
+    let new_folder_location_path = destination_folder_path.push_cloned(folder_name.to_string());
 
-    // let orig_folder_writer = vector_fs
-    //     .new_writer(
-    //         default_test_profile(),
-    //         folder_to_move_path.clone(),
-    //         default_test_profile(),
-    //     )
-    //     .unwrap();
+    let orig_folder_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            folder_to_move_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // // Validate folder moving works
+    // Validate folder moving works
 
-    // vector_fs
-    //     .move_folder(&orig_folder_writer, destination_folder_path.clone())
-    //     .unwrap();
+    vector_fs
+        .move_folder(&orig_folder_writer, destination_folder_path.clone())
+        .unwrap();
 
     // vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
-    // let orig_folder_location_check = vector_fs
-    //     .validate_path_points_to_entry(folder_to_move_path.clone(), &default_test_profile())
-    //     .is_err();
-    // assert!(
-    //     orig_folder_location_check,
-    //     "The folder should no longer exist in the original location."
-    // );
+    let orig_folder_location_check = vector_fs
+        .validate_path_points_to_entry(folder_to_move_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(
+        orig_folder_location_check,
+        "The folder should no longer exist in the original location."
+    );
 
-    // let new_folder_location_check = vector_fs
-    //     .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
-    //     .is_ok();
-    // assert!(
-    //     new_folder_location_check,
-    //     "The folder should now exist in the new location."
-    // );
+    let new_folder_location_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_ok();
+    assert!(
+        new_folder_location_check,
+        "The folder should now exist in the new location."
+    );
 
-    // // Validate folder deletion works
-    // let folder_to_delete_writer = vector_fs
-    //     .new_writer(
-    //         default_test_profile(),
-    //         new_folder_location_path.clone(),
-    //         default_test_profile(),
-    //     )
-    //     .unwrap();
+    // Validate folder deletion works
+    let folder_to_delete_writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            new_folder_location_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
 
-    // vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
+    vector_fs.delete_folder(&folder_to_delete_writer).unwrap();
 
-    // let folder_deletion_check = vector_fs
-    //     .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
-    //     .is_err();
-    // assert!(folder_deletion_check, "The folder should now not exist.");
+    let folder_deletion_check = vector_fs
+        .validate_path_points_to_entry(new_folder_location_path.clone(), &default_test_profile())
+        .is_err();
+    assert!(folder_deletion_check, "The folder should now not exist.");
 
-    // //
-    // // Validate that after everything, in-memory state == fsdb state
-    // //
-    // let reader = orig_writer
-    //     .new_reader_copied_data(VRPath::root(), &mut vector_fs)
-    //     .unwrap();
-    // let writer = orig_writer
-    //     .new_writer_copied_data(VRPath::root(), &mut vector_fs)
-    //     .unwrap();
-    // let current_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
-    // vector_fs
-    //     .revert_internals_to_last_db_save(&writer.profile, &writer.profile)
-    //     .unwrap();
-    // let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    //
+    // Validate that after everything, in-memory state == fsdb state
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let writer = orig_writer
+        .new_writer_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let current_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    vector_fs
+        .revert_internals_to_last_db_save(&writer.profile, &writer.profile)
+        .unwrap();
+    let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
 
-    // assert_eq!(current_state, new_state);
+    assert_eq!(current_state, new_state);
 
-    // //
-    // // Verify Simplified FSEntry types parse properly
-    // //
-    // let reader = orig_writer
-    //     .new_reader_copied_data(VRPath::root(), &mut vector_fs)
-    //     .unwrap();
-    // let root_json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    //
+    // Verify Simplified FSEntry types parse properly
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let root_json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
 
-    // let simplified_root = SimplifiedFSEntry::from_json(&root_json);
+    let simplified_root = SimplifiedFSEntry::from_json(&root_json);
 
-    // assert!(simplified_root.is_ok());
+    assert!(simplified_root.is_ok());
 
-    // let reader = orig_writer
-    //     .new_reader_copied_data(
-    //         VRPath::from_string("/first_folder/second_folder/").unwrap(),
-    //         &mut vector_fs,
-    //     )
-    //     .unwrap();
-    // let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
     // println!("\n\n folder: {:?}", json);
 
-    // let simplified_folder = SimplifiedFSEntry::from_json(&json);
-    // assert!(simplified_folder.is_ok());
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
 
-    // let reader = orig_writer
-    //     .new_reader_copied_data(
-    //         VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
-    //         &mut vector_fs,
-    //     )
-    //     .unwrap();
-    // let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
     // println!("\n\n item: {:?}", json);
 
-    // let simplified_folder = SimplifiedFSEntry::from_json(&json);
-    // assert!(simplified_folder.is_ok());
+    let simplified_folder = SimplifiedFSEntry::from_json(&json);
+    assert!(simplified_folder.is_ok());
 }

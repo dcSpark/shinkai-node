@@ -431,9 +431,7 @@ impl VectorFS {
         let new_folder = self.internal_copy_folder(writer, destination_writer, current_datetime)?;
 
         // Remove the existing folder
-        println!("Deleting node from core resource.");
         self._remove_node_from_core_resource(writer)?;
-        println!("Deleted.");
 
         // Copy over/Remove the original folder's permissions
         {

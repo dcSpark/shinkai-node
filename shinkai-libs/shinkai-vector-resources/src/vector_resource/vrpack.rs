@@ -138,7 +138,8 @@ impl VRPack {
         let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
         let metadata = None;
         let enc_vrkai = vrkai.encode_as_base64()?;
-        let node = Node::new_text(resource_name.clone(), enc_vrkai, metadata, &vec![]);
+        let mut node = Node::new_text(resource_name.clone(), enc_vrkai, metadata, &vec![]);
+        node.merkle_hash = Some(vrkai.resource.as_trait_object().get_merkle_root()?);
 
         self.resource
             .as_trait_object_mut()
@@ -201,5 +202,65 @@ impl VRPack {
         }
 
         Ok(vrkais_with_paths)
+    }
+
+    /// Prints the internal structure of the VRPack, starting from a given path.
+    pub fn print_internal_structure(&self, starting_path: Option<VRPath>, parse_vrkai: bool) {
+        println!("{} VRPack Internal Structure:", self.name);
+        println!("------------------------------------------------------------");
+        let nodes = self
+            .resource
+            .as_trait_object()
+            .retrieve_nodes_exhaustive(starting_path, false);
+        for node in nodes {
+            let ret_path = node.retrieval_path;
+            let path = ret_path.format_to_string();
+            let path_depth = ret_path.path_ids.len();
+            let data = match &node.node.content {
+                NodeContent::Text(s) => {
+                    let text_content = if s.chars().count() > 25 {
+                        s.chars().take(25).collect::<String>() + "..."
+                    } else {
+                        s.to_string()
+                    };
+                    if parse_vrkai {
+                        match Self::parse_node_to_vrkai(&node.node) {
+                            Ok(vrkai) => format!("VRKai: {}", vrkai.name()),
+                            Err(_) => format!("VRKai: {}", text_content),
+                        }
+                    } else {
+                        format!("VRKai: {}", text_content)
+                    }
+                }
+                NodeContent::Resource(resource) => {
+                    if path_depth == 1 {
+                        println!(" ");
+                    }
+                    format!(
+                        "{} <Folder> - {} Nodes Held Inside",
+                        resource.as_trait_object().name(),
+                        resource.as_trait_object().get_root_embeddings().len()
+                    )
+                }
+                _ => continue, // Skip ExternalContent and VRHeader
+            };
+            // Adding merkle hash if it exists to output string
+            let mut merkle_hash = String::new();
+            if let Ok(hash) = node.node.get_merkle_hash() {
+                if hash.chars().count() > 15 {
+                    merkle_hash = hash.chars().take(15).collect::<String>() + "..."
+                } else {
+                    merkle_hash = hash.to_string()
+                }
+            }
+
+            // Create indent string and do the final print
+            let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
+            if merkle_hash.is_empty() {
+                println!("{}{}", indent_string, data);
+            } else {
+                println!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
+            }
+        }
     }
 }

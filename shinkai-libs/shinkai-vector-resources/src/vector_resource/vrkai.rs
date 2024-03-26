@@ -46,6 +46,11 @@ impl VRKai {
         }
     }
 
+    /// Returns the name of the Vector Resource stored in the VRKai
+    pub fn name(&self) -> String {
+        self.resource.as_trait_object().name().to_string()
+    }
+
     /// Prepares the VRKai to be saved or transferred as compressed bytes.
     /// Of note, this is the bytes of the UTF-8 base64 string. This allows for easy compatibility between the two.
     pub fn encode_as_bytes(&self) -> Result<Vec<u8>, VRError> {
