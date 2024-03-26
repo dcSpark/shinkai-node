@@ -428,7 +428,7 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn vecfs_share_current_shared_folder_state(
-        tree_item_json: String,
+        tree_item_response: SubscriptionGenericResponse,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -438,7 +438,7 @@ impl ShinkaiMessageBuilder {
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
-            tree_item_json,
+            tree_item_response,
             MessageSchemaType::SubscriptionRequiresTreeUpdateResponse,
             my_encryption_secret_key,
             my_signature_secret_key,

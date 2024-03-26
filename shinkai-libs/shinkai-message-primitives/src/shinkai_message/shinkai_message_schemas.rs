@@ -252,6 +252,8 @@ impl JobRecipient {
 
 /// Represents the response for a subscription request, providing details
 /// about the subscription status and any errors encountered.
+/// Note(Nico): I know things will be much simpler if we added SubscriptionId here
+/// but can't trust other nodes, we need to generate those on your side.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SubscriptionGenericResponse {
     /// Detailed information about the subscription, formatted as a JSON string.

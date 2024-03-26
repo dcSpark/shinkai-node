@@ -26,7 +26,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -282,7 +282,8 @@ impl ExternalSubscriberManager {
             + Sync
             + 'static,
     ) -> tokio::task::JoinHandle<()> {
-        // let job_queue_manager = Arc::clone(&job_queue_manager); // not needed?
+        let job_queue_manager = Arc::clone(&job_queue_manager);
+        let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(thread_number));
         let process_job = Arc::new(process_job);
 
@@ -317,6 +318,7 @@ impl ExternalSubscriberManager {
             }
 
             loop {
+                let mut continue_immediately = false;
                 eprintln!("Starting subscribers processing loop");
                 // Game Plan:
                 // Phase 1
@@ -378,19 +380,21 @@ impl ExternalSubscriberManager {
                 for subscription_id in filtered_subscription_ids {
                     let subscription_id_str = subscription_id.get_unique_id().to_string();
                     // Perform the asynchronous check
-                    let is_not_queued = job_queue_manager
+                    let is_not_queued = {
+                        let job_queue_manager_clone = Arc::clone(&job_queue_manager);
+                        let result = job_queue_manager_clone
                         .lock()
                         .await
                         .peek(&subscription_id_str)
                         .await
                         .map_or(true, |opt| opt.is_none());
+                        result
+                    };
                     if is_not_queued {
                         post_filtered_subscription_ids.push(subscription_id);
                     }
                 }
                 // Now we send requests to the subscribers to get their current state
-                // TODO: implement function
-
                 for subscription_id in post_filtered_subscription_ids.clone() {
                     let _ = Self::create_and_send_request_updated_state(
                         subscription_id,
@@ -405,10 +409,40 @@ impl ExternalSubscriberManager {
 
                 // End Phase 1
                 // Start Phase 2: We check current jobs that are ready to go
+                let job_ids_to_perform_comparisons_and_send_files = {
+                    let mut processing_jobs_lock = processing_jobs.lock().await;
+                    let job_queue_manager_clone = Arc::clone(&job_queue_manager);
+                    let job_queue_manager_lock = job_queue_manager_clone.lock().await;
+                    let all_jobs = job_queue_manager_lock
+                        .get_all_elements_interleave()
+                        .await
+                        .unwrap_or(Vec::new());
+                    drop(job_queue_manager_lock);
+                    std::mem::drop(job_queue_manager_clone);
 
-                // *******
-                // TODO: this should be for only the ones that are in the queue
-                for subscription_id in post_filtered_subscription_ids {
+                    let filtered_jobs = all_jobs
+                        .into_iter()
+                        .filter_map(|job| {
+                            let job_id = job.subscription.subscription_id.clone().get_unique_id().to_string();
+                            if !processing_jobs_lock.contains(&job_id) {
+                                processing_jobs_lock.insert(job_id.clone());
+                                Some(job_id)
+                            } else {
+                                None
+                            }
+                        })
+                        .take(thread_number)
+                        .collect::<Vec<_>>();
+
+                    // Check if the number of jobs to process is equal to max_parallel_jobs
+                    continue_immediately = filtered_jobs.len() == thread_number;
+
+                    std::mem::drop(processing_jobs_lock);
+                    filtered_jobs
+                };
+
+                for subscription_id in job_ids_to_perform_comparisons_and_send_files {
+                    let job_queue_manager = Arc::clone(&job_queue_manager);
                     let semaphore = semaphore.clone();
                     let db = db.clone();
                     let vector_fs = vector_fs.clone();
@@ -424,64 +458,61 @@ impl ExternalSubscriberManager {
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
-                        let subscription = {
-                            let db = match db.upgrade() {
-                                Some(db) => db,
-                                None => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::ExtSubscriptions,
-                                        ShinkaiLogLevel::Error,
-                                        "Database instance is not available",
-                                    );
-                                    return;
-                                }
-                            };
-                            let db = db.lock().await;
-                            match db.get_subscription_by_id(&subscription_id) {
-                                Ok(subscription) => subscription,
-                                Err(e) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::ExtSubscriptions,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("Failed to fetch subscription: {:?}", e),
-                                    );
-                                    return;
+                        // Acquire the lock, dequeue the job, and immediately release the lock
+                        let subscription_with_tree = {
+                            let job_queue_manager = job_queue_manager.lock().await;
+                            let subscription_with_tree = job_queue_manager.peek(&subscription_id).await;
+                            subscription_with_tree
+                        };
+
+                        match subscription_with_tree {
+                            Ok(Some(job)) => {
+                                // Acquire the lock, process the job, and immediately release the lock
+                                let result = {
+                                    let result = process_job(
+                                        job.clone(),
+                                        db.clone(),
+                                        vector_fs.clone(),
+                                        node_name.clone(),
+                                        my_signature_secret_key.clone(),
+                                        my_encryption_secret_key.clone(),
+                                        identity_manager.clone(),
+                                        shared_folders_trees.clone(),
+                                        subscription_ids_are_sync.clone(),
+                                        shared_folders_to_ephemeral_versioning_clone.clone(),
+                                    )
+                                    .await;
+                                    if let Ok(Some(_)) = job_queue_manager
+                                        .lock()
+                                        .await
+                                        .dequeue(&job.subscription.subscription_id.clone().get_unique_id().to_string())
+                                        .await
+                                    {
+                                        result
+                                    } else {
+                                        Err(SubscriberManagerError::OperationFailed(format!(
+                                            "Failed to dequeue job: {}",
+                                            job.subscription.subscription_id.clone().get_unique_id().to_string()
+                                        )))
+                                    }
+                                };
+                                match result {
+                                    Ok(_) => {
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Debug,
+                                            "Job processed successfully",
+                                        );
+                                    } // handle success case
+                                    Err(_) => {} // handle error case
                                 }
                             }
-                        };
+                            Ok(None) => {}
+                            Err(_) => {
+                                // Log the error
+                            }
+                        }
 
-                        // TODO: replace this with the actual one. if we don't have it, wee need to request it
-                        let subscription_with_tree = SubscriptionWithTree {
-                            subscription,
-                            subscriber_folder_tree: FSItemTree {
-                                name: "/".to_string(),
-                                path: "/".to_string(),
-                                last_modified: Utc::now(),
-                                children: HashMap::new(),
-                            },
-                        };
-
-                        let _ = process_job(
-                            subscription_with_tree,
-                            db.clone(),
-                            vector_fs.clone(),
-                            node_name.clone(),
-                            my_signature_secret_key.clone(),
-                            my_encryption_secret_key.clone(),
-                            identity_manager.clone(),
-                            shared_folders_trees.clone(),
-                            subscription_ids_are_sync.clone(),
-                            shared_folders_to_ephemeral_versioning_clone.clone(),
-                        )
-                        .await
-                        .unwrap_or_else(|e| {
-                            shinkai_log(
-                                ShinkaiLogOption::ExtSubscriptions,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to process job: {:?}", e),
-                            );
-                            "Failed to process job".to_string()
-                        });
                         drop(_permit);
                     });
                     handles.push(handle);
@@ -493,6 +524,8 @@ impl ExternalSubscriberManager {
 
                 // Wait for interval_minutes before the next iteration
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+
+                // TODO: the continue_immediately logic is a temporary solution to avoid waiting for the interval
             }
         })
     }
@@ -947,6 +980,7 @@ impl ExternalSubscriberManager {
         {
             let mut queue_manager = self.subscriptions_queue_manager.lock().await;
             if queue_manager.peek(&unique_id).await?.is_none() {
+                eprintln!("Adding to queue: {:?}", subscription_with_tree);
                 let _ = queue_manager.push(&unique_id, subscription_with_tree).await;
             }
         }

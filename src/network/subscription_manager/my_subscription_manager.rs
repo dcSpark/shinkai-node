@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
 use shinkai_message_primitives::schemas::shinkai_subscription_req::SubscriptionPayment;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    MessageSchemaType, SubscriptionGenericResponse,
+    MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -401,6 +401,7 @@ impl MySubscriptionsManager {
         subscription_id: String,
     ) -> Result<(), SubscriberManagerError> {
         let mut subscription_folder_path: Option<String> = None;
+        let mut subscription_shared_path: String;
         {
             // Attempt to upgrade the weak pointer to the DB and lock it
             let db = self
@@ -430,6 +431,7 @@ impl MySubscriptionsManager {
                     .clone()
                     .unwrap_or_else(|| subscription.shared_folder.clone()),
             );
+            subscription_shared_path = subscription.shared_folder.clone();
         }
 
         let folder_path = subscription_folder_path.ok_or_else(|| {
@@ -459,9 +461,21 @@ impl MySubscriptionsManager {
 
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
+            // Prepare metadata hashmap
+            let mut metadata = std::collections::HashMap::new();
+            metadata.insert("folder_state".to_string(), result_json);
+
             // Update to use SubscriptionRequiresTreeUpdateResponse instead
+            let response = SubscriptionGenericResponse {
+                subscription_details: format!("Subscriber shared folder tree state shared"),
+                status: SubscriptionResponseStatus::Success,
+                shared_folder: subscription_shared_path,
+                error: None,
+                metadata: Some(metadata),
+            };
+
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
-                result_json,
+                response,
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,

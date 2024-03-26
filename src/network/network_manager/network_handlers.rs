@@ -34,6 +34,7 @@ use shinkai_message_primitives::{
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
+use tonic::metadata;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::network_job_manager_error::NetworkJobQueueError;
@@ -496,7 +497,6 @@ pub async fn handle_network_message_cases(
                                     )
                                     .unwrap();
 
-                                    // 3.- Send message back with response
                                     Node::send(
                                         msg,
                                         Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
@@ -625,20 +625,44 @@ pub async fn handle_network_message_cases(
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let request_node_name = requester.get_node_name();
 
-                    // TODO: convert to SubscriptionGenericResponse type
                     let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
 
-                    match serde_json::from_str::<String>(&item_tree_json_content) {
-                        Ok(inner_json_string) => {
-                            // Now, attempt to deserialize the inner JSON string into FSItemTree
-                            match serde_json::from_str::<FSItemTree>(&inner_json_string) {
-                                Ok(item_tree) => {
-                                    println!("Successfully deserialized FSItemTree: {:?}", item_tree);
-                                    panic!("end of the constructed road");
+                    // match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
+                    match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
+                        Ok(response) => {
+                            // Attempt to deserialize the inner JSON string into FSItemTree
+                            if let Some(metadata) = response.metadata {
+                                if let Some(tree_content) = metadata.get("folder_state") {
+                                    match serde_json::from_str::<FSItemTree>(tree_content) {
+                                        Ok(item_tree) => {
+                                            println!("Successfully deserialized FSItemTree: {:?}", item_tree);
+
+                                            let subscription_unique_id = SubscriptionId::new(
+                                                requester.extract_node(),
+                                                response.shared_folder.clone(),
+                                                ShinkaiName::new(my_node_profile_name.to_string()).unwrap(),
+                                            );
+                                            let external_subscriber_manager =
+                                                external_subscription_manager.lock().await;
+                                            let _ = external_subscriber_manager
+                                                .subscriber_current_state_response(
+                                                    subscription_unique_id.get_unique_id().to_string(),
+                                                    item_tree,
+                                                    requester,
+                                                )
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            println!("Failed to deserialize inner JSON string to FSItemTree: {}", e);
+                                        }
+                                    }
+                                } else {
+                                    println!("'folder_state' not found in metadata.");
+                                    // Handle the case where 'folder_state' is missing in metadata
                                 }
-                                Err(e) => {
-                                    println!("Failed to deserialize inner JSON string to FSItemTree: {}", e);
-                                }
+                            } else {
+                                println!("Metadata is missing.");
+                                // Handle the case where metadata is missing
                             }
                         }
                         Err(e) => {
