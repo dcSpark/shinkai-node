@@ -107,7 +107,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 //     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
 //     // Without source file map
 //     let vrkai = VRKai::from_base_vector_resource(resource, None, None);
-//     let vrkai_bytes = vrkai.prepare_as_bytes().expect("Failed to prepare VRKai bytes");
+//     let vrkai_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRKai bytes");
 //     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
 // }
 
@@ -180,7 +180,7 @@ async fn test_vector_fs_saving_reading() {
     let internals = vector_fs
         .get_profile_fs_internals_read_only(&default_test_profile())
         .unwrap();
-    internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
+    // internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
     // Sets the permission to private from default Whitelist (for later test cases)
     let perm_writer = vector_fs
@@ -693,6 +693,132 @@ async fn test_vector_fs_operations() {
     assert!(new_location_check, "The item should now exist in the new location.");
 
     //
+    // VRPack creation & unpacking into VecFS tests
+    //
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .unwrap();
+    let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+
+    vrpack
+        .resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, true, false);
+
+    let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+
+    assert_eq!(unpacked_kais.len(), 4);
+
+    // Now retrieve vrpack for non-root folder
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::root().push_cloned("new_root_folder".to_string()),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+
+    vrpack
+        .resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, true, false);
+
+    let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+
+    assert_eq!(unpacked_kais.len(), 3);
+
+    // Now testing unpacking back into the VectorFS
+
+    let unpack_path = VRPath::root().push_cloned("unpacked".to_string());
+    assert!(vector_fs
+        .validate_path_points_to_entry(unpack_path.clone(), &default_test_profile())
+        .is_err());
+
+    // Prepare a writer for the 'unpacked' folder
+    let unpack_writer = vector_fs
+        .new_writer(default_test_profile(), unpack_path.clone(), default_test_profile())
+        .unwrap();
+
+    // Unpack the VRPack into the 'unpacked' folder
+    vector_fs
+        .extract_vrpack_in_folder(&unpack_writer, vrpack.clone())
+        .unwrap();
+
+    // Verify the 'unpacked' folder now exists
+    assert!(vector_fs
+        .validate_path_points_to_folder(unpack_path.clone(), &unpack_writer.profile)
+        .is_ok());
+
+    let unpack_writer = vector_fs
+        .new_writer(
+            default_test_profile().clone(),
+            unpack_path.clone(),
+            default_test_profile(),
+        )
+        .unwrap();
+    let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
+    let simplified_folder = SimplifiedFSEntry::from_json(&json).unwrap();
+
+    assert_eq!(simplified_folder.clone().as_folder().unwrap().child_items.len(), 1);
+    assert_eq!(simplified_folder.as_folder().unwrap().child_folders.len(), 1);
+
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
+    // Compare original vrpack with new re-created vrpack
+
+    let old_vrpack = vrpack.clone();
+    let mut old_vrpack_contents = old_vrpack.unpack_all_vrkais().unwrap();
+
+    let reader = orig_writer
+        .new_reader_copied_data(
+            VRPath::root().push_cloned("new_root_folder".to_string()),
+            &mut vector_fs,
+        )
+        .unwrap();
+    let mut new_vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
+    let mut new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
+
+    println!("\n\nOld VRPack:");
+    old_vrpack.print_internal_structure(None, true);
+    println!("\n\nNew VRPack:");
+    new_vrpack.print_internal_structure(None, true);
+
+    old_vrpack_contents.sort_by(|a, b| {
+        a.0.resource
+            .as_trait_object()
+            .reference_string()
+            .cmp(&b.0.resource.as_trait_object().reference_string())
+    });
+
+    new_vrpack_contents.sort_by(|a, b| {
+        a.0.resource
+            .as_trait_object()
+            .reference_string()
+            .cmp(&b.0.resource.as_trait_object().reference_string())
+    });
+
+    // for oc in &old_vrpack_contents {
+    //     for nc in &new_vrpack_contents {
+    //         println!("old: {}", oc.1);
+    //         println!("new: {}", nc.1);
+    //         // assert_eq!(oc.1, nc.1);
+    //         // assert_eq!(
+    //         //     oc.0.resource.as_trait_object().reference_string(),
+    //         //     nc.0.resource.as_trait_object().reference_string()
+    //         // );
+    //     }
+    // }
+
+    // Cleanup after vrpack tests
+    let deletion_writer = unpack_writer
+        .new_writer_copied_data(VRPath::root().push_cloned("unpacked".to_string()), &mut vector_fs)
+        .unwrap();
+    vector_fs.delete_folder(&unpack_writer).unwrap();
+
+    //
     // Move/Deletion Tests for Folders
     //
 
@@ -716,7 +842,7 @@ async fn test_vector_fs_operations() {
         .move_folder(&orig_folder_writer, destination_folder_path.clone())
         .unwrap();
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    // vector_fs.print_profile_vector_fs_resource(default_test_profile());
 
     let orig_folder_location_check = vector_fs
         .validate_path_points_to_entry(folder_to_move_path.clone(), &default_test_profile())
@@ -786,7 +912,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
-    println!("\n\n folder: {:?}", json);
+    // println!("\n\n folder: {:?}", json);
 
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());
@@ -798,7 +924,7 @@ async fn test_vector_fs_operations() {
         )
         .unwrap();
     let json = vector_fs.retrieve_fs_path_simplified_json(&reader).unwrap();
-    println!("\n\n item: {:?}", json);
+    // println!("\n\n item: {:?}", json);
 
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());

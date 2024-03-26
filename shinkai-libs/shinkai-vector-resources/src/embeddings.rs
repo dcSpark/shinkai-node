@@ -18,6 +18,11 @@ impl Embedding {
         }
     }
 
+    /// Creates a new empty `Embedding`.
+    pub fn new_empty() -> Self {
+        Embedding::new("", vec![])
+    }
+
     pub fn set_id(&mut self, id: String) {
         self.id = id;
     }

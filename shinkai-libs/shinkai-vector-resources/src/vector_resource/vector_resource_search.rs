@@ -61,7 +61,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     /// and the Nodes they hold additionally. If a starting_path is provided then fetches all nodes from there,
     /// else starts at root. If resources_only is true, only Vector Resources are returned.
     fn retrieve_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
-        let empty_embedding = Embedding::new("", vec![]);
+        let empty_embedding = Embedding::new_empty();
         let mut nodes = self.vector_search_customized(
             empty_embedding,
             0,
