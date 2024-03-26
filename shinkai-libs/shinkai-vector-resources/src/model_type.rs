@@ -10,6 +10,7 @@ pub type EmbeddingModelTypeString = String;
 pub enum EmbeddingModelType {
     TextEmbeddingsInference(TextEmbeddingsInference),
     OpenAI(OpenAIModelType),
+    OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference),
 }
 
 impl EmbeddingModelType {
@@ -59,6 +60,9 @@ impl EmbeddingModelType {
             EmbeddingModelType::OpenAI(model) => match model {
                 OpenAIModelType::OpenAITextEmbeddingAda002 => CONTEXT_8200,
             },
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
+                OllamaTextEmbeddingsInference::NomicEmbedText => 8192,
+            },
         }
     }
 }
@@ -68,11 +72,17 @@ impl fmt::Display for EmbeddingModelType {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string().fmt(f),
             EmbeddingModelType::OpenAI(model) => model.to_string().fmt(f),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => write!(f, "{}", model),
         }
     }
 }
 
-/// Hugging Face's Text Embeddings Inference Server
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum OllamaTextEmbeddingsInference {
+    NomicEmbedText,
+}
+
+/// Hugging Face's Text Embeddings Inference
 /// (https://github.com/huggingface/text-embeddings-inference)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TextEmbeddingsInference {
@@ -207,5 +217,13 @@ impl OpenAIModelType {
 impl fmt::Display for OpenAIModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_string())
+    }
+}
+
+impl fmt::Display for OllamaTextEmbeddingsInference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OllamaTextEmbeddingsInference::NomicEmbedText => write!(f, "nomic-embed-text"),
+        }
     }
 }

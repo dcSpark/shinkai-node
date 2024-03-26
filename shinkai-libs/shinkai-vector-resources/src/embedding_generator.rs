@@ -156,7 +156,10 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 
         match self.model_type {
             EmbeddingModelType::TextEmbeddingsInference(_) => {
-                self.generate_embedding_tei(input_strings.clone(), ids.clone()).await
+                self.generate_embedding_ollama(input_strings.clone(), ids.clone()).await
+            },
+            EmbeddingModelType::OllamaTextEmbeddingsInference(_) => {
+                self.generate_embedding_ollama(input_strings.clone(), ids.clone()).await
             }
             _ => {
                 let mut embeddings = Vec::new();
@@ -228,6 +231,74 @@ impl RemoteEmbeddingGenerator {
             format!("{}embed", self.api_url)
         } else {
             format!("{}/embed", self.api_url)
+        }
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Generates embeddings using Hugging Face's Text Embedding Interface server
+    pub async fn generate_embedding_ollama(
+        &self,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
+    ) -> Result<Vec<Embedding>, VRError> {
+        // Prepare the request body
+        let request_body = OllamaEmbeddingsRequestBody {
+            model: "all-minilm".to_string(),
+            prompt: input_strings.join(" "),
+        };
+
+        // Create the HTTP client
+        let client = AsyncClient::new();
+
+        // Build the request
+        let mut request = client
+            .post("http://localhost:11434/api/embeddings")
+            .header("Content-Type", "application/json")
+            .json(&request_body);
+
+        // Add the API key to the header if it's available
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        // Send the request and check for errors
+        let response = request.send().await.map_err(|err| {
+            // Handle any HTTP client errors here (e.g., request creation failure)
+            VRError::RequestFailed(format!("HTTP request failed: {}", err))
+        })?;
+
+        // Check if the response is successful
+        if response.status().is_success() {
+            let embedding_response: Result<OllamaEmbeddingsResponse, _> = response.json::<OllamaEmbeddingsResponse>().await;
+
+            match embedding_response {
+                Ok(embedding_response) => {
+                    // Create a Vec<Embedding> by iterating over ids and embeddings
+                    let embeddings: Result<Vec<Embedding>, _> = ids
+                        .iter()
+                        .zip(embedding_response.embedding.into_iter())
+                        .map(|(id, embedding)| {
+                            Ok(Embedding {
+                                id: id.clone(),
+                                vector: vec![embedding],
+                            })
+                        })
+                        .collect();
+
+                    // Return the embeddings
+                    embeddings
+                }
+                Err(err) => Err(VRError::RequestFailed(format!(
+                    "Failed to deserialize response JSON: {}",
+                    err
+                ))),
+            }
+        } else {
+            // Handle non-successful HTTP responses (e.g., server error)
+            Err(VRError::RequestFailed(format!(
+                "HTTP request failed with status: {}",
+                response.status()
+            )))
         }
     }
 
@@ -560,6 +631,17 @@ struct EmbeddingResponse {
 #[derive(Serialize)]
 struct EmbeddingArrayRequestBody {
     inputs: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct OllamaEmbeddingsRequestBody {
+    model: String,
+    prompt: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaEmbeddingsResponse {
+    embedding: Vec<f32>,
 }
 
 // /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
