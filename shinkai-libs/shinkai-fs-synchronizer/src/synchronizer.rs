@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
 use shinkai_vector_resources::vector_resource::SimplifiedFSRoot;
 
+use crate::communication::PostRequestError;
 use crate::shinkai_manager::ShinkaiManager;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
 use std::hash::{Hash, Hasher};
@@ -170,8 +172,11 @@ impl FilesystemSynchronizer {
             match self.shinkai_manager.clone().get_node_folder(&check_path).await {
                 Ok(_) => println!("{} already exists on the node.", check_path),
                 Err(e) => {
-                    if let Err(e) = self.shinkai_manager.clone().create_folder(part, &current_path).await {
-                        eprintln!("Failed to create folder {} on the node: {:?}", check_path, e);
+                    eprintln!("Folder not found {:?}", e);
+                    if let PostRequestError::FSFolderNotFound(_) = e {
+                        if let Err(e) = self.shinkai_manager.clone().create_folder(part, &current_path).await {
+                            eprintln!("Failed to create folder {} on the node: {:?}", check_path, e);
+                        }
                     }
                 }
             }

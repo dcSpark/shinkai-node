@@ -1,4 +1,7 @@
-use crate::{communication, persistent::Storage};
+use crate::{
+    communication::{self, PostRequestError},
+    persistent::Storage,
+};
 use ed25519_dalek::SigningKey;
 use serde::Deserialize;
 use shinkai_message_primitives::{
@@ -190,17 +193,17 @@ impl ShinkaiManager {
         }
     }
 
-    pub async fn get_node_folder(&mut self, path: &str) -> Result<SimplifiedFSEntry, &'static str> {
-        // let formatted_folder_name = if path.starts_with("/") {
-        //     path.to_string()
-        // } else {
-        //     format!("/{}", path)
-        // };
+    pub async fn get_node_folder(&mut self, path: &str) -> Result<SimplifiedFSEntry, PostRequestError> {
+        let formatted_path = if path.starts_with("/") {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
 
-        dbg!(path.clone());
+        println!("Checking {} in vector FS using vecfs_retrieve_path_simplified", &path);
 
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
-            &path,
+            &formatted_path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,
@@ -208,7 +211,10 @@ impl ShinkaiManager {
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),
             "".to_string(),
-        )?;
+        )
+        .unwrap();
+
+        // TODO: handle unwrap()
 
         let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
         let response = crate::communication::request_post(
@@ -220,7 +226,7 @@ impl ShinkaiManager {
 
         let simplified_path_json_response = match response {
             Ok(data) => Ok(data.data),
-            Err(e) => Err("Failed to retrieve node folder"),
+            Err(e) => Err(e),
         };
 
         match simplified_path_json_response {
@@ -245,12 +251,10 @@ impl ShinkaiManager {
             name
         };
 
-        dbg!(&folder_name.to_string());
-        dbg!(&path);
-
+        println!("Creating folder: {} in path: {}", &folder_name.to_string(), &path);
         let shinkai_message = ShinkaiMessageBuilder::vecfs_create_folder(
             &folder_name,
-            &formatted_path,
+            &path,
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,
