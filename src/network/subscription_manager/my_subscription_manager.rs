@@ -104,7 +104,7 @@ impl MySubscriptionsManager {
             db.clone(),
             vector_fs.clone(),
             thread_number,
-            |job, db, vector_fs| MySubscriptionsManager::process_job_message_queued(job, db, vector_fs),
+            |job, db, vector_fs| MySubscriptionsManager::process_subscription_job_message_queued(job, db, vector_fs),
         )
         .await;
 
@@ -586,9 +586,9 @@ impl MySubscriptionsManager {
         })
     }
 
-    // Placeholder for process_job_message_queued
+    // Placeholder for process_subscription_job_message_queued
     // Correct the return type of the function to match the expected type
-    fn process_job_message_queued(
+    fn process_subscription_job_message_queued(
         job: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,

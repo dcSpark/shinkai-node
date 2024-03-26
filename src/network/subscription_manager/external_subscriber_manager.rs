@@ -184,7 +184,7 @@ impl ExternalSubscriberManager {
             subscription_ids_are_sync.clone(),
             shared_folders_to_ephemeral_versioning.clone(),
             thread_number,
-            |job,
+            |subscription_with_tree,
              db,
              vector_fs,
              node_name,
@@ -194,8 +194,8 @@ impl ExternalSubscriberManager {
              shared_folders_trees,
              subscription_ids_are_sync,
              shared_folders_to_ephemeral_versioning| {
-                ExternalSubscriberManager::process_job_message_queued(
-                    job,
+                ExternalSubscriberManager::process_subscription_job_message_queued(
+                    subscription_with_tree,
                     db,
                     vector_fs,
                     node_name,
@@ -389,7 +389,7 @@ impl ExternalSubscriberManager {
         })
     }
 
-    fn process_job_message_queued(
+    fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
@@ -405,11 +405,11 @@ impl ExternalSubscriberManager {
             // TODO: Make this code production ready
             eprintln!("my node name: {:?}", node_name);
             println!(
-                "process_job_message_queued> Processing job: {:?}",
+                "process_subscription_job_message_queued> Processing job: {:?}",
                 subscription_with_tree.subscription.subscription_id
             );
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
-            
+
             eprintln!("user subscription_with_tree: {:?}", subscription_with_tree);
             eprintln!(
                 "user shared folder: {:?}",
@@ -422,12 +422,19 @@ impl ExternalSubscriberManager {
             eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
             // Calculate diff
-            eprintln!("process_job_message_queued>> Calculating diff");
+            eprintln!("process_subscription_job_message_queued>> Calculating diff");
             let diff = FSItemTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
-            eprintln!("process_job_message_queued>> diff: {:?}", diff);
+            eprintln!("process_subscription_job_message_queued>> diff: {:?}", diff);
+
+            // // If at least one diff was found, retrieve the VRPack for the path
+            // if diff.children.len() > 0 {
+            //     let vec_fs = vector_fs.lock().await();
+            //     let writer = VFSWriter::
+            //     vec_fs.
+            // }
 
             // TODO: here extract the vrpack
             // TODO: here call the network manager to send the vrpack
