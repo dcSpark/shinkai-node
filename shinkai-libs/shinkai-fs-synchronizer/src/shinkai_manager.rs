@@ -11,7 +11,10 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::string_to_encryption_public_key,
-        file_encryption::{aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex},
+        file_encryption::{
+            aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
+            unsafe_deterministic_aes_encryption_key,
+        },
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         signatures::string_to_signature_secret_key,
     },
@@ -73,6 +76,8 @@ pub struct ShinkaiManager {
     pub node_receiver_subidentity: ProfileName,
     pub profile_name: ProfileName,
     pub node_address: String,
+
+    pub keys: DeviceKeys,
 }
 
 impl fmt::Debug for ShinkaiManager {
@@ -114,6 +119,7 @@ impl ShinkaiManager {
         node_receiver_subidentity: ProfileName,
         profile_name: ProfileName,
         node_address: String,
+        keys: DeviceKeys,
     ) -> Self {
         let shinkai_message_builder = ShinkaiMessageBuilder::new(
             my_encryption_secret_key.clone(),
@@ -132,6 +138,7 @@ impl ShinkaiManager {
             node_receiver_subidentity,
             profile_name,
             node_address,
+            keys,
         }
     }
 
@@ -145,14 +152,14 @@ impl ShinkaiManager {
 
     // for library implementation, just call this function and things get initialized
     pub fn initialize(keys: DeviceKeys) -> Self {
-        let recipient = keys.shinkai_identity;
+        let recipient = keys.shinkai_identity.clone();
         let sender = recipient.clone();
         let sender_subidentity = keys.profile.to_string();
 
-        let profile_name = keys.profile;
+        let profile_name = keys.profile.clone();
 
         let shinkai_manager = ShinkaiManager::new(
-            string_to_static_key(keys.profile_encryption_sk).unwrap(),
+            string_to_static_key(keys.profile_encryption_sk.clone()).unwrap(),
             string_to_signature_secret_key(&keys.profile_identity_sk).unwrap(),
             string_to_encryption_public_key(&keys.node_encryption_pk).unwrap(),
             sender.clone(),
@@ -160,7 +167,8 @@ impl ShinkaiManager {
             sender,             // node_receiver
             sender_subidentity, // node_receiver_subidentity
             profile_name,
-            keys.node_address,
+            keys.node_address.clone(),
+            keys.clone(),
         );
 
         shinkai_manager
@@ -205,7 +213,6 @@ impl ShinkaiManager {
         };
 
         println!("Checking {} in vector FS using vecfs_retrieve_path_simplified", &path);
-
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
             &formatted_path,
             self.my_encryption_secret_key.clone(),
@@ -308,10 +315,14 @@ impl ShinkaiManager {
     pub async fn upload_file(
         &self,
         file_data: &[u8],
+        // TODO: remove this param from here
         vector_fs_destination_path: &str,
         filename: &str,
     ) -> Result<(), &'static str> {
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(self.my_encryption_secret_key.as_bytes()));
+        // what should be included inside here:
+        let cipher = Aes256Gcm::new(GenericArray::from_slice(&self.my_encryption_secret_key.to_bytes()));
+
+        // TODO: nonce needs to be unique, but for now just keep it compatible
         let nonce = GenericArray::from_slice(&[0u8; 12]);
         let nonce_slice = nonce.as_slice();
         let nonce_str = aes_nonce_to_hex_string(nonce_slice);
@@ -325,7 +336,8 @@ impl ShinkaiManager {
         dbg!(filename.to_string());
         let url = format!(
             "/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
-            aes_encryption_key_to_string(self.my_encryption_secret_key.as_bytes().clone()),
+            // pass the same value as for the `cipher`:
+            hash_of_aes_encryption_key_hex(self.my_encryption_secret_key.to_bytes()),
             nonce_str
         );
 
