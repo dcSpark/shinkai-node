@@ -32,6 +32,15 @@ impl Serialize for FSItemTree {
 }
 
 impl FSItemTree {
+     pub fn new_empty() -> Self {
+        FSItemTree {
+            name: "/".to_string(),
+            path: "/".to_string(),
+            last_modified: Utc::now(),
+            children: HashMap::new(),
+        }
+    }
+    
     // Method to transform the tree into a visually pleasant JSON string
     pub fn to_pretty_json(&self) -> serde_json::Value {
         json!({

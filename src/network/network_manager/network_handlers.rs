@@ -4,7 +4,9 @@ use crate::{
     network::{
         node_error::NodeError,
         subscription_manager::{
-            external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo}, fs_item_tree::FSItemTree, my_subscription_manager::MySubscriptionsManager
+            external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo},
+            fs_item_tree::FSItemTree,
+            my_subscription_manager::MySubscriptionsManager,
         },
         Node,
     },
@@ -437,7 +439,7 @@ pub async fn handle_network_message_cases(
                                         .await;
                                 }
                                 Err(e) => {
-                                    println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                                    println!("AvailableSharedItemsResponse Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
                                 }
                             }
                         }
@@ -513,7 +515,10 @@ pub async fn handle_network_message_cases(
                             }
                         }
                         Err(e) => {
-                            println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                            println!(
+                                "SubscribeToSharedFolder Failed to deserialize JSON to Vec<SharedFolderInfo>: {}",
+                                e
+                            );
                             // TODO: Send error message back in APISubscribeToSharedFolderResponse
                         }
                     }
@@ -554,12 +559,15 @@ pub async fn handle_network_message_cases(
                                     println!("Successfully updated subscription status");
                                 }
                                 Err(e) => {
-                                    println!("SubscriptionGenericResponse Failed to update subscription status: {}", e);
+                                    println!(
+                                        "SubscriptionGenericResponse Failed to update subscription status: {}",
+                                        e
+                                    );
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("Failed to deserialize JSON to SubscriptionGenericResponse: {}", e);
+                            println!("SubscribeToSharedFolderResponse Failed to deserialize JSON to SubscriptionGenericResponse: {}", e);
                         }
                     }
 
@@ -575,7 +583,11 @@ pub async fn handle_network_message_cases(
                     );
 
                     // TODO: convert to SubscriptionGenericResponse type
-                    let content = message.get_message_content().unwrap_or("".to_string()).trim_matches('"').to_string();
+                    let content = message
+                        .get_message_content()
+                        .unwrap_or("".to_string())
+                        .trim_matches('"')
+                        .to_string();
                     println!(
                         "SubscribeToSharedFolderResponse Node {}. Received response: {}",
                         my_node_profile_name, content
@@ -587,7 +599,10 @@ pub async fn handle_network_message_cases(
 
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager
-                        .share_local_shared_folder_copy_state(requester.extract_node(), subscription_id.get_unique_id().to_string())
+                        .share_local_shared_folder_copy_state(
+                            requester.extract_node(),
+                            subscription_id.get_unique_id().to_string(),
+                        )
                         .await;
 
                     match result {
@@ -595,7 +610,10 @@ pub async fn handle_network_message_cases(
                             println!("Successfully updated subscription status");
                         }
                         Err(e) => {
-                            println!("SubscriptionRequiresTreeUpdate Failed to update subscription status: {}", e);
+                            println!(
+                                "SubscriptionRequiresTreeUpdate Failed to update subscription status: {}",
+                                e
+                            );
                         }
                     }
 
@@ -608,18 +626,23 @@ pub async fn handle_network_message_cases(
                     let request_node_name = requester.get_node_name();
 
                     // TODO: convert to SubscriptionGenericResponse type
-                    let item_tree_json_content = message.get_message_content().unwrap_or("".to_string()); 
+                    let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
 
-                    match serde_json::from_str::<FSItemTree>(&item_tree_json_content) {
-                        Ok(item_tree) => {
-                            // Successfully converted, you can now use shared_folder_infos
-                            println!("Converted to FSItemTree: {:?}", item_tree);
-                            panic!("end of the constructed road");
-                            // let mut external_subscriber_manager = external_subscription_manager.lock().await;
-
+                    match serde_json::from_str::<String>(&item_tree_json_content) {
+                        Ok(inner_json_string) => {
+                            // Now, attempt to deserialize the inner JSON string into FSItemTree
+                            match serde_json::from_str::<FSItemTree>(&inner_json_string) {
+                                Ok(item_tree) => {
+                                    println!("Successfully deserialized FSItemTree: {:?}", item_tree);
+                                    panic!("end of the constructed road");
+                                }
+                                Err(e) => {
+                                    println!("Failed to deserialize inner JSON string to FSItemTree: {}", e);
+                                }
+                            }
                         }
                         Err(e) => {
-                            println!("Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
+                            println!("Failed to deserialize outer JSON string to String (potential double-encoding issue): {}", e);
                         }
                     }
 

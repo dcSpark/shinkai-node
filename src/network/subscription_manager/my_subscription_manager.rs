@@ -424,7 +424,12 @@ impl MySubscriptionsManager {
                 ));
             }
 
-            subscription_folder_path = Some(subscription.shared_folder.clone());
+            subscription_folder_path = Some(
+                subscription
+                    .subscriber_destination_path
+                    .clone()
+                    .unwrap_or_else(|| subscription.shared_folder.clone()),
+            );
         }
 
         let folder_path = subscription_folder_path.ok_or_else(|| {
@@ -434,10 +439,16 @@ impl MySubscriptionsManager {
         let result =
             FSItemTreeGenerator::shared_folders_to_tree(self.vector_fs.clone(), self.node_name.clone(), folder_path)
                 .await
-                .map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+                .or_else(|e| {
+                    if e.to_string().contains("Supplied path does not exist in the VectorFS") {
+                        Ok(FSItemTree::new_empty())
+                    } else {
+                        Err(SubscriberManagerError::OperationFailed(e.to_string()))
+                    }
+                });
 
         let result_json =
-            serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+            serde_json::to_string(&result?).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
 
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;

@@ -306,9 +306,10 @@ impl ExternalSubscriberManager {
                 loop {
                     if !subscription_ids_are_sync.is_empty() {
                         eprintln!(
-                            ">> subscription_ids_are_sync moving to the loop: {:?}",
+                            ">> subscription_ids_are_sync moving to the loop in 5s: {:?}",
                             subscription_ids_are_sync
                         );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                         break;
                     }
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -391,13 +392,6 @@ impl ExternalSubscriberManager {
                 // TODO: implement function
 
                 for subscription_id in post_filtered_subscription_ids.clone() {
-                    // pub async fn create_and_send_request_updated_state(
-                    //     subscription_id: SubscriptionId,
-                    //     db: Weak<Mutex<ShinkaiDB>>,
-                    //     my_encryption_secret_key: EncryptionStaticKey,
-                    //     my_signature_secret_key: SigningKey,
-                    //     node_name: ShinkaiName,
-                    //     maybe_identity_manager: Weak<Mutex<IdentityManager>>,
                     let _ = Self::create_and_send_request_updated_state(
                         subscription_id,
                         db.clone(),
