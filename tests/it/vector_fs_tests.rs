@@ -812,6 +812,12 @@ async fn test_vector_fs_operations() {
     //     }
     // }
 
+    // Cleanup after vrpack tests
+    let deletion_writer = unpack_writer
+        .new_writer_copied_data(VRPath::root().push_cloned("unpacked".to_string()), &mut vector_fs)
+        .unwrap();
+    vector_fs.delete_folder(&unpack_writer).unwrap();
+
     //
     // Move/Deletion Tests for Folders
     //
