@@ -464,7 +464,7 @@ pub async fn handle_network_message_cases(
                     match serde_json::from_str::<APISubscribeToSharedFolder>(&content) {
                         Ok(subscription_request) => {
                             // Successfully converted, you can now use shared_folder_infos
-                            println!("Converted to APISubscribeToSharedFolder: {:?}", subscription_request);
+                            eprintln!("Converted to APISubscribeToSharedFolder: {:?}", subscription_request);
                             let mut external_subscriber_manager = external_subscription_manager.lock().await;
                             let result = external_subscriber_manager
                                 .subscribe_to_shared_folder(
@@ -623,8 +623,12 @@ pub async fn handle_network_message_cases(
                     // Note(Nico): This is usually coming from a request but we also can allow it without the request
                     // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    eprintln!("Message from: {:?}", message);
                     let request_node_name = requester.get_node_name();
-
+                    eprintln!(
+                        "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
+                        my_node_profile_name, request_node_name
+                    );
                     let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
 
                     // match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
@@ -635,12 +639,10 @@ pub async fn handle_network_message_cases(
                                 if let Some(tree_content) = metadata.get("folder_state") {
                                     match serde_json::from_str::<FSItemTree>(tree_content) {
                                         Ok(item_tree) => {
-                                            println!("Successfully deserialized FSItemTree: {:?}", item_tree);
-
                                             let subscription_unique_id = SubscriptionId::new(
-                                                requester.extract_node(),
-                                                response.shared_folder.clone(),
                                                 ShinkaiName::new(my_node_profile_name.to_string()).unwrap(),
+                                                response.shared_folder.clone(),
+                                                requester.extract_node(),
                                             );
                                             let external_subscriber_manager =
                                                 external_subscription_manager.lock().await;

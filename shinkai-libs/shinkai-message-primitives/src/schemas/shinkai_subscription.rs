@@ -16,6 +16,13 @@ impl SubscriptionId {
         shared_folder: String,
         node_name_subscriber: ShinkaiName,
     ) -> Self {
+        // Check if node_name_with_shared_folder and node_name_subscriber are the same
+        let node_name_with_shared_folder_str = node_name_with_shared_folder.get_node_name();
+        let node_name_subscriber_str = node_name_subscriber.get_node_name();
+        if node_name_with_shared_folder_str == node_name_subscriber_str {
+            panic!("node_name_with_shared_folder and node_name_subscriber cannot be the same");
+        }
+
         let node_name_with_shared_folder_str = node_name_with_shared_folder.get_node_name();
         let node_name_subscriber_str = node_name_subscriber.get_node_name();
         let unique_id = format!(
@@ -38,8 +45,8 @@ impl SubscriptionId {
         full_hash[..full_hash.len() / 2].to_string()
     }
 
-       /// Extracts the shared folder from the unique_id of the SubscriptionId.
-       pub fn extract_shared_folder(&self) -> Result<String, &'static str> {
+    /// Extracts the shared folder from the unique_id of the SubscriptionId.
+    pub fn extract_shared_folder(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 3 {
             Ok(parts[1].to_string())

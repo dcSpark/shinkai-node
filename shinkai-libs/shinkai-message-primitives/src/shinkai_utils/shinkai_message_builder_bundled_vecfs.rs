@@ -377,6 +377,7 @@ impl ShinkaiMessageBuilder {
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
         requirements: SubscriptionPayment,    
+        target_node: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -387,7 +388,7 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APISubscribeToSharedFolder {
             path: shared_folder,
-            node_name: node_receiver.to_string(),
+            node_name: target_node,
             payment: requirements,
         };
 

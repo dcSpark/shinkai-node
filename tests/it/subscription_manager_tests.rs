@@ -1057,6 +1057,7 @@ fn subscription_manager_test() {
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                     "/shared_test_folder".to_string(),
                     requirements,
+                    node1_identity_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk.clone(),
@@ -1125,7 +1126,7 @@ fn subscription_manager_test() {
                 let mut actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
 
                 // Expected response template without dates for comparison
-                let expected_resp_template = r#"[{"subscription_id":{"unique_id":"@@node2_test.sepolia-shinkai:::/shared_test_folder:::@@node2_test.sepolia-shinkai"},"shared_folder":"/shared_test_folder","shared_folder_owner":"@@node2_test.sepolia-shinkai","subscription_description":null,"subscriber_destination_path":null,"subscriber_identity":"@@node2_test.sepolia-shinkai","payment":"Free","state":"SubscriptionConfirmed"}]"#;
+                let expected_resp_template = r#"[{"subscription_id":{"unique_id":"@@node1_test.sepolia-shinkai:::/shared_test_folder:::@@node2_test.sepolia-shinkai"},"shared_folder":"/shared_test_folder","shared_folder_owner":"@@node1_test.sepolia-shinkai","subscription_description":null,"subscriber_destination_path":null,"subscriber_identity":"@@node2_test.sepolia-shinkai","payment":"Free","state":"SubscriptionConfirmed"}]"#;
                 let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
 
                 // Remove dates from the actual response for comparison

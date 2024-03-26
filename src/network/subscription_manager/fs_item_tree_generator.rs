@@ -22,7 +22,6 @@ impl FSItemTreeGenerator {
         path: String,
     ) -> Result<FSItemTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
-        // let path = "/".to_string();
 
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
             "VectorFS instance is not available".to_string(),
@@ -39,7 +38,7 @@ impl FSItemTreeGenerator {
             )
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-        // TODO: need fix. this should return folders and items
+        // TODO: need fix. this should return folders and items -> i think is working now. check
         let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?

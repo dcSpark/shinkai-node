@@ -397,18 +397,37 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // TODO: fix this is not accessing the same reference
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
-            // Placeholder logic for processing a queued job message
+            // TODO: Make this code production ready
+            eprintln!("my node name: {:?}", node_name);
             println!(
                 "process_job_message_queued> Processing job: {:?}",
                 subscription_with_tree.subscription.subscription_id
             );
+            let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
+            
+            eprintln!("user subscription_with_tree: {:?}", subscription_with_tree);
+            eprintln!(
+                "user shared folder: {:?}",
+                subscription_with_tree.subscriber_folder_tree
+            );
+            let local_shared_folder_state = shared_folders_trees
+                .get(&shared_folder)
+                // todo: this should actually go to the db to read it if not available
+                .map_or(FSItemTree::new_empty(), |entry| entry.value().tree.clone());
+            eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
-            // TODO: access shared_folders_trees for the subscription path
+            // Calculate diff
+            eprintln!("process_job_message_queued>> Calculating diff");
+            let diff = FSItemTreeGenerator::compare_fs_item_trees(
+                &subscription_with_tree.subscriber_folder_tree,
+                &local_shared_folder_state,
+            );
+            eprintln!("process_job_message_queued>> diff: {:?}", diff);
 
             // Assuming the processing is successful, return Ok with a message
             // Adjust according to actual logic and possible error conditions
@@ -471,10 +490,8 @@ impl ExternalSubscriberManager {
                 let job_ids_to_perform_comparisons_and_send_files = {
                     let mut processing_jobs_lock = processing_jobs.lock().await;
                     let job_queue_manager_lock = job_queue_manager.lock().await;
-                    eprintln!("process_subscription_queue>> Processing jobs before interleave");
                     let all_jobs = job_queue_manager_lock.get_all_elements_interleave().await;
                     drop(job_queue_manager_lock);
-                    eprintln!("process_subscription_queue>> All jobs: {:?}", all_jobs);
 
                     let filtered_jobs = all_jobs
                         .unwrap_or(Vec::new())
@@ -503,7 +520,6 @@ impl ExternalSubscriberManager {
                 );
 
                 for subscription_id in job_ids_to_perform_comparisons_and_send_files {
-                    eprintln!("process_subscription_queue>> Processing job: {}", subscription_id);
                     let job_queue_manager = Arc::clone(&job_queue_manager);
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = semaphore.clone();
@@ -522,16 +538,11 @@ impl ExternalSubscriberManager {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
 
                         // Acquire the lock, dequeue the job, and immediately release the lock
-                        eprintln!("process_subscription_queue>> Dequeuing job: {}", subscription_id);
                         let subscription_with_tree = {
                             let job_queue_manager = job_queue_manager.lock().await;
                             let subscription_with_tree = job_queue_manager.peek(&subscription_id).await;
                             subscription_with_tree
                         };
-                        eprintln!(
-                            "process_subscription_queue>> Job dequeued: {:?}",
-                            subscription_with_tree
-                        );
 
                         match subscription_with_tree {
                             Ok(Some(job)) => {
@@ -678,6 +689,7 @@ impl ExternalSubscriberManager {
                     tree,
                     subscription_requirement,
                 };
+                eprintln!("available_shared_folders> result {:?}", result);
 
                 // Check if the value of shared_folders_trees is different than the new value inserted
                 let should_update_version = self
@@ -686,6 +698,7 @@ impl ExternalSubscriberManager {
                     .map_or(true, |existing| *existing.value() != result);
 
                 if should_update_version {
+                    eprintln!("available_shared_folders> Updating shared_folders_trees");
                     // Update shared_folders_to_ephemeral_versioning
                     self.shared_folders_to_ephemeral_versioning
                         .entry(path_str.clone())
@@ -695,6 +708,10 @@ impl ExternalSubscriberManager {
 
                 converted_results.push(result.clone());
                 self.shared_folders_trees.insert(path_str, result);
+                eprintln!(
+                    "available_shared_folders> shared_folders_trees: {:?}",
+                    self.shared_folders_trees
+                );
             }
         }
 
