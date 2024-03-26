@@ -10,7 +10,7 @@ use shinkai_message_primitives::{
 impl PyInternalMetadata {
     #[new]
     fn new(
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         signature: String,

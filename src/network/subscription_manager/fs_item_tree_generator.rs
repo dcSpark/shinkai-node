@@ -16,46 +16,40 @@ use super::fs_item_tree::FSItemTree;
 pub struct FSItemTreeGenerator {}
 
 impl FSItemTreeGenerator {
+    /// Builds an FSItemTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
         vector_fs: Weak<Mutex<VectorFS>>,
-        requester_shinkai_identity: ShinkaiName,
+        origin_node_name: ShinkaiName,
+        origin_node_profile: String,
         path: String,
     ) -> Result<FSItemTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
 
+        let mut full_profile_subidentity = origin_node_name.clone();
+        full_profile_subidentity.profile_name = Some(origin_node_profile);
+
+        // Acquire VectorFS
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
             "VectorFS instance is not available".to_string(),
         ))?;
         let mut vector_fs = vector_fs.lock().await;
 
+        // Create Reader and find paths with read permissions
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         eprintln!("shared_folders_to_tree: vr_path: {:#?}", vr_path);
         let reader = vector_fs
-            .new_reader(
-                requester_shinkai_identity.clone(),
-                vr_path,
-                requester_shinkai_identity.clone(),
-            )
+            .new_reader(origin_node_name.clone(), vr_path, full_profile_subidentity.clone())
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-        // TODO: need fix. this should return folders and items -> i think is working now. check
         let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
+        // Create the FSItemTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
-            let reader = vector_fs
-                .new_reader(
-                    requester_shinkai_identity.clone(),
-                    path.clone(),
-                    requester_shinkai_identity.clone(),
-                )
-                .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-            let result = vector_fs.retrieve_fs_entry(&reader);
-            let fs_entry = result
-                .map_err(|e| SubscriberManagerError::InvalidRequest(format!("Failed to retrieve fs entry: {}", e)))?;
+            let reader =
+                vector_fs.new_reader(origin_node_name.clone(), path.clone(), full_profile_subidentity.clone())?;
+            let fs_entry = vector_fs.retrieve_fs_entry(&reader)?;
 
             match fs_entry {
                 FSEntry::Folder(fs_folder) => {

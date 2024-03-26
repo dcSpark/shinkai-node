@@ -131,7 +131,7 @@ impl InboxName {
 
     pub fn get_regular_inbox_name_from_params(
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         is_e2e: bool,

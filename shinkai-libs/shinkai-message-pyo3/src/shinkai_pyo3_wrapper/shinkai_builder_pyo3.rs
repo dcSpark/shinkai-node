@@ -102,7 +102,7 @@ impl PyShinkaiMessageBuilder {
 
     fn internal_metadata(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         encryption: Py<PyEncryptionMethod>,
     ) -> PyResult<()> {
@@ -125,7 +125,7 @@ impl PyShinkaiMessageBuilder {
 
     fn internal_metadata_with_inbox(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         encryption: Py<PyEncryptionMethod>,
@@ -150,7 +150,7 @@ impl PyShinkaiMessageBuilder {
 
     fn internal_metadata_with_schema(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         message_schema: Py<PyMessageSchemaType>,
@@ -316,7 +316,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         data: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         other: String,
@@ -389,7 +389,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         permissions: String,
         code_type: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         sender: String,
         receiver: String,
     ) -> PyResult<String> {
@@ -433,7 +433,7 @@ impl PyShinkaiMessageBuilder {
         permission_type: String,
         registration_name: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
     ) -> PyResult<String> {
@@ -502,7 +502,7 @@ impl PyShinkaiMessageBuilder {
         permission_type: String,
         registration_name: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
     ) -> PyResult<String> {
@@ -599,7 +599,7 @@ impl PyShinkaiMessageBuilder {
         profile_signature_sk: String,
         registration_name: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
     ) -> PyResult<String> {
         let my_subidentity_encryption_sk_type = match string_to_encryption_static_key(&my_device_encryption_sk) {
@@ -740,7 +740,7 @@ impl PyShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         offset: Option<String>,
@@ -797,7 +797,7 @@ impl PyShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         offset: Option<String>,
@@ -853,7 +853,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         agent_json: &str,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
     ) -> PyResult<String> {
@@ -909,7 +909,7 @@ impl PyShinkaiMessageBuilder {
         inbox: String,
         up_to_time: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
     ) -> PyResult<String> {
@@ -960,7 +960,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         inbox: String,
         symmetric_key_sk: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         sender: String,
         receiver: String,
     ) -> PyResult<String> {
@@ -1034,7 +1034,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         full_profile: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
@@ -1141,7 +1141,7 @@ impl PyShinkaiMessageBuilder {
         scope: Py<PyJobScope>,
         is_hidden: bool,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         node_receiver: String,
         node_receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1216,7 +1216,7 @@ impl PyShinkaiMessageBuilder {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1349,7 +1349,7 @@ impl PyShinkaiMessageBuilder {
         folder_name: String,
         path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1401,7 +1401,7 @@ impl PyShinkaiMessageBuilder {
         origin_path: String,
         destination_path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1453,7 +1453,7 @@ impl PyShinkaiMessageBuilder {
         origin_path: String,
         destination_path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1505,7 +1505,7 @@ impl PyShinkaiMessageBuilder {
         origin_path: String,
         destination_path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1557,7 +1557,7 @@ impl PyShinkaiMessageBuilder {
         origin_path: String,
         destination_path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1609,7 +1609,7 @@ impl PyShinkaiMessageBuilder {
         destination_path: String,
         file_inbox: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1660,7 +1660,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1708,7 +1708,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         path: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1756,7 +1756,7 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         search: String,
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
         path: Option<String>,

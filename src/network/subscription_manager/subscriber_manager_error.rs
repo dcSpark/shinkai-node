@@ -1,8 +1,6 @@
-use std::fmt;
-
-use shinkai_vector_resources::resource_errors::VRError;
-
 use crate::{db::db_errors::ShinkaiDBError, vector_fs::vector_fs_error::VectorFSError};
+use shinkai_vector_resources::resource_errors::VRError;
+use std::fmt;
 
 // Define a custom error for SubscriberManager operations
 #[derive(Debug)]
@@ -26,7 +24,6 @@ pub enum SubscriberManagerError {
     InvalidSubscriber(String),
     FileSystemUnavailable,
     OperationFailed(String),
-    
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -89,5 +86,11 @@ impl From<ShinkaiDBError> for SubscriberManagerError {
             // For simplicity, using DatabaseError for all cases here, but you should map them appropriately
             _ => SubscriberManagerError::DatabaseError(error.to_string()),
         }
+    }
+}
+
+impl From<VectorFSError> for SubscriberManagerError {
+    fn from(error: VectorFSError) -> Self {
+        SubscriberManagerError::InvalidRequest(format!("{:?}", error))
     }
 }

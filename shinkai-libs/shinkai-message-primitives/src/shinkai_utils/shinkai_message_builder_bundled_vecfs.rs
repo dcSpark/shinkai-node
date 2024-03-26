@@ -1,7 +1,12 @@
 use crate::{
-    schemas::shinkai_subscription_req::SubscriptionPayment, shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
-    }, shinkai_utils::job_scope::JobScope
+    schemas::shinkai_subscription_req::SubscriptionPayment,
+    shinkai_message::shinkai_message_schemas::{
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder,
+        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
+        SubscriptionGenericResponse,
+    },
+    shinkai_utils::job_scope::JobScope,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::Serialize;
@@ -30,7 +35,7 @@ use crate::{
 
 use super::{
     encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
-    shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+    shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
@@ -41,10 +46,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
 
@@ -69,10 +74,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsCreateFolder {
             path: path.to_string(),
@@ -98,10 +103,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsMoveFolder {
             origin_path: origin_path.to_string(),
@@ -127,10 +132,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsCopyFolder {
             origin_path: origin_path.to_string(),
@@ -156,10 +161,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsMoveItem {
             origin_path: origin_path.to_string(),
@@ -185,10 +190,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsCopyItem {
             origin_path: origin_path.to_string(),
@@ -214,10 +219,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIConvertFilesAndSaveToFolder {
             path: destination_path.to_string(),
@@ -242,10 +247,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFSRetrieveVectorResource { path: path.to_string() };
 
@@ -267,10 +272,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
@@ -295,10 +300,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
             search: search.to_string(),
@@ -327,10 +332,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
             results,
@@ -347,14 +352,14 @@ impl ShinkaiMessageBuilder {
 
     pub fn vecfs_available_shared_items(
         path: Option<String>,
-        node_name: String,       
+        node_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIAvailableSharedItems {
             path: path.unwrap_or_else(|| "/".to_string()),
@@ -376,15 +381,15 @@ impl ShinkaiMessageBuilder {
 
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
-        requirements: SubscriptionPayment,    
+        requirements: SubscriptionPayment,
         target_node: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APISubscribeToSharedFolder {
             path: shared_folder,
@@ -410,10 +415,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
             shared_folder_path,
@@ -433,10 +438,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
             tree_item_response,
@@ -455,12 +460,13 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
-        Self::create_vecfs_message( // Note(Nico): we could change this but it works for now
+        Self::create_vecfs_message(
+            // Note(Nico): we could change this but it works for now
             "".to_string(),
             MessageSchemaType::MySubscriptions,
             my_encryption_secret_key,
@@ -479,10 +485,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName, 
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
             response,

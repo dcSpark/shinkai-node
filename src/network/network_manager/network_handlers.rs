@@ -27,7 +27,7 @@ use shinkai_message_primitives::{
     shinkai_utils::{
         encryption::{clone_static_secret_key, encryption_public_key_to_string},
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
@@ -611,10 +611,7 @@ pub async fn handle_network_message_cases(
 
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager
-                        .share_local_shared_folder_copy_state(
-                            requester.extract_node(),
-                            subscription_id.get_unique_id().to_string(),
-                        )
+                        .share_local_shared_folder_copy_state(requester, subscription_id.get_unique_id().to_string())
                         .await;
 
                     match result {
@@ -717,12 +714,12 @@ pub async fn handle_network_message_cases(
 }
 
 pub async fn send_ack(
-    peer: (SocketAddr, ProfileName),
+    peer: (SocketAddr, ShinkaiNameString),
     encryption_secret_key: EncryptionStaticKey, // not important for ping pong
     signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
-    sender: ProfileName,
-    receiver: ProfileName,
+    sender: ShinkaiNameString,
+    receiver: ShinkaiNameString,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
@@ -758,13 +755,13 @@ pub struct PublicKeyInfo {
 }
 
 pub async fn ping_pong(
-    peer: (SocketAddr, ProfileName),
+    peer: (SocketAddr, ShinkaiNameString),
     ping_or_pong: PingPong,
     encryption_secret_key: EncryptionStaticKey, // not important for ping pong
     signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
-    sender: ProfileName,
-    receiver: ProfileName,
+    sender: ShinkaiNameString,
+    receiver: ShinkaiNameString,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NetworkJobQueueError> {

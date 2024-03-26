@@ -111,7 +111,7 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn internal_metadata(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         encryption: JsValue,
     ) -> Result<(), JsValue> {
@@ -131,7 +131,7 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn internal_metadata_with_inbox(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         encryption: JsValue,
@@ -153,7 +153,7 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn internal_metadata_with_schema(
         &mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         message_schema: JsValue,
@@ -369,7 +369,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
         let mut builder =
@@ -390,7 +390,7 @@ impl ShinkaiMessageBuilderWrapper {
         permissions: String,
         code_type: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -428,7 +428,7 @@ impl ShinkaiMessageBuilderWrapper {
         permission_type: String,
         registration_name: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -478,7 +478,7 @@ impl ShinkaiMessageBuilderWrapper {
         permission_type: String,
         registration_name: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -528,7 +528,7 @@ impl ShinkaiMessageBuilderWrapper {
         profile_encryption_sk: String,
         profile_signature_sk: String,
         registration_name: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
@@ -592,7 +592,7 @@ impl ShinkaiMessageBuilderWrapper {
         count: usize,
         offset: Option<String>,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -629,7 +629,7 @@ impl ShinkaiMessageBuilderWrapper {
         count: usize,
         offset: Option<String>,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -664,7 +664,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         agent_json: &str,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -694,7 +694,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -720,7 +720,7 @@ impl ShinkaiMessageBuilderWrapper {
         inbox: String,
         up_to_time: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -750,7 +750,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         data: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: ProfileName,
         recipient_subidentity: String,
         other: &str,
@@ -815,7 +815,7 @@ impl ShinkaiMessageBuilderWrapper {
         scope: JsValue,
         is_hidden: bool,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -854,7 +854,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -895,7 +895,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
         let mut builder =
@@ -915,7 +915,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         error_msg: String,
     ) -> Result<String, JsValue> {
@@ -939,7 +939,7 @@ impl ShinkaiMessageBuilderWrapper {
         folder_name: String,
         path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -970,7 +970,7 @@ impl ShinkaiMessageBuilderWrapper {
         origin_path: String,
         destination_path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1004,7 +1004,7 @@ impl ShinkaiMessageBuilderWrapper {
         origin_path: String,
         destination_path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1038,7 +1038,7 @@ impl ShinkaiMessageBuilderWrapper {
         origin_path: String,
         destination_path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1072,7 +1072,7 @@ impl ShinkaiMessageBuilderWrapper {
         origin_path: String,
         destination_path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1106,7 +1106,7 @@ impl ShinkaiMessageBuilderWrapper {
         destination_path: String,
         file_inbox: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1139,7 +1139,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1169,7 +1169,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         path: String,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -1202,7 +1202,7 @@ impl ShinkaiMessageBuilderWrapper {
         max_results: Option<usize>,
         max_files_to_scan: Option<usize>,
         sender: ProfileName,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
