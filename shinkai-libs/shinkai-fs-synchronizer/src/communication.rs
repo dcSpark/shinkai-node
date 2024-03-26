@@ -94,3 +94,47 @@ pub async fn request_post(api_url: String, input: String, path: &str) -> Result<
         ))),
     }
 }
+
+pub async fn request_post_multipart(
+    api_url: String,
+    path: &str,
+    form: reqwest::multipart::Form,
+) -> Result<PostDataResponse, PostRequestError> {
+    let client = Client::new();
+    let url = format!("{}{}", api_url, path);
+
+    println!("url for post request: {}", url);
+
+    match client.post(&url).multipart(form).send().await {
+        Ok(response) => {
+            dbg!(&response);
+            let status_code = response.status();
+            let response_path = response.url().path().to_string();
+
+            let response_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get response text".to_string());
+
+            dbg!(&response_text);
+
+            if status_code == 500 {
+                if response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
+                    return Err(PostRequestError::FSFolderNotFound("FS folder not found.".to_string()));
+                }
+            }
+
+            // TODO: handle 400 specifically
+            if status_code == 400 {}
+
+            match serde_json::from_str::<PostDataResponse>(&response_text) {
+                Ok(data) => Ok(data),
+                Err(e) => Err(PostRequestError::SerializationError(e.to_string())),
+            }
+        }
+        Err(e) => Err(PostRequestError::InvalidResponse(format!(
+            "Error when interacting with {}. Error: {:?}",
+            path, e
+        ))),
+    }
+}

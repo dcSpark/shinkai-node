@@ -97,28 +97,36 @@ impl FilesystemSynchronizer {
         dbg!(syncing_queue_lock.clone());
 
         while let Some(sync_queue_item) = syncing_queue_lock.pop() {
-            let file_bytes = std::fs::read(&sync_queue_item.os_file_path).expect("Failed to read file");
-
             // Check if the folder exists on the node, if not, create it
-            let folder_path = &sync_queue_item
+            let node_folder_path = &sync_queue_item
                 .syncing_folder
                 .vector_fs_path
                 .clone()
                 .unwrap_or_default();
 
-            self.ensure_folder_path_exists(folder_path).await?;
+            self.ensure_folder_path_exists(node_folder_path).await?;
 
-            // let destination_path = format!(
-            //     "{}/{}",
-            //     folder_path,
-            //     sync_queue_item.os_file_path.file_name().unwrap().to_str().unwrap()
-            // );
-            // self.shinkai_manager
-            //     .clone()
-            //     .upload_file(&file_bytes, &destination_path)
-            //     .await
-            //     .expect("Failed to upload file to the node");
+            println!(
+                "local os path: {:?}, node vector_fs path: {}",
+                sync_queue_item.clone().os_file_path.clone(),
+                node_folder_path
+            );
 
+            let file_bytes = std::fs::read(&sync_queue_item.os_file_path).expect("Failed to read file.");
+            let filename = sync_queue_item
+                .os_file_path
+                .file_name()
+                .expect("Filename not found.")
+                .to_str()
+                .expect("Couldn't convert file name to str");
+
+            let uploaded_file = self
+                .shinkai_manager
+                .clone()
+                .upload_file(&file_bytes, &node_folder_path, filename)
+                .await;
+
+            dbg!(uploaded_file);
             // Add the uploaded file to the database
             // let file_inbox = "inbox"; // Assuming 'inbox' is the destination folder in the database for new files
             // self.shinkai_manager

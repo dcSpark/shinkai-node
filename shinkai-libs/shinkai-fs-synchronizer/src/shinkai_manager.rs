@@ -2,17 +2,21 @@ use crate::{
     communication::{self, PostRequestError},
     persistent::Storage,
 };
+use aes_gcm::aead::{generic_array::GenericArray, Aead};
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
 use ed25519_dalek::SigningKey;
 use serde::Deserialize;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::string_to_encryption_public_key,
+        file_encryption::{aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         signatures::string_to_signature_secret_key,
     },
 };
-use std::{convert::TryInto, fs};
+use std::{convert::TryInto, fs, path::Path};
 use std::{env, fmt};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -20,7 +24,7 @@ use hex::decode;
 use libsodium_sys::*;
 use std::str;
 
-use shinkai_vector_resources::vector_resource::SimplifiedFSEntry;
+use shinkai_vector_resources::{resource_errors::VRError, vector_resource::SimplifiedFSEntry};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct NodeHealthStatus {
@@ -301,32 +305,39 @@ impl ShinkaiManager {
     //     Ok(())
     // }
 
-    pub async fn upload_file(&self, file_bytes: &[u8], destination_path: &str) -> Result<(), &'static str> {
-        // TODO: add missing pieces here
+    pub async fn upload_file(
+        &self,
+        file_data: &[u8],
+        vector_fs_destination_path: &str,
+        filename: &str,
+    ) -> Result<(), &'static str> {
+        let cipher = Aes256Gcm::new(GenericArray::from_slice(self.my_encryption_secret_key.as_bytes()));
+        let nonce = GenericArray::from_slice(&[0u8; 12]);
+        let nonce_slice = nonce.as_slice();
+        let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+        let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
 
-        // Prepare the file data
-        // let file_data = encrypted_file_data; // In Rust, Vec<u8> can be used directly
+        let form = reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(ciphertext).file_name(filename.to_string()),
+        );
 
-        // let form_data = multipart::Form::new()
-        //     .file("file", file_data, destination_path)
-        //     .map_err(|_| "Failed to create form data")?;
+        dbg!(filename.to_string());
+        let url = format!(
+            "/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
+            aes_encryption_key_to_string(self.my_encryption_secret_key.as_bytes().clone()),
+            nonce_str
+        );
 
-        // let url = format!(
-        //     "{}/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
-        //     self.base_url, hash, nonce_str
-        // );
-
-        // TODO: add http service that communicates with the node api
-        // self.http_service
-        //     .fetch(&url, form_data)
-        //     .await
-        //     .map_err(|_| "HTTP request failed")?;
+        crate::communication::request_post_multipart(self.node_address.clone(), &url, form)
+            .await
+            .map_err(|_| "HTTP request failed")?;
 
         Ok(())
     }
 
-    fn add_items_to_db(&mut self, destination_path: &str, file_inbox: &str) -> Result<(), &'static str> {
-        ShinkaiMessageBuilder::vecfs_create_items(
+    pub async fn add_items_to_db(&mut self, destination_path: &str, file_inbox: &str) -> Result<(), &'static str> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_create_items(
             destination_path,
             file_inbox,
             self.my_encryption_secret_key.clone(),
@@ -337,6 +348,13 @@ impl ShinkaiManager {
             self.node_receiver.clone(),
             self.node_receiver_subidentity.clone(),
         )?;
+
+        let create_items_message = serde_json::json!(shinkai_message);
+
+        let url = format!("{}/v1/vec_fs/convert_files_and_save_to_folder", self.node_address);
+        crate::communication::request_post(self.node_address.clone(), create_items_message.to_string(), &url)
+            .await
+            .map_err(|_| "HTTP request failed")?;
 
         Ok(())
     }
