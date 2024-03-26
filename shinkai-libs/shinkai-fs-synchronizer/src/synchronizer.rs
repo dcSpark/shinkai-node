@@ -120,13 +120,8 @@ impl FilesystemSynchronizer {
                 .to_str()
                 .expect("Couldn't convert file name to str");
 
-            let uploaded_file = self
-                .shinkai_manager
-                .clone()
-                .upload_file(&file_bytes, &node_folder_path, filename)
-                .await;
+            let uploaded_file = self.shinkai_manager.clone().upload_file(&file_bytes, filename).await;
 
-            dbg!(uploaded_file);
             // Add the uploaded file to the database
             // let file_inbox = "inbox"; // Assuming 'inbox' is the destination folder in the database for new files
             // self.shinkai_manager

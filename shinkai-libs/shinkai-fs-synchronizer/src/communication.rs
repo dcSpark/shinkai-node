@@ -107,7 +107,6 @@ pub async fn request_post_multipart(
 
     match client.post(&url).multipart(form).send().await {
         Ok(response) => {
-            dbg!(&response);
             let status_code = response.status();
             let response_path = response.url().path().to_string();
 

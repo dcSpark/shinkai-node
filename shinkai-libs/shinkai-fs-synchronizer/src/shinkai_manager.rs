@@ -6,6 +6,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use ed25519_dalek::SigningKey;
+use rand::RngCore;
 use serde::Deserialize;
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -13,7 +14,7 @@ use shinkai_message_primitives::{
         encryption::string_to_encryption_public_key,
         file_encryption::{
             aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
-            unsafe_deterministic_aes_encryption_key,
+            random_aes_encryption_key, unsafe_deterministic_aes_encryption_key,
         },
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         signatures::string_to_signature_secret_key,
@@ -312,18 +313,35 @@ impl ShinkaiManager {
     //     Ok(())
     // }
 
-    pub async fn upload_file(
-        &self,
-        file_data: &[u8],
-        // TODO: remove this param from here
-        vector_fs_destination_path: &str,
-        filename: &str,
-    ) -> Result<(), &'static str> {
-        // what should be included inside here:
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(&self.my_encryption_secret_key.to_bytes()));
+    pub async fn upload_file(&self, file_data: &[u8], filename: &str) -> Result<(), &'static str> {
+        let symmetrical_sk = random_aes_encryption_key();
 
-        // TODO: nonce needs to be unique, but for now just keep it compatible
-        let nonce = GenericArray::from_slice(&[0u8; 12]);
+        let shinkai_message = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            "".to_string(),
+            aes_encryption_key_to_string(symmetrical_sk.clone()),
+            self.sender_subidentity.clone(),
+            self.sender.clone(),
+            self.node_receiver.clone(),
+        )
+        .unwrap();
+
+        let inbox_message_creation = serde_json::json!(shinkai_message);
+        crate::communication::request_post(
+            self.node_address.clone(),
+            inbox_message_creation.to_string(),
+            "/v1/create_files_inbox_with_symmetric_key",
+        )
+        .await
+        .map_err(|_| "HTTP request failed")?;
+
+        let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+
+        let mut nonce_bytes = [0u8; 12];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        let nonce = GenericArray::from_slice(&nonce_bytes);
         let nonce_slice = nonce.as_slice();
         let nonce_str = aes_nonce_to_hex_string(nonce_slice);
         let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
@@ -333,11 +351,9 @@ impl ShinkaiManager {
             reqwest::multipart::Part::bytes(ciphertext).file_name(filename.to_string()),
         );
 
-        dbg!(filename.to_string());
         let url = format!(
             "/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
-            // pass the same value as for the `cipher`:
-            hash_of_aes_encryption_key_hex(self.my_encryption_secret_key.to_bytes()),
+            hash_of_aes_encryption_key_hex(symmetrical_sk.clone()),
             nonce_str
         );
 
