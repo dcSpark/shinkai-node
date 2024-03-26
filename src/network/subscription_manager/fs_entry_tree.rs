@@ -8,42 +8,43 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 
 // Custom serialization for the children field
-fn serialize_children<S>(children: &HashMap<String, Arc<FSItemTree>>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_children<S>(children: &HashMap<String, Arc<FSEntryTree>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    let temp_children: HashMap<String, FSItemTree> = children.iter().map(|(k, v)| (k.clone(), (**v).clone())).collect();
+    let temp_children: HashMap<String, FSEntryTree> =
+        children.iter().map(|(k, v)| (k.clone(), (**v).clone())).collect();
     temp_children.serialize(serializer)
 }
 
 // Custom deserialization for the children field
-fn deserialize_children<'de, D>(deserializer: D) -> Result<HashMap<String, Arc<FSItemTree>>, D::Error>
+fn deserialize_children<'de, D>(deserializer: D) -> Result<HashMap<String, Arc<FSEntryTree>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let temp_children: HashMap<String, FSItemTree> = HashMap::deserialize(deserializer)?;
+    let temp_children: HashMap<String, FSEntryTree> = HashMap::deserialize(deserializer)?;
     Ok(temp_children.into_iter().map(|(k, v)| (k, Arc::new(v))).collect())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FSItemTree {
+pub struct FSEntryTree {
     pub name: String,
     pub path: String,
     pub last_modified: DateTime<Utc>,
     #[serde(serialize_with = "serialize_children", deserialize_with = "deserialize_children")]
-    pub children: HashMap<String, Arc<FSItemTree>>,
+    pub children: HashMap<String, Arc<FSEntryTree>>,
 }
 
-impl FSItemTree {
-     pub fn new_empty() -> Self {
-        FSItemTree {
+impl FSEntryTree {
+    pub fn new_empty() -> Self {
+        FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
             last_modified: Utc::now(),
             children: HashMap::new(),
         }
     }
-    
+
     // Method to transform the tree into a visually pleasant JSON string
     pub fn to_pretty_json(&self) -> serde_json::Value {
         json!({
@@ -76,34 +77,40 @@ mod tests {
 
     #[test]
     fn test_fs_item_tree_serialization() {
-        // Create a sample FSItemTree
-        let tree = FSItemTree {
+        // Create a sample FSEntryTree
+        let tree = FSEntryTree {
             name: "root".to_string(),
             path: "/".to_string(),
             last_modified: Utc.ymd(2023, 5, 20).and_hms(10, 30, 0),
             children: HashMap::from([
-                ("child1".to_string(), Arc::new(FSItemTree {
-                    name: "child1".to_string(),
-                    path: "/child1".to_string(),
-                    last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
-                    children: HashMap::new(),
-                })),
-                ("child2".to_string(), Arc::new(FSItemTree {
-                    name: "child2".to_string(),
-                    path: "/child2".to_string(),
-                    last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
-                    children: HashMap::new(),
-                })),
+                (
+                    "child1".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "child1".to_string(),
+                        path: "/child1".to_string(),
+                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
+                        children: HashMap::new(),
+                    }),
+                ),
+                (
+                    "child2".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "child2".to_string(),
+                        path: "/child2".to_string(),
+                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
+                        children: HashMap::new(),
+                    }),
+                ),
             ]),
         };
 
-        // Serialize the FSItemTree to JSON
-        let serialized = serde_json::to_string(&tree).expect("Failed to serialize FSItemTree");
+        // Serialize the FSEntryTree to JSON
+        let serialized = serde_json::to_string(&tree).expect("Failed to serialize FSEntryTree");
 
-        // Deserialize the JSON back to FSItemTree
-        let deserialized: FSItemTree = serde_json::from_str(&serialized).expect("Failed to deserialize FSItemTree");
+        // Deserialize the JSON back to FSEntryTree
+        let deserialized: FSEntryTree = serde_json::from_str(&serialized).expect("Failed to deserialize FSEntryTree");
 
-        // Assert that the deserialized FSItemTree is equal to the original
+        // Assert that the deserialized FSEntryTree is equal to the original
         assert_eq!(deserialized.name, tree.name);
         assert_eq!(deserialized.path, tree.path);
         assert_eq!(deserialized.last_modified, tree.last_modified);
@@ -119,42 +126,52 @@ mod tests {
 
     #[test]
     fn test_fs_item_tree_bincode_serialization() {
-        let tree = FSItemTree {
+        let tree = FSEntryTree {
             name: "root".to_string(),
             path: "/".to_string(),
             last_modified: Utc.ymd(2023, 5, 20).and_hms(10, 30, 0),
             children: HashMap::from([
-                ("child1".to_string(), Arc::new(FSItemTree {
-                    name: "child1".to_string(),
-                    path: "/child1".to_string(),
-                    last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
-                    children: HashMap::new(),
-                })),
-                ("child2".to_string(), Arc::new(FSItemTree {
-                    name: "child2".to_string(),
-                    path: "/child2".to_string(),
-                    last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
-                    children: HashMap::new(),
-                })),
+                (
+                    "child1".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "child1".to_string(),
+                        path: "/child1".to_string(),
+                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
+                        children: HashMap::new(),
+                    }),
+                ),
+                (
+                    "child2".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "child2".to_string(),
+                        path: "/child2".to_string(),
+                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
+                        children: HashMap::new(),
+                    }),
+                ),
             ]),
         };
 
-        // Serialize the FSItemTree using bincode
-        let serialized = bincode::serialize(&tree).expect("Failed to serialize FSItemTree with bincode");
+        // Serialize the FSEntryTree using bincode
+        let serialized = bincode::serialize(&tree).expect("Failed to serialize FSEntryTree with bincode");
         eprintln!("Serialization successful");
 
-        // Deserialize the bincode bytes back to FSItemTree
-        let deserialized: FSItemTree = bincode::deserialize(&serialized).expect("Failed to deserialize FSItemTree with bincode");
+        // Deserialize the bincode bytes back to FSEntryTree
+        let deserialized: FSEntryTree =
+            bincode::deserialize(&serialized).expect("Failed to deserialize FSEntryTree with bincode");
         eprintln!("Deserialization successful");
 
-        // Assert that the deserialized FSItemTree is equal to the original
+        // Assert that the deserialized FSEntryTree is equal to the original
         assert_eq!(deserialized.name, tree.name);
         assert_eq!(deserialized.path, tree.path);
         assert_eq!(deserialized.last_modified, tree.last_modified);
         assert_eq!(deserialized.children.len(), tree.children.len());
 
         for (key, value) in &tree.children {
-            let deserialized_child = deserialized.children.get(key).expect("Child not found in deserialized data");
+            let deserialized_child = deserialized
+                .children
+                .get(key)
+                .expect("Child not found in deserialized data");
             assert_eq!(deserialized_child.name, value.name);
             assert_eq!(deserialized_child.path, value.path);
             assert_eq!(deserialized_child.last_modified, value.last_modified);

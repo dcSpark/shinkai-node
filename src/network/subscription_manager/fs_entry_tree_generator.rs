@@ -11,18 +11,18 @@ use std::result::Result::Ok;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 
-use super::fs_item_tree::FSItemTree;
+use super::fs_entry_tree::FSEntryTree;
 
-pub struct FSItemTreeGenerator {}
+pub struct FSEntryTreeGenerator {}
 
-impl FSItemTreeGenerator {
-    /// Builds an FSItemTree for a profile's VectorFS starting at a specific path
+impl FSEntryTreeGenerator {
+    /// Builds an FSEntryTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
         vector_fs: Weak<Mutex<VectorFS>>,
         origin_node_name: ShinkaiName,
         origin_node_profile: String,
         path: String,
-    ) -> Result<FSItemTree, SubscriberManagerError> {
+    ) -> Result<FSEntryTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
 
         let mut full_profile_subidentity = origin_node_name.clone();
@@ -44,8 +44,8 @@ impl FSItemTreeGenerator {
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
-        // Create the FSItemTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
-        let mut root_children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
+        // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
+        let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
             let reader =
                 vector_fs.new_reader(origin_node_name.clone(), path.clone(), full_profile_subidentity.clone())?;
@@ -64,7 +64,7 @@ impl FSItemTreeGenerator {
         }
 
         // Construct the root of the tree
-        let tree = FSItemTree {
+        let tree = FSEntryTree {
             name: "/".to_string(),
             path: path,
             last_modified: Utc::now(),
@@ -75,9 +75,9 @@ impl FSItemTreeGenerator {
         Ok(tree)
     }
 
-    // Adjusted to directly build FSItemTree structure
-    fn process_folder(fs_folder: &FSFolder, parent_path: &str) -> Result<FSItemTree, SubscriberManagerError> {
-        let mut children: HashMap<String, Arc<FSItemTree>> = HashMap::new();
+    // Adjusted to directly build FSEntryTree structure
+    fn process_folder(fs_folder: &FSFolder, parent_path: &str) -> Result<FSEntryTree, SubscriberManagerError> {
+        let mut children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
 
         // Process child folders and add them to the children map
         for child_folder in &fs_folder.child_folders {
@@ -88,7 +88,7 @@ impl FSItemTreeGenerator {
         // Process child items and add them to the children map
         for child_item in &fs_folder.child_items {
             let child_path = format!("{}/{}", parent_path, child_item.name);
-            let child_tree = FSItemTree {
+            let child_tree = FSEntryTree {
                 name: child_item.name.clone(),
                 path: child_path,
                 last_modified: child_item.last_written_datetime,
@@ -98,7 +98,7 @@ impl FSItemTreeGenerator {
         }
 
         // Construct the current folder's tree
-        let folder_tree = FSItemTree {
+        let folder_tree = FSEntryTree {
             name: fs_folder.name.clone(),
             path: parent_path.to_string(),
             last_modified: fs_folder.last_written_datetime,
@@ -108,8 +108,8 @@ impl FSItemTreeGenerator {
         Ok(folder_tree)
     }
 
-    pub fn compare_fs_item_trees(client_tree: &FSItemTree, server_tree: &FSItemTree) -> FSItemTree {
-        let mut differences = FSItemTree {
+    pub fn compare_fs_item_trees(client_tree: &FSEntryTree, server_tree: &FSEntryTree) -> FSEntryTree {
+        let mut differences = FSEntryTree {
             name: server_tree.name.clone(),
             path: server_tree.path.clone(),
             last_modified: server_tree.last_modified,
@@ -144,7 +144,7 @@ impl FSItemTreeGenerator {
                 // Mark the item as deleted in the differences tree by setting its last_modified to a specific value, e.g., the epoch start
                 differences.children.insert(
                     child_name.clone(),
-                    Arc::new(FSItemTree {
+                    Arc::new(FSEntryTree {
                         name: client_child_tree.name.clone(),
                         path: client_child_tree.path.clone(),
                         last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
@@ -195,22 +195,22 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
-    fn create_test_tree() -> FSItemTree {
-        let shinkai_intro_crypto = FSItemTree {
+    fn create_test_tree() -> FSEntryTree {
+        let shinkai_intro_crypto = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
             last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
             children: HashMap::new(),
         };
 
-        let zeko_intro_crypto = FSItemTree {
+        let zeko_intro_crypto = FSEntryTree {
             name: "zeko_intro".to_string(),
             path: "/shared_test_folder/crypto/zeko_intro".to_string(),
             last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
             children: HashMap::new(),
         };
 
-        let crypto_folder = FSItemTree {
+        let crypto_folder = FSEntryTree {
             name: "crypto".to_string(),
             path: "/shared_test_folder/crypto".to_string(),
             last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
@@ -222,14 +222,14 @@ mod tests {
             },
         };
 
-        let shinkai_intro_folder = FSItemTree {
+        let shinkai_intro_folder = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/shinkai_intro".to_string(),
             last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
             children: HashMap::new(),
         };
 
-        let shared_test_folder = FSItemTree {
+        let shared_test_folder = FSEntryTree {
             name: "shared_test_folder".to_string(),
             path: "/shared_test_folder".to_string(),
             last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
@@ -241,7 +241,7 @@ mod tests {
             },
         };
 
-        let root = FSItemTree {
+        let root = FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
             last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
@@ -258,14 +258,14 @@ mod tests {
     #[test]
     fn test_compare_fs_item_trees_with_empty_client_tree() {
         let server_tree = create_test_tree();
-        let client_tree = FSItemTree {
+        let client_tree = FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
             last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
             children: HashMap::new(),
         };
 
-        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree, &server_tree);
+        let differences = FSEntryTreeGenerator::compare_fs_item_trees(&client_tree, &server_tree);
         eprintln!("Differences: {:#?}", differences);
         assert_eq!(
             differences.children.len(),
@@ -274,7 +274,7 @@ mod tests {
         );
     }
 
-    fn remove_crypto_from_shared_test_folder(mut tree: FSItemTree) -> FSItemTree {
+    fn remove_crypto_from_shared_test_folder(mut tree: FSEntryTree) -> FSEntryTree {
         if let Some(shared_test_folder_arc) = tree.children.get("shared_test_folder") {
             let mut shared_test_folder =
                 Arc::try_unwrap(shared_test_folder_arc.clone()).unwrap_or_else(|arc| (*arc).clone());
@@ -292,12 +292,12 @@ mod tests {
     #[test]
     fn test_compare_fs_item_trees_with_partial_client_tree() {
         let server_tree = create_test_tree();
-        let client_tree = create_test_tree(); // Assuming this returns FSItemTree
+        let client_tree = create_test_tree(); // Assuming this returns FSEntryTree
 
         // Modify the client_tree to simulate the removal of the "crypto" folder
         let client_tree_modified = remove_crypto_from_shared_test_folder(client_tree);
 
-        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = FSEntryTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_partial_client_tree Differences: {:#?}",
             differences
@@ -313,7 +313,7 @@ mod tests {
         );
     }
 
-    fn modify_zeko_intro_date(mut tree: FSItemTree, new_date: DateTime<Utc>) -> FSItemTree {
+    fn modify_zeko_intro_date(mut tree: FSEntryTree, new_date: DateTime<Utc>) -> FSEntryTree {
         // Attempt to directly access and modify the shared_test_folder if it exists
         if let Some(shared_test_folder_arc) = tree.children.get("shared_test_folder").cloned() {
             let mut shared_test_folder = (*shared_test_folder_arc).clone();
@@ -353,7 +353,7 @@ mod tests {
         let new_date = Utc.ymd(2024, 2, 25).and_hms(23, 6, 0); // Set to an older date
         let client_tree_modified = modify_zeko_intro_date(client_tree, new_date);
 
-        let differences = FSItemTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
+        let differences = FSEntryTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
         eprintln!(
             "test_compare_fs_item_trees_with_date_difference Differences: {:#?}",
             differences

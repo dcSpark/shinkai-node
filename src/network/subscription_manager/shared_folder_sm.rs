@@ -160,7 +160,7 @@ impl<'de> Deserialize<'de> for SharedFoldersExternalNodeSM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::subscription_manager::fs_item_tree::FSItemTree;
+    use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
     use chrono::{TimeZone, Utc};
     use serde_json;
     use std::collections::HashMap;
@@ -168,15 +168,15 @@ mod tests {
 
     #[test]
     fn test_serialization_deserialization() {
-        // Setup for FSItemTree instances remains the same
-        let child_item_tree_1 = FSItemTree {
+        // Setup for FSEntryTree instances remains the same
+        let child_item_tree_1 = FSEntryTree {
             name: "child1.txt".to_string(),
             path: "/path/to/file1/child1.txt".to_string(),
             last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 30, 0),
             children: HashMap::new(),
         };
 
-        let child_item_tree_2 = FSItemTree {
+        let child_item_tree_2 = FSEntryTree {
             name: "child2.txt".to_string(),
             path: "/path/to/file1/child2.txt".to_string(),
             last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 45, 0),
@@ -187,14 +187,14 @@ mod tests {
         children.insert("child1".to_string(), Arc::new(child_item_tree_1));
         children.insert("child2".to_string(), Arc::new(child_item_tree_2));
 
-        let item_tree_1 = FSItemTree {
+        let item_tree_1 = FSEntryTree {
             name: "file1".to_string(),
             path: "/path/to/file1".to_string(),
             last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 0, 0),
             children,
         };
 
-        let item_tree_2 = FSItemTree {
+        let item_tree_2 = FSEntryTree {
             name: "file2".to_string(),
             path: "/path/to/file2".to_string(),
             last_modified: Utc.ymd(2023, 6, 9).and_hms(11, 0, 0),

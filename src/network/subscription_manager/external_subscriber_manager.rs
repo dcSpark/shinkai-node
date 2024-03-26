@@ -2,7 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
-use crate::network::subscription_manager::fs_item_tree_generator::FSItemTreeGenerator;
+use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -34,7 +34,7 @@ use std::sync::Weak;
 use std::{env, mem};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 
-use super::fs_item_tree::FSItemTree;
+use super::fs_entry_tree::FSEntryTree;
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -85,7 +85,7 @@ const NUM_THREADS: usize = 2;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct SubscriptionWithTree {
     pub subscription: ShinkaiSubscription,
-    pub subscriber_folder_tree: FSItemTree,
+    pub subscriber_folder_tree: FSEntryTree,
 }
 
 impl Ord for SubscriptionWithTree {
@@ -104,7 +104,7 @@ impl PartialOrd for SubscriptionWithTree {
 pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
-    pub tree: FSItemTree,
+    pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
 }
 
@@ -418,12 +418,12 @@ impl ExternalSubscriberManager {
             let local_shared_folder_state = shared_folders_trees
                 .get(&shared_folder)
                 // todo: this should actually go to the db to read it if not available
-                .map_or(FSItemTree::new_empty(), |entry| entry.value().tree.clone());
+                .map_or(FSEntryTree::new_empty(), |entry| entry.value().tree.clone());
             eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
             // Calculate diff
             eprintln!("process_subscription_job_message_queued>> Calculating diff");
-            let diff = FSItemTreeGenerator::compare_fs_item_trees(
+            let diff = FSEntryTreeGenerator::compare_fs_entry_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
@@ -669,7 +669,7 @@ impl ExternalSubscriberManager {
             let results = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
 
             // Use the new function to filter results to only include top-level folders
-            let filtered_results = FSItemTreeGenerator::filter_to_top_level_folders(results);
+            let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -686,7 +686,7 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                let tree = FSItemTreeGenerator::shared_folders_to_tree(
+                let tree = FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
                     requester_shinkai_identity.clone(),
                     path_str.clone(),
@@ -1049,7 +1049,7 @@ impl ExternalSubscriberManager {
     pub async fn subscriber_current_state_response(
         &self,
         subscription_unique_id: String,
-        subscriber_folder_tree: FSItemTree,
+        subscriber_folder_tree: FSEntryTree,
         subscriber_node_name: ShinkaiName,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(

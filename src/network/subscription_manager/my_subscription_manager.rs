@@ -2,7 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
-use crate::network::subscription_manager::fs_item_tree_generator::FSItemTreeGenerator;
+use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
@@ -29,7 +29,7 @@ use std::sync::Weak;
 use tokio::sync::Mutex;
 
 use super::external_subscriber_manager::SharedFolderInfo;
-use super::fs_item_tree::FSItemTree;
+use super::fs_entry_tree::FSEntryTree;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -60,7 +60,7 @@ pub struct MySubscriptionsManager {
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
 
     // TODO: add a new property to store the user's subscriptions
-    pub subscribed_folders_trees: HashMap<String, Arc<FSItemTree>>, // We want it to be stored in the DB
+    pub subscribed_folders_trees: HashMap<String, Arc<FSEntryTree>>, // We want it to be stored in the DB
     // maybe we can just check directly in the db?
     // what was this for?
 
@@ -441,11 +441,11 @@ impl MySubscriptionsManager {
         })?;
 
         let result =
-            FSItemTreeGenerator::shared_folders_to_tree(self.vector_fs.clone(), self.node_name.clone(), folder_path)
+            FSEntryTreeGenerator::shared_folders_to_tree(self.vector_fs.clone(), self.node_name.clone(), folder_path)
                 .await
                 .or_else(|e| {
                     if e.to_string().contains("Supplied path does not exist in the VectorFS") {
-                        Ok(FSItemTree::new_empty())
+                        Ok(FSEntryTree::new_empty())
                     } else {
                         Err(SubscriberManagerError::OperationFailed(e.to_string()))
                     }

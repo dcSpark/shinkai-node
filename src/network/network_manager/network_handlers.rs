@@ -5,7 +5,7 @@ use crate::{
         node_error::NodeError,
         subscription_manager::{
             external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo},
-            fs_item_tree::FSItemTree,
+            fs_entry_tree::FSEntryTree,
             my_subscription_manager::MySubscriptionsManager,
         },
         Node,
@@ -643,10 +643,10 @@ pub async fn handle_network_message_cases(
                     // match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
                     match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
                         Ok(response) => {
-                            // Attempt to deserialize the inner JSON string into FSItemTree
+                            // Attempt to deserialize the inner JSON string into FSEntryTree
                             if let Some(metadata) = response.metadata {
                                 if let Some(tree_content) = metadata.get("folder_state") {
-                                    match serde_json::from_str::<FSItemTree>(tree_content) {
+                                    match serde_json::from_str::<FSEntryTree>(tree_content) {
                                         Ok(item_tree) => {
                                             let subscription_unique_id = SubscriptionId::new(
                                                 ShinkaiName::new(my_node_profile_name.to_string()).unwrap(),
@@ -664,7 +664,7 @@ pub async fn handle_network_message_cases(
                                                 .await;
                                         }
                                         Err(e) => {
-                                            println!("Failed to deserialize inner JSON string to FSItemTree: {}", e);
+                                            println!("Failed to deserialize inner JSON string to FSEntryTree: {}", e);
                                         }
                                     }
                                 } else {
