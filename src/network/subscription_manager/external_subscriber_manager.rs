@@ -429,8 +429,11 @@ impl ExternalSubscriberManager {
             );
             eprintln!("process_job_message_queued>> diff: {:?}", diff);
 
-            // Assuming the processing is successful, return Ok with a message
-            // Adjust according to actual logic and possible error conditions
+            // TODO: here extract the vrpack
+            // TODO: here call the network manager to send the vrpack
+            // TODO: in network_handlers add a new type SchemaType (needs to be added) to handle the vrpack
+            // TODO: create a new fn in my_subscription_manager that gets called form the network_handlers and unpack the vrpack
+
             Ok(format!(
                 "Job {} processed successfully",
                 subscription_with_tree.subscription.subscription_id.get_unique_id()
