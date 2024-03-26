@@ -4,6 +4,7 @@ use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
 use shinkai_vector_resources::vector_resource::vrkai::VRKai;
+use shinkai_vector_resources::vector_resource::vrpack::VRPack;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
@@ -46,20 +47,27 @@ fn default_vr_kai() -> VRKai {
     VRKai::from_base_vector_resource(resource, None, None)
 }
 
+fn default_vr_pack() -> VRPack {
+    let vrkai = default_vr_kai();
+    let mut vrpack = VRPack::new_empty();
+    vrpack.insert_vrkai(&vrkai, VRPath::root());
+    vrpack
+}
+
 #[test]
 fn test_vr_kai_prepare_and_parse_methods() {
     let vr_kai = default_vr_kai();
 
-    // Test prepare_as_base64 and from_base64
-    let base64_encoded = vr_kai.prepare_as_base64().expect("Failed to prepare as base64");
+    // Test encode_as_base64 and from_base64
+    let base64_encoded = vr_kai.encode_as_base64().expect("Failed to prepare as base64");
     let parsed_from_base64 = VRKai::from_base64(&base64_encoded).expect("Failed to parse from base64");
     assert_eq!(
         serde_json::to_string(&vr_kai).unwrap(),
         serde_json::to_string(&parsed_from_base64).unwrap()
     );
 
-    // Test prepare_as_bytes and from_bytes
-    let bytes_encoded = vr_kai.prepare_as_bytes().expect("Failed to prepare as bytes");
+    // Test encode_as_bytes and from_bytes
+    let bytes_encoded = vr_kai.encode_as_bytes().expect("Failed to prepare as bytes");
     let parsed_from_bytes = VRKai::from_bytes(&bytes_encoded).expect("Failed to parse from bytes");
     assert_eq!(
         serde_json::to_string(&vr_kai).unwrap(),
@@ -71,6 +79,35 @@ fn test_vr_kai_prepare_and_parse_methods() {
     let parsed_from_json = VRKai::from_json(&json_str).expect("Failed to parse from JSON");
     assert_eq!(
         serde_json::to_string(&vr_kai).unwrap(),
+        serde_json::to_string(&parsed_from_json).unwrap()
+    );
+}
+
+#[test]
+fn test_vr_pack_prepare_and_parse_methods() {
+    let vr_pack = default_vr_pack();
+
+    // Test encode_as_base64 and from_base64
+    let base64_encoded = vr_pack.encode_as_base64().expect("Failed to prepare as base64");
+    let parsed_from_base64 = VRPack::from_base64(&base64_encoded).expect("Failed to parse from base64");
+    assert_eq!(
+        serde_json::to_string(&vr_pack).unwrap(),
+        serde_json::to_string(&parsed_from_base64).unwrap()
+    );
+
+    // Test encode_as_bytes and from_bytes
+    let bytes_encoded = vr_pack.encode_as_bytes().expect("Failed to prepare as bytes");
+    let parsed_from_bytes = VRPack::from_bytes(&bytes_encoded).expect("Failed to parse from bytes");
+    assert_eq!(
+        serde_json::to_string(&vr_pack).unwrap(),
+        serde_json::to_string(&parsed_from_bytes).unwrap()
+    );
+
+    // Test to_json and from_json for completeness
+    let json_str = vr_pack.to_json().expect("Failed to convert to JSON");
+    let parsed_from_json = VRPack::from_json(&json_str).expect("Failed to parse from JSON");
+    assert_eq!(
+        serde_json::to_string(&vr_pack).unwrap(),
         serde_json::to_string(&parsed_from_json).unwrap()
     );
 }

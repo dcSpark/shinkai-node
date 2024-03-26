@@ -819,6 +819,20 @@ impl VRPath {
         new_path
     }
 
+    /// Appends the path ids from `input_path` to the end of this VRPath.
+    pub fn append_path(&mut self, input_path: &VRPath) {
+        for path_id in &input_path.path_ids {
+            self.push(path_id.clone());
+        }
+    }
+
+    /// Returns a new VRPath which is a clone of self with the path ids from `input_path` appended to the end.
+    pub fn append_path_cloned(&self, input_path: &VRPath) -> Self {
+        let mut new_path = self.clone();
+        new_path.append_path(input_path);
+        new_path
+    }
+
     /// Returns a VRPath which is the path prior to self (the "parent path").
     /// Ie. For path "/a/b/c", this will return "/a/b".
     pub fn parent_path(&self) -> Self {
