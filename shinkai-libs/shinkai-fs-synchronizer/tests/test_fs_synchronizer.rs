@@ -17,7 +17,6 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
-    // custom directory visitor to be able to verify what we need
     struct MockDirectoryVisitor {
         visited_files: Arc<Mutex<Vec<PathBuf>>>,
     }
@@ -58,7 +57,7 @@ mod tests {
         let shinkai_manager = ShinkaiManager::initialize_from_encrypted_file().unwrap();
 
         let syncing_folders = Arc::new(Mutex::new(HashMap::<LocalOSFolderPath, SyncingFolder>::new()));
-        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager, syncing_folders, major_directory.to_string());
+        let _synchronizer = FilesystemSynchronizer::new(shinkai_manager);
 
         let visited_files = Arc::new(Mutex::new(Vec::<PathBuf>::new()));
         let mock_visitor = MockDirectoryVisitor {
@@ -95,11 +94,7 @@ mod tests {
             .as_root()
             .unwrap();
 
-        let synchronizer = FilesystemSynchronizer::new(
-            shinkai_manager,
-            sync_visitor.syncing_folders,
-            major_directory.to_string(),
-        );
+        let synchronizer = FilesystemSynchronizer::new(shinkai_manager);
 
         dbg!(fs_root.clone());
         synchronizer.synchronize().await;

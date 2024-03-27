@@ -46,31 +46,20 @@ pub struct SyncQueueItem {
 
 #[derive(Clone)]
 pub struct FilesystemSynchronizer {
-    syncing_folders: Arc<Mutex<HashMap<LocalOSFolderPath, SyncingFolder>>>, // LocalOSFolderPath, SyncingFolder
-    // because we're just sending content, we should only need sender here
-    sender: std::sync::mpsc::Sender<String>,
+    pub syncing_folders: Arc<Mutex<HashMap<LocalOSFolderPath, SyncingFolder>>>, // LocalOSFolderPath, SyncingFolder
     shinkai_manager: ShinkaiManager,
 
     // it's more convenient to have a vector instead of tuple map here
     syncing_queue: Arc<Mutex<Vec<SyncQueueItem>>>,
-    major_dir: String,
 }
 
 impl FilesystemSynchronizer {
     // treat new as a constructor, so how this should be treated
-    pub fn new(
-        shinkai_manager: ShinkaiManager,
-        syncing_folders: Arc<Mutex<HashMap<LocalOSFolderPath, SyncingFolder>>>,
-        syncing_queue: Arc<Mutex<Vec<SyncQueueItem>>>,
-        major_dir: String,
-    ) -> Self {
-        let (sender, _) = std::sync::mpsc::channel();
+    pub fn new(shinkai_manager: ShinkaiManager) -> Self {
         FilesystemSynchronizer {
-            syncing_folders,
-            sender,
+            syncing_folders: Arc::new(Mutex::new(HashMap::new())),
+            syncing_queue: Arc::new(Mutex::new(Vec::new())),
             shinkai_manager,
-            syncing_queue,
-            major_dir,
         }
     }
 
@@ -128,7 +117,7 @@ impl FilesystemSynchronizer {
         }
 
         let mut folders = self.syncing_folders.lock().unwrap();
-        let local_os_folder_path = folder.local_os_folder_path.clone(); // Use the path from SyncingFolder directly
+        let local_os_folder_path = folder.local_os_folder_path.clone();
         if let std::collections::hash_map::Entry::Vacant(e) = folders.entry(local_os_folder_path) {
             e.insert(folder);
             Ok(())
@@ -143,7 +132,6 @@ impl FilesystemSynchronizer {
     }
 
     pub fn stop(self) -> Result<HashMap<LocalOSFolderPath, SyncingFolder>, String> {
-        drop(self.sender); // This will close the thread
         self.syncing_folders
             .lock()
             .map_err(|e| format!("Failed to lock syncing_folders: {}", e))
@@ -171,9 +159,76 @@ impl FilesystemSynchronizer {
                     }
                 }
             }
-            current_path = format!("{}/", check_path); // Prepare the path for the next iteration
+            current_path = format!("{}/", check_path);
         }
 
         Ok(())
     }
+
+    pub fn visit_dirs(&mut self, dir: &Path) -> std::io::Result<()> {
+        if dir.is_dir() {
+            let entries = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect::<Vec<_>>();
+
+            for entry in entries {
+                let path = entry.path();
+
+                dbg!(&path);
+                if path.is_dir() {
+                    let path_str = path.to_str().unwrap_or_default().to_string();
+                    let local_os_folder_path = LocalOSFolderPath(path_str.clone());
+
+                    let syncing_folder = SyncingFolder {
+                        profile_name: self.shinkai_manager.profile_name.clone(),
+                        vector_fs_path: Some(generate_relative_path(&Path::new(&local_os_folder_path.0))),
+                        local_os_folder_path: local_os_folder_path.clone(),
+                        last_synchronized_file_datetime: None,
+                    };
+                    self.add_syncing_folder(syncing_folder).unwrap();
+                    self.visit_dirs(&path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn scan_local_os_syncing_updates(&self, syncing_folder: &SyncingFolder) -> std::io::Result<()> {
+        let path = Path::new(&syncing_folder.local_os_folder_path.0);
+        if path.is_dir() {
+            for entry in std::fs::read_dir(path)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    self.scan_local_os_syncing_updates(syncing_folder).unwrap();
+                } else {
+                    let metadata = std::fs::metadata(&path)?;
+                    let modified_time = metadata
+                        .modified()?
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    if syncing_folder
+                        .last_synchronized_file_datetime
+                        .map_or(true, |last_sync| modified_time > last_sync)
+                    {
+                        let mut syncing_queue_lock = self.syncing_queue.lock().unwrap();
+                        syncing_queue_lock.push(SyncQueueItem {
+                            syncing_folder: syncing_folder.clone(),
+                            os_file_path: path,
+                            file_datetime: modified_time,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn generate_relative_path(os_file_path: &Path) -> String {
+    let node_fs_path = os_file_path
+        .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+        .unwrap_or(&os_file_path)
+        .to_path_buf();
+    node_fs_path.to_string_lossy().into_owned()
 }
