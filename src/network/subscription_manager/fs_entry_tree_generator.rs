@@ -1,3 +1,4 @@
+use super::fs_entry_tree::FSEntryTree;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
@@ -10,8 +11,6 @@ use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
-
-use super::fs_entry_tree::FSEntryTree;
 
 pub struct FSEntryTreeGenerator {}
 

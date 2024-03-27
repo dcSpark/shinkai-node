@@ -3,6 +3,7 @@ use std::fmt;
 use super::shinkai_name::{ShinkaiName, ShinkaiNameError};
 use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::source::ShinkaiNameString;
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]

@@ -607,7 +607,7 @@ pub async fn handle_network_message_cases(
 
                     let my_node_name = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
                     let shared_folder = content.clone();
-                    let subscription_id = SubscriptionId::new(requester.extract_node(), shared_folder, my_node_name);
+                    let subscription_id = SubscriptionId::new(requester.extract_node() shared_folder, my_node_name);
 
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager

@@ -88,9 +88,3 @@ impl From<ShinkaiDBError> for SubscriberManagerError {
         }
     }
 }
-
-impl From<VectorFSError> for SubscriberManagerError {
-    fn from(error: VectorFSError) -> Self {
-        SubscriberManagerError::InvalidRequest(format!("{:?}", error))
-    }
-}
