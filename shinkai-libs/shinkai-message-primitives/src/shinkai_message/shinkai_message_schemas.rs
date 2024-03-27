@@ -256,7 +256,7 @@ impl JobRecipient {
 /// but can't trust other nodes, we need to generate those on your side.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SubscriptionGenericResponse {
-    /// Detailed information about the subscription, formatted as a JSON string.
+    // Explanation of what is taking place with this generic response
     pub subscription_details: String,
     /// The overall status of the subscription request.
     pub shared_folder: String,

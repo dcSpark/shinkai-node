@@ -439,9 +439,9 @@ impl ShinkaiMessageBuilder {
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ShinkaiNameString,
-        sender_subidentity: ShinkaiNameString,
+        sender_profile: String,
         node_receiver: ShinkaiNameString,
-        node_receiver_subidentity: ShinkaiNameString,
+        node_receiver_profile: String,
     ) -> Result<ShinkaiMessage, &'static str> {
         Self::create_vecfs_message(
             tree_item_response,
@@ -450,9 +450,9 @@ impl ShinkaiMessageBuilder {
             my_signature_secret_key,
             receiver_public_key,
             sender,
-            sender_subidentity,
+            sender_profile,
             node_receiver,
-            node_receiver_subidentity,
+            node_receiver_profile,
         )
     }
 

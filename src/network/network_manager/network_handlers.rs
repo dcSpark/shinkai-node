@@ -350,6 +350,11 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
+    // TODO: Ideally this shouldn't use unwraps and be safe and return error if any of these fail
+    let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
+    let origin_node = origin_node_with_profile.extract_node();
+    let origin_node_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();
+
     // Check the schema of the message and decide what to do
     // TODO: add handler that checks for the Schema and decides what to do with the message
     // TODO: the message may be need to be added to an internal NetworkJobQueue
@@ -586,12 +591,15 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscriptionRequiresTreeUpdate => {
-                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    let request_node_name = requester.get_node_name_string();
+                    let requester_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let requester_node = requester_node_with_profile.extract_node();
+                    let requester_node_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
 
                     eprintln!(
                         "SubscriptionRequiresTreeUpdate Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                        my_node_profile_name, request_node_name
+                        my_node_profile_name,
+                        requester_node.get_node_name_string()
                     );
 
                     // TODO: convert to SubscriptionGenericResponse type
@@ -607,11 +615,23 @@ pub async fn handle_network_message_cases(
 
                     let my_node_name = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
                     let shared_folder = content.clone();
-                    let subscription_id = SubscriptionId::new(requester.extract_node() shared_folder, my_node_name);
+                    let subscription_id = SubscriptionId::new(
+                        origin_node,
+                        origin_node_profile_name,
+                        shared_folder,
+                        requester_node,
+                        requester_node_profile_name,
+                    );
 
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager
-                        .share_local_shared_folder_copy_state(requester, subscription_id.get_unique_id().to_string())
+                        .share_local_shared_folder_copy_state(
+                            origin_node,
+                            origin_node_profile_name,
+                            requester_node,
+                            requester_node_profile_name,
+                            subscription_id.get_unique_id().to_string(),
+                        )
                         .await;
 
                     match result {
@@ -640,7 +660,6 @@ pub async fn handle_network_message_cases(
                     );
                     let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
 
-                    // match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
                     match serde_json::from_str::<SubscriptionGenericResponse>(&item_tree_json_content) {
                         Ok(response) => {
                             // Attempt to deserialize the inner JSON string into FSEntryTree
@@ -649,9 +668,11 @@ pub async fn handle_network_message_cases(
                                     match serde_json::from_str::<FSEntryTree>(tree_content) {
                                         Ok(item_tree) => {
                                             let subscription_unique_id = SubscriptionId::new(
-                                                ShinkaiName::new(my_node_profile_name.to_string()).unwrap(),
+                                                origin_node,
+                                                origin_node_profile,
                                                 response.shared_folder.clone(),
                                                 requester.extract_node(),
+                                                requester_profile_name,
                                             );
                                             let external_subscriber_manager =
                                                 external_subscription_manager.lock().await;

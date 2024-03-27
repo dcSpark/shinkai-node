@@ -396,10 +396,12 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
-    // TODO: add the origin node profile name here so we know what profile in the VecFS to read from
     pub async fn share_local_shared_folder_copy_state(
         &self,
-        requester_subidentity: ShinkaiName,
+        origin_node: ShinkaiName,
+        origin_node_profile: String,
+        subscriber_node: ShinkaiName,
+        subscriber_node_profile: String,
         subscription_id: String,
     ) -> Result<(), SubscriberManagerError> {
         let mut subscription_folder_path: Option<String> = None;
@@ -420,8 +422,8 @@ impl MySubscriptionsManager {
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
             })?;
 
-            // Check that the subscription is for the correct node
-            if subscription.shared_folder_owner.get_node_name_string() != requester_subidentity.get_node_name_string() {
+            // Check that the subscription is not incorrect (for the same node)
+            if subscription.origin_node.get_node_name_string() != subscriber_node.get_node_name_string() {
                 return Err(SubscriberManagerError::InvalidSubscriber(
                     "Subscription doesn't belong to the subscriber".to_string(),
                 ));
@@ -440,24 +442,27 @@ impl MySubscriptionsManager {
             SubscriberManagerError::SubscriptionNotFound("Subscription folder path not found".to_string())
         })?;
 
-        let result =
-            FSEntryTreeGenerator::shared_folders_to_tree(self.vector_fs.clone(), self.node_name.clone(), folder_path)
-                .await
-                .or_else(|e| {
-                    if e.to_string().contains("Supplied path does not exist in the VectorFS") {
-                        Ok(FSEntryTree::new_empty())
-                    } else {
-                        Err(SubscriberManagerError::OperationFailed(e.to_string()))
-                    }
-                });
+        let result = FSEntryTreeGenerator::shared_folders_to_tree(
+            self.vector_fs.clone(),
+            origin_node.clone(),
+            origin_node_profile.clone(),
+            folder_path,
+        )
+        .await
+        .or_else(|e| {
+            if e.to_string().contains("Supplied path does not exist in the VectorFS") {
+                Ok(FSEntryTree::new_empty())
+            } else {
+                Err(SubscriberManagerError::OperationFailed(e.to_string()))
+            }
+        });
 
         let result_json =
             serde_json::to_string(&result?).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
-
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&requester_subidentity.get_node_name_string())
+                .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -481,11 +486,10 @@ impl MySubscriptionsManager {
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                self.node_name.get_node_name_string(),
-                // Note: the other node doesn't care about the sender's profile in this context/
-                "".to_string(),
-                requester_subidentity.get_node_name_string(),
-                "".to_string(),
+                origin_node.get_node_name_string(),
+                origin_node_profile,
+                subscriber_node.get_node_name_string(),
+                subscriber_node_profile,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
