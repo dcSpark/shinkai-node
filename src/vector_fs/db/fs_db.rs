@@ -128,7 +128,7 @@ impl VectorFSDB {
         cf: &impl AsColumnFamilyRef,
         profile: &ShinkaiName,
     ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, VectorFSError> {
-        let profile_prefix = Self::get_profile_name(profile)?.into_bytes();
+        let profile_prefix = Self::get_profile_name_string(profile)?.into_bytes();
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);
         let filtered_iter = iter.filter(move |result| match result {
             Ok((key, _)) => key.starts_with(&profile_prefix),
@@ -196,13 +196,13 @@ impl VectorFSDB {
 
     /// Validates if the key has the provided profile name properly prepended to it
     pub fn validate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<bool, VectorFSError> {
-        let profile_name = Self::get_profile_name(profile)?;
+        let profile_name = Self::get_profile_name_string(profile)?;
         Ok(key.starts_with(&profile_name))
     }
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, VectorFSError> {
-        let mut prof_name = Self::get_profile_name(profile)?;
+        let mut prof_name = Self::get_profile_name_string(profile)?;
         Ok(Self::generate_profile_bound_key_from_str(key, &prof_name))
     }
 
@@ -212,7 +212,9 @@ impl VectorFSDB {
     }
 
     /// Extracts the profile name with VectorFSError wrapping
-    pub fn get_profile_name(profile: &ShinkaiName) -> Result<String, VectorFSError> {
-        profile.get_profile_name().ok_or(VectorFSError::ShinkaiNameLacksProfile)
+    pub fn get_profile_name_string(profile: &ShinkaiName) -> Result<String, VectorFSError> {
+        profile
+            .get_profile_name_string()
+            .ok_or(VectorFSError::ShinkaiNameLacksProfile)
     }
 }

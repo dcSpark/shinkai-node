@@ -31,7 +31,7 @@ impl Node {
         };
 
         // Validation: requester_name node should be me
-        if requester_name.get_node_name() != self.node_name.clone().get_node_name() {
+        if requester_name.get_node_name_string() != self.node_name.clone().get_node_name_string() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -93,7 +93,7 @@ impl Node {
             }
         };
 
-        if input_payload.node_name == self.node_name.clone().get_node_name() {
+        if input_payload.node_name == self.node_name.clone().get_node_name_string() {
             // Lock the mutex and handle the Option
             let mut subscription_manager = self.ext_subscription_manager.lock().await;
             let result = subscription_manager

@@ -17,7 +17,7 @@ impl ProfileBoundWriteBatch {
     /// Create a new ProfileBoundWriteBatch with ShinkaiDBError wrapping
     pub fn new(profile: &ShinkaiName) -> Result<Self, ShinkaiDBError> {
         // Also validates that the name includes a profile
-        let profile_name = ShinkaiDB::get_profile_name(profile)?;
+        let profile_name = ShinkaiDB::get_profile_name_string(profile)?;
         // Create write batch
         let write_batch = rocksdb::WriteBatch::default();
         Ok(Self {
@@ -29,7 +29,7 @@ impl ProfileBoundWriteBatch {
     /// Create a new ProfileBoundWriteBatch with VectorFSError wrapping
     pub fn new_vfs_batch(profile: &ShinkaiName) -> Result<Self, VectorFSError> {
         // Also validates that the name includes a profile
-        match ShinkaiDB::get_profile_name(profile) {
+        match ShinkaiDB::get_profile_name_string(profile) {
             Ok(profile_name) => {
                 // Create write batch
                 let write_batch = rocksdb::WriteBatch::default();
@@ -96,7 +96,7 @@ impl ShinkaiDB {
         cf: &impl AsColumnFamilyRef,
         profile: &ShinkaiName,
     ) -> Result<Vec<String>, ShinkaiDBError> {
-        let profile_prefix = ShinkaiDB::get_profile_name(profile)?.into_bytes();
+        let profile_prefix = ShinkaiDB::get_profile_name_string(profile)?.into_bytes();
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);
         let mut keys = Vec::new();
 
@@ -128,7 +128,7 @@ impl ShinkaiDB {
         cf: &impl AsColumnFamilyRef,
         profile: &ShinkaiName,
     ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, ShinkaiDBError> {
-        let profile_prefix = ShinkaiDB::get_profile_name(profile)?.into_bytes();
+        let profile_prefix = ShinkaiDB::get_profile_name_string(profile)?.into_bytes();
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);
         let filtered_iter = iter.filter(move |result| match result {
             Ok((key, _)) => key.starts_with(&profile_prefix),
@@ -196,13 +196,13 @@ impl ShinkaiDB {
 
     /// Validates if the key has the provided profile name properly prepended to it
     pub fn validate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<bool, ShinkaiDBError> {
-        let profile_name = ShinkaiDB::get_profile_name(profile)?;
+        let profile_name = ShinkaiDB::get_profile_name_string(profile)?;
         Ok(key.starts_with(&profile_name))
     }
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
-        let mut prof_name = ShinkaiDB::get_profile_name(profile)?;
+        let mut prof_name = ShinkaiDB::get_profile_name_string(profile)?;
         Ok(Self::generate_profile_bound_key_from_str(key, &prof_name))
     }
 

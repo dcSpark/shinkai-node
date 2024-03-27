@@ -216,7 +216,7 @@ impl PermissionsIndex {
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
-                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                     return Ok(());
                 }
 
@@ -226,7 +226,7 @@ impl PermissionsIndex {
                     ReadPermission::Public => return Ok(()),
                     // If private, then reading is allowed for the specific profile that owns the VectorFS
                     ReadPermission::Private => {
-                        if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                             return Ok(());
                         } else {
                             return Err(VectorFSError::InvalidReadPermission(
@@ -289,7 +289,7 @@ impl PermissionsIndex {
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
-                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                     return Ok(());
                 }
 
@@ -297,7 +297,7 @@ impl PermissionsIndex {
                 match &path_permission.write_permission {
                     // If private, then writing is allowed for the specific profile that owns the VectorFS
                     WritePermission::Private => {
-                        if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                             return Ok(());
                         } else {
                             return Err(VectorFSError::InvalidWritePermission(

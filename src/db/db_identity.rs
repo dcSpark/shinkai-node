@@ -36,7 +36,7 @@ impl ShinkaiDB {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
         // Use Topic::NodeAndUsers for profiles related information with specific prefixes
         let iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
-    
+
         for item in iter {
             match item {
                 Ok((key, _)) => {
@@ -45,16 +45,16 @@ impl ShinkaiDB {
                     if key_str.starts_with("identity_key_of_") {
                         return Ok(true); // Return true upon finding the first profile
                     }
-                },
+                }
                 Err(_) => continue, // Optionally handle the error, for example, by continuing to the next item
             }
         }
-    
+
         Ok(false) // Return false if no profiles are found
     }
 
     pub fn get_all_profiles(&self, my_node_identity: ShinkaiName) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {
-        let my_node_identity_name = my_node_identity.get_node_name();
+        let my_node_identity_name = my_node_identity.get_node_name_string();
 
         // Use Topic::NodeAndUsers for profiles related information with specific prefixes
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
@@ -72,7 +72,7 @@ impl ShinkaiDB {
                     // Filter out profiles based on prefix
                     if key_str.starts_with("identity_key_of_") {
                         let profile_name = key_str.trim_start_matches("identity_key_of_");
-                        let full_identity_name = ShinkaiName::from_node_and_profile(
+                        let full_identity_name = ShinkaiName::from_node_and_profile_names(
                             my_node_identity_name.clone(),
                             profile_name.to_string(),
                         )?;
@@ -107,7 +107,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_all_profiles_and_devices(&self, my_node_identity: ShinkaiName) -> Result<Vec<Identity>, ShinkaiDBError> {
-        let my_node_identity_name = my_node_identity.get_node_name();
+        let my_node_identity_name = my_node_identity.get_node_name_string();
         // Use Topic::NodeAndUsers for profiles and devices related information with specific prefixes
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
@@ -124,7 +124,7 @@ impl ShinkaiDB {
                     // Filter out profiles based on prefix
                     if key_str.starts_with("identity_key_of_") {
                         let profile_name = key_str.trim_start_matches("identity_key_of_");
-                        let full_identity_name = ShinkaiName::from_node_and_profile(
+                        let full_identity_name = ShinkaiName::from_node_and_profile_names(
                             my_node_identity_name.clone(),
                             profile_name.to_string(),
                         )?;
@@ -179,7 +179,7 @@ impl ShinkaiDB {
         let profile_name =
             identity
                 .full_identity_name
-                .get_profile_name()
+                .get_profile_name_string()
                 .ok_or(ShinkaiDBError::InvalidIdentityName(
                     identity.full_identity_name.to_string(),
                 ))?;
@@ -265,7 +265,7 @@ impl ShinkaiDB {
 
     pub fn does_identity_exists(&self, profile: &ShinkaiName) -> Result<bool, ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .clone()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.full_name.to_string()))?;
 
@@ -278,7 +278,7 @@ impl ShinkaiDB {
     pub fn get_profile_permission(&self, profile_name: ShinkaiName) -> Result<IdentityPermissions, ShinkaiDBError> {
         let profile_name = profile_name
             .clone()
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile_name.to_string()))?;
         // Use Topic::NodeAndUsers with specific prefixes to access profile permissions
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
@@ -306,7 +306,7 @@ impl ShinkaiDB {
     pub fn get_device_permission(&self, device_name: ShinkaiName) -> Result<IdentityPermissions, ShinkaiDBError> {
         // Extract the device name from the ShinkaiName
         let device_name = device_name
-            .get_fullname_without_node_name()
+            .get_fullname_string_without_node_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(device_name.to_string()))?;
 
         // Use Topic::NodeAndUsers with specific prefixes to access device permissions
@@ -427,7 +427,7 @@ impl ShinkaiDB {
 
     pub fn add_device_to_profile(&self, device: DeviceIdentity) -> Result<(), ShinkaiDBError> {
         // Get the profile name from the device identity name
-        let profile_name = match device.full_identity_name.get_profile_name() {
+        let profile_name = match device.full_identity_name.get_profile_name_string() {
             Some(name) => name,
             None => {
                 return Err(ShinkaiDBError::InvalidIdentityName(
@@ -450,7 +450,7 @@ impl ShinkaiDB {
         // Check that the full device identity name doesn't already exist using a specific prefix
         let shinkai_device_name = ShinkaiName::new(device.full_identity_name.to_string())?;
         let device_name = shinkai_device_name
-            .get_fullname_without_node_name()
+            .get_fullname_string_without_node_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(shinkai_device_name.to_string()))?;
         let device_key_prefix = format!("device_identity_key_of_{}", device_name);
         if self
@@ -544,7 +544,7 @@ impl ShinkaiDB {
 
     pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
         let profile_name = full_identity_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         // Use Topic::NodeAndUsers for all profile related information with specific prefixes
@@ -623,7 +623,7 @@ impl ShinkaiDB {
 
     pub fn get_device(&self, full_identity_name: ShinkaiName) -> Result<DeviceIdentity, ShinkaiDBError> {
         let device_name = full_identity_name
-            .get_fullname_without_node_name()
+            .get_fullname_string_without_node_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         // Use Topic::NodeAndUsers for device related information with specific prefixes
@@ -679,7 +679,7 @@ impl ShinkaiDB {
 
         // Extract profile_name from full_identity_name
         let profile_name = full_identity_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         let profile_encryption_public_key_bytes = self
@@ -725,7 +725,7 @@ impl ShinkaiDB {
         full_identity_name: ShinkaiName,
     ) -> Result<EncryptionPublicKey, ShinkaiDBError> {
         let profile_name = full_identity_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         // Use Topic::NodeAndUsers with a special prefix for encryption keys
@@ -743,7 +743,7 @@ impl ShinkaiDB {
 
     pub fn get_identity_type(&self, full_identity_name: ShinkaiName) -> Result<StandardIdentityType, ShinkaiDBError> {
         let profile_name = full_identity_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         // Use Topic::NodeAndUsers with a special prefix for identity type
@@ -764,7 +764,7 @@ impl ShinkaiDB {
 
     pub fn get_permissions(&self, full_identity_name: ShinkaiName) -> Result<IdentityPermissions, ShinkaiDBError> {
         let profile_name = full_identity_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
         // Use Topic::NodeAndUsers with a special prefix for permissions

@@ -59,7 +59,6 @@ impl ShinkaiDB {
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
         // If the inbox name is empty, use the get_inbox_name function
@@ -285,7 +284,7 @@ impl ShinkaiDB {
         perm: InboxPermission,
     ) -> Result<(), ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .clone()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.to_string()))?;
 
@@ -334,14 +333,9 @@ impl ShinkaiDB {
     }
 
     pub fn remove_permission(&mut self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
-        let profile_name =
-            identity
-                .full_identity_name
-                .get_profile_name()
-                .clone()
-                .ok_or(ShinkaiDBError::InvalidIdentityName(
-                    identity.full_identity_name.to_string(),
-                ))?;
+        let profile_name = identity.full_identity_name.get_profile_name_string().clone().ok_or(
+            ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()),
+        )?;
 
         // Check if profile exists using does_identity_exists
         let profile_exists = self.does_identity_exists(&identity.full_identity_name)?;
@@ -373,14 +367,9 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<bool, ShinkaiDBError> {
-        let profile_name =
-            identity
-                .full_identity_name
-                .get_profile_name()
-                .clone()
-                .ok_or(ShinkaiDBError::InvalidIdentityName(
-                    identity.full_identity_name.to_string(),
-                ))?;
+        let profile_name = identity.full_identity_name.get_profile_name_string().clone().ok_or(
+            ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()),
+        )?;
 
         // Check if profile exists using does_identity_exists
         let profile_exists = self.does_identity_exists(&identity.full_identity_name)?;
@@ -544,7 +533,7 @@ impl ShinkaiDB {
                 custom_name,
                 last_message,
                 is_finished,
-                job_scope
+                job_scope,
             };
 
             smart_inboxes.push(smart_inbox);

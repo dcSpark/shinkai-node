@@ -1,12 +1,10 @@
 use super::{node_error::NodeError, Node};
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
-use crate::{
-    schemas::{
-        identity::{Identity, StandardIdentity},
-        inbox_permission::InboxPermission,
-        smart_inbox::SmartInbox,
-    },
+use crate::schemas::{
+    identity::{Identity, StandardIdentity},
+    inbox_permission::InboxPermission,
+    smart_inbox::SmartInbox,
 };
 use async_channel::Sender;
 use ed25519_dalek::VerifyingKey;
@@ -349,7 +347,7 @@ impl Node {
     }
 
     pub async fn internal_get_agents_for_profile(&self, profile: String) -> Result<Vec<SerializedAgent>, NodeError> {
-        let profile_name = match ShinkaiName::from_node_and_profile(self.node_name.node_name.clone(), profile) {
+        let profile_name = match ShinkaiName::from_node_and_profile_names(self.node_name.node_name.clone(), profile) {
             Ok(profile_name) => profile_name,
             Err(e) => {
                 return Err(NodeError {
@@ -401,7 +399,7 @@ impl Node {
     pub async fn ping_all(&self) -> io::Result<()> {
         info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
         for (peer, _) in self.peers.clone() {
-            let sender = self.node_name.clone().get_node_name();
+            let sender = self.node_name.clone().get_node_name_string();
             let receiver_profile_identity = self
                 .identity_manager
                 .lock()
@@ -409,7 +407,7 @@ impl Node {
                 .external_profile_to_global_identity(&peer.1.clone())
                 .await
                 .unwrap();
-            let receiver = receiver_profile_identity.full_identity_name.get_node_name();
+            let receiver = receiver_profile_identity.full_identity_name.get_node_name_string();
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
@@ -461,7 +459,7 @@ impl Node {
             self.db
                 .lock()
                 .await
-                .main_profile_exists(self.node_name.get_node_name().as_str())
+                .main_profile_exists(self.node_name.get_node_name_string().as_str())
                 .map_err(|e| format!("Failed to check if main profile exists: {}", e))?;
         }
 
@@ -476,7 +474,8 @@ impl Node {
 
         // Assuming global_identity is available
         let global_identity =
-            ShinkaiName::from_node_and_profile(self.node_name.get_node_name(), "main".to_string()).unwrap();
+            ShinkaiName::from_node_and_profile_names(self.node_name.get_node_name_string(), "main".to_string())
+                .unwrap();
         let external_url = "http://localhost:11434"; // Common URL for all Ollama models
 
         let agents: Vec<SerializedAgent> = input_models

@@ -181,9 +181,9 @@ impl ShinkaiDB {
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping
-    pub fn get_profile_name(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
+    pub fn get_profile_name_string(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
         profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
     }
 

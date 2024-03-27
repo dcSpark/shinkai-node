@@ -242,9 +242,11 @@ async fn test_websocket() {
     {
         // Add identity to the database
         let sender_subidentity = {
-            let shinkai_name =
-                ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
-                    .unwrap();
+            let shinkai_name = ShinkaiName::from_node_and_profile_names(
+                node1_identity_name.to_string(),
+                node1_subidentity_name.to_string(),
+            )
+            .unwrap();
             let identity_manager_lock = identity_manager_trait.lock().await;
             match identity_manager_lock.find_by_identity_name(shinkai_name).unwrap() {
                 Identity::Standard(std_identity) => std_identity.clone(),
@@ -541,9 +543,11 @@ async fn test_websocket_smart_inbox() {
     {
         // Add identity to the database
         let sender_subidentity = {
-            let shinkai_name =
-                ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
-                    .unwrap();
+            let shinkai_name = ShinkaiName::from_node_and_profile_names(
+                node1_identity_name.to_string(),
+                node1_subidentity_name.to_string(),
+            )
+            .unwrap();
             let identity_manager_lock = identity_manager_trait.lock().await;
             match identity_manager_lock.find_by_identity_name(shinkai_name).unwrap() {
                 Identity::Standard(std_identity) => std_identity.clone(),

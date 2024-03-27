@@ -1010,7 +1010,7 @@ impl ExternalSubscriberManager {
             let subscriber_node_name = subscription.subscriber_identity.clone();
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&subscriber_node_name.get_node_name())
+                .external_profile_to_global_identity(&subscriber_node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -1022,10 +1022,10 @@ impl ExternalSubscriberManager {
                 clone_static_secret_key(&my_encryption_secret_key),
                 clone_signature_secret_key(&my_signature_secret_key),
                 receiver_public_key,
-                node_name.get_node_name(),
+                node_name.get_node_name_string(),
                 // Note: the other node doesn't care about the sender's profile in this context
                 "".to_string(),
-                subscriber_node_name.get_node_name(),
+                subscriber_node_name.get_node_name_string(),
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
@@ -1078,7 +1078,7 @@ impl ExternalSubscriberManager {
                 })?
         };
 
-        if subscription.subscriber_identity.get_node_name() != subscriber_node_name.get_node_name() {
+        if subscription.subscriber_identity.get_node_name_string() != subscriber_node_name.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(
                 "Subscriber does not match the subscription".to_string(),
             ));

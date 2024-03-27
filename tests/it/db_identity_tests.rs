@@ -79,7 +79,7 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
 
     // check in db
     let profile_name =
-        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
+        ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile_name.to_string()).unwrap();
     let permission_in_db = shinkai_db.get_profile_permission(profile_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 }
@@ -148,14 +148,14 @@ fn test_generate_and_use_registration_code_for_device() {
 
     // check in db
     let profile_name =
-        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
+        ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile_name.to_string()).unwrap();
     let permission_in_db = shinkai_db.get_profile_permission(profile_name.clone()).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 
     // check device permission
-    let device_name = ShinkaiName::from_node_and_profile_and_type_and_name(
+    let device_name = ShinkaiName::from_node_and_profile_names_and_type_and_name(
         node_profile_name.to_string(),
-        profile_name.get_profile_name().unwrap().to_string(),
+        profile_name.get_profile_name_string().unwrap().to_string(),
         ShinkaiSubidentityType::Device,
         device_name.to_string(),
     )
@@ -210,12 +210,12 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
 
     // Check if "main" profile exists in db
     let main_profile_name =
-        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "main".to_string()).unwrap();
+        ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), "main".to_string()).unwrap();
     let main_permission_in_db = shinkai_db.get_profile_permission(main_profile_name.clone()).unwrap();
     assert_eq!(main_permission_in_db, IdentityPermissions::Admin);
 
     // Check if device exists in db
-    let device_full_name = ShinkaiName::from_node_and_profile_and_type_and_name(
+    let device_full_name = ShinkaiName::from_node_and_profile_names_and_type_and_name(
         node_profile_name.to_string(),
         "main".to_string(),
         ShinkaiSubidentityType::Device,
@@ -318,7 +318,8 @@ fn test_new_load_all_sub_identities() {
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
-            ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
+            ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string())
+                .unwrap(),
             None,
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -348,7 +349,8 @@ fn test_new_load_all_sub_identities() {
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
-            ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
+            ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string())
+                .unwrap(),
             None,
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -380,7 +382,7 @@ fn test_update_local_node_keys() {
 
     // Update to use the new context for checking the encryption and identity keys in database
     let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();
-    let node_name = node_profile_name.get_node_name().to_string();
+    let node_name = node_profile_name.get_node_name_string().to_string();
     let encryption_key_prefix = format!("node_encryption_key_{}", node_name);
     let signature_key_prefix = format!("node_signature_key_{}", node_name);
 
@@ -427,7 +429,7 @@ fn test_new_insert_profile() {
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
-        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
+        ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
         encryption_pk.clone(),
         identity_pk.clone(),
@@ -449,7 +451,7 @@ fn test_new_insert_profile() {
 
     // Update to use the new context for checking in db
     let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();
-    let profile_name = identity.full_identity_name.get_profile_name().unwrap();
+    let profile_name = identity.full_identity_name.get_profile_name_string().unwrap();
     let identity_key_prefix = format!("identity_key_of_{}", profile_name);
     let encryption_key_prefix = format!("encryption_key_of_{}", profile_name);
     let permission_key_prefix = format!("permissions_of_{}", profile_name);
@@ -503,7 +505,7 @@ fn test_remove_profile() {
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
-        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
+        ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
         encryption_pk.clone(),
         identity_pk.clone(),

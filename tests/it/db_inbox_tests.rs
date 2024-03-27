@@ -974,7 +974,8 @@ async fn db_inbox() {
     // Test permissions
     let subidentity_name = "device1";
     let full_subidentity_name =
-        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
+        ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), subidentity_name.to_string())
+            .unwrap();
 
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone(),
@@ -1036,7 +1037,7 @@ async fn db_inbox() {
 
     // Test get_inboxes_for_profile
     let node1_profile_identity = StandardIdentity::new(
-        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
+        ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), node1_subidentity_name.to_string())
             .unwrap(),
         None,
         node1_encryption_pk.clone(),
@@ -1146,7 +1147,8 @@ fn test_permission_errors() {
 
     let subidentity_name = "device1";
     let full_subidentity_name =
-        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
+        ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), subidentity_name.to_string())
+            .unwrap();
 
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone(),
@@ -1162,7 +1164,7 @@ fn test_permission_errors() {
 
     // Create a fake identity for tests
     let nonexistent_identity = StandardIdentity::new(
-        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), "nonexistent_identity".to_string())
+        ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), "nonexistent_identity".to_string())
             .unwrap(),
         None,
         node1_encryption_pk.clone(),

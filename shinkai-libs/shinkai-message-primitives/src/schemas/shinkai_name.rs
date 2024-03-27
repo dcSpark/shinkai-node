@@ -30,45 +30,6 @@ impl fmt::Display for ShinkaiSubidentityType {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum ShinkaiNameError {
-    MissingBody(String),
-    MissingInternalMetadata(String),
-    MetadataMissing,
-    MessageBodyMissing,
-    InvalidGroupFormat(String),
-    InvalidNameFormat(String),
-    SomeError(String),
-    InvalidOperation(String),
-}
-
-impl fmt::Display for ShinkaiNameError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ShinkaiNameError::MissingBody(message) => {
-                write!(f, "Missing body in ShinkaiMessage: {}", message)
-            }
-            ShinkaiNameError::MissingInternalMetadata(message) => {
-                write!(f, "Missing internal metadata in ShinkaiMessage: {}", message)
-            }
-            ShinkaiNameError::MetadataMissing => write!(f, "Metadata missing"),
-            ShinkaiNameError::MessageBodyMissing => write!(f, "Message body missing"),
-            ShinkaiNameError::InvalidGroupFormat(message) => {
-                write!(f, "Invalid group format: {}", message)
-            }
-            ShinkaiNameError::InvalidNameFormat(message) => {
-                write!(f, "Invalid name format: {}", message)
-            }
-            ShinkaiNameError::SomeError(message) => write!(f, "Some error: {}", message),
-            ShinkaiNameError::InvalidOperation(message) => {
-                write!(f, "Invalid operation: {}", message)
-            }
-        }
-    }
-}
-
-impl std::error::Error for ShinkaiNameError {}
-
 // Valid Examples
 // @@alice.shinkai
 // @@alice.shinkai/profileName
@@ -251,7 +212,7 @@ impl ShinkaiName {
         }
     }
 
-    pub fn from_node_and_profile(node_name: String, profile_name: String) -> Result<Self, &'static str> {
+    pub fn from_node_and_profile_names(node_name: String, profile_name: String) -> Result<Self, &'static str> {
         // Validate and format the node_name
         let node_name = Self::correct_node_name(node_name);
 
@@ -262,7 +223,7 @@ impl ShinkaiName {
         Self::new(full_identity_name)
     }
 
-    pub fn from_node_and_profile_and_type_and_name(
+    pub fn from_node_and_profile_names_and_type_and_name(
         node_name: String,
         profile_name: String,
         shinkai_type: ShinkaiSubidentityType,
@@ -374,7 +335,9 @@ impl ShinkaiName {
     // This method checks if a name is a valid node identity name and doesn't contain subidentities
     fn is_valid_node_identity_name_and_no_subidentities(name: &String) -> bool {
         // A node name is valid if it starts with '@@', ends with a valid ending, and doesn't contain '/'
-        name.starts_with("@@") && !name.contains("/") && Self::VALID_ENDINGS.iter().any(|&ending| name.ends_with(ending))
+        name.starts_with("@@")
+            && !name.contains("/")
+            && Self::VALID_ENDINGS.iter().any(|&ending| name.ends_with(ending))
     }
 
     pub fn contains(&self, other: &ShinkaiName) -> bool {
@@ -413,15 +376,15 @@ impl ShinkaiName {
         self.profile_name.is_none() && self.subidentity_type.is_none()
     }
 
-    pub fn get_profile_name(&self) -> Option<String> {
+    pub fn get_profile_name_string(&self) -> Option<String> {
         self.profile_name.clone()
     }
 
-    pub fn get_node_name(&self) -> String {
+    pub fn get_node_name_string(&self) -> String {
         self.node_name.clone()
     }
 
-    pub fn get_device_name(&self) -> Option<String> {
+    pub fn get_device_name_string(&self) -> Option<String> {
         if self.has_device() {
             self.subidentity_name.clone()
         } else {
@@ -429,7 +392,7 @@ impl ShinkaiName {
         }
     }
 
-    pub fn get_agent_name(&self) -> Option<String> {
+    pub fn get_agent_name_string(&self) -> Option<String> {
         if self.has_agent() {
             self.subidentity_name.clone()
         } else {
@@ -437,7 +400,7 @@ impl ShinkaiName {
         }
     }
 
-    pub fn get_fullname_without_node_name(&self) -> Option<String> {
+    pub fn get_fullname_string_without_node_name(&self) -> Option<String> {
         let parts: Vec<&str> = self.full_name.splitn(2, '/').collect();
         parts.get(1).map(|s| s.to_string())
     }
@@ -465,9 +428,7 @@ impl ShinkaiName {
             subidentity_name: None,
         }
     }
-}
 
-impl ShinkaiName {
     fn correct_node_name(raw_name: String) -> String {
         let mut parts: Vec<&str> = raw_name.splitn(2, '/').collect();
 
@@ -537,3 +498,42 @@ impl PartialEq for ShinkaiName {
                 == other.subidentity_name.as_ref().map(|s| s.to_lowercase())
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub enum ShinkaiNameError {
+    MissingBody(String),
+    MissingInternalMetadata(String),
+    MetadataMissing,
+    MessageBodyMissing,
+    InvalidGroupFormat(String),
+    InvalidNameFormat(String),
+    SomeError(String),
+    InvalidOperation(String),
+}
+
+impl fmt::Display for ShinkaiNameError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ShinkaiNameError::MissingBody(message) => {
+                write!(f, "Missing body in ShinkaiMessage: {}", message)
+            }
+            ShinkaiNameError::MissingInternalMetadata(message) => {
+                write!(f, "Missing internal metadata in ShinkaiMessage: {}", message)
+            }
+            ShinkaiNameError::MetadataMissing => write!(f, "Metadata missing"),
+            ShinkaiNameError::MessageBodyMissing => write!(f, "Message body missing"),
+            ShinkaiNameError::InvalidGroupFormat(message) => {
+                write!(f, "Invalid group format: {}", message)
+            }
+            ShinkaiNameError::InvalidNameFormat(message) => {
+                write!(f, "Invalid name format: {}", message)
+            }
+            ShinkaiNameError::SomeError(message) => write!(f, "Some error: {}", message),
+            ShinkaiNameError::InvalidOperation(message) => {
+                write!(f, "Invalid operation: {}", message)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ShinkaiNameError {}

@@ -32,7 +32,7 @@ impl ShinkaiDB {
 
     pub fn db_agent_id(agent_id: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .clone()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile.full_name.to_string()))?;
 
@@ -56,7 +56,11 @@ impl ShinkaiDB {
         let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", &agent_id_for_db);
         batch.put_cf(cf_node_and_users, agent_key.as_bytes(), &bytes);
 
-        let profile_key = format!("agent_{}_profile_{}", &agent_id_for_db_hash, profile.get_profile_name().unwrap_or_default());
+        let profile_key = format!(
+            "agent_{}_profile_{}",
+            &agent_id_for_db_hash,
+            profile.get_profile_name_string().unwrap_or_default()
+        );
         batch.put_cf(cf_node_and_users, profile_key.as_bytes(), &[]);
 
         // Additionally, for each allowed message sender and toolkit permission,
@@ -143,7 +147,7 @@ impl ShinkaiDB {
             let existing_profiles_prefix = format!(
                 "agent_{}_profile_{}",
                 agent_id_for_db_hash,
-                profile.get_profile_name().unwrap_or_default()
+                profile.get_profile_name_string().unwrap_or_default()
             );
             batch.delete_cf(cf_node_and_users, &existing_profiles_prefix);
 
@@ -160,7 +164,7 @@ impl ShinkaiDB {
             let existing_toolkits_prefix = format!(
                 "agent_{}_toolkit_{}",
                 agent_id_for_db_hash,
-                profile.get_profile_name().unwrap_or_default()
+                profile.get_profile_name_string().unwrap_or_default()
             );
             batch.delete_cf(cf_node_and_users, &existing_toolkits_prefix);
 
@@ -295,7 +299,7 @@ impl ShinkaiDB {
 
     pub fn get_agents_for_profile(&self, profile_name: ShinkaiName) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         let profile = profile_name
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::DataConversionError(
                 "Profile name not found".to_string(),
             ))?;

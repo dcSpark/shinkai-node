@@ -190,7 +190,7 @@ impl MySubscriptionsManager {
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&name.get_node_name())
+                .external_profile_to_global_identity(&name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
@@ -200,14 +200,14 @@ impl MySubscriptionsManager {
 
             let msg_request_shared_folders = ShinkaiMessageBuilder::vecfs_available_shared_items(
                 None,
-                name.get_node_name(),
+                name.get_node_name_string(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                self.node_name.get_node_name(),
+                self.node_name.get_node_name_string(),
                 // Note: the other node doesn't care about the sender's profile in this context
                 "".to_string(),
-                name.get_node_name(),
+                name.get_node_name_string(),
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
@@ -272,7 +272,7 @@ impl MySubscriptionsManager {
         // Check locally if I'm already subscribed to the folder using the DB
         if let Some(db_lock) = self.db.upgrade() {
             let db = db_lock.lock().await;
-            let my_node_name = ShinkaiName::new(self.node_name.get_node_name())?;
+            let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(node_name.clone(), folder_name.clone(), my_node_name);
             match db.get_my_subscription(&subscription_id.get_unique_id()) {
                 Ok(_) => {
@@ -298,7 +298,7 @@ impl MySubscriptionsManager {
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&node_name.get_node_name())
+                .external_profile_to_global_identity(&node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
@@ -309,14 +309,14 @@ impl MySubscriptionsManager {
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                 folder_name.clone(),
                 payment.clone(),
-                node_name.clone().get_node_name(),
+                node_name.clone().get_node_name_string(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                self.node_name.get_node_name(),
+                self.node_name.get_node_name_string(),
                 // Note: the other node doesn't care about the sender's profile in this context
                 "".to_string(),
-                node_name.get_node_name(),
+                node_name.get_node_name_string(),
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
@@ -361,7 +361,7 @@ impl MySubscriptionsManager {
         action: MessageSchemaType,
         payload: SubscriptionGenericResponse,
     ) -> Result<(), SubscriberManagerError> {
-        let my_node_name = ShinkaiName::new(self.node_name.get_node_name())?;
+        let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
         let subscription_id = SubscriptionId::new(node_name, payload.shared_folder.clone(), my_node_name);
 
         match action {
@@ -421,7 +421,7 @@ impl MySubscriptionsManager {
             })?;
 
             // Check that the subscription is for the correct node
-            if subscription.shared_folder_owner.get_node_name() != requester_subidentity.get_node_name() {
+            if subscription.shared_folder_owner.get_node_name_string() != requester_subidentity.get_node_name_string() {
                 return Err(SubscriberManagerError::InvalidSubscriber(
                     "Subscription doesn't belong to the subscriber".to_string(),
                 ));
@@ -457,7 +457,7 @@ impl MySubscriptionsManager {
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&requester_subidentity.get_node_name())
+                .external_profile_to_global_identity(&requester_subidentity.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -481,10 +481,10 @@ impl MySubscriptionsManager {
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                self.node_name.get_node_name(),
+                self.node_name.get_node_name_string(),
                 // Note: the other node doesn't care about the sender's profile in this context/
                 "".to_string(),
-                requester_subidentity.get_node_name(),
+                requester_subidentity.get_node_name_string(),
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;

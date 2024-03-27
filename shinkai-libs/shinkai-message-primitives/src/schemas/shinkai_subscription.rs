@@ -20,14 +20,14 @@ impl SubscriptionId {
         subscriber_profile: String,
     ) -> Self {
         // Check if origin_node_name and subscriber_node_name are the same
-        let origin_node_name_str = origin_node_name.get_node_name();
-        let subscriber_node_name_str = subscriber_node_name.get_node_name();
+        let origin_node_name_str = origin_node_name.get_node_name_string();
+        let subscriber_node_name_str = subscriber_node_name.get_node_name_string();
         if origin_node_name_str == subscriber_node_name_str {
             panic!("origin_node_name and subscriber_node_name cannot be the same");
         }
 
-        let origin_node_name_str = origin_node_name.get_node_name();
-        let subscriber_node_name_str = subscriber_node_name.get_node_name();
+        let origin_node_name_str = origin_node_name.get_node_name_string();
+        let subscriber_node_name_str = subscriber_node_name.get_node_name_string();
         let unique_id = format!(
             "{}:::{}:::{}:::{}:::{}",
             origin_node_name_str, shared_folder, subscriber_node_name_str, origin_node_profile, subscriber_profile

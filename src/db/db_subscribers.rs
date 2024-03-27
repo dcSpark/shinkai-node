@@ -10,7 +10,7 @@ impl ShinkaiDB {
 
     /// Adds a subscriber to a shared folder.
     pub fn add_subscriber_subscription(&mut self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
-        let node_name_str = subscription.clone().subscriber_identity.get_node_name();
+        let node_name_str = subscription.clone().subscriber_node_name.get_node_name_string();
         let shared_folder = subscription.clone().shared_folder;
 
         // Use shared CFs
@@ -40,7 +40,7 @@ impl ShinkaiDB {
 
     /// Updates a subscriber's subscription.
     pub fn update_subscriber_subscription(&mut self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
-        let node_name_str = subscription.clone().subscriber_identity.get_node_name();
+        let node_name_str = subscription.clone().subscriber_identity.get_node_name_string();
         let shared_folder = subscription.clone().shared_folder;
 
         // Use shared CFs
@@ -124,7 +124,7 @@ impl ShinkaiDB {
         let node_name = subscription_id
             .extract_node_name_subscriber()
             .map_err(|_| ShinkaiDBError::InvalidData)?
-            .get_node_name();
+            .get_node_name_string();
         let folder_hash = Self::folder_name_to_hash(shared_folder);
 
         // Use shared CFs
