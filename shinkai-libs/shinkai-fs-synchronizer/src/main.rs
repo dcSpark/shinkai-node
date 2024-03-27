@@ -53,20 +53,42 @@ async fn main() {
             last_synced_time,
             shinkai_manager.profile_name.clone(),
         );
-        traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-        // let fs_root = shinkai_manager
-        //     .clone()
-        //     .get_node_folder("/")
-        //     .await
-        //     .unwrap()
-        //     .as_root()
-        //     .unwrap();
+        // get node current state of all the vector FS
+        let fs_root = shinkai_manager
+            .clone()
+            .get_node_folder("/")
+            .await
+            .unwrap()
+            .as_root()
+            .unwrap();
+
+        // dbg!(fs_root.clone());
+
+        // if let Some(first_folder) = fs_root.child_folders.get(0) {
+        //     let folder_name = &first_folder.name;
+        //     match shinkai_manager.clone().get_node_folder(folder_name).await {
+        //         Ok(folder) => {
+        //             dbg!(folder.clone());
+        //             break;
+        //         }
+        //         Err(e) => eprintln!("Failed to retrieve folder '{}': {:?}", folder_name, e),
+        //     }
+        // } else {
+        //     println!("No child folders found in the root directory.");
+        // }
+
+        traverse_and_initialize_local_state::<(), SyncFolderVisitor>(
+            knowledge_dir.to_str().unwrap(),
+            fs_root.clone(),
+            &sync_visitor,
+        );
 
         // Update the synchronizer with the new state of syncing_folders
         let synchronizer = FilesystemSynchronizer::new(
             shinkai_manager.clone(),
             sync_visitor.syncing_folders.clone(),
+            sync_visitor.syncing_queue.clone(),
             major_directory.to_string(),
         );
 
