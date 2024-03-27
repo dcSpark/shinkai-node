@@ -72,7 +72,7 @@ impl FilesystemSynchronizer {
     }
 
     // start synchronization
-    pub async fn synchronize(&self, fs_root: SimplifiedFSRoot) -> anyhow::Result<()> {
+    pub async fn synchronize(&self) -> anyhow::Result<()> {
         // inside syncing_folders we already store all directories and files from the disk that are newer (or were modified later) than last synced folder
         // here we have our list of tuples
         let syncing_folders = self.syncing_folders.clone();

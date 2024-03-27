@@ -10,6 +10,7 @@ pub enum PostRequestError {
     InvalidResponse(String),
     SerializationError(String),
     FSFolderNotFound(String),
+    NodeAuthorizationError(String),
     Unknown(String),
 }
 
@@ -21,6 +22,7 @@ impl From<PostRequestError> for String {
             PostRequestError::SerializationError(msg) => msg,
             PostRequestError::Unknown(msg) => msg,
             PostRequestError::FSFolderNotFound(msg) => msg,
+            PostRequestError::NodeAuthorizationError(msg) => msg,
         }
     }
 }
@@ -57,7 +59,6 @@ pub struct UrlDetails {
 pub async fn request_post(api_url: String, input: String, path: &str) -> Result<PostDataResponse, PostRequestError> {
     let client = Client::new();
     let url = format!("{}{}", api_url, path);
-
     match client
         .post(&url)
         .header("Content-Type", "application/json")
@@ -76,16 +77,28 @@ pub async fn request_post(api_url: String, input: String, path: &str) -> Result<
 
             if status_code == 500 {
                 if response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
-                    return Err(PostRequestError::FSFolderNotFound("FS folder not found.".to_string()));
+                    return Err(PostRequestError::FSFolderNotFound(format!(
+                        "FS folder not found. Response: {}",
+                        &response_text
+                    )));
                 }
             }
 
             // TODO: handle 400 specifically
-            if status_code == 400 {}
+            if status_code == 401 {
+                return Err(PostRequestError::NodeAuthorizationError(format!(
+                    "Authorization problem {}",
+                    &response_text
+                )));
+            }
 
             match serde_json::from_str::<PostDataResponse>(&response_text) {
                 Ok(data) => Ok(data),
-                Err(e) => Err(PostRequestError::SerializationError(e.to_string())),
+                Err(e) => Err(PostRequestError::SerializationError(format!(
+                    "Couldn't serialize the response {} {}",
+                    e.to_string(),
+                    &response_text
+                ))),
             }
         }
         Err(e) => Err(PostRequestError::InvalidResponse(format!(
@@ -102,9 +115,6 @@ pub async fn request_post_multipart(
 ) -> Result<PostDataResponse, PostRequestError> {
     let client = Client::new();
     let url = format!("{}{}", api_url, path);
-
-    println!("url for post request: {}", url);
-
     match client.post(&url).multipart(form).send().await {
         Ok(response) => {
             let status_code = response.status();
@@ -114,8 +124,6 @@ pub async fn request_post_multipart(
                 .text()
                 .await
                 .unwrap_or_else(|_| "Failed to get response text".to_string());
-
-            dbg!(&response_text);
 
             if status_code == 500 {
                 if response_path == "/v1/vec_fs/retrieve_path_simplified_json" {

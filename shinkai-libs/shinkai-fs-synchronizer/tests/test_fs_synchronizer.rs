@@ -102,7 +102,7 @@ mod tests {
         );
 
         dbg!(fs_root.clone());
-        synchronizer.synchronize(fs_root).await;
+        synchronizer.synchronize().await;
     }
 
     // #[tokio::test]

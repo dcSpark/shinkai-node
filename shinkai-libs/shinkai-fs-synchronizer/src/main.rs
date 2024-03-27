@@ -55,13 +55,13 @@ async fn main() {
         );
         traverse_and_initialize_local_state::<(), SyncFolderVisitor>(knowledge_dir.to_str().unwrap(), &sync_visitor);
 
-        let fs_root = shinkai_manager
-            .clone()
-            .get_node_folder("/")
-            .await
-            .unwrap()
-            .as_root()
-            .unwrap();
+        // let fs_root = shinkai_manager
+        //     .clone()
+        //     .get_node_folder("/")
+        //     .await
+        //     .unwrap()
+        //     .as_root()
+        //     .unwrap();
 
         // Update the synchronizer with the new state of syncing_folders
         let synchronizer = FilesystemSynchronizer::new(
@@ -71,7 +71,7 @@ async fn main() {
         );
 
         attempts += 1;
-        match synchronizer.synchronize(fs_root).await {
+        match synchronizer.synchronize().await {
             Ok(_) => {
                 println!("Synchronization successful. Waiting for the next synchronization cycle...");
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
