@@ -1007,10 +1007,10 @@ impl ExternalSubscriberManager {
         // create message to request updated state
 
         if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
-            let subscriber_node_name = subscription.subscriber_identity.clone();
+            let subscriber_node = subscription.subscriber_identity.clone();
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&subscriber_node_name.get_node_name_string())
+                .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -1025,7 +1025,7 @@ impl ExternalSubscriberManager {
                 node_name.get_node_name_string(),
                 // Note: the other node doesn't care about the sender's profile in this context
                 "".to_string(),
-                subscriber_node_name.get_node_name_string(),
+                subscriber_node.get_node_name_string(),
                 "".to_string(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
@@ -1050,14 +1050,14 @@ impl ExternalSubscriberManager {
         &self,
         subscription_unique_id: String,
         subscriber_folder_tree: FSEntryTree,
-        subscriber_node_name: ShinkaiName,
+        subscriber_node: ShinkaiName,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Debug,
             &format!(
                 "Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}",
-                subscription_unique_id, subscriber_node_name, subscriber_folder_tree
+                subscription_unique_id, subscriber_node, subscriber_folder_tree
             ),
         );
 
@@ -1078,7 +1078,7 @@ impl ExternalSubscriberManager {
                 })?
         };
 
-        if subscription.subscriber_identity.get_node_name_string() != subscriber_node_name.get_node_name_string() {
+        if subscription.subscriber_identity.get_node_name_string() != subscriber_node.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(
                 "Subscriber does not match the subscription".to_string(),
             ));

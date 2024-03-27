@@ -18,13 +18,13 @@ impl FSEntryTreeGenerator {
     /// Builds an FSEntryTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
         vector_fs: Weak<Mutex<VectorFS>>,
-        origin_node_name: ShinkaiName,
+        origin_node: ShinkaiName,
         origin_node_profile: String,
         path: String,
     ) -> Result<FSEntryTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
 
-        let mut full_profile_subidentity = origin_node_name.clone();
+        let mut full_profile_subidentity = origin_node.clone();
         full_profile_subidentity.profile_name = Some(origin_node_profile);
 
         // Acquire VectorFS
@@ -37,7 +37,7 @@ impl FSEntryTreeGenerator {
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         eprintln!("shared_folders_to_tree: vr_path: {:#?}", vr_path);
         let reader = vector_fs
-            .new_reader(origin_node_name.clone(), vr_path, full_profile_subidentity.clone())
+            .new_reader(origin_node.clone(), vr_path, full_profile_subidentity.clone())
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
@@ -46,8 +46,7 @@ impl FSEntryTreeGenerator {
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
-            let reader =
-                vector_fs.new_reader(origin_node_name.clone(), path.clone(), full_profile_subidentity.clone())?;
+            let reader = vector_fs.new_reader(origin_node.clone(), path.clone(), full_profile_subidentity.clone())?;
             let fs_entry = vector_fs.retrieve_fs_entry(&reader)?;
 
             match fs_entry {

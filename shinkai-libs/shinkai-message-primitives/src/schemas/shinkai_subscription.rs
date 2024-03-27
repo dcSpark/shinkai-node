@@ -13,24 +13,24 @@ pub struct SubscriptionId {
 
 impl SubscriptionId {
     pub fn new(
-        origin_node_name: ShinkaiName,
+        origin_node: ShinkaiName,
         origin_node_profile: String,
         shared_folder: String,
-        subscriber_node_name: ShinkaiName,
-        subscriber_profile: String,
+        subscriber_node: ShinkaiName,
+        subscriber_node_profile: String,
     ) -> Self {
-        // Check if origin_node_name and subscriber_node_name are the same
-        let origin_node_name_str = origin_node_name.get_node_name_string();
-        let subscriber_node_name_str = subscriber_node_name.get_node_name_string();
-        if origin_node_name_str == subscriber_node_name_str {
-            panic!("origin_node_name and subscriber_node_name cannot be the same");
+        // Check if origin_node and subscriber_node are the same
+        let origin_node_str = origin_node.get_node_name_string();
+        let subscriber_node_str = subscriber_node.get_node_name_string();
+        if origin_node_str == subscriber_node_str {
+            panic!("origin_node and subscriber_node cannot be the same");
         }
 
-        let origin_node_name_str = origin_node_name.get_node_name_string();
-        let subscriber_node_name_str = subscriber_node_name.get_node_name_string();
+        let origin_node_str = origin_node.get_node_name_string();
+        let subscriber_node_str = subscriber_node.get_node_name_string();
         let unique_id = format!(
             "{}:::{}:::{}:::{}:::{}",
-            origin_node_name_str, shared_folder, subscriber_node_name_str, origin_node_profile, subscriber_profile
+            origin_node_str, shared_folder, subscriber_node_str, origin_node_profile, subscriber_node_profile
         );
         SubscriptionId { unique_id }
     }
@@ -60,7 +60,7 @@ impl SubscriptionId {
     }
 
     /// Extracts the node name with shared folder from the unique_id of the SubscriptionId.
-    pub fn extract_origin_node_name(&self) -> Result<ShinkaiName, &'static str> {
+    pub fn extract_origin_node(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(ShinkaiName::new(parts[0].to_string())?)
@@ -70,7 +70,7 @@ impl SubscriptionId {
     }
 
     /// Extracts the node name of the subscriber from the unique_id of the SubscriptionId.
-    pub fn extract_subscriber_node_name(&self) -> Result<ShinkaiName, &'static str> {
+    pub fn extract_subscriber_node(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(ShinkaiName::new(parts[2].to_string())?)
@@ -90,7 +90,7 @@ impl SubscriptionId {
     }
 
     /// Extracts the subscriber profile from the unique_id of the SubscriptionId.
-    pub fn extract_subscriber_profile(&self) -> Result<String, &'static str> {
+    pub fn extract_subscriber_node_profile(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(parts[4].to_string())
@@ -114,12 +114,12 @@ pub enum ShinkaiSubscriptionStatus {
 pub struct ShinkaiSubscription {
     pub subscription_id: SubscriptionId,
     pub shared_folder: String,
-    pub origin_node_name: ShinkaiName,
+    pub origin_node: ShinkaiName,
     pub origin_node_profile: String,
     pub subscription_description: Option<String>,
     pub subscriber_destination_path: Option<String>,
-    pub subscriber_node_name: ShinkaiName,
-    pub subscriber_profile: String,
+    pub subscriber_node: ShinkaiName,
+    pub subscriber_node_profile: String,
     pub payment: Option<SubscriptionPayment>,
     pub state: ShinkaiSubscriptionStatus,
     pub date_created: DateTime<Utc>,
@@ -130,28 +130,28 @@ pub struct ShinkaiSubscription {
 impl ShinkaiSubscription {
     pub fn new(
         shared_folder: String,
-        origin_node_name: ShinkaiName,
+        origin_node: ShinkaiName,
         origin_node_profile: String,
-        subscriber_node_name: ShinkaiName,
-        subscriber_profile: String,
+        subscriber_node: ShinkaiName,
+        subscriber_node_profile: String,
         state: ShinkaiSubscriptionStatus,
         payment: Option<SubscriptionPayment>,
     ) -> Self {
         ShinkaiSubscription {
             subscription_id: SubscriptionId::new(
-                origin_node_name.clone(),
+                origin_node.clone(),
                 origin_node_profile.clone(),
                 shared_folder.clone(),
-                subscriber_node_name.clone(),
-                subscriber_profile.clone(),
+                subscriber_node.clone(),
+                subscriber_node_profile.clone(),
             ),
             shared_folder,
-            origin_node_name,
+            origin_node,
             origin_node_profile,
             subscription_description: None, // TODO: update api and models to support this
             subscriber_destination_path: None, // TODO: update api to support this
-            subscriber_node_name,
-            subscriber_profile,
+            subscriber_node,
+            subscriber_node_profile,
             payment,
             state,
             date_created: Utc::now(),
