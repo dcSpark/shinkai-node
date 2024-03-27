@@ -350,11 +350,6 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
-    // TODO: Ideally this shouldn't use unwraps and be safe and return error if any of these fail
-    let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
-    let origin_node = origin_node_with_profile.extract_node();
-    let origin_node_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();
-
     // Check the schema of the message and decide what to do
     // TODO: add handler that checks for the Schema and decides what to do with the message
     // TODO: the message may be need to be added to an internal NetworkJobQueue
@@ -591,10 +586,14 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscriptionRequiresTreeUpdate => {
+                    let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
+                    let origin_node = origin_node_with_profile.extract_node();
+                    let origin_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();
+
                     let requester_node_with_profile =
                         ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let requester_node = requester_node_with_profile.extract_node();
-                    let requester_node_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
+                    let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
 
                     eprintln!(
                         "SubscriptionRequiresTreeUpdate Node {}: Handling SubscribeToSharedFolderResponse from: {}",
@@ -613,23 +612,22 @@ pub async fn handle_network_message_cases(
                         my_node_profile_name, content
                     );
 
-                    let my_node_name = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
                     let shared_folder = content.clone();
                     let subscription_id = SubscriptionId::new(
-                        origin_node,
-                        origin_node_profile_name,
-                        shared_folder,
-                        requester_node,
-                        requester_node_profile_name,
+                        origin_node.clone(),
+                        origin_profile_name.clone(),
+                        shared_folder.clone(),
+                        requester_node.clone(),
+                        requester_profile_name.clone(),
                     );
 
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager
                         .share_local_shared_folder_copy_state(
                             origin_node,
-                            origin_node_profile_name,
+                            origin_profile_name,
                             requester_node,
-                            requester_node_profile_name,
+                            requester_profile_name,
                             subscription_id.get_unique_id().to_string(),
                         )
                         .await;
@@ -648,15 +646,22 @@ pub async fn handle_network_message_cases(
 
                     return Ok(());
                 }
+                // Note(Nico): This is usually coming from a request but we also can allow it without the request
+                // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
                 MessageSchemaType::SubscriptionRequiresTreeUpdateResponse => {
-                    // Note(Nico): This is usually coming from a request but we also can allow it without the request
-                    // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
-                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
+                    let origin_node = origin_node_with_profile.extract_node();
+                    let origin_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();
+
+                    let requester_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let requester_node = requester_node_with_profile.extract_node();
+                    let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
+
                     eprintln!("Message from: {:?}", message);
-                    let request_node_name = requester.get_node_name_string();
                     eprintln!(
                         "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                        my_node_profile_name, request_node_name
+                        my_node_profile_name, requester_node.get_node_name_string()
                     );
                     let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
 
@@ -668,11 +673,11 @@ pub async fn handle_network_message_cases(
                                     match serde_json::from_str::<FSEntryTree>(tree_content) {
                                         Ok(item_tree) => {
                                             let subscription_unique_id = SubscriptionId::new(
-                                                origin_node,
-                                                origin_node_profile,
+                                                origin_node.clone(),
+                                                origin_profile_name.clone(),
                                                 response.shared_folder.clone(),
-                                                requester.extract_node(),
-                                                requester_profile_name,
+                                                requester_node.clone(),
+                                                requester_profile_name.clone(),
                                             );
                                             let external_subscriber_manager =
                                                 external_subscription_manager.lock().await;
@@ -680,7 +685,8 @@ pub async fn handle_network_message_cases(
                                                 .subscriber_current_state_response(
                                                     subscription_unique_id.get_unique_id().to_string(),
                                                     item_tree,
-                                                    requester,
+                                                    requester_node,
+                                                    requester_profile_name,
                                                 )
                                                 .await;
                                         }
@@ -704,7 +710,7 @@ pub async fn handle_network_message_cases(
 
                     eprintln!(
                         "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                        my_node_profile_name, request_node_name
+                        my_node_profile_name, requester_node_with_profile.get_node_name_string()
                     );
                 }
                 _ => {

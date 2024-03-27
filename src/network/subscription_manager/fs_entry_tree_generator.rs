@@ -18,14 +18,11 @@ impl FSEntryTreeGenerator {
     /// Builds an FSEntryTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
         vector_fs: Weak<Mutex<VectorFS>>,
-        origin_node: ShinkaiName,
-        origin_node_profile: String,
+        full_origin_profile_subidentity: ShinkaiName,
+        full_requester_profile_subidentity: ShinkaiName,
         path: String,
     ) -> Result<FSEntryTree, SubscriberManagerError> {
         eprintln!("shared_folders_to_tree: path: {}", path);
-
-        let mut full_profile_subidentity = origin_node.clone();
-        full_profile_subidentity.profile_name = Some(origin_node_profile);
 
         // Acquire VectorFS
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
@@ -36,28 +33,40 @@ impl FSEntryTreeGenerator {
         // Create Reader and find paths with read permissions
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         eprintln!("shared_folders_to_tree: vr_path: {:#?}", vr_path);
-        let reader = vector_fs
-            .new_reader(origin_node.clone(), vr_path, full_profile_subidentity.clone())
+
+        // Use the full origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+        let perms_reader = vector_fs
+            .new_reader(
+                full_origin_profile_subidentity.clone(),
+                vr_path,
+                full_origin_profile_subidentity.clone(),
+            )
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let shared_folders = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?;
+        let shared_folders = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
-            let reader = vector_fs.new_reader(origin_node.clone(), path.clone(), full_profile_subidentity.clone())?;
-            let fs_entry = vector_fs.retrieve_fs_entry(&reader)?;
+            // Now use the requester subidentity for actual perm checking. Required for whitelist perms in the future.
+            if let Ok(reader) = vector_fs.new_reader(
+                full_requester_profile_subidentity.clone(),
+                path.clone(),
+                full_origin_profile_subidentity.clone(),
+            ) {
+                let fs_entry = vector_fs.retrieve_fs_entry(&reader)?;
 
-            match fs_entry {
-                FSEntry::Folder(fs_folder) => {
-                    let folder_tree = Self::process_folder(&fs_folder, &path.to_string())?;
-                    root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
+                match fs_entry {
+                    FSEntry::Folder(fs_folder) => {
+                        let folder_tree = Self::process_folder(&fs_folder, &path.to_string())?;
+                        root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
+                    }
+                    FSEntry::Item(fs_item) => {
+                        // If you need to handle items at the root level, adjust here
+                    }
+                    _ => {} // Handle FSEntry::Root if necessary
                 }
-                FSEntry::Item(fs_item) => {
-                    // If you need to handle items at the root level, adjust here
-                }
-                _ => {} // Handle FSEntry::Root if necessary
             }
         }
 

@@ -399,9 +399,9 @@ impl MySubscriptionsManager {
     pub async fn share_local_shared_folder_copy_state(
         &self,
         origin_node: ShinkaiName,
-        origin_node_profile: String,
+        origin_profile: String,
         subscriber_node: ShinkaiName,
-        subscriber_node_profile: String,
+        subscriber_profile: String,
         subscription_id: String,
     ) -> Result<(), SubscriberManagerError> {
         let mut subscription_folder_path: Option<String> = None;
@@ -445,7 +445,7 @@ impl MySubscriptionsManager {
         let result = FSEntryTreeGenerator::shared_folders_to_tree(
             self.vector_fs.clone(),
             origin_node.clone(),
-            origin_node_profile.clone(),
+            origin_profile.clone(),
             folder_path,
         )
         .await
@@ -487,9 +487,9 @@ impl MySubscriptionsManager {
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
                 origin_node.get_node_name_string(),
-                origin_node_profile,
+                origin_profile,
                 subscriber_node.get_node_name_string(),
-                subscriber_node_profile,
+                subscriber_profile,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 

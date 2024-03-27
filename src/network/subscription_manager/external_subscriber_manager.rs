@@ -641,9 +641,18 @@ impl ExternalSubscriberManager {
     /// The return type is (shareable_path, permission, tree, subscription_requirement)
     pub async fn available_shared_folders(
         &mut self,
-        requester_shinkai_identity: ShinkaiName,
+        origin_node: ShinkaiName,
+        origin_profile: String,
+        requester_node: ShinkaiName,
+        requester_profile: String,
         path: String,
     ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
+        let mut full_requester_profile_subidentity = requester_node.clone();
+        full_requester_profile_subidentity.profile_name = Some(requester_profile);
+
+        let mut full_origin_profile_subidentity = origin_node.clone();
+        full_origin_profile_subidentity.profile_name = Some(origin_profile.clone());
+
         let mut converted_results = Vec::new();
         {
             let vector_fs = self
@@ -657,16 +666,15 @@ impl ExternalSubscriberManager {
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-            let reader = vector_fs
+            // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+            let perms_reader = vector_fs
                 .new_reader(
-                    requester_shinkai_identity.clone(),
+                    full_origin_profile_subidentity.clone(),
                     vr_path,
-                    requester_shinkai_identity.clone(),
+                    full_origin_profile_subidentity.clone(),
                 )
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-            // Note: double-check that the Whitelist is correct here under these assumptions
-            let results = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
+            let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
 
             // Use the new function to filter results to only include top-level folders
             let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
@@ -688,7 +696,8 @@ impl ExternalSubscriberManager {
                 };
                 let tree = FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
-                    requester_shinkai_identity.clone(),
+                    full_origin_profile_subidentity.clone(),
+                    full_requester_profile_subidentity.clone(),
                     path_str.clone(),
                 )
                 .await?;
@@ -741,7 +750,7 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
-        // TODO: check that you are actually an admin of the folder
+        // TODO: check that you are actually have rights to the folder
         let vector_fs = self
             .vector_fs
             .upgrade()
@@ -1051,6 +1060,7 @@ impl ExternalSubscriberManager {
         subscription_unique_id: String,
         subscriber_folder_tree: FSEntryTree,
         subscriber_node: ShinkaiName,
+        subscriber_profile: String,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1078,15 +1088,19 @@ impl ExternalSubscriberManager {
                 })?
         };
 
-        if subscription.subscriber_identity.get_node_name_string() != subscriber_node.get_node_name_string() {
+        if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(
-                "Subscriber does not match the subscription".to_string(),
+                "Subscriber node does not match the subscription".to_string(),
+            ));
+        }
+        if subscription.subscriber_profile != subscriber_profile {
+            return Err(SubscriberManagerError::InvalidSubscriber(
+                "Subscriber profile does not match the subscription".to_string(),
             ));
         }
 
         let subscription_id_clone = subscription.subscription_id.clone();
         let unique_id = subscription_id_clone.get_unique_id();
-
         let subscription_with_tree = SubscriptionWithTree {
             subscription,
             subscriber_folder_tree,
