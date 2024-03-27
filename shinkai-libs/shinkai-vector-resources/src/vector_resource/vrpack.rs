@@ -132,6 +132,16 @@ impl VRPack {
         self.resource = resource;
     }
 
+    /// Returns the ID of the VRPack.
+    pub fn id(&self) -> String {
+        self.resource.as_trait_object().resource_id().to_string()
+    }
+
+    /// Returns the Merkle root of the VRPack.
+    pub fn merkle_root(&self) -> Result<String, VRError> {
+        self.resource.as_trait_object().get_merkle_root()
+    }
+
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
     pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();

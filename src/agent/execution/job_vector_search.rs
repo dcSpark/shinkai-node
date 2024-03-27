@@ -27,8 +27,10 @@ impl JobManager {
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
         let mut resources = Vec::new();
 
+        // TODO: Add VRPack vector searching once implemented.
+
         // Add local resources to the list
-        for local_entry in &job_scope.local {
+        for local_entry in &job_scope.local_vrkai {
             resources.push(local_entry.vrkai.resource.clone());
         }
 
