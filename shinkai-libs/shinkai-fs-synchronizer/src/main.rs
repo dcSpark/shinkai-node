@@ -63,20 +63,7 @@ async fn main() {
             .as_root()
             .unwrap();
 
-        // dbg!(fs_root.clone());
-
-        // if let Some(first_folder) = fs_root.child_folders.get(0) {
-        //     let folder_name = &first_folder.name;
-        //     match shinkai_manager.clone().get_node_folder(folder_name).await {
-        //         Ok(folder) => {
-        //             dbg!(folder.clone());
-        //             break;
-        //         }
-        //         Err(e) => eprintln!("Failed to retrieve folder '{}': {:?}", folder_name, e),
-        //     }
-        // } else {
-        //     println!("No child folders found in the root directory.");
-        // }
+        dbg!(fs_root.clone());
 
         traverse_and_initialize_local_state::<(), SyncFolderVisitor>(
             knowledge_dir.to_str().unwrap(),

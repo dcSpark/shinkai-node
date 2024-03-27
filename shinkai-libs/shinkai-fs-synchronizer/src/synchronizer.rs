@@ -76,15 +76,7 @@ impl FilesystemSynchronizer {
 
     // start synchronization
     pub async fn synchronize(&self) -> anyhow::Result<()> {
-        // inside syncing_folders we already store all directories and files from the disk that are newer (or were modified later) than last synced folder
-
-        let syncing_folders = self.syncing_folders.clone();
-
-        // here we have our list of tuples
-        let syncing_queue = self.syncing_queue.clone();
-
-        // go through each syncing folder and add it to the syncing queue (oldest first in regards to OSFilePath)
-        let syncing_folders_lock = syncing_folders.lock().unwrap();
+        let mut syncing_folders_lock = self.syncing_folders.lock().unwrap();
         let mut syncing_queue_lock = self.syncing_queue.lock().unwrap();
 
         dbg!(syncing_queue_lock.clone());
@@ -117,7 +109,6 @@ impl FilesystemSynchronizer {
 
             if uploaded_file.is_ok() {
                 if let Some(vector_fs_path) = &sync_queue_item.syncing_folder.vector_fs_path {
-                    let mut syncing_folders_lock = syncing_folders.lock().unwrap();
                     let node_folder_path_key = LocalOSFolderPath(vector_fs_path.clone());
                     if let Some(syncing_folder) = syncing_folders_lock.get_mut(&node_folder_path_key) {
                         syncing_folder.last_synchronized_file_datetime = Some(sync_queue_item.file_datetime);
