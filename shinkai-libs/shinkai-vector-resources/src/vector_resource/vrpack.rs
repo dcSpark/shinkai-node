@@ -322,7 +322,7 @@ impl VRPack {
     /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack.
     pub async fn deep_vector_search(
-        &mut self,
+        &self,
         input_query: String,
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,

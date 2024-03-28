@@ -177,12 +177,13 @@ impl JobManager {
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let mut retrieved_nodes = Vec::new();
 
-        // TODO: Add VRPack vector searching once implemented.
+        // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
-            let vrkai_results =
-                entry
-                    .vrpack
-                    .dynamic_vector_search_vrkai(query_text.clone(), num_of_results, generator.clone());
+            let mut vr_pack_results = entry
+                .vrpack
+                .deep_vector_search(query_text.clone(), 20, num_of_results, generator.clone())
+                .await?;
+            retrieved_nodes.append(&mut vr_pack_results);
         }
 
         // Folder deep vector search
@@ -209,7 +210,7 @@ impl JobManager {
             &format!("Num of resources fetched: {}", resources.len()),
         );
 
-        // Perform vector search on all resources
+        // Perform vector search on all direct resources
         for resource in &resources {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
             retrieved_nodes.extend(results);
