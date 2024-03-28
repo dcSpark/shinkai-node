@@ -1,5 +1,6 @@
-use super::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRKai, VRPath, VRSource};
+use super::{BaseVectorResource, MapVectorResource, Node, NodeContent, TraversalOption, VRKai, VRPath, VRSource};
 use crate::{
+    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
     embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionOrigin, SourceFileMap},
@@ -272,5 +273,55 @@ impl VRPack {
                 println!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
             }
         }
+    }
+
+    /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    pub async fn dynamic_vector_search_vrkai(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<VRKai>, VRError> {
+        let retrieved_nodes = self
+            .resource
+            .as_trait_object()
+            .dynamic_vector_search(input_query, num_of_results, embedding_generator)
+            .await?;
+
+        let vrkais: Vec<VRKai> = retrieved_nodes
+            .into_iter()
+            .filter_map(|node| Self::parse_node_to_vrkai(&node.node).ok())
+            .collect();
+
+        Ok(vrkais)
+    }
+
+    /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    pub async fn dynamic_vector_search_vrkai_customized(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<VRKai>, VRError> {
+        let retrieved_nodes = self
+            .resource
+            .as_trait_object()
+            .dynamic_vector_search_customized(
+                input_query,
+                num_of_results,
+                traversal_options,
+                starting_path,
+                embedding_generator,
+            )
+            .await?;
+
+        let vrkais: Vec<VRKai> = retrieved_nodes
+            .into_iter()
+            .filter_map(|node| Self::parse_node_to_vrkai(&node.node).ok())
+            .collect();
+
+        Ok(vrkais)
     }
 }

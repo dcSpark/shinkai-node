@@ -198,7 +198,7 @@ impl JobManager {
             full_job,
             job_message.clone(),
             prev_execution_context,
-            &generator,
+            generator,
             user_profile,
         )
         .await?;

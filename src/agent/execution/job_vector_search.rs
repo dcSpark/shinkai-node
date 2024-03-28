@@ -7,7 +7,7 @@ use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
 use std::result::Result::Ok;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 impl JobManager {
-    /// Helper method which fetches all local VRs & directly linked FSItem Vector Resources specified in the given JobScope.
+    /// Helper method which fetches all local VRs, & directly linked FSItem Vector Resources specified in the given JobScope.
     /// Returns all of them in a single list ready to be used.
     /// Of note, this does not fetch resources inside of folders in the job scope, as those are not fetched in whole,
     /// but instead have a deep vector search performed on them via the VectorFS itself separately.
@@ -26,8 +26,6 @@ impl JobManager {
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
         let mut resources = Vec::new();
-
-        // TODO: Add VRPack vector searching once implemented.
 
         // Add local resources to the list
         for local_entry in &job_scope.local_vrkai {
@@ -54,7 +52,7 @@ impl JobManager {
         job_scope: &JobScope,
         query_text: String,
         user_profile: &ShinkaiName,
-        generator: &dyn EmbeddingGenerator,
+        generator: RemoteEmbeddingGenerator,
         num_of_results: u64,
     ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
         // First perform a standard job scope vector search using the whole query text
@@ -68,6 +66,7 @@ impl JobManager {
             num_of_results,
             user_profile,
             true,
+            generator.clone(),
         )
         .await?;
 
@@ -99,6 +98,7 @@ impl JobManager {
                 num_of_results,
                 user_profile,
                 true,
+                generator.clone(),
             )
             .await?;
 
@@ -173,8 +173,17 @@ impl JobManager {
         num_of_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
+        generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let mut retrieved_nodes = Vec::new();
+
+        // TODO: Add VRPack vector searching once implemented.
+        for entry in &job_scope.local_vrpack {
+            let vrkai_results =
+                entry
+                    .vrpack
+                    .dynamic_vector_search_vrkai(query_text.clone(), num_of_results, generator.clone());
+        }
 
         // Folder deep vector search
         {
