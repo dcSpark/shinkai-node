@@ -1,6 +1,9 @@
-use super::{BaseVectorResource, MapVectorResource, Node, NodeContent, TraversalOption, VRKai, VRPath, VRSource};
+use super::{
+    BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode, ScoringMode, TraversalMethod,
+    TraversalOption, VRKai, VRPath, VRSource,
+};
 use crate::{
-    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+    embedding_generator::{self, EmbeddingGenerator, RemoteEmbeddingGenerator},
     embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionOrigin, SourceFileMap},
@@ -282,21 +285,12 @@ impl VRPack {
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<VRKai>, VRError> {
-        let retrieved_nodes = self
-            .resource
-            .as_trait_object()
-            .dynamic_vector_search(input_query, num_of_results, embedding_generator)
-            .await?;
-
-        let vrkais: Vec<VRKai> = retrieved_nodes
-            .into_iter()
-            .filter_map(|node| Self::parse_node_to_vrkai(&node.node).ok())
-            .collect();
-
-        Ok(vrkais)
+        self.dynamic_vector_search_vrkai_customized(input_query, num_of_results, &vec![], None, embedding_generator)
+            .await
     }
 
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    /// Supports customizing the search starting path/traversal options.
     pub async fn dynamic_vector_search_vrkai_customized(
         &self,
         input_query: String,
@@ -323,5 +317,71 @@ impl VRPack {
             .collect();
 
         Ok(vrkais)
+    }
+
+    /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// the VRKais stored in the VRPack.
+    pub async fn deep_vector_search(
+        &mut self,
+        input_query: String,
+        num_of_vrkais_to_search_into: u64,
+        num_of_results: u64,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self.deep_vector_search_customized(
+            input_query,
+            num_of_vrkais_to_search_into,
+            &vec![],
+            None,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+            embedding_generator,
+        )
+        .await
+    }
+
+    /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// the VRKais stored in the VRPack. Customized allows specifying options for the first top-level search for VRKais,
+    /// and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
+    pub async fn deep_vector_search_customized(
+        &self,
+        input_query: String,
+        num_of_vrkais_to_search_into: u64,
+        traversal_options: &Vec<TraversalOption>,
+        vr_pack_starting_path: Option<VRPath>,
+        num_of_results: u64,
+        deep_traversal_method: TraversalMethod,
+        deep_traversal_options: &Vec<TraversalOption>,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        let vrkais = self
+            .dynamic_vector_search_vrkai_customized(
+                input_query.clone(),
+                num_of_vrkais_to_search_into,
+                traversal_options,
+                vr_pack_starting_path.clone(),
+                embedding_generator.clone(),
+            )
+            .await?;
+
+        let mut retrieved_nodes = Vec::new();
+        // Perform vector search on all VRKai resources
+        for vrkai in vrkais {
+            let query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+            let results = vrkai.resource.as_trait_object().vector_search_customized(
+                query_embedding,
+                num_of_results,
+                deep_traversal_method.clone(),
+                &deep_traversal_options,
+                None,
+            );
+            retrieved_nodes.extend(results);
+        }
+
+        // Sort the retrieved nodes by score before returning
+        let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
+
+        Ok(sorted_retrieved_nodes)
     }
 }
