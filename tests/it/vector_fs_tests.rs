@@ -15,7 +15,7 @@ use shinkai_vector_resources::source::{
     DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::simplified_fs_types::*;
+use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
     VectorResourceSearch,
@@ -96,7 +96,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
     resource
 }
 
-// // Test to be used to used once to re-generate the VRKai file whenever breaking changes take place.
+// Test to be used to used once to re-generate the VRKai file whenever breaking changes take place.
 // #[tokio::test]
 // async fn test_gen_vrkai() {
 //     setup();
@@ -106,9 +106,14 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 //     // With source file map
 //     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
 //     // Without source file map
-//     let vrkai = VRKai::from_base_vector_resource(resource, None, None);
+//     let vrkai = VRKai::from_base_vector_resource(resource, None);
 //     let vrkai_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRKai bytes");
 //     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
+
+//     let mut vrpack = VRPack::new_empty("shinkai-intro");
+//     vrpack.insert_vrkai(&vrkai, VRPath::root());
+//     let vrpack_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRPack bytes");
+//     std::fs::write("files/shinkai_intro.vrpack", vrpack_bytes).expect("Failed to write VRPack bytes to file");
 // }
 
 #[tokio::test]
