@@ -8,7 +8,9 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry, VectorFSItemScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{
+    LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -20,7 +22,7 @@ use shinkai_vector_resources::source::{
     DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::{VRKai, VRPath};
+use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -196,7 +198,7 @@ impl JobManager {
             full_job,
             job_message.clone(),
             prev_execution_context,
-            &generator,
+            generator,
             user_profile,
         )
         .await?;
@@ -442,14 +444,25 @@ impl JobManager {
                 Ok(new_scope_entries) => {
                     for (_, value) in new_scope_entries {
                         match value {
-                            ScopeEntry::Local(local_entry) => {
-                                if !full_job.scope.local.contains(&local_entry) {
-                                    full_job.scope.local.push(local_entry);
+                            ScopeEntry::LocalScopeVRKai(local_entry) => {
+                                if !full_job.scope.local_vrkai.contains(&local_entry) {
+                                    full_job.scope.local_vrkai.push(local_entry);
                                 } else {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
                                         ShinkaiLogLevel::Error,
-                                        "Duplicate LocalScopeEntry detected",
+                                        "Duplicate LocalScopeVRKaiEntry detected",
+                                    );
+                                }
+                            }
+                            ScopeEntry::LocalScopeVRPack(local_entry) => {
+                                if !full_job.scope.local_vrpack.contains(&local_entry) {
+                                    full_job.scope.local_vrpack.push(local_entry);
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeVRPackEntry detected",
                                     );
                                 }
                             }
@@ -507,7 +520,7 @@ impl JobManager {
 
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
     /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
-    /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
+    /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
         agent: Option<SerializedAgent>,
@@ -531,10 +544,14 @@ impl JobManager {
             }
         };
 
+        // Sort out the vrpacks from the rest
+        let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+            files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
+
         // TODO: Decide how frontend relays distribution info so it can be properly added
         // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
         let mut dist_files = vec![];
-        for file in files {
+        for file in other_files {
             let distribution_info = DistributionInfo::new_auto(&file.0, None);
             dist_files.push((file.0, file.1, distribution_info));
         }
@@ -558,8 +575,28 @@ impl JobManager {
 
                 files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
             } else {
-                let local_scope_entry = LocalScopeEntry { vrkai: vrkai };
-                files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
+                let local_scope_entry = LocalScopeVRKaiEntry { vrkai: vrkai };
+                files_map.insert(filename, ScopeEntry::LocalScopeVRKai(local_scope_entry));
+            }
+        }
+
+        // Save the vrpacks into scope (and potentially VectorFS)
+        for (filename, vrpack_bytes) in vr_packs {
+            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
+            // Now create Local/VectorFSScopeEntry depending on setting
+            if let Some(folder_path) = &save_to_vector_fs_folder {
+                let fs_scope_entry = VectorFSFolderScopeEntry {
+                    name: vrpack.name.clone(),
+                    path: folder_path.push_cloned(vrpack.name.clone()),
+                };
+
+                // TODO: Save to the vector_fs if not None
+                // let vector_fs = self.v
+
+                files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));
+            } else {
+                let local_scope_entry = LocalScopeVRPackEntry { vrpack: vrpack };
+                files_map.insert(filename, ScopeEntry::LocalScopeVRPack(local_scope_entry));
             }
         }
 

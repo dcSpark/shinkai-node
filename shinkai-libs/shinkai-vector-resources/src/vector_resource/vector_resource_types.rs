@@ -120,9 +120,9 @@ impl RetrievedNode {
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
         let source_string = self.resource_header.resource_source.format_source_string();
-        let metadata_string = self.format_metadata_string();
+        let position_string = self.format_position_string();
 
-        let base_length = source_string.len() + metadata_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
+        let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
 
         if base_length > max_characters {
             return None;
@@ -137,8 +137,8 @@ impl RetrievedNode {
             data_string
         };
 
-        let formatted_string = if metadata_string.len() > 0 {
-            format!("- {} (Source: {}, {})", data_string, source_string, metadata_string)
+        let formatted_string = if position_string.len() > 0 {
+            format!("- {} (Source: {}, {})", data_string, source_string, position_string)
         } else {
             format!("- {} (Source: {})", data_string, source_string)
         };
@@ -146,15 +146,27 @@ impl RetrievedNode {
         Some(formatted_string)
     }
 
-    /// Parses the metdata of the node, and outputs a readable string which includes
-    /// any metadata relevant to provide to an LLM as context about the retrieved node.
-    pub fn format_metadata_string(&self) -> String {
+    /// Parses node position in the content using metadata/retrieved node data.
+    pub fn format_position_string(&self) -> String {
         match &self.node.metadata {
             Some(metadata) => {
                 if let Some(page_numbers) = metadata.get("page_numbers") {
                     format!("Pgs: {}", page_numbers)
                 } else {
-                    String::new()
+                    // If from a Document Vector Resource, then we can create a relative position based on parents
+                    // as all node ids in Docs are integers.
+                    if self.resource_header.resource_base_type == VRBaseType::Document {
+                        let section_string = self
+                            .retrieval_path
+                            .path_ids
+                            .iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<String>>()
+                            .join(".");
+                        format!("Section: {}", section_string)
+                    } else {
+                        String::new()
+                    }
                 }
             }
             None => String::new(),
