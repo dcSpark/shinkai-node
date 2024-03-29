@@ -764,10 +764,6 @@ async fn test_vector_fs_operations() {
         .as_trait_object()
         .print_all_nodes_exhaustive(None, true, false);
 
-    // let json_contents = vrpack.to_json_contents_simplified();
-    // println!("{:?}", json_contents);
-    // assert!(1 == 2);
-
     let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
 
     assert_eq!(unpacked_kais.len(), 4);
@@ -842,9 +838,9 @@ async fn test_vector_fs_operations() {
     let mut new_vrpack_contents = new_vrpack.unpack_all_vrkais().unwrap();
 
     println!("\n\nOld VRPack:");
-    old_vrpack.print_internal_structure(None, true);
+    old_vrpack.print_internal_structure(None);
     println!("\n\nNew VRPack:");
-    new_vrpack.print_internal_structure(None, true);
+    new_vrpack.print_internal_structure(None);
 
     old_vrpack_contents.sort_by(|a, b| {
         a.0.resource

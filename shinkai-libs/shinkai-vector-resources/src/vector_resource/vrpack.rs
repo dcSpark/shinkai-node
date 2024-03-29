@@ -434,6 +434,7 @@ impl VRPack {
                         "name": retrieved_node.node.id,
                         "type": "vrkai",
                         "path": path,
+                        "merkle_hash": retrieved_node.node.get_merkle_hash().unwrap_or_default(),
                     })
                 }
                 NodeContent::Resource(_) => {
