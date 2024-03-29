@@ -148,7 +148,7 @@ impl VectorFS {
         let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
         let sfm = self.retrieve_source_file_map(reader).ok();
 
-        Ok(VRKai::from_base_vector_resource(resource, sfm))
+        Ok(VRKai::new(resource, sfm))
     }
 
     /// Attempts to retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).

@@ -8,7 +8,7 @@ use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 // Versions of VRKai that are supported
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -30,6 +30,7 @@ pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
     pub version: VRKaiVersion,
+    pub metadata: HashMap<String, String>,
 }
 
 impl VRKai {
@@ -38,12 +39,13 @@ impl VRKai {
         VRKaiVersion::V1
     }
 
-    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionInfo.
-    pub fn from_base_vector_resource(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
+    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap.
+    pub fn new(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
         VRKai {
             resource,
             sfm,
             version: Self::default_vrkai_version(),
+            metadata: HashMap::new(),
         }
     }
 
@@ -116,6 +118,21 @@ impl VRKai {
     /// Parses into a VRKai from human-readable JSON (intended for readability in non-production use cases)
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
+    }
+
+    /// Inserts a key-value pair into the VRPack's metadata. Replaces existing value if key already exists.
+    pub fn metadata_insert(&mut self, key: String, value: String) {
+        self.metadata.insert(key, value);
+    }
+
+    /// Retrieves the value associated with a key from the VRPack's metadata.
+    pub fn metadata_get(&self, key: &str) -> Option<&String> {
+        self.metadata.get(key)
+    }
+
+    /// Removes a key-value pair from the VRPack's metadata given the key.
+    pub fn metadata_remove(&mut self, key: &str) -> Option<String> {
+        self.metadata.remove(key)
     }
 
     /// Performs a vector search that returns the most similar nodes based on the query with

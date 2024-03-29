@@ -38,6 +38,8 @@ pub struct VRPack {
     pub vrkai_count: u64,
     pub folder_count: u64,
     pub embedding_models_used: HashMap<EmbeddingModelTypeString, u64>,
+    /// VRPack metadata enables users to add extra info that may be needed for unique use cases
+    pub metadata: HashMap<String, String>,
 }
 
 impl VRPack {
@@ -51,6 +53,7 @@ impl VRPack {
         name: &str,
         resource: BaseVectorResource,
         embedding_models_used: HashMap<EmbeddingModelTypeString, u64>,
+        metadata: Option<HashMap<String, String>>,
     ) -> Self {
         let (vrkai_count, folder_count) = Self::num_of_vrkais_and_folders(&resource);
 
@@ -61,6 +64,7 @@ impl VRPack {
             vrkai_count,
             folder_count,
             embedding_models_used,
+            metadata: metadata.unwrap_or_default(),
         }
     }
 
@@ -73,6 +77,7 @@ impl VRPack {
             vrkai_count: 0,
             folder_count: 0,
             embedding_models_used: HashMap::new(),
+            metadata: HashMap::new(),
         }
     }
 
@@ -618,6 +623,7 @@ impl VRPack {
             "folder_count": self.folder_count,
             "version": self.version.to_string(),
             "embedding_models_used": embeddings_models_used_list,
+            "metadata": self.metadata,
             "content": content_vec,
         });
 
@@ -643,5 +649,20 @@ impl VRPack {
         }
         // If the parent node is not found, it means the json_node should be added to the root content_vec
         content_vec.push(json_node);
+    }
+
+    /// Inserts a key-value pair into the VRPack's metadata. Replaces existing value if key already exists.
+    pub fn metadata_insert(&mut self, key: String, value: String) {
+        self.metadata.insert(key, value);
+    }
+
+    /// Retrieves the value associated with a key from the VRPack's metadata.
+    pub fn metadata_get(&self, key: &str) -> Option<&String> {
+        self.metadata.get(key)
+    }
+
+    /// Removes a key-value pair from the VRPack's metadata given the key.
+    pub fn metadata_remove(&mut self, key: &str) -> Option<String> {
+        self.metadata.remove(key)
     }
 }
