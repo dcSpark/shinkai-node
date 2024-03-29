@@ -120,7 +120,7 @@ impl VRPack {
         if let Ok(vrkai) = v1 {
             return Ok(vrkai);
         } else if let Err(e) = v1 {
-            println!("Error: {}", e);
+            eprintln!("Error: {}", e);
         }
 
         return Err(VRError::UnsupportedVRPackVersion("".to_string()));
@@ -664,5 +664,24 @@ impl VRPack {
     /// Removes a key-value pair from the VRPack's metadata given the key.
     pub fn metadata_remove(&mut self, key: &str) -> Option<String> {
         self.metadata.remove(key)
+    }
+
+    /// Note: Intended for internal use only (used by VectorFS).
+    /// Sets the Merkle hash of a folder node at the specified path.
+    pub fn _set_folder_merkle_hash(&mut self, path: VRPath, merkle_hash: String) -> Result<(), VRError> {
+        self.resource.as_trait_object_mut().mutate_node_at_path(
+            path,
+            &mut |node: &mut Node, _embedding: &mut Embedding| {
+                if let NodeContent::Resource(resource) = &mut node.content {
+                    resource
+                        .as_trait_object_mut()
+                        .set_merkle_root(merkle_hash.clone())
+                        .map_err(|_| VRError::InvalidNodeType("Expected a folder node".to_string()))?;
+                    Ok(())
+                } else {
+                    Err(VRError::InvalidNodeType("Expected a folder node".to_string()))
+                }
+            },
+        )
     }
 }

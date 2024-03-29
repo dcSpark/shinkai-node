@@ -158,6 +158,7 @@ impl VectorFS {
         let default_root_name = format!("{}-root", reader.profile.to_string());
         let folder_name = &reader.path.last_path_id().unwrap_or(default_root_name);
         let mut vrpack = VRPack::new_empty(folder_name);
+        let mut folder_merkle_hash_map = std::collections::HashMap::new();
 
         // Recursive function to process each entry and populate the VRPack
         fn process_entry(
@@ -167,6 +168,7 @@ impl VectorFS {
             vector_fs: &mut VectorFS,
             reader: &VFSReader,
             vec_fs_base_path: VRPath,
+            folder_merkle_hash_map: &mut std::collections::HashMap<VRPath, String>,
         ) -> Result<(), VectorFSError> {
             match entry {
                 FSEntry::Root(folder) => {
@@ -179,11 +181,11 @@ impl VectorFS {
                             vector_fs,
                             reader,
                             vec_fs_base_path.clone(),
+                            folder_merkle_hash_map,
                         )?;
                     }
                 }
                 FSEntry::Folder(folder) => {
-                    println!("\n {}'s child folders: {:?}", folder.path, folder.child_folders);
                     let inner_path = current_path.push_cloned(folder.name.clone());
                     vrpack.create_folder(&folder.name, current_path.clone())?;
                     for child in &folder.child_folders {
@@ -195,6 +197,7 @@ impl VectorFS {
                             vector_fs,
                             reader,
                             vec_fs_base_path.clone(),
+                            folder_merkle_hash_map,
                         )?;
                     }
                     for child in &folder.child_items {
@@ -206,8 +209,17 @@ impl VectorFS {
                             vector_fs,
                             reader,
                             vec_fs_base_path.clone(),
+                            folder_merkle_hash_map,
                         )?;
                     }
+
+                    // // Record the folder's merkle hash in the hashmap instead of setting it immediately
+                    // println!(
+                    //     "Inserting {} as {}",
+                    //     inner_path.to_string(),
+                    //     folder.merkle_hash.to_string()
+                    // );
+                    folder_merkle_hash_map.insert(inner_path.clone(), folder.merkle_hash.to_string());
                 }
                 FSEntry::Item(item) => {
                     // For each item, use retrieve_vrkai to get the VRKai object
@@ -230,7 +242,13 @@ impl VectorFS {
             self,
             reader,
             vec_fs_base_path_parent,
+            &mut folder_merkle_hash_map,
         )?;
+
+        // Traverse through the hashmap and call the set merkle hash method on all
+        for (path, merkle_hash) in folder_merkle_hash_map {
+            vrpack._set_folder_merkle_hash(path, merkle_hash)?;
+        }
 
         Ok(vrpack)
     }

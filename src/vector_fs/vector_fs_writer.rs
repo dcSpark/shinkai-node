@@ -542,6 +542,7 @@ impl VectorFS {
         Ok(new_folder)
     }
 
+    /// TODO: Propagate the merkle hashes from the folders/items in the VRPack, and save them into the VectorFS. Requires reworking whole logic here.
     /// Extracts the VRPack into the VectorFS underneath the folder specified in the writer's path. Uses the VRPack's name
     /// as the folder name which everything gets extracted into.
     pub fn extract_vrpack_in_folder(&mut self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {
