@@ -8,10 +8,10 @@ use crate::{
     resource_errors::VRError,
     source::{DistributionOrigin, SourceFileMap},
 };
-use base64::decode;
-use base64::encode;
+use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use serde_json::{json, Value};
 use std::fmt;
 
@@ -242,7 +242,7 @@ impl VRPack {
     }
 
     /// Prints the internal structure of the VRPack, starting from a given path.
-    pub fn print_internal_structure(&self, starting_path: Option<VRPath>, parse_vrkai: bool) {
+    pub fn print_internal_structure(&self, starting_path: Option<VRPath>) {
         println!("{} VRPack Internal Structure:", self.name);
         println!("------------------------------------------------------------");
         let nodes = self
@@ -260,14 +260,7 @@ impl VRPack {
                     } else {
                         s.to_string()
                     };
-                    if parse_vrkai {
-                        match Self::parse_node_to_vrkai(&node.node) {
-                            Ok(vrkai) => format!("VRKai: {}", vrkai.name()),
-                            Err(_) => format!("VRKai: {}", text_content),
-                        }
-                    } else {
-                        format!("VRKai: {}", text_content)
-                    }
+                    format!("VRKai: {}", node.node.id)
                 }
                 NodeContent::Resource(resource) => {
                     if path_depth == 1 {
@@ -421,5 +414,76 @@ impl VRPack {
         });
 
         (vrkais_count, folders_count)
+    }
+
+    /// Generates a simplified JSON representation of the contents of the VRPack.
+    pub fn to_json_contents_simplified(&self) -> Result<String, VRError> {
+        let nodes = self.resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+
+        let mut content_vec = Vec::new();
+
+        for retrieved_node in nodes {
+            let ret_path = retrieved_node.retrieval_path;
+            let path = ret_path.format_to_string();
+            let path_depth = ret_path.path_ids.len();
+
+            // TODO: add merkle hashes to output vrkais
+            let json_node = match &retrieved_node.node.content {
+                NodeContent::Text(_) => {
+                    json!({
+                        "name": retrieved_node.node.id,
+                        "type": "vrkai",
+                        "path": path,
+                    })
+                }
+                NodeContent::Resource(_) => {
+                    json!({
+                        "name": retrieved_node.node.id,
+                        "type": "folder",
+                        "path": path,
+                        "contents": [],
+                    })
+                }
+                _ => continue,
+            };
+
+            if path_depth == 0 {
+                content_vec.push(json_node);
+            } else {
+                let parent_path = ret_path.parent_path().format_to_string();
+                Self::insert_node_into_json_vec(&mut content_vec, parent_path, json_node);
+            }
+        }
+
+        let simplified_json = json!({
+            "name": self.name,
+            "vrkai_count": self.vrkai_count,
+            "folder_count": self.folder_count,
+            "version": self.version.to_string(),
+            "content": content_vec,
+        });
+
+        serde_json::to_string(&simplified_json)
+            .map_err(|e| VRError::VRPackParsingError(format!("JSON serialization error: {}", e)))
+    }
+
+    fn insert_node_into_json_vec(content_vec: &mut Vec<JsonValue>, parent_path: String, json_node: JsonValue) {
+        for node in content_vec.iter_mut() {
+            if let Some(path) = node["path"].as_str() {
+                if path == parent_path {
+                    if let Some(contents) = node["contents"].as_array_mut() {
+                        contents.push(json_node);
+                        return;
+                    }
+                } else if parent_path.starts_with(path) {
+                    if let Some(contents) = node["contents"].as_array_mut() {
+                        Self::insert_node_into_json_vec(contents, parent_path, json_node);
+                        return;
+                    }
+                }
+            }
+        }
+        // If the parent node is not found, it means the json_node should be added to the root content_vec
+        content_vec.push(json_node);
     }
 }

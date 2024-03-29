@@ -764,6 +764,10 @@ async fn test_vector_fs_operations() {
         .as_trait_object()
         .print_all_nodes_exhaustive(None, true, false);
 
+    // let json_contents = vrpack.to_json_contents_simplified();
+    // println!("{:?}", json_contents);
+    // assert!(1 == 2);
+
     let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
 
     assert_eq!(unpacked_kais.len(), 4);
