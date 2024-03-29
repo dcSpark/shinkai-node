@@ -156,7 +156,7 @@ async fn test_vrkai_vrpack_vector_search() {
 
     // Perform vector search on VRPack
     let vrpack_search_results = vrpack
-        .deep_vector_search(query_string, 100, 100, generator)
+        .dynamic_deep_vector_search(query_string, 100, 100, generator)
         .await
         .unwrap();
 

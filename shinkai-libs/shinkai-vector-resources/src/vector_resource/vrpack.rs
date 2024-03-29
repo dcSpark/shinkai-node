@@ -325,8 +325,121 @@ impl VRPack {
         }
     }
 
+    /// Performs a standard vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    /// Requires that there is only 1 single Embedding Model Used within the VRPack or errors.
+    pub async fn vector_search_vrkai(&self, query: Embedding, num_of_results: u64) -> Result<Vec<VRKai>, VRError> {
+        self.vector_search_vrkai_customized(query, num_of_results, TraversalMethod::Exhaustive, &vec![], None)
+            .await
+    }
+
+    /// Performs a standard vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    /// Supports customizing the search starting path/traversal method/traversal options.
+    /// Requires that there is only 1 single Embedding Model Used within the VRPack or errors.
+    pub async fn vector_search_vrkai_customized(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+    ) -> Result<Vec<VRKai>, VRError> {
+        if self.embedding_models_used.keys().len() != 1 {
+            return Err(VRError::VRPackEmbeddingModelError(
+                "Multiple embedding models used within the VRPack, meaning standard vector searching is not supported."
+                    .to_string(),
+            ));
+        }
+
+        let retrieved_nodes = self.resource.as_trait_object().vector_search_customized(
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            starting_path,
+        );
+
+        let vrkais: Vec<VRKai> = retrieved_nodes
+            .into_iter()
+            .filter_map(|node| Self::parse_node_to_vrkai(&node.node).ok())
+            .collect();
+
+        Ok(vrkais)
+    }
+
+    /// Performs a standard deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across the VRKais stored in the VRPack.
+    /// Requires that there is only 1 single Embedding Model Used within the VRPack or errors.
+    pub async fn deep_vector_search(
+        &self,
+        query: Embedding,
+        num_of_vrkais_to_search_into: u64,
+        num_of_results: u64,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self.deep_vector_search_customized(
+            query,
+            num_of_vrkais_to_search_into,
+            TraversalMethod::Exhaustive,
+            &vec![],
+            None,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        )
+        .await
+    }
+
+    /// Performs a standard deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// the VRKais stored in the VRPack. Requires that there is only 1 single Embedding Model Used within the VRPack or errors.
+    /// Customized allows specifying options for the first top-level search for VRKais, and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
+    pub async fn deep_vector_search_customized(
+        &self,
+        query: Embedding,
+        num_of_vrkais_to_search_into: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        vr_pack_starting_path: Option<VRPath>,
+        num_of_results: u64,
+        deep_traversal_method: TraversalMethod,
+        deep_traversal_options: &Vec<TraversalOption>,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        if self.embedding_models_used.keys().len() != 1 {
+            return Err(VRError::VRPackEmbeddingModelError(
+                "Multiple embedding models used within the VRPack, meaning standard vector searching is not supported."
+                    .to_string(),
+            ));
+        }
+
+        let vrkais = self
+            .vector_search_vrkai_customized(
+                query.clone(),
+                num_of_vrkais_to_search_into,
+                traversal_method,
+                traversal_options,
+                vr_pack_starting_path,
+            )
+            .await?;
+
+        // Perform vector search on all VRKai resources
+        let mut retrieved_nodes = Vec::new();
+        for vrkai in vrkais {
+            let results = vrkai.resource.as_trait_object().vector_search_customized(
+                query.clone(),
+                num_of_results,
+                deep_traversal_method.clone(),
+                deep_traversal_options,
+                None,
+            );
+            retrieved_nodes.extend(results);
+        }
+
+        // Sort the retrieved nodes by score before returning
+        let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
+
+        Ok(sorted_retrieved_nodes)
+    }
+
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
+    /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
     pub async fn dynamic_vector_search_vrkai(
         &self,
         input_query: String,
@@ -340,6 +453,7 @@ impl VRPack {
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
     /// Supports customizing the search starting path/traversal options.
+    /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
     pub async fn dynamic_vector_search_vrkai_customized(
         &self,
         input_query: String,
@@ -369,16 +483,17 @@ impl VRPack {
     }
 
     #[cfg(feature = "native-http")]
-    /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack.
-    pub async fn deep_vector_search(
+    /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
+    pub async fn dynamic_deep_vector_search(
         &self,
         input_query: String,
         num_of_vrkais_to_search_into: u64,
         num_of_results: u64,
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        self.deep_vector_search_customized(
+        self.dynamic_deep_vector_search_customized(
             input_query,
             num_of_vrkais_to_search_into,
             &vec![],
@@ -392,10 +507,10 @@ impl VRPack {
     }
 
     #[cfg(feature = "native-http")]
-    /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
-    /// the VRKais stored in the VRPack. Customized allows specifying options for the first top-level search for VRKais,
-    /// and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
-    pub async fn deep_vector_search_customized(
+    /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// the VRKais stored in the VRPack. This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
+    /// Customized allows specifying options for the first top-level search for VRKais, and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
+    pub async fn dynamic_deep_vector_search_customized(
         &self,
         input_query: String,
         num_of_vrkais_to_search_into: u64,
@@ -462,7 +577,6 @@ impl VRPack {
             let path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
 
-            // TODO: add merkle hashes to output vrkais
             let json_node = match &retrieved_node.node.content {
                 NodeContent::Text(_) => {
                     json!({
@@ -491,13 +605,20 @@ impl VRPack {
             }
         }
 
+        // Convert hashmap into simpler list of embedding model used strings
+        let embeddings_models_used_list = self
+            .embedding_models_used
+            .keys()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
         let simplified_json = json!({
             "name": self.name,
             "vrkai_count": self.vrkai_count,
             "folder_count": self.folder_count,
             "version": self.version.to_string(),
+            "embedding_models_used": embeddings_models_used_list,
             "content": content_vec,
-            "embedding_models_used": self.embedding_models_used,
         });
 
         serde_json::to_string(&simplified_json)

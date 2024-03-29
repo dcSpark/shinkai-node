@@ -181,7 +181,7 @@ impl JobManager {
         for entry in &job_scope.local_vrpack {
             let mut vr_pack_results = entry
                 .vrpack
-                .deep_vector_search(query_text.clone(), 20, num_of_results, generator.clone())
+                .dynamic_deep_vector_search(query_text.clone(), 20, num_of_results, generator.clone())
                 .await?;
             retrieved_nodes.append(&mut vr_pack_results);
         }
