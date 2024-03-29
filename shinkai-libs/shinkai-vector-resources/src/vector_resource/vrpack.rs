@@ -37,6 +37,8 @@ pub struct VRPack {
     pub name: String,
     pub resource: BaseVectorResource,
     pub version: VRPackVersion,
+    pub vrkai_count: u64,
+    pub folder_count: u64,
 }
 
 impl VRPack {
@@ -47,10 +49,14 @@ impl VRPack {
 
     /// Creates a new VRPack with the provided BaseVectorResource and the default version.
     pub fn new(name: &str, resource: BaseVectorResource) -> Self {
+        let (vrkai_count, folder_count) = Self::num_of_vrkais_and_folders(&resource);
+
         VRPack {
             name: name.to_string(),
             resource,
             version: Self::default_vrpack_version(),
+            vrkai_count,
+            folder_count,
         }
     }
 
@@ -60,6 +66,8 @@ impl VRPack {
             name: name.to_string(),
             resource: BaseVectorResource::Map(MapVectorResource::new_empty("vrpack", None, VRSource::None, true)),
             version: Self::default_vrpack_version(),
+            vrkai_count: 0,
+            folder_count: 0,
         }
     }
 
@@ -136,7 +144,10 @@ impl VRPack {
 
     /// Sets the resource of the VRPack.
     pub fn set_resource(&mut self, resource: BaseVectorResource) {
+        let (vrkai_count, folder_count) = Self::num_of_vrkais_and_folders(&resource);
         self.resource = resource;
+        self.vrkai_count = vrkai_count;
+        self.folder_count = folder_count;
     }
 
     /// Returns the ID of the VRPack.
@@ -162,6 +173,8 @@ impl VRPack {
             .as_trait_object_mut()
             .insert_node_at_path(parent_path, resource_name, node, embedding)?;
 
+        self.vrkai_count += 1;
+
         Ok(())
     }
 
@@ -177,6 +190,8 @@ impl VRPack {
             node,
             embedding,
         )?;
+
+        self.folder_count += 1;
 
         Ok(())
     }
@@ -199,7 +214,12 @@ impl VRPack {
 
     /// Removes a node (VRKai or folder) from the VRPack at the specified path.
     pub fn remove_at_path(&mut self, path: VRPath) -> Result<(), VRError> {
-        self.resource.as_trait_object_mut().remove_node_at_path(path)?;
+        let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path)?;
+        match removed_node.0.content {
+            NodeContent::Text(_) => self.vrkai_count -= 1,
+            NodeContent::Resource(_) => self.folder_count += 1,
+            _ => (),
+        }
         Ok(())
     }
 
@@ -386,5 +406,20 @@ impl VRPack {
         let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
 
         Ok(sorted_retrieved_nodes)
+    }
+
+    /// Counts the number of VRKais and folders in the BaseVectorResource.
+    fn num_of_vrkais_and_folders(resource: &BaseVectorResource) -> (u64, u64) {
+        let nodes = resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+
+        let (vrkais_count, folders_count) = nodes.iter().fold((0u64, 0u64), |(vrkais, folders), retrieved_node| {
+            match retrieved_node.node.content {
+                NodeContent::Text(_) => (vrkais + 1, folders),
+                NodeContent::Resource(_) => (vrkais, folders + 1),
+                _ => (vrkais, folders),
+            }
+        });
+
+        (vrkais_count, folders_count)
     }
 }
