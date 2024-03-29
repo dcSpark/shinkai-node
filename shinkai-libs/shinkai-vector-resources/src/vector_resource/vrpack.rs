@@ -2,18 +2,14 @@ use super::{
     BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode, ScoringMode, TraversalMethod,
     TraversalOption, VRKai, VRPath, VRSource,
 };
-use crate::{
-    embedding_generator::{self, EmbeddingGenerator, RemoteEmbeddingGenerator},
-    embeddings::Embedding,
-    resource_errors::VRError,
-    source::{DistributionOrigin, SourceFileMap},
-};
+#[cfg(feature = "native-http")]
+use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use crate::model_type::EmbeddingModelType;
+use crate::{embeddings::Embedding, resource_errors::VRError};
 use base64::{decode, encode};
-use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serde_json::Value as JsonValue;
-use serde_json::{json, Value};
-use std::fmt;
 
 // Versions of VRPack that are supported
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -39,6 +35,7 @@ pub struct VRPack {
     pub version: VRPackVersion,
     pub vrkai_count: u64,
     pub folder_count: u64,
+    // pub embedding_models_used: Vec<EmbeddingModelType>,
 }
 
 impl VRPack {
@@ -294,6 +291,7 @@ impl VRPack {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
     pub async fn dynamic_vector_search_vrkai(
         &self,
@@ -305,6 +303,7 @@ impl VRPack {
             .await
     }
 
+    #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
     /// Supports customizing the search starting path/traversal options.
     pub async fn dynamic_vector_search_vrkai_customized(
@@ -335,6 +334,7 @@ impl VRPack {
         Ok(vrkais)
     }
 
+    #[cfg(feature = "native-http")]
     /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack.
     pub async fn deep_vector_search(
@@ -357,6 +357,7 @@ impl VRPack {
         .await
     }
 
+    #[cfg(feature = "native-http")]
     /// Performs a deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack. Customized allows specifying options for the first top-level search for VRKais,
     /// and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
