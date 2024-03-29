@@ -98,8 +98,11 @@ impl VRPack {
     /// Parses a VRPack from a Base64 encoded string without compression.
     pub fn from_base64(base64_encoded: &str) -> Result<Self, VRError> {
         // If it is Version V1
-        if let Ok(vrkai) = Self::from_base64_v1(base64_encoded) {
+        let v1 = Self::from_base64_v1(base64_encoded);
+        if let Ok(vrkai) = v1 {
             return Ok(vrkai);
+        } else if let Err(e) = v1 {
+            println!("Error: {}", e);
         }
 
         return Err(VRError::UnsupportedVRPackVersion("".to_string()));

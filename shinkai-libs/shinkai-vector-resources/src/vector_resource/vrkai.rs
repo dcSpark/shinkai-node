@@ -1,5 +1,6 @@
-use super::BaseVectorResource;
+use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath};
 use crate::{
+    embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionInfo, SourceFileMap},
 };
@@ -115,5 +116,32 @@ impl VRKai {
     /// Parses into a VRKai from human-readable JSON (intended for readability in non-production use cases)
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query with
+    /// default traversal method/options.
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
+        self.resource.as_trait_object().vector_search(query, num_of_results)
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query.
+    /// The input traversal_method/options allows the developer to choose how the search moves through the levels.
+    /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
+    /// held internally at a specific path.
+    pub fn vector_search_customized(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+    ) -> Vec<RetrievedNode> {
+        self.resource.as_trait_object().vector_search_customized(
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            starting_path,
+        )
     }
 }

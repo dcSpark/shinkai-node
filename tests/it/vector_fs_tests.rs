@@ -96,25 +96,76 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
     resource
 }
 
-// Test to be used to used once to re-generate the VRKai file whenever breaking changes take place.
+// // Test to be used to re-generate the VRKai/VRPack file whenever breaking changes take place.
 // #[tokio::test]
 // async fn test_gen_vrkai() {
 //     setup();
 //     let generator = RemoteEmbeddingGenerator::new_default();
-//     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+//     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![])
+//         .await
+//         .expect("Failed to get shinkai intro doc");
 //     let resource = BaseVectorResource::Document(doc_resource);
 //     // With source file map
 //     // let vrkai = VRKai::from_base_vector_resource(resource, Some(source_file_map), None);
 //     // Without source file map
 //     let vrkai = VRKai::from_base_vector_resource(resource, None);
 //     let vrkai_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRKai bytes");
-//     std::fs::write("files/shinkai_intro.vrkai", vrkai_bytes).expect("Failed to write VRKai bytes to file");
+//     std::fs::write("files/shinkai_intro.vrkai", &vrkai_bytes).expect("Failed to write VRKai bytes to file");
 
 //     let mut vrpack = VRPack::new_empty("shinkai-intro");
 //     vrpack.insert_vrkai(&vrkai, VRPath::root());
-//     let vrpack_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRPack bytes");
-//     std::fs::write("files/shinkai_intro.vrpack", vrpack_bytes).expect("Failed to write VRPack bytes to file");
+//     let vrpack_bytes = vrpack.encode_as_bytes().expect("Failed to prepare VRPack bytes");
+//     std::fs::write("files/shinkai_intro.vrpack", &vrpack_bytes).expect("Failed to write VRPack bytes to file");
+
+//     // Read back and parse the VRKai file to verify it can be successfully decoded
+//     let vrkai_bytes_read = std::fs::read("files/shinkai_intro.vrkai").expect("Failed to read VRKai file");
+//     let parsed_vrkai = VRKai::from_bytes(&vrkai_bytes_read).expect("Failed to decode VRKai");
+//     assert_eq!(
+//         parsed_vrkai.encode_as_bytes().unwrap(),
+//         vrkai_bytes,
+//         "VRKai bytes mismatch after parsing"
+//     );
+
+//     // Read back and parse the VRPack file to verify it can be successfully decoded
+//     let vrpack_bytes_read = std::fs::read("files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
+//     let parsed_vrpack = VRPack::from_bytes(&vrpack_bytes_read).expect("Failed to decode VRPack");
+//     assert_eq!(
+//         parsed_vrpack.encode_as_bytes().unwrap(),
+//         vrpack_bytes,
+//         "VRPack bytes mismatch after parsing"
+//     );
 // }
+
+#[tokio::test]
+async fn test_vrkai_vrpack_vector_search() {
+    setup();
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    // Read VRKai from file as utf8 string
+    let vrkai_str = std::fs::read_to_string("files/shinkai_intro.vrkai").expect("Failed to read VRKai from file");
+    let vrkai = VRKai::from_base64(&vrkai_str).expect("Failed to decode VRKai from string");
+
+    // Read VRPack from file as utf8 string
+    let vrpack_bytes_read = std::fs::read("files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
+    let vrpack = VRPack::from_bytes(&vrpack_bytes_read).expect("Failed to decode VRPack");
+
+    // Perform vector search on VRKai
+    let query_string = "What is Shinkai?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let vrkai_search_results = vrkai.vector_search(query_embedding, 100);
+
+    // Perform vector search on VRPack
+    let vrpack_search_results = vrpack
+        .deep_vector_search(query_string, 100, 100, generator)
+        .await
+        .unwrap();
+
+    // Validate search results are equal
+    assert_eq!(vrkai_search_results.len(), vrpack_search_results.len());
+    for (vrkai_result, vrpack_result) in vrkai_search_results.iter().zip(vrpack_search_results.iter()) {
+        assert_eq!(vrkai_result.score, vrpack_result.score);
+    }
+}
 
 #[tokio::test]
 async fn test_vector_fs_initializes_new_profile_automatically() {
