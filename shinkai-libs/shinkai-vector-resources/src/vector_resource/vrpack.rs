@@ -6,7 +6,7 @@ use super::{
 };
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use crate::model_type::EmbeddingModelType;
+use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString};
 use crate::{embeddings::Embedding, resource_errors::VRError};
 use base64::{decode, encode};
 use serde::{Deserialize, Serialize};
@@ -25,9 +25,6 @@ impl VRPackVersion {
         serde_json::to_string(self).unwrap()
     }
 }
-
-// Wrapper for embedding model type string inside of the hashmap key
-type EmbeddingModelTypeString = String;
 
 /// Represents a parsed VRPack file, which contains a Map Vector Resource that holds a tree structure of folders & encoded VRKai nodes.
 /// In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
