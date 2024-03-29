@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::{
     BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode, ScoringMode, TraversalMethod,
     TraversalOption, VRKai, VRPath, VRSource,
@@ -24,6 +26,9 @@ impl VRPackVersion {
     }
 }
 
+// Wrapper for embedding model type string inside of the hashmap key
+type EmbeddingModelTypeString = String;
+
 /// Represents a parsed VRPack file, which contains a Map Vector Resource that holds a tree structure of folders & encoded VRKai nodes.
 /// In other words, a `.vrpack` file is akin to a "compressed archive" of internally held VRKais with folder structure preserved.
 /// Of note, VRPacks are not compressed at the top level because the VRKais held inside already are. This improves performance for large VRPacks.
@@ -35,7 +40,7 @@ pub struct VRPack {
     pub version: VRPackVersion,
     pub vrkai_count: u64,
     pub folder_count: u64,
-    // pub embedding_models_used: Vec<EmbeddingModelType>,
+    pub embedding_models_used: HashMap<EmbeddingModelTypeString, u64>,
 }
 
 impl VRPack {
@@ -45,7 +50,11 @@ impl VRPack {
     }
 
     /// Creates a new VRPack with the provided BaseVectorResource and the default version.
-    pub fn new(name: &str, resource: BaseVectorResource) -> Self {
+    pub fn new(
+        name: &str,
+        resource: BaseVectorResource,
+        embedding_models_used: HashMap<EmbeddingModelTypeString, u64>,
+    ) -> Self {
         let (vrkai_count, folder_count) = Self::num_of_vrkais_and_folders(&resource);
 
         VRPack {
@@ -54,6 +63,7 @@ impl VRPack {
             version: Self::default_vrpack_version(),
             vrkai_count,
             folder_count,
+            embedding_models_used,
         }
     }
 
@@ -65,6 +75,7 @@ impl VRPack {
             version: Self::default_vrpack_version(),
             vrkai_count: 0,
             folder_count: 0,
+            embedding_models_used: HashMap::new(),
         }
     }
 
@@ -140,11 +151,16 @@ impl VRPack {
     }
 
     /// Sets the resource of the VRPack.
-    pub fn set_resource(&mut self, resource: BaseVectorResource) {
+    pub fn set_resource(
+        &mut self,
+        resource: BaseVectorResource,
+        embedding_models_used: HashMap<EmbeddingModelTypeString, u64>,
+    ) {
         let (vrkai_count, folder_count) = Self::num_of_vrkais_and_folders(&resource);
         self.resource = resource;
         self.vrkai_count = vrkai_count;
         self.folder_count = folder_count;
+        self.embedding_models_used = embedding_models_used;
     }
 
     /// Returns the ID of the VRPack.
@@ -170,6 +186,14 @@ impl VRPack {
             .as_trait_object_mut()
             .insert_node_at_path(parent_path, resource_name, node, embedding)?;
 
+        // Add the embedding model used to the hashmap
+        let model = vrkai.resource.as_trait_object().embedding_model_used();
+        if !self.embedding_models_used.contains_key(&model.to_string()) {
+            self.embedding_models_used
+                .entry(model.to_string())
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+        }
         self.vrkai_count += 1;
 
         Ok(())
@@ -213,7 +237,20 @@ impl VRPack {
     pub fn remove_at_path(&mut self, path: VRPath) -> Result<(), VRError> {
         let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path)?;
         match removed_node.0.content {
-            NodeContent::Text(_) => self.vrkai_count -= 1,
+            NodeContent::Text(vrkai_base64) => {
+                // Decrease the embedding model count in the hashmap
+                let vrkai = VRKai::from_base64(&vrkai_base64)?;
+                let model = vrkai.resource.as_trait_object().embedding_model_used();
+                if let Some(count) = self.embedding_models_used.get_mut(&model.to_string()) {
+                    if *count > 1 {
+                        *count -= 1;
+                    } else {
+                        self.embedding_models_used.remove(&model.to_string());
+                    }
+                }
+                // Decrease vrkai count
+                self.vrkai_count -= 1;
+            }
             NodeContent::Resource(_) => self.folder_count += 1,
             _ => (),
         }
@@ -463,6 +500,7 @@ impl VRPack {
             "folder_count": self.folder_count,
             "version": self.version.to_string(),
             "content": content_vec,
+            "embedding_models_used": self.embedding_models_used,
         });
 
         serde_json::to_string(&simplified_json)
