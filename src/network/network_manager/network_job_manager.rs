@@ -421,18 +421,6 @@ impl NetworkJobManager {
             &format!("{} > Verified message signature", receiver_address),
         );
 
-        // // Save to db -- Previous
-        // {
-        //     Node::save_to_db(
-        //         false,
-        //         &message,
-        //         clone_static_secret_key(&my_encryption_secret_key),
-        //         maybe_db.clone(),
-        //         maybe_identity_manager.clone(),
-        //     )
-        //     .await?;
-        // }
-
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,

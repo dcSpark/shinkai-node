@@ -76,6 +76,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     // TODO: if content body encrypted to the node itself then decrypt it and process it.
     match (message_content.as_str(), message_encryption_status) {
         (_, EncryptionStatus::BodyEncrypted) => {
+            eprintln!("{} > Body encrypted", receiver_address);
             handle_default_encryption(
                 message,
                 sender_encryption_pk,
@@ -94,8 +95,7 @@ pub async fn handle_based_on_message_content_and_encryption(
             .await
         }
         (_, EncryptionStatus::ContentEncrypted) => {
-            // TODO: save to db to send the profile when connected
-            println!("{} > Content encrypted", receiver_address);
+            eprintln!("{} > Content encrypted", receiver_address);
             handle_network_message_cases(
                 message,
                 sender_encryption_pk,
@@ -130,9 +130,23 @@ pub async fn handle_based_on_message_content_and_encryption(
         }
         ("ACK", _) => {
             println!("{} > ACK from {:?}", receiver_address, unsafe_sender_address);
+            // Currently, we are not saving ACKs received to the DB.
             Ok(())
         }
         (_, EncryptionStatus::NotCurrentlyEncrypted) => {
+            // Save to db
+            {
+                eprintln!("{} > Saving to db", receiver_address);
+                Node::save_to_db(
+                    false,
+                    &message,
+                    clone_static_secret_key(&my_encryption_secret_key),
+                    maybe_db.clone(),
+                    maybe_identity_manager.clone(),
+                )
+                .await?;
+            }
+
             handle_network_message_cases(
                 message,
                 sender_encryption_pk,
@@ -239,13 +253,10 @@ pub async fn handle_default_encryption(
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            // println!(
-            //     "{} > Got message from {:?}. Sending ACK",
-            //     receiver_address, unsafe_sender_address
-            // );
-
-            // Save to db
+            eprintln!("{} > Successfully decrypted message outer layer", receiver_address);
+            // save to db
             {
+                eprintln!("{} > Saving to db", receiver_address);
                 Node::save_to_db(
                     false,
                     &decrypted_message,
@@ -255,6 +266,7 @@ pub async fn handle_default_encryption(
                 )
                 .await?;
             }
+
 
             let message = decrypted_message.get_message_content();
             match message {
@@ -281,6 +293,7 @@ pub async fn handle_default_encryption(
                 }
                 Err(_) => {
                     // Note(Nico): if we can't decrypt the inner content (it's okay). We still send an ACK
+                    // it is most likely meant for a profile which we don't have the encryption secret key for.
                     let _ = send_ack(
                         (sender_address.clone(), sender_profile_name.clone()),
                         clone_static_secret_key(my_encryption_secret_key),
@@ -325,9 +338,8 @@ pub async fn handle_network_message_cases(
         "{} > Got message from {:?}. Processing and sending ACK",
         receiver_address, unsafe_sender_address
     );
-    // Save to db
-    // TODO: should this be saved to the networkjobqueue instead?
     {
+        eprintln!("{} > Saving to db", receiver_address);
         Node::save_to_db(
             false,
             &message,
