@@ -647,11 +647,8 @@ impl ExternalSubscriberManager {
         requester_profile: String,
         path: String,
     ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
-        let mut full_requester_profile_subidentity = requester_node.clone();
-        full_requester_profile_subidentity.profile_name = Some(requester_profile);
-
-        let mut full_origin_profile_subidentity = streamer_node.clone();
-        full_origin_profile_subidentity.profile_name = Some(streamer_profile.clone());
+        let full_requester_profile_subidentity =  ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
+        let full_streamer_profile_subidentity = ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile)?;
 
         let mut converted_results = Vec::new();
         {
@@ -669,9 +666,9 @@ impl ExternalSubscriberManager {
             // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
             let perms_reader = vector_fs
                 .new_reader(
-                    full_origin_profile_subidentity.clone(),
+                    full_requester_profile_subidentity.clone(),
                     vr_path,
-                    full_origin_profile_subidentity.clone(),
+                    full_streamer_profile_subidentity.clone(),
                 )
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
             let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
@@ -696,7 +693,7 @@ impl ExternalSubscriberManager {
                 };
                 let tree = FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
-                    full_origin_profile_subidentity.clone(),
+                    full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
                 )

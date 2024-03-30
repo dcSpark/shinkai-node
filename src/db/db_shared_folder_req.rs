@@ -18,7 +18,7 @@ impl ShinkaiDB {
             ShinkaiDBError::SomeError("Failed converting subscription requirements to bytes".to_string())
         })?;
 
-        self.db.put_cf(cf_node, prefix.as_bytes(), &req_bytes)?;
+        self.db.put_cf(cf_node, prefix.as_bytes(), req_bytes)?;
 
         Ok(())
     }
@@ -72,7 +72,7 @@ impl ShinkaiDB {
         let prefix = "folder_subscriptions_requirements_abcde_prefix_".as_bytes();
 
         // Prepare an iterator for prefix search
-        let mut iter = self.db.prefix_iterator_cf(cf_node, prefix);
+        let iter = self.db.prefix_iterator_cf(cf_node, prefix);
 
         let mut results = Vec::new();
 

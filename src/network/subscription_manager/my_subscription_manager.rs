@@ -257,10 +257,10 @@ impl MySubscriptionsManager {
             )
             .await?;
 
-            return Ok(placeholder_shared_folder);
+            Ok(placeholder_shared_folder)
         } else {
             // Handle the case where the identity manager is no longer available
-            return Err(SubscriberManagerError::IdentityManagerUnavailable);
+            Err(SubscriberManagerError::IdentityManagerUnavailable)
         }
     }
 
@@ -277,7 +277,7 @@ impl MySubscriptionsManager {
             let db = db_lock.lock().await;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(streamer_node_name.clone(), streamer_profile.clone(), folder_name.clone(), my_node_name, my_profile.clone());
-            match db.get_my_subscription(&subscription_id.get_unique_id()) {
+            match db.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(_) => {
                     // Already subscribed, no need to proceed further
                     return Err(SubscriberManagerError::AlreadySubscribed(

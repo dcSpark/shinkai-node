@@ -743,11 +743,11 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                     "/shared_test_folder",
-                    &file_path,
+                    file_path,
                     0,
                 )
                 .await;
@@ -758,7 +758,7 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                     "/",
@@ -775,38 +775,12 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
                 .await;
             }
-            // {
-            //     // Make /shared_test_folder shareable
-            //     make_folder_shareable(
-            //         &node1_commands_sender,
-            //         "/shared_test_folder",
-            //         node1_profile_encryption_sk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_encryption_pk.clone(),
-            //         node1_identity_name,
-            //         node1_profile_name,
-            //     )
-            //     .await;
-            // }
-            // {
-            //     // Show available shared items
-            //     eprintln!("Show available shared items after making /shared_test_folder shareable");
-            //     show_available_shared_items(
-            //         &node1_commands_sender,
-            //         node1_profile_encryption_sk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_encryption_pk.clone(),
-            //         node1_identity_name,
-            //         node1_profile_name,
-            //     )
-            //     .await;
-            // }
             {
                 // Create /shared_test_folder/crypto
                 create_folder(
@@ -815,7 +789,7 @@ fn subscription_manager_test() {
                     "crypto",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
@@ -827,11 +801,11 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                     "/shared_test_folder/crypto",
-                    &file_path,
+                    file_path,
                     0,
                 )
                 .await;
@@ -844,7 +818,7 @@ fn subscription_manager_test() {
                         &node1_commands_sender,
                         node1_profile_encryption_sk.clone(),
                         clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk.clone(),
+                        node1_encryption_pk,
                         node1_identity_name,
                         node1_profile_name,
                         "/",
@@ -944,7 +918,7 @@ fn subscription_manager_test() {
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("send_result: {:?}", send_result);
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-                tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+                // tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
 
                 let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
                     .await
@@ -961,6 +935,8 @@ fn subscription_manager_test() {
                 eprintln!("\n\n");
             }
             {
+                // add 1 sec delay
+                // tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 eprintln!("\n\n### (RETRY!) Sending message from node 2 to node 1 requesting shared folders*\n");
                 eprintln!("shared folders should be updated this time!");
 
@@ -970,7 +946,7 @@ fn subscription_manager_test() {
                     node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node2_encryption_pk.clone(),
+                    node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
@@ -994,10 +970,10 @@ fn subscription_manager_test() {
                     .unwrap();
 
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
-                eprint!("\n\nsend_result: {:?}", send_result);
+                eprint!("\n\nsend_result (after retry): {:?}", send_result);
 
                 let mut expected_response = serde_json::json!({
-                    "node_name": "@@node1_test.sepolia-shinkai",
+                    "node_name": "@@node1_test.sepolia-shinkai/main",
                     "last_ext_node_response": "2024-03-24T00:47:22.292345Z",
                     "last_request_to_ext_node": "2024-03-24T00:47:22.292346Z",
                     "last_updated": "2024-03-24T00:47:22.292346Z",
@@ -1052,9 +1028,10 @@ fn subscription_manager_test() {
                     "Failed to match the expected shared folder information"
                 );
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
+                panic!("stop here");
             }
             {
-                eprintln!("Subscribe to the shared folder");
+                eprintln!(">>> Subscribe to the shared folder");
                 eprintln!(
                     "\n\n### Sending message from node 2 to node 1 requesting: subscription to shared_test_folder\n"
                 );
