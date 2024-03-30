@@ -1,8 +1,8 @@
 use crate::vector_resource::{VRKaiVersion, VRPath};
+use lz4_flex::block::DecompressError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
-use lz4_flex::block::DecompressError;
 use std::string::FromUtf8Error;
 
 #[derive(Debug, PartialEq)]
@@ -35,10 +35,11 @@ pub enum VRError {
     MerkleHashNotFoundInNode(String),
     VectorResourceIsNotMerkelized(String),
     VRKaiParsingError(String),
-VRPackParsingError(String),
+    VRPackParsingError(String),
     UnsupportedVRKaiVersion(String),
     UnsupportedVRPackVersion(String),
     InvalidSimplifiedFSEntryType(String),
+    VRPackEmbeddingModelError(String),
 }
 
 impl fmt::Display for VRError {
@@ -90,6 +91,7 @@ impl fmt::Display for VRError {
             VRError::UnsupportedVRKaiVersion(ref s) => write!(f, "Unsupported VRKai version: {}", s),
             VRError::UnsupportedVRPackVersion(ref s) => write!(f, "Unsupported VRPack version: {}", s),
             VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
+            VRError::VRPackEmbeddingModelError(ref s) => write!(f, "Embedding Model Error: {}", s),
         }
     }
 }

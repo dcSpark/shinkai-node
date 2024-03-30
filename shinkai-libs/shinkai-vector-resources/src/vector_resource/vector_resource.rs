@@ -8,6 +8,8 @@ use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
+use crate::model_type::EmbeddingModelTypeString;
+use crate::model_type::TextEmbeddingsInference;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiStringTime;
 use crate::shinkai_time::ShinkaiTime;
@@ -42,7 +44,7 @@ pub trait VectorResourceCore: Send + Sync {
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn resource_base_type(&self) -> VRBaseType;
-    fn embedding_model_used(&self) -> EmbeddingModelType;
+    fn embedding_model_used_string(&self) -> EmbeddingModelTypeString;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn distribution_info(&self) -> &DistributionInfo;
     fn set_distribution_info(&mut self, dist_info: DistributionInfo);
@@ -153,6 +155,15 @@ pub trait VectorResourceCore: Send + Sync {
     /// for specific use cases or for extremely large datasets where maximum performance is required.
     fn is_merkelized(&self) -> bool {
         self.get_merkle_root().is_ok()
+    }
+
+    /// Returns the embedding model type used by the Vector Resource.
+    fn embedding_model_used(&self) -> EmbeddingModelType {
+        EmbeddingModelType::from_string(&self.embedding_model_used_string()).unwrap_or(
+            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::Other(
+                self.embedding_model_used_string().to_string(),
+            )),
+        )
     }
 
     /// Updates the merkle root of the Vector Resource by hashing the merkle hashes of all root nodes.

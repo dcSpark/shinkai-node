@@ -46,9 +46,9 @@ impl BaseVectorResource {
         self.as_trait_object_mut().as_ordered_vector_resource_mut()
     }
 
-    /// Converts the BaseVectorResource into a VRKai instance using the previously defined from_base_vector_resource method.
+    /// Converts the BaseVectorResource into a VRKai instance using the previously defined new method.
     pub fn to_vrkai(self) -> VRKai {
-        VRKai::from_base_vector_resource(self, None)
+        VRKai::new(self, None)
     }
 
     /// Converts the BaseVectorResource into a JSON string (without the enum wrapping JSON)

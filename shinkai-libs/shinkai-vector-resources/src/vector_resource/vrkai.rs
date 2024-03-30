@@ -1,5 +1,6 @@
-use super::BaseVectorResource;
+use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath};
 use crate::{
+    embeddings::Embedding,
     resource_errors::VRError,
     source::{DistributionInfo, SourceFileMap},
 };
@@ -7,7 +8,7 @@ use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 // Versions of VRKai that are supported
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -29,6 +30,7 @@ pub struct VRKai {
     pub resource: BaseVectorResource,
     pub sfm: Option<SourceFileMap>,
     pub version: VRKaiVersion,
+    pub metadata: HashMap<String, String>,
 }
 
 impl VRKai {
@@ -37,12 +39,13 @@ impl VRKai {
         VRKaiVersion::V1
     }
 
-    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap and DistributionInfo.
-    pub fn from_base_vector_resource(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
+    /// Creates a new VRKai instance from a BaseVectorResource, with optional SourceFileMap.
+    pub fn new(resource: BaseVectorResource, sfm: Option<SourceFileMap>) -> Self {
         VRKai {
             resource,
             sfm,
             version: Self::default_vrkai_version(),
+            metadata: HashMap::new(),
         }
     }
 
@@ -115,5 +118,47 @@ impl VRKai {
     /// Parses into a VRKai from human-readable JSON (intended for readability in non-production use cases)
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
+    }
+
+    /// Inserts a key-value pair into the VRPack's metadata. Replaces existing value if key already exists.
+    pub fn metadata_insert(&mut self, key: String, value: String) {
+        self.metadata.insert(key, value);
+    }
+
+    /// Retrieves the value associated with a key from the VRPack's metadata.
+    pub fn metadata_get(&self, key: &str) -> Option<&String> {
+        self.metadata.get(key)
+    }
+
+    /// Removes a key-value pair from the VRPack's metadata given the key.
+    pub fn metadata_remove(&mut self, key: &str) -> Option<String> {
+        self.metadata.remove(key)
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query with
+    /// default traversal method/options.
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
+        self.resource.as_trait_object().vector_search(query, num_of_results)
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query.
+    /// The input traversal_method/options allows the developer to choose how the search moves through the levels.
+    /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
+    /// held internally at a specific path.
+    pub fn vector_search_customized(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+    ) -> Vec<RetrievedNode> {
+        self.resource.as_trait_object().vector_search_customized(
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            starting_path,
+        )
     }
 }

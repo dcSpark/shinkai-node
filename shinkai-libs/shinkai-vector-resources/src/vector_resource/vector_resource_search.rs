@@ -170,6 +170,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         let root_vr_header = self.generate_resource_header();
         // We only traverse 1 level of depth at a time to be able to re-process the input_query as needed
         let mut traversal_options = traversal_options.clone();
+        traversal_options.retain(|option| !matches!(option, TraversalOption::UntilDepth(_)));
         traversal_options.push(TraversalOption::UntilDepth(0));
         // Create a hash_map to save the embedding queries generated based on model type
         let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
