@@ -267,7 +267,6 @@ pub async fn handle_default_encryption(
                 .await?;
             }
 
-
             let message = decrypted_message.get_message_content();
             match message {
                 Ok(message_content) => {
@@ -465,6 +464,7 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::SubscribeToSharedFolder => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     let content = message.get_message_content().unwrap_or("".to_string());
                     eprintln!(
                         "SubscribeToSharedFolder Node {}: Handling SubscribeToSharedFolder from: {}",
@@ -480,7 +480,8 @@ pub async fn handle_network_message_cases(
                             let mut external_subscriber_manager = external_subscription_manager.lock().await;
                             let result = external_subscriber_manager
                                 .subscribe_to_shared_folder(
-                                    requester.extract_node(),
+                                    requester.clone(),
+                                    receiver.clone(),
                                     subscription_request.path.clone(),
                                     subscription_request.payment,
                                 )
@@ -539,11 +540,12 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::SubscribeToSharedFolderResponse => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    let request_node_name = requester.get_node_name_string();
+                    let requester_node_name = requester.get_node_name_string();
+                    let requester_profile_name = requester.get_profile_name_string();
 
                     eprintln!(
                         "SubscribeToSharedFolderResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                        my_node_profile_name, request_node_name
+                        my_node_profile_name, requester_node_name
                     );
 
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -551,6 +553,9 @@ pub async fn handle_network_message_cases(
                         "SubscribeToSharedFolderResponse Node {}. Received response: {}",
                         my_node_profile_name, content
                     );
+
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    let receiver_profile = receiver.get_profile_name_string().unwrap_or("".to_string());
 
                     match serde_json::from_str::<SubscriptionGenericResponse>(&content) {
                         Ok(response) => {
@@ -561,6 +566,8 @@ pub async fn handle_network_message_cases(
                             let result = my_subscription_manager
                                 .update_subscription_status(
                                     requester.extract_node(),
+                                    requester_profile_name.unwrap_or("".to_string()), // TODO: we shouldn't accept empty here
+                                    receiver_profile,
                                     MessageSchemaType::SubscribeToSharedFolderResponse,
                                     response,
                                 )

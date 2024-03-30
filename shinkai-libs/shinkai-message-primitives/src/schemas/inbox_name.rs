@@ -180,13 +180,6 @@ impl InboxName {
         InboxName::new(inbox_name)
     }
 
-    pub fn to_string(&self) -> String {
-        match self {
-            InboxName::RegularInbox { value, .. } => value.clone(),
-            InboxName::JobInbox { value, .. } => value.clone(),
-        }
-    }
-
     /// Returns the first half of the blake3 hash of the inbox name's value
     pub fn hash_value_first_half(&self) -> String {
         let value = match self {
@@ -209,7 +202,7 @@ impl InboxName {
 
 impl fmt::Display for InboxName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.get_value())
     }
 }
 

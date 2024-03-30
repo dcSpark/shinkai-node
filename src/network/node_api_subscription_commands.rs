@@ -93,11 +93,43 @@ impl Node {
             }
         };
 
-        if input_payload.node_name == self.node_name.clone().get_node_name_string() {
+        if input_payload.streamer_node_name == self.node_name.clone().get_node_name_string() {
+            if !requester_name.has_profile() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Requester name does not have a profile".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            let streamer_full_name = ShinkaiName::from_node_and_profile_names(
+                input_payload.streamer_node_name.clone(),
+                input_payload.streamer_profile_name.clone(),
+            );
+            if streamer_full_name.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid origin node name or profile name provided".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            let requester_profile = requester_name.get_profile_name_string().unwrap();
+
             // Lock the mutex and handle the Option
             let mut subscription_manager = self.ext_subscription_manager.lock().await;
             let result = subscription_manager
-                .available_shared_folders(requester_name, input_payload.path)
+                .available_shared_folders(
+                    streamer_full_name.unwrap().extract_node(),
+                    input_payload.streamer_profile_name.clone(),
+                    requester_name.extract_node(),
+                    requester_profile.clone(),
+                    input_payload.path,
+                )
                 .await;
 
             match result {
@@ -129,7 +161,7 @@ impl Node {
         } else {
             let mut my_subscription_manager = self.my_subscription_manager.lock().await;
 
-            match ShinkaiName::new(input_payload.node_name.clone()) {
+            match ShinkaiName::from_node_and_profile_names(input_payload.streamer_node_name.clone(), input_payload.streamer_profile_name.clone()) {
                 Ok(ext_node_name) => {
                     let result = my_subscription_manager.get_shared_folder(&ext_node_name).await;
                     match result {
@@ -192,8 +224,11 @@ impl Node {
             }
         };
 
-        let target_node = match ShinkaiName::new(input_payload.node_name.clone()) {
-            Ok(node) => node,
+        let streamer_full_name = match ShinkaiName::from_node_and_profile_names(
+            input_payload.streamer_node_name.clone(),
+            input_payload.streamer_profile_name.clone(),
+        ) {
+            Ok(shinkai_name) => shinkai_name,
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -207,7 +242,13 @@ impl Node {
 
         let mut subscription_manager = self.my_subscription_manager.lock().await;
         let result = subscription_manager
-            .subscribe_to_shared_folder(target_node, input_payload.path, input_payload.payment)
+            .subscribe_to_shared_folder(
+                streamer_full_name.extract_node(),
+                input_payload.streamer_profile_name.clone(),
+                input_payload.streamer_profile_name,
+                input_payload.path,
+                input_payload.payment,
+            )
             .await;
 
         match result {
@@ -244,6 +285,16 @@ impl Node {
                 return Ok(());
             }
         };
+
+        if !requester_name.has_profile() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Requester name does not have a profile".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
         let mut subscription_manager = self.ext_subscription_manager.lock().await;
         let result = subscription_manager

@@ -6,38 +6,17 @@ use crate::{
         APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
         SubscriptionGenericResponse,
     },
-    shinkai_utils::job_scope::JobScope,
 };
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{
-        agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
-        shinkai_time::ShinkaiStringTime,
-    },
-    shinkai_message::{
-        shinkai_message::{
-            ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
-            ShinkaiVersion,
-        },
-        shinkai_message_schemas::{
-            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
-        },
-    },
-    shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod},
-        signatures::signature_public_key_to_string,
-    },
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
+    shinkai_utils::encryption::EncryptionMethod,
 };
 
-use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
-    shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
-    signatures::{clone_signature_secret_key, signature_secret_key_to_string},
-};
+use super::shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString};
 
 impl ShinkaiMessageBuilder {
     fn create_vecfs_message(
@@ -352,7 +331,8 @@ impl ShinkaiMessageBuilder {
 
     pub fn vecfs_available_shared_items(
         path: Option<String>,
-        node_name: String,
+        streamer_node_name: String,
+        streamer_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -363,7 +343,8 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIAvailableSharedItems {
             path: path.unwrap_or_else(|| "/".to_string()),
-            node_name: node_name.to_string(),
+            streamer_node_name,
+            streamer_profile_name,
         };
 
         Self::create_vecfs_message(
@@ -382,7 +363,8 @@ impl ShinkaiMessageBuilder {
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
         requirements: SubscriptionPayment,
-        target_node: String,
+        streamer_node: String,
+        streamer_profile: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -393,7 +375,8 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APISubscribeToSharedFolder {
             path: shared_folder,
-            node_name: target_node,
+            streamer_node_name: streamer_node,
+            streamer_profile_name: streamer_profile,
             payment: requirements,
         };
 

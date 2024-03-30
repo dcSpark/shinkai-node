@@ -122,7 +122,6 @@ impl ShinkaiDB {
         let sub_profile_name_str = subscription_id
             .extract_subscriber_profile()
             .map_err(|_| ShinkaiDBError::InvalidData)?;
-        let folder_hash = Self::folder_name_to_hash(shared_folder);
 
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();

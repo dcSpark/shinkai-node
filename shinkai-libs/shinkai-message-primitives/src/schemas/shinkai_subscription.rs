@@ -13,24 +13,24 @@ pub struct SubscriptionId {
 
 impl SubscriptionId {
     pub fn new(
-        origin_node: ShinkaiName,
-        origin_profile: String,
+        streamer_node: ShinkaiName,
+        streamer_profile: String,
         shared_folder: String,
         subscriber_node: ShinkaiName,
         subscriber_profile: String,
     ) -> Self {
         // Check if origin_node and subscriber_node are the same
-        let origin_node_str = origin_node.get_node_name_string();
+        let streamer_node_str = streamer_node.get_node_name_string();
         let subscriber_node_str = subscriber_node.get_node_name_string();
-        if origin_node_str == subscriber_node_str {
+        if streamer_node_str == subscriber_node_str {
             panic!("origin_node and subscriber_node cannot be the same");
         }
 
-        let origin_node_str = origin_node.get_node_name_string();
+        let streamer_node_str = streamer_node.get_node_name_string();
         let subscriber_node_str = subscriber_node.get_node_name_string();
         let unique_id = format!(
             "{}:::{}:::{}:::{}:::{}",
-            origin_node_str, shared_folder, subscriber_node_str, origin_profile, subscriber_profile
+            streamer_node_str, shared_folder, subscriber_node_str, streamer_profile, subscriber_profile
         );
         SubscriptionId { unique_id }
     }
@@ -60,7 +60,7 @@ impl SubscriptionId {
     }
 
     /// Extracts the node name with shared folder from the unique_id of the SubscriptionId.
-    pub fn extract_origin_node(&self) -> Result<ShinkaiName, &'static str> {
+    pub fn extract_streamer_node(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(ShinkaiName::new(parts[0].to_string())?)
@@ -80,7 +80,7 @@ impl SubscriptionId {
     }
 
     /// Extracts the shared folder origin node profile from the unique_id of the SubscriptionId.
-    pub fn extract_origin_profile(&self) -> Result<String, &'static str> {
+    pub fn extract_streamer_profile(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(parts[3].to_string())
@@ -114,8 +114,8 @@ pub enum ShinkaiSubscriptionStatus {
 pub struct ShinkaiSubscription {
     pub subscription_id: SubscriptionId,
     pub shared_folder: String,
-    pub origin_node: ShinkaiName,
-    pub origin_profile: String,
+    pub streaming_node: ShinkaiName,
+    pub streaming_profile: String,
     pub subscription_description: Option<String>,
     pub subscriber_destination_path: Option<String>,
     pub subscriber_node: ShinkaiName,
@@ -130,8 +130,8 @@ pub struct ShinkaiSubscription {
 impl ShinkaiSubscription {
     pub fn new(
         shared_folder: String,
-        origin_node: ShinkaiName,
-        origin_profile: String,
+        streaming_node: ShinkaiName,
+        streaming_profile: String,
         subscriber_node: ShinkaiName,
         subscriber_profile: String,
         state: ShinkaiSubscriptionStatus,
@@ -139,15 +139,15 @@ impl ShinkaiSubscription {
     ) -> Self {
         ShinkaiSubscription {
             subscription_id: SubscriptionId::new(
-                origin_node.clone(),
-                origin_profile.clone(),
+                streaming_node.clone(),
+                streaming_profile.clone(),
                 shared_folder.clone(),
                 subscriber_node.clone(),
                 subscriber_profile.clone(),
             ),
             shared_folder,
-            origin_node,
-            origin_profile,
+            streaming_node,
+            streaming_profile,
             subscription_description: None, // TODO: update api and models to support this
             subscriber_destination_path: None, // TODO: update api to support this
             subscriber_node,

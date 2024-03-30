@@ -4,7 +4,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
         encryption::{string_to_encryption_public_key, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
         signatures::clone_signature_secret_key,
     },
 };

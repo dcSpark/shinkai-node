@@ -4,9 +4,10 @@ use crate::{
 };
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
+use std::{fmt, hash::Hasher};
+use std::hash::Hash;
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct ShinkaiName {
     pub full_name: String,
     pub node_name: String,
@@ -496,6 +497,16 @@ impl PartialEq for ShinkaiName {
             && self.subidentity_type == other.subidentity_type
             && self.subidentity_name.as_ref().map(|s| s.to_lowercase())
                 == other.subidentity_name.as_ref().map(|s| s.to_lowercase())
+    }
+}
+
+impl Hash for ShinkaiName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.full_name.to_lowercase().hash(state);
+        self.node_name.to_lowercase().hash(state);
+        self.profile_name.as_ref().map(|s| s.to_lowercase()).hash(state);
+        self.subidentity_type.hash(state);
+        self.subidentity_name.as_ref().map(|s| s.to_lowercase()).hash(state);
     }
 }
 

@@ -423,7 +423,7 @@ impl ExternalSubscriberManager {
 
             // Calculate diff
             eprintln!("process_subscription_job_message_queued>> Calculating diff");
-            let diff = FSEntryTreeGenerator::compare_fs_entry_trees(
+            let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
@@ -641,8 +641,8 @@ impl ExternalSubscriberManager {
     /// The return type is (shareable_path, permission, tree, subscription_requirement)
     pub async fn available_shared_folders(
         &mut self,
-        origin_node: ShinkaiName,
-        origin_profile: String,
+        streamer_node: ShinkaiName,
+        streamer_profile: String,
         requester_node: ShinkaiName,
         requester_profile: String,
         path: String,
@@ -650,8 +650,8 @@ impl ExternalSubscriberManager {
         let mut full_requester_profile_subidentity = requester_node.clone();
         full_requester_profile_subidentity.profile_name = Some(requester_profile);
 
-        let mut full_origin_profile_subidentity = origin_node.clone();
-        full_origin_profile_subidentity.profile_name = Some(origin_profile.clone());
+        let mut full_origin_profile_subidentity = streamer_node.clone();
+        full_origin_profile_subidentity.profile_name = Some(streamer_profile.clone());
 
         let mut converted_results = Vec::new();
         {
@@ -841,8 +841,18 @@ impl ExternalSubscriberManager {
         }
 
         // Trigger a refresh of the shareable folders cache
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+        )?;
+
         let _ = self
-            .available_shared_folders(requester_shinkai_identity.clone(), "/".to_string())
+            .available_shared_folders(
+                requester_shinkai_identity.clone(),
+                requester_profile.clone(),
+                requester_shinkai_identity.clone(),
+                requester_profile.clone(),
+                "/".to_string(),
+            )
             .await;
 
         Ok(true)
@@ -905,6 +915,7 @@ impl ExternalSubscriberManager {
     pub async fn subscribe_to_shared_folder(
         &mut self,
         requester_shinkai_identity: ShinkaiName,
+        streamer_shinkai_identity: ShinkaiName,
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
@@ -938,10 +949,19 @@ impl ExternalSubscriberManager {
             }
         }
 
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for requester".to_string()),
+        )?;
+        let streamer_profile = streamer_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for origin".to_string()),
+        )?;
+
         let subscription_id = SubscriptionId::new(
-            self.node_name.extract_node(),
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile.clone(),
             shared_folder.clone(),
             requester_shinkai_identity.extract_node(),
+            requester_profile.clone(),
         );
 
         // The requester has passed the validation checks
@@ -969,8 +989,10 @@ impl ExternalSubscriberManager {
 
         let subscription = ShinkaiSubscription::new(
             shared_folder.clone(),
-            self.node_name.extract_node(),
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile,
             requester_shinkai_identity.extract_node(),
+            requester_profile,
             ShinkaiSubscriptionStatus::SubscriptionConfirmed,
             Some(subscription_requirement),
         );
@@ -1016,7 +1038,7 @@ impl ExternalSubscriberManager {
         // create message to request updated state
 
         if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
-            let subscriber_node = subscription.subscriber_identity.clone();
+            let subscriber_node = subscription.subscriber_node.clone();
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&subscriber_node.get_node_name_string())

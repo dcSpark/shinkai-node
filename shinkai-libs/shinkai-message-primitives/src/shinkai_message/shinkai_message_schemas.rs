@@ -387,13 +387,15 @@ pub struct APIVecFsCopyItem {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAvailableSharedItems {
     pub path: String,
-    pub node_name: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APISubscribeToSharedFolder {
     pub path: String,
-    pub node_name: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
     pub payment: SubscriptionPayment,
 }
 
