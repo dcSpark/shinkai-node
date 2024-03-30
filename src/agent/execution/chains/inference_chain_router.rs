@@ -8,7 +8,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -38,7 +38,7 @@ impl JobManager {
         full_job: Job,
         job_message: JobMessage,
         prev_execution_context: HashMap<String, String>,
-        generator: &dyn EmbeddingGenerator,
+        generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
         // TODO: Later implement inference chain decision making here before choosing which chain to use.

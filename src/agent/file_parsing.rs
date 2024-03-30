@@ -124,7 +124,7 @@ impl JobManager {
             let mut source_map = SourceFileMap::new(HashMap::new());
             source_map.add_source_file(VRPath::root(), source);
 
-            processed_vrkais.push((filename, VRKai::from_base_vector_resource(resource, Some(source_map))))
+            processed_vrkais.push((filename, VRKai::new(resource, Some(source_map))))
         }
 
         Ok(processed_vrkais)

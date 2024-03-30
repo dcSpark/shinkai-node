@@ -2,7 +2,7 @@ use super::{BaseVectorResource, VRBaseType, VRHeader, VRKeywords, VectorResource
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
-use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
 use crate::source::{DistributionInfo, SourceReference, VRSource};
@@ -23,7 +23,7 @@ pub struct DocumentVectorResource {
     source: VRSource,
     resource_id: String,
     resource_embedding: Embedding,
-    embedding_model_used: EmbeddingModelType,
+    embedding_model_used_string: EmbeddingModelTypeString,
     resource_base_type: VRBaseType,
     embeddings: Vec<Embedding>,
     node_count: u64,
@@ -152,8 +152,8 @@ impl VectorResourceCore for DocumentVectorResource {
         self.distribution_info = dist_info;
     }
 
-    fn embedding_model_used(&self) -> EmbeddingModelType {
-        self.embedding_model_used.clone()
+    fn embedding_model_used_string(&self) -> EmbeddingModelTypeString {
+        self.embedding_model_used_string.clone()
     }
 
     fn name(&self) -> &str {
@@ -210,7 +210,7 @@ impl VectorResourceCore for DocumentVectorResource {
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
         self.update_last_written_to_now();
-        self.embedding_model_used = model_type;
+        self.embedding_model_used_string = model_type.to_string();
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
@@ -480,7 +480,7 @@ impl DocumentVectorResource {
             embeddings,
             node_count: nodes.len() as u64,
             nodes: nodes,
-            embedding_model_used,
+            embedding_model_used_string: embedding_model_used.to_string(),
             resource_base_type: VRBaseType::Document,
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),

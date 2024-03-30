@@ -2,7 +2,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
+use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeVRKaiEntry;
+use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeVRPackEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::NetworkFolderScopeEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSFolderScopeEntry;
 use shinkai_message_primitives::shinkai_utils::job_scope::VectorFSItemScopeEntry;
@@ -19,14 +20,14 @@ impl PyJobScope {
     pub fn new() -> Self {
         // TODO: Someday add args
         Self {
-            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
         }
     }
 
     #[staticmethod]
     pub fn new_empty() -> Self {
         Self {
-            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            inner: JobScope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
         }
     }
 
@@ -44,7 +45,8 @@ impl PyJobScope {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.inner.local.is_empty()
+        self.inner.local_vrkai.is_empty()
+            && self.inner.local_vrpack.is_empty()
             && self.inner.vector_fs_folders.is_empty()
             && self.inner.vector_fs_items.is_empty()
             && self.inner.network_folders.is_empty()

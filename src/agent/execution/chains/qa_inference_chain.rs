@@ -11,7 +11,7 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -29,7 +29,7 @@ impl JobManager {
         job_task: String,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
-        generator: &dyn EmbeddingGenerator,
+        generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         search_text: Option<String>,
         summary_text: Option<String>,
@@ -212,7 +212,7 @@ async fn no_json_object_retry_logic(
     job_task: String,
     agent: SerializedAgent,
     execution_context: HashMap<String, String>,
-    generator: &dyn EmbeddingGenerator,
+    generator: RemoteEmbeddingGenerator,
     user_profile: ShinkaiName,
     summary_text: Option<String>,
     summary_node_text: Option<String>,

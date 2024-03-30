@@ -44,7 +44,7 @@ pub fn default_vector_resource_doc() -> DocumentVectorResource {
 
 fn default_vr_kai() -> VRKai {
     let resource = BaseVectorResource::Document(default_vector_resource_doc());
-    VRKai::from_base_vector_resource(resource, None, None)
+    VRKai::new(resource, None, None)
 }
 
 fn default_vr_pack() -> VRPack {
