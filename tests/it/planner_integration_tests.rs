@@ -442,9 +442,7 @@ fn planner_integration_test() {
                     .unwrap();
 
                 // Receive the response
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("APIUpdateJobToFinished response: {:?}", response);
-                assert_eq!(response, (), "Expected APIUpdateJobToFinished response to be ()");
+                res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 tokio::time::sleep(Duration::from_secs(360)).await;
             }
             // Test APIPrivateDevopsCronList

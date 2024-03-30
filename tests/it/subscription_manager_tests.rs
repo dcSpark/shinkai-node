@@ -135,7 +135,8 @@ async fn make_folder_shareable(
 }
 
 async fn show_available_shared_items(
-    node_name: &str,
+    streamer_node_name: &str,
+    streamer_profile_name: &str,
     commands_sender: &Sender<NodeCommand>,
     encryption_sk: EncryptionStaticKey,
     signature_sk: SigningKey,
@@ -145,7 +146,8 @@ async fn show_available_shared_items(
 ) {
     let payload = APIAvailableSharedItems {
         path: "/".to_string(), // Assuming you want to list items at the root
-        node_name: node_name.to_string(),
+        streamer_node_name: streamer_node_name.to_string(),
+        streamer_profile_name: streamer_profile_name.to_string(),
     };
 
     let msg = generate_message_with_payload(
@@ -769,6 +771,7 @@ fn subscription_manager_test() {
                 eprintln!("Show available shared items before making /shared_test_folder shareable");
                 show_available_shared_items(
                     node1_identity_name,
+                    node1_profile_name,
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -884,6 +887,7 @@ fn subscription_manager_test() {
                 eprintln!("Show available shared items after making /shared_test_folder shareable");
                 show_available_shared_items(
                     node1_identity_name,
+                    node1_profile_name,
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -911,6 +915,7 @@ fn subscription_manager_test() {
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
                     None,
                     node1_identity_name.to_string(),
+                    node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk.clone(),
@@ -962,6 +967,7 @@ fn subscription_manager_test() {
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
                     None,
                     node1_identity_name.to_string(),
+                    node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk.clone(),
@@ -1058,6 +1064,7 @@ fn subscription_manager_test() {
                     "/shared_test_folder".to_string(),
                     requirements,
                     node1_identity_name.to_string(),
+                    node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk.clone(),
