@@ -23,14 +23,14 @@ impl SubscriptionId {
         let streamer_node_str = streamer_node.get_node_name_string();
         let subscriber_node_str = subscriber_node.get_node_name_string();
         if streamer_node_str == subscriber_node_str {
-            panic!("origin_node and subscriber_node cannot be the same");
+            panic!("streamer_node and subscriber_node cannot be the same");
         }
 
         let streamer_node_str = streamer_node.get_node_name_string();
         let subscriber_node_str = subscriber_node.get_node_name_string();
         let unique_id = format!(
             "{}:::{}:::{}:::{}:::{}",
-            streamer_node_str, shared_folder, subscriber_node_str, streamer_profile, subscriber_profile
+            streamer_node_str, streamer_profile, shared_folder, subscriber_node_str, subscriber_profile
         );
         SubscriptionId { unique_id }
     }

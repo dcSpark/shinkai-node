@@ -134,6 +134,7 @@ impl MySubscriptionsManager {
         name: ShinkaiName,
         folders: Vec<SharedFolderInfo>,
     ) -> Result<(), SubscriberManagerError> {
+        eprintln!("insert_shared_folder>: name: {:?}", name);
         let shared_folder_sm = SharedFoldersExternalNodeSM::new_with_folders_info(name.clone(), folders);
         let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
         external_node_shared_folders.put(name, shared_folder_sm);
@@ -209,7 +210,7 @@ impl MySubscriptionsManager {
                 // Note: the other node doesn't care about the sender's profile in this context
                 "".to_string(),
                 streamer_full_name.get_node_name_string(),
-                "".to_string(),
+                streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -241,7 +242,8 @@ impl MySubscriptionsManager {
                 }
             }
 
-            let placeholder_shared_folder = SharedFoldersExternalNodeSM::new_placeholder(streamer_full_name.clone(), needs_refresh);
+            let placeholder_shared_folder =
+                SharedFoldersExternalNodeSM::new_placeholder(streamer_full_name.clone(), needs_refresh);
             {
                 let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
                 external_node_shared_folders.put(streamer_full_name.clone(), placeholder_shared_folder.clone());
@@ -276,7 +278,13 @@ impl MySubscriptionsManager {
         if let Some(db_lock) = self.db.upgrade() {
             let db = db_lock.lock().await;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
-            let subscription_id = SubscriptionId::new(streamer_node_name.clone(), streamer_profile.clone(), folder_name.clone(), my_node_name, my_profile.clone());
+            let subscription_id = SubscriptionId::new(
+                streamer_node_name.clone(),
+                streamer_profile.clone(),
+                folder_name.clone(),
+                my_node_name,
+                my_profile.clone(),
+            );
             match db.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(_) => {
                     // Already subscribed, no need to proceed further
@@ -376,10 +384,11 @@ impl MySubscriptionsManager {
             my_node_name,
             my_profile,
         );
+        eprintln!("update_subscription_status>: subscription_id: {:?}", subscription_id);
 
         match action {
             MessageSchemaType::SubscribeToSharedFolderResponse => {
-                println!(
+                eprintln!(
                     "Updating subscription status for folder: {} with payload: {:?}",
                     payload.shared_folder.clone(),
                     payload
@@ -400,6 +409,7 @@ impl MySubscriptionsManager {
                 }
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
+                eprintln!("Updating subscription status to: {:?}", new_subscription);
                 db.update_my_subscription(new_subscription)?;
             }
             _ => {
@@ -411,8 +421,8 @@ impl MySubscriptionsManager {
 
     pub async fn share_local_shared_folder_copy_state(
         &self,
-        origin_node: ShinkaiName,
-        origin_profile: String,
+        streamer_node: ShinkaiName,
+        streamer_profile: String,
         subscriber_node: ShinkaiName,
         subscriber_profile: String,
         subscription_id: String,
@@ -428,6 +438,7 @@ impl MySubscriptionsManager {
             let db_lock = db.lock().await;
 
             // Attempt to get the subscription from the DB
+            eprintln!("> subscription id: {}", subscription_id);
             let subscription = db_lock.get_my_subscription(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => {
                     SubscriberManagerError::SubscriptionNotFound(subscription_id.to_string())
@@ -436,7 +447,7 @@ impl MySubscriptionsManager {
             })?;
 
             // Check that the subscription is not incorrect (for the same node)
-            if subscription.streaming_node.get_node_name_string() != subscriber_node.get_node_name_string() {
+            if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string() {
                 return Err(SubscriberManagerError::InvalidSubscriber(
                     "Subscription doesn't belong to the subscriber".to_string(),
                 ));
@@ -458,7 +469,7 @@ impl MySubscriptionsManager {
         let full_requester =
             ShinkaiName::from_node_and_profile_names(subscriber_node.clone().node_name, subscriber_profile.clone())?;
         let full_origin =
-            ShinkaiName::from_node_and_profile_names(origin_node.clone().node_name, origin_profile.clone())?;
+            ShinkaiName::from_node_and_profile_names(streamer_node.clone().node_name, streamer_profile.clone())?;
 
         let result = FSEntryTreeGenerator::shared_folders_to_tree(
             self.vector_fs.clone(),
@@ -504,12 +515,13 @@ impl MySubscriptionsManager {
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                origin_node.get_node_name_string(),
-                origin_profile,
+                streamer_node.get_node_name_string(),
+                streamer_profile,
                 subscriber_node.get_node_name_string(),
                 subscriber_profile,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+            eprintln!("Sending vecfs_share_current_shared_folder_state {:?}", msg_request_subscription);
 
             Self::send_message_to_peer(
                 msg_request_subscription,

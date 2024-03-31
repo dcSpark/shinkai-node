@@ -647,8 +647,10 @@ impl ExternalSubscriberManager {
         requester_profile: String,
         path: String,
     ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
-        let full_requester_profile_subidentity =  ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
-        let full_streamer_profile_subidentity = ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile)?;
+        let full_requester_profile_subidentity =
+            ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
+        let full_streamer_profile_subidentity =
+            ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile)?;
 
         let mut converted_results = Vec::new();
         {
@@ -916,6 +918,9 @@ impl ExternalSubscriberManager {
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
+        eprintln!("requester_shinkai_identity: {:?}", requester_shinkai_identity);
+        eprintln!("streamer_shinkai_identity: {:?}", streamer_shinkai_identity);
+
         // Validate that the requester actually did the alleged payment
         match subscription_requirement.clone() {
             SubscriptionPayment::Free => {
@@ -1051,10 +1056,9 @@ impl ExternalSubscriberManager {
                 clone_signature_secret_key(&my_signature_secret_key),
                 receiver_public_key,
                 node_name.get_node_name_string(),
-                // Note: the other node doesn't care about the sender's profile in this context
-                "".to_string(),
+                subscription.streaming_profile.clone(),
                 subscriber_node.get_node_name_string(),
-                "".to_string(),
+                subscription.subscriber_profile.clone(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 

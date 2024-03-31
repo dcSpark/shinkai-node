@@ -14,7 +14,7 @@ use crate::{
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
+        shinkai_name::{ShinkaiName, ShinkaiNameError},
         shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId},
     },
     shinkai_message::{
@@ -394,6 +394,8 @@ pub async fn handle_network_message_cases(
                     let request_node_name = requester.get_node_name_string();
                     let request_profile_name = requester.get_profile_name_string().unwrap_or("".to_string());
 
+                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+
                     // 2.- Create message using vecfs_available_shared_items_response
                     // Send message back with response
                     let msg = ShinkaiMessageBuilder::vecfs_available_shared_items_response(
@@ -402,7 +404,7 @@ pub async fn handle_network_message_cases(
                         clone_signature_secret_key(&my_signature_secret_key),
                         sender_encryption_pk,
                         my_node_profile_name.to_string(),
-                        "".to_string(),
+                        receiver.get_profile_name_string().unwrap_or("".to_string()),
                         request_node_name.clone(),
                         request_profile_name,
                     )
@@ -422,6 +424,10 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::AvailableSharedItemsResponse => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    eprintln!(
+                        "Node {} with subidenitty: Handling AvailableSharedItemsResponse from: {:?}",
+                        my_node_profile_name, requester
+                    );
                     let request_node_name = requester.get_node_name_string();
 
                     // Handle Schema2 specific logic
@@ -447,7 +453,7 @@ pub async fn handle_network_message_cases(
                                     println!("Converted to Vec<SharedFolderInfo>: {:?}", shared_folder_infos);
                                     let mut my_subscription_manager = my_subscription_manager.lock().await;
                                     let _ = my_subscription_manager
-                                        .insert_shared_folder(requester.extract_node(), shared_folder_infos)
+                                        .insert_shared_folder(requester, shared_folder_infos)
                                         .await;
                                 }
                                 Err(e) => {
@@ -477,15 +483,21 @@ pub async fn handle_network_message_cases(
                         Ok(subscription_request) => {
                             // Successfully converted, you can now use shared_folder_infos
                             eprintln!("Converted to APISubscribeToSharedFolder: {:?}", subscription_request);
+                            let streamer = ShinkaiName::from_node_and_profile_names(
+                                subscription_request.streamer_node_name,
+                                subscription_request.streamer_profile_name.clone(),
+                            )
+                            .map_err(|e| ShinkaiNameError::InvalidNameFormat(e.to_string()))?;
                             let mut external_subscriber_manager = external_subscription_manager.lock().await;
                             let result = external_subscriber_manager
                                 .subscribe_to_shared_folder(
                                     requester.clone(),
-                                    receiver.clone(),
+                                    streamer,
                                     subscription_request.path.clone(),
                                     subscription_request.payment,
                                 )
                                 .await;
+                            eprintln!("SubscribeToSharedFolder result: {:?}", result);
                             match result {
                                 Ok(_) => {
                                     let response = SubscriptionGenericResponse {
@@ -504,7 +516,7 @@ pub async fn handle_network_message_cases(
                                         clone_signature_secret_key(&my_signature_secret_key),
                                         sender_encryption_pk,
                                         my_node_profile_name.to_string(),
-                                        "".to_string(),
+                                        subscription_request.streamer_profile_name,
                                         requester.get_node_name_string(),
                                         request_profile,
                                     )
@@ -539,6 +551,7 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscribeToSharedFolderResponse => {
+                    eprintln!("Message from: {:?}", message);
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let requester_node_name = requester.get_node_name_string();
                     let requester_profile_name = requester.get_profile_name_string();
@@ -562,11 +575,11 @@ pub async fn handle_network_message_cases(
                             // Successfully converted, you can now use shared_folder_infos
                             println!("Converted to SubscriptionGenericResponse: {:?}", response);
 
-                            let mut my_subscription_manager = my_subscription_manager.lock().await;
+                            let my_subscription_manager = my_subscription_manager.lock().await;
                             let result = my_subscription_manager
                                 .update_subscription_status(
                                     requester.extract_node(),
-                                    requester_profile_name.unwrap_or("".to_string()), // TODO: we shouldn't accept empty here
+                                    requester_profile_name.unwrap_or("".to_string()),
                                     receiver_profile,
                                     MessageSchemaType::SubscribeToSharedFolderResponse,
                                     response,
@@ -593,12 +606,13 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscriptionRequiresTreeUpdate => {
-                    let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
-                    let origin_node = origin_node_with_profile.extract_node();
-                    let origin_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();
+                    eprintln!("Message from: {:?}", message);
+                    let streamer_node_with_profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let streamer_node = streamer_node_with_profile.extract_node();
+                    let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();
 
                     let requester_node_with_profile =
-                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                        ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     let requester_node = requester_node_with_profile.extract_node();
                     let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
 
@@ -621,8 +635,8 @@ pub async fn handle_network_message_cases(
 
                     let shared_folder = content.clone();
                     let subscription_id = SubscriptionId::new(
-                        origin_node.clone(),
-                        origin_profile_name.clone(),
+                        streamer_node.clone(),
+                        streamer_profile_name.clone(),
                         shared_folder.clone(),
                         requester_node.clone(),
                         requester_profile_name.clone(),
@@ -631,8 +645,8 @@ pub async fn handle_network_message_cases(
                     let my_subscription_manager = my_subscription_manager.lock().await;
                     let result = my_subscription_manager
                         .share_local_shared_folder_copy_state(
-                            origin_node,
-                            origin_profile_name,
+                            streamer_node,
+                            streamer_profile_name,
                             requester_node,
                             requester_profile_name,
                             subscription_id.get_unique_id().to_string(),
@@ -656,6 +670,7 @@ pub async fn handle_network_message_cases(
                 // Note(Nico): This is usually coming from a request but we also can allow it without the request
                 // for when the node transitions to a new state (e.g. hard reset, recovery to previous state, etc).
                 MessageSchemaType::SubscriptionRequiresTreeUpdateResponse => {
+                    eprintln!("SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse", my_node_profile_name);
                     let origin_node_with_profile = ShinkaiName::new(my_node_profile_name.to_string()).unwrap();
                     let origin_node = origin_node_with_profile.extract_node();
                     let origin_profile_name = origin_node_with_profile.get_profile_name_string().unwrap();

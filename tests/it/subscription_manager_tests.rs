@@ -60,6 +60,7 @@ fn generate_message_with_payload<T: ToString>(
     sender: &str,
     sender_subidentity: &str,
     recipient: &str,
+    recipient_subidentity: &str,
 ) -> ShinkaiMessage {
     let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
 
@@ -69,7 +70,7 @@ fn generate_message_with_payload<T: ToString>(
         .message_schema_type(schema)
         .internal_metadata_with_inbox(
             sender_subidentity.to_string(),
-            "".to_string(),
+            recipient_subidentity.to_string(),
             "".to_string(),
             EncryptionMethod::None,
             None,
@@ -120,6 +121,7 @@ async fn make_folder_shareable(
         identity_name,
         profile_name,
         identity_name,
+        profile_name,
     );
 
     // Prepare the response channel
@@ -150,6 +152,7 @@ async fn show_available_shared_items(
         streamer_profile_name: streamer_profile_name.to_string(),
     };
 
+    eprintln!("recipient subidentity: {}", streamer_profile_name);
     let msg = generate_message_with_payload(
         serde_json::to_string(&payload).unwrap(),
         MessageSchemaType::AvailableSharedItems,
@@ -159,6 +162,7 @@ async fn show_available_shared_items(
         identity_name,
         profile_name,
         identity_name,
+        streamer_profile_name,
     );
 
     // Prepare the response channel
@@ -197,6 +201,7 @@ async fn create_folder(
         identity_name,
         profile_name,
         identity_name,
+        profile_name,
     );
 
     // Prepare the response channel
@@ -252,6 +257,7 @@ async fn retrieve_file_info(
         identity_name,
         profile_name,
         identity_name,
+        profile_name,
     );
 
     // Prepare the response channel
@@ -447,6 +453,7 @@ async fn upload_file(
         identity_name,
         profile_name,
         identity_name,
+        profile_name
     );
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
@@ -896,7 +903,7 @@ fn subscription_manager_test() {
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
-                    "".to_string(),
+                    node2_profile_name.to_string().clone(),
                 )
                 .unwrap();
 
@@ -936,7 +943,7 @@ fn subscription_manager_test() {
             }
             {
                 // add 1 sec delay
-                // tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                 eprintln!("\n\n### (RETRY!) Sending message from node 2 to node 1 requesting shared folders*\n");
                 eprintln!("shared folders should be updated this time!");
 
@@ -950,7 +957,7 @@ fn subscription_manager_test() {
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
-                    "".to_string(),
+                    node2_profile_name.to_string().clone(),
                 )
                 .unwrap();
 
@@ -1028,7 +1035,6 @@ fn subscription_manager_test() {
                     "Failed to match the expected shared folder information"
                 );
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-                panic!("stop here");
             }
             {
                 eprintln!(">>> Subscribe to the shared folder");
@@ -1110,7 +1116,20 @@ fn subscription_manager_test() {
                 let mut actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
 
                 // Expected response template without dates for comparison
-                let expected_resp_template = r#"[{"subscription_id":{"unique_id":"@@node1_test.sepolia-shinkai:::/shared_test_folder:::@@node2_test.sepolia-shinkai"},"shared_folder":"/shared_test_folder","shared_folder_owner":"@@node1_test.sepolia-shinkai","subscription_description":null,"subscriber_destination_path":null,"subscriber_identity":"@@node2_test.sepolia-shinkai","payment":"Free","state":"SubscriptionConfirmed"}]"#;
+                let expected_resp_template = r#"[{
+                    "subscription_id": {
+                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main"
+                    },
+                    "shared_folder": "/shared_test_folder",
+                    "streaming_node": "@@node1_test.sepolia-shinkai",
+                    "streaming_profile": "main",
+                    "subscriber_node": "@@node2_test.sepolia-shinkai",
+                    "subscriber_profile": "main",
+                    "payment": "Free",
+                    "state": "SubscriptionConfirmed",
+                    "subscriber_destination_path": null,
+                    "subscription_description": null
+                }]"#;
                 let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
 
                 // Remove dates from the actual response for comparison
@@ -1132,7 +1151,7 @@ fn subscription_manager_test() {
                 // add delay of 5 seconds
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 eprintln!("next sleep");
-                tokio::time::sleep(Duration::from_secs(5)).await; 
+                tokio::time::sleep(Duration::from_secs(3)).await; 
                 // --
                 // TODO: request current state from subscriber node
                 // TODO: process request from the subscriber node and compute diff
