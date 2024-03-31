@@ -256,7 +256,7 @@ impl JobRecipient {
 /// but can't trust other nodes, we need to generate those on your side.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SubscriptionGenericResponse {
-    /// Detailed information about the subscription, formatted as a JSON string.
+    // Explanation of what is taking place with this generic response
     pub subscription_details: String,
     /// The overall status of the subscription request.
     pub shared_folder: String,
@@ -387,13 +387,15 @@ pub struct APIVecFsCopyItem {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAvailableSharedItems {
     pub path: String,
-    pub node_name: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APISubscribeToSharedFolder {
     pub path: String,
-    pub node_name: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
     pub payment: SubscriptionPayment,
 }
 

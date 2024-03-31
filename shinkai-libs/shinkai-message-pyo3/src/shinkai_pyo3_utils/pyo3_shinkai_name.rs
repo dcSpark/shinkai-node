@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
 use pyo3::types::PyString;
+use pyo3::wrap_pyfunction;
+use serde_json::Error as SerdeError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use serde_json::Error as SerdeError;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -30,8 +30,8 @@ impl PyShinkaiName {
     }
 
     #[staticmethod]
-    pub fn from_node_and_profile(node_name: String, profile_name: String) -> PyResult<Self> {
-        match ShinkaiName::from_node_and_profile(node_name, profile_name) {
+    pub fn from_node_and_profile_names(node_name: String, profile_name: String) -> PyResult<Self> {
+        match ShinkaiName::from_node_and_profile_names(node_name, profile_name) {
             Ok(inner) => Ok(Self { inner }),
             Err(err) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(err)),
         }
@@ -43,12 +43,12 @@ impl PyShinkaiName {
     }
 
     #[getter]
-    pub fn get_node_name(&self) -> PyResult<String> {
+    pub fn get_node_name_string(&self) -> PyResult<String> {
         Ok(self.inner.node_name.clone())
     }
 
     #[getter]
-    pub fn get_profile_name(&self) -> PyResult<Option<String>> {
+    pub fn get_profile_name_string(&self) -> PyResult<Option<String>> {
         Ok(self.inner.profile_name.clone())
     }
 

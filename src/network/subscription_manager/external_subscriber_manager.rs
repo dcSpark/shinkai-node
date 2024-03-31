@@ -2,7 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
-use crate::network::subscription_manager::fs_item_tree_generator::FSItemTreeGenerator;
+use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -34,7 +34,7 @@ use std::sync::Weak;
 use std::{env, mem};
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 
-use super::fs_item_tree::FSItemTree;
+use super::fs_entry_tree::FSEntryTree;
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -85,7 +85,7 @@ const NUM_THREADS: usize = 2;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct SubscriptionWithTree {
     pub subscription: ShinkaiSubscription,
-    pub subscriber_folder_tree: FSItemTree,
+    pub subscriber_folder_tree: FSEntryTree,
 }
 
 impl Ord for SubscriptionWithTree {
@@ -104,7 +104,7 @@ impl PartialOrd for SubscriptionWithTree {
 pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
-    pub tree: FSItemTree,
+    pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
 }
 
@@ -184,7 +184,7 @@ impl ExternalSubscriberManager {
             subscription_ids_are_sync.clone(),
             shared_folders_to_ephemeral_versioning.clone(),
             thread_number,
-            |job,
+            |subscription_with_tree,
              db,
              vector_fs,
              node_name,
@@ -194,8 +194,8 @@ impl ExternalSubscriberManager {
              shared_folders_trees,
              subscription_ids_are_sync,
              shared_folders_to_ephemeral_versioning| {
-                ExternalSubscriberManager::process_job_message_queued(
-                    job,
+                ExternalSubscriberManager::process_subscription_job_message_queued(
+                    subscription_with_tree,
                     db,
                     vector_fs,
                     node_name,
@@ -365,6 +365,12 @@ impl ExternalSubscriberManager {
                 }
                 // Now we send requests to the subscribers to get their current state
                 for subscription_id in post_filtered_subscription_ids.clone() {
+                    // print node name
+                    eprintln!(
+                        ">> (process_subscription_request_state_updates) Sending request to subscriber: {:?}",
+                        subscription_id.get_unique_id().to_string()
+                    );
+                    eprintln!("Node name: {:?}", node_name);
                     let _ = Self::create_and_send_request_updated_state(
                         subscription_id,
                         db.clone(),
@@ -389,7 +395,7 @@ impl ExternalSubscriberManager {
         })
     }
 
-    fn process_job_message_queued(
+    fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
@@ -405,11 +411,11 @@ impl ExternalSubscriberManager {
             // TODO: Make this code production ready
             eprintln!("my node name: {:?}", node_name);
             println!(
-                "process_job_message_queued> Processing job: {:?}",
+                "process_subscription_job_message_queued> Processing job: {:?}",
                 subscription_with_tree.subscription.subscription_id
             );
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
-            
+
             eprintln!("user subscription_with_tree: {:?}", subscription_with_tree);
             eprintln!(
                 "user shared folder: {:?}",
@@ -418,16 +424,23 @@ impl ExternalSubscriberManager {
             let local_shared_folder_state = shared_folders_trees
                 .get(&shared_folder)
                 // todo: this should actually go to the db to read it if not available
-                .map_or(FSItemTree::new_empty(), |entry| entry.value().tree.clone());
+                .map_or(FSEntryTree::new_empty(), |entry| entry.value().tree.clone());
             eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
             // Calculate diff
-            eprintln!("process_job_message_queued>> Calculating diff");
-            let diff = FSItemTreeGenerator::compare_fs_item_trees(
+            eprintln!("process_subscription_job_message_queued>> Calculating diff");
+            let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
-            eprintln!("process_job_message_queued>> diff: {:?}", diff);
+            eprintln!("process_subscription_job_message_queued>> diff: {:?}", diff);
+
+            // // If at least one diff was found, retrieve the VRPack for the path
+            // if diff.children.len() > 0 {
+            //     let vec_fs = vector_fs.lock().await();
+            //     let writer = VFSWriter::
+            //     vec_fs.
+            // }
 
             // TODO: here extract the vrpack
             // TODO: here call the network manager to send the vrpack
@@ -634,9 +647,17 @@ impl ExternalSubscriberManager {
     /// The return type is (shareable_path, permission, tree, subscription_requirement)
     pub async fn available_shared_folders(
         &mut self,
-        requester_shinkai_identity: ShinkaiName,
+        streamer_node: ShinkaiName,
+        streamer_profile: String,
+        requester_node: ShinkaiName,
+        requester_profile: String,
         path: String,
     ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
+        let full_requester_profile_subidentity =
+            ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
+        let full_streamer_profile_subidentity =
+            ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile)?;
+
         let mut converted_results = Vec::new();
         {
             let vector_fs = self
@@ -650,19 +671,18 @@ impl ExternalSubscriberManager {
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-            let reader = vector_fs
+            // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+            let perms_reader = vector_fs
                 .new_reader(
-                    requester_shinkai_identity.clone(),
+                    full_requester_profile_subidentity.clone(),
                     vr_path,
-                    requester_shinkai_identity.clone(),
+                    full_streamer_profile_subidentity.clone(),
                 )
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-            // Note: double-check that the Whitelist is correct here under these assumptions
-            let results = vector_fs.find_paths_with_read_permissions(&reader, vec![ReadPermission::Public])?; // everything is whitelisted. I think it should be Private by default ReadPermission::Whitelist
+            let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
 
             // Use the new function to filter results to only include top-level folders
-            let filtered_results = FSItemTreeGenerator::filter_to_top_level_folders(results);
+            let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -679,9 +699,10 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                let tree = FSItemTreeGenerator::shared_folders_to_tree(
+                let tree = FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
-                    requester_shinkai_identity.clone(),
+                    full_streamer_profile_subidentity.clone(),
+                    full_requester_profile_subidentity.clone(),
                     path_str.clone(),
                 )
                 .await?;
@@ -734,7 +755,7 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
-        // TODO: check that you are actually an admin of the folder
+        // TODO: check that you are actually have rights to the folder
         let vector_fs = self
             .vector_fs
             .upgrade()
@@ -825,8 +846,18 @@ impl ExternalSubscriberManager {
         }
 
         // Trigger a refresh of the shareable folders cache
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+        )?;
+
         let _ = self
-            .available_shared_folders(requester_shinkai_identity.clone(), "/".to_string())
+            .available_shared_folders(
+                requester_shinkai_identity.clone(),
+                requester_profile.clone(),
+                requester_shinkai_identity.clone(),
+                requester_profile.clone(),
+                "/".to_string(),
+            )
             .await;
 
         Ok(true)
@@ -889,9 +920,13 @@ impl ExternalSubscriberManager {
     pub async fn subscribe_to_shared_folder(
         &mut self,
         requester_shinkai_identity: ShinkaiName,
+        streamer_shinkai_identity: ShinkaiName,
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
+        eprintln!("requester_shinkai_identity: {:?}", requester_shinkai_identity);
+        eprintln!("streamer_shinkai_identity: {:?}", streamer_shinkai_identity);
+
         // Validate that the requester actually did the alleged payment
         match subscription_requirement.clone() {
             SubscriptionPayment::Free => {
@@ -922,10 +957,19 @@ impl ExternalSubscriberManager {
             }
         }
 
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for requester".to_string()),
+        )?;
+        let streamer_profile = streamer_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for origin".to_string()),
+        )?;
+
         let subscription_id = SubscriptionId::new(
-            self.node_name.extract_node(),
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile.clone(),
             shared_folder.clone(),
             requester_shinkai_identity.extract_node(),
+            requester_profile.clone(),
         );
 
         // The requester has passed the validation checks
@@ -953,8 +997,10 @@ impl ExternalSubscriberManager {
 
         let subscription = ShinkaiSubscription::new(
             shared_folder.clone(),
-            self.node_name.extract_node(),
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile,
             requester_shinkai_identity.extract_node(),
+            requester_profile,
             ShinkaiSubscriptionStatus::SubscriptionConfirmed,
             Some(subscription_requirement),
         );
@@ -987,23 +1033,27 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
+            eprintln!("my node name: {:?}", node_name);
+            eprintln!(">>> subscription_id (create_and_send_request_updated_state): {:?}", subscription_id);
+            let all_subs = db.all_subscribers_subscription()?;
+            eprintln!(">>> all_subs: {:?}", all_subs);
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                     "Subscription with ID {} not found",
                     subscription_id.get_unique_id()
                 )),
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
-            })?;
-            subscription
+            });
+            eprintln!(">>> subscription (create_and_send_request_updated_state): {:?}", subscription);
+            subscription?
         };
 
-        // create message to request updated state
-
+        // Create message to request updated state
         if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
-            let subscriber_node_name = subscription.subscriber_identity.clone();
+            let subscriber_node = subscription.subscriber_node.clone();
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&subscriber_node_name.get_node_name())
+                .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -1015,11 +1065,10 @@ impl ExternalSubscriberManager {
                 clone_static_secret_key(&my_encryption_secret_key),
                 clone_signature_secret_key(&my_signature_secret_key),
                 receiver_public_key,
-                node_name.get_node_name(),
-                // Note: the other node doesn't care about the sender's profile in this context
-                "".to_string(),
-                subscriber_node_name.get_node_name(),
-                "".to_string(),
+                node_name.get_node_name_string(),
+                subscription.streaming_profile.clone(),
+                subscriber_node.get_node_name_string(),
+                subscription.subscriber_profile.clone(),
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -1042,15 +1091,17 @@ impl ExternalSubscriberManager {
     pub async fn subscriber_current_state_response(
         &self,
         subscription_unique_id: String,
-        subscriber_folder_tree: FSItemTree,
-        subscriber_node_name: ShinkaiName,
+        subscriber_folder_tree: FSEntryTree,
+        subscriber_node: ShinkaiName,
+        subscriber_profile: String,
     ) -> Result<(), SubscriberManagerError> {
+        eprintln!("subscriber_current_state_response> Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}", subscription_unique_id, subscriber_node, subscriber_folder_tree);
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Debug,
             &format!(
                 "Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}",
-                subscription_unique_id, subscriber_node_name, subscriber_folder_tree
+                subscription_unique_id, subscriber_node, subscriber_folder_tree
             ),
         );
 
@@ -1061,7 +1112,12 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
-            db.get_subscription_by_id(&SubscriptionId::from_unique_id(subscription_unique_id.clone()))
+            eprintln!(">>> subscription_id before (subscriber_current_state_response): {:?}", subscription_unique_id);
+            let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
+            let all_subs = db.all_subscribers_subscription()?;
+            eprintln!(">>> all_subs: {:?}", all_subs);
+            eprintln!(">>> subscription_id after (subscriber_current_state_response): {:?}", subscription_id);
+            db.get_subscription_by_id(&subscription_id)
                 .map_err(|e| match e {
                     ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                         "Subscription with ID {} not found",
@@ -1070,16 +1126,21 @@ impl ExternalSubscriberManager {
                     _ => SubscriberManagerError::DatabaseError(e.to_string()),
                 })?
         };
+        eprintln!("subscriber_current_state_response> Subscription: {:?}", subscription);
 
-        if subscription.subscriber_identity.get_node_name() != subscriber_node_name.get_node_name() {
+        if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(
-                "Subscriber does not match the subscription".to_string(),
+                "Subscriber node does not match the subscription".to_string(),
+            ));
+        }
+        if subscription.subscriber_profile != subscriber_profile {
+            return Err(SubscriberManagerError::InvalidSubscriber(
+                "Subscriber profile does not match the subscription".to_string(),
             ));
         }
 
         let subscription_id_clone = subscription.subscription_id.clone();
         let unique_id = subscription_id_clone.get_unique_id();
-
         let subscription_with_tree = SubscriptionWithTree {
             subscription,
             subscriber_folder_tree,

@@ -29,7 +29,7 @@ use super::{
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
-pub type ProfileName = String;
+pub type ShinkaiNameString = String;
 
 // TODO: refactor this so you don't need to give all the keys to the builder in new
 // but rather give them to the build function that way you can have the two level of encryptions
@@ -95,7 +95,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn internal_metadata(
         mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         encryption: EncryptionMethod,
         node_api_data: Option<NodeApiData>,
@@ -114,7 +114,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn internal_metadata_with_inbox(
         mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         encryption: EncryptionMethod,
@@ -134,7 +134,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn internal_metadata_with_schema(
         mut self,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         message_schema: MessageSchemaType,
@@ -180,7 +180,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn external_metadata(mut self, recipient: ProfileName, sender: ProfileName) -> Self {
+    pub fn external_metadata(mut self, recipient: ShinkaiNameString, sender: ShinkaiNameString) -> Self {
         let signature = "".to_string();
         let other = "".to_string();
         let intra_sender = "".to_string();
@@ -196,7 +196,12 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn external_metadata_with_other(mut self, recipient: ProfileName, sender: ProfileName, other: String) -> Self {
+    pub fn external_metadata_with_other(
+        mut self,
+        recipient: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        other: String,
+    ) -> Self {
         let signature = "".to_string();
         let intra_sender = "".to_string();
         let scheduled_time = ShinkaiStringTime::generate_time_now();
@@ -213,8 +218,8 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata_with_other_and_intra_sender(
         mut self,
-        recipient: ProfileName,
-        sender: ProfileName,
+        recipient: ShinkaiNameString,
+        sender: ShinkaiNameString,
         other: String,
         intra_sender: String,
     ) -> Self {
@@ -233,8 +238,8 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata_with_intra_sender(
         mut self,
-        recipient: ProfileName,
-        sender: ProfileName,
+        recipient: ShinkaiNameString,
+        sender: ShinkaiNameString,
         intra_sender: String,
     ) -> Self {
         let signature = "".to_string();
@@ -253,8 +258,8 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata_with_schedule(
         mut self,
-        recipient: ProfileName,
-        sender: ProfileName,
+        recipient: ShinkaiNameString,
+        sender: ShinkaiNameString,
         scheduled_time: String,
     ) -> Self {
         let signature = "".to_string();

@@ -79,7 +79,7 @@ impl InboxNameWrapper {
     #[wasm_bindgen]
     pub fn get_regular_inbox_name_from_params(
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         is_e2e: bool,
@@ -90,14 +90,15 @@ impl InboxNameWrapper {
             recipient,
             recipient_subidentity,
             is_e2e,
-        ).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        )
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(InboxNameWrapper { inner: inbox_name })
     }
 
     #[wasm_bindgen]
     pub fn get_job_inbox_name_from_params(unique_id: String) -> Result<InboxNameWrapper, JsValue> {
-        let inbox_name = InboxName::get_job_inbox_name_from_params(unique_id)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let inbox_name =
+            InboxName::get_job_inbox_name_from_params(unique_id).map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(InboxNameWrapper { inner: inbox_name })
     }
 

@@ -1,13 +1,14 @@
-use serde::{Deserialize, Serialize};
-use crate::shinkai_utils::encryption::EncryptionMethod;
 use super::shinkai_message_schemas::MessageSchemaType;
+use crate::shinkai_utils::encryption::EncryptionMethod;
+use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::source::ShinkaiNameString;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShinkaiMessage {
     pub body: MessageBody,
     pub external_metadata: ExternalMetadata,
     pub encryption: EncryptionMethod,
-    pub version: ShinkaiVersion
+    pub version: ShinkaiVersion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -18,8 +19,8 @@ pub struct ShinkaiBody {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InternalMetadata {
-    pub sender_subidentity: String,
-    pub recipient_subidentity: String,
+    pub sender_subidentity: ShinkaiNameString,
+    pub recipient_subidentity: ShinkaiNameString,
     pub inbox: String,
     pub signature: String,
     pub encryption: EncryptionMethod,
@@ -29,11 +30,11 @@ pub struct InternalMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalMetadata {
-    pub sender: String,
-    pub recipient: String,
+    pub sender: ShinkaiNameString,
+    pub recipient: ShinkaiNameString,
     pub scheduled_time: String,
     pub signature: String,
-    pub intra_sender: String,
+    pub intra_sender: ShinkaiNameString,
     pub other: String,
 }
 

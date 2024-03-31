@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
 
+// TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct SubscriptionId {
     unique_id: String,
@@ -12,22 +13,24 @@ pub struct SubscriptionId {
 
 impl SubscriptionId {
     pub fn new(
-        node_name_with_shared_folder: ShinkaiName,
+        streamer_node: ShinkaiName,
+        streamer_profile: String,
         shared_folder: String,
-        node_name_subscriber: ShinkaiName,
+        subscriber_node: ShinkaiName,
+        subscriber_profile: String,
     ) -> Self {
-        // Check if node_name_with_shared_folder and node_name_subscriber are the same
-        let node_name_with_shared_folder_str = node_name_with_shared_folder.get_node_name();
-        let node_name_subscriber_str = node_name_subscriber.get_node_name();
-        if node_name_with_shared_folder_str == node_name_subscriber_str {
-            panic!("node_name_with_shared_folder and node_name_subscriber cannot be the same");
+        // Check if origin_node and subscriber_node are the same
+        let streamer_node_str = streamer_node.get_node_name_string();
+        let subscriber_node_str = subscriber_node.get_node_name_string();
+        if streamer_node_str == subscriber_node_str {
+            panic!("streamer_node and subscriber_node cannot be the same");
         }
 
-        let node_name_with_shared_folder_str = node_name_with_shared_folder.get_node_name();
-        let node_name_subscriber_str = node_name_subscriber.get_node_name();
+        let streamer_node_str = streamer_node.get_node_name_string();
+        let subscriber_node_str = subscriber_node.get_node_name_string();
         let unique_id = format!(
-            "{}:::{}:::{}",
-            node_name_with_shared_folder_str, shared_folder, node_name_subscriber_str
+            "{}:::{}:::{}:::{}:::{}",
+            streamer_node_str, streamer_profile, shared_folder, subscriber_node_str, subscriber_profile
         );
         SubscriptionId { unique_id }
     }
@@ -45,10 +48,11 @@ impl SubscriptionId {
         full_hash[..full_hash.len() / 2].to_string()
     }
 
+    // Update existing extract methods to check for 5 parts instead of 3
     /// Extracts the shared folder from the unique_id of the SubscriptionId.
     pub fn extract_shared_folder(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
-        if parts.len() == 3 {
+        if parts.len() == 5 {
             Ok(parts[1].to_string())
         } else {
             Err("Invalid SubscriptionId format")
@@ -56,9 +60,9 @@ impl SubscriptionId {
     }
 
     /// Extracts the node name with shared folder from the unique_id of the SubscriptionId.
-    pub fn extract_node_name_with_shared_folder(&self) -> Result<ShinkaiName, &'static str> {
+    pub fn extract_streamer_node(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
-        if parts.len() == 3 {
+        if parts.len() == 5 {
             Ok(ShinkaiName::new(parts[0].to_string())?)
         } else {
             Err("Invalid SubscriptionId format")
@@ -66,10 +70,30 @@ impl SubscriptionId {
     }
 
     /// Extracts the node name of the subscriber from the unique_id of the SubscriptionId.
-    pub fn extract_node_name_subscriber(&self) -> Result<ShinkaiName, &'static str> {
+    pub fn extract_subscriber_node(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
-        if parts.len() == 3 {
+        if parts.len() == 5 {
             Ok(ShinkaiName::new(parts[2].to_string())?)
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Extracts the shared folder origin node profile from the unique_id of the SubscriptionId.
+    pub fn extract_streamer_profile(&self) -> Result<String, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 5 {
+            Ok(parts[3].to_string())
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Extracts the subscriber profile from the unique_id of the SubscriptionId.
+    pub fn extract_subscriber_profile(&self) -> Result<String, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 5 {
+            Ok(parts[4].to_string())
         } else {
             Err("Invalid SubscriptionId format")
         }
@@ -90,10 +114,12 @@ pub enum ShinkaiSubscriptionStatus {
 pub struct ShinkaiSubscription {
     pub subscription_id: SubscriptionId,
     pub shared_folder: String,
-    pub shared_folder_owner: ShinkaiName,
+    pub streaming_node: ShinkaiName,
+    pub streaming_profile: String,
     pub subscription_description: Option<String>,
     pub subscriber_destination_path: Option<String>,
-    pub subscriber_identity: ShinkaiName,
+    pub subscriber_node: ShinkaiName,
+    pub subscriber_profile: String,
     pub payment: Option<SubscriptionPayment>,
     pub state: ShinkaiSubscriptionStatus,
     pub date_created: DateTime<Utc>,
@@ -104,22 +130,28 @@ pub struct ShinkaiSubscription {
 impl ShinkaiSubscription {
     pub fn new(
         shared_folder: String,
-        shared_folder_owner: ShinkaiName,
-        subscriber_identity: ShinkaiName,
+        streaming_node: ShinkaiName,
+        streaming_profile: String,
+        subscriber_node: ShinkaiName,
+        subscriber_profile: String,
         state: ShinkaiSubscriptionStatus,
         payment: Option<SubscriptionPayment>,
     ) -> Self {
         ShinkaiSubscription {
             subscription_id: SubscriptionId::new(
-                shared_folder_owner.clone(),
+                streaming_node.clone(),
+                streaming_profile.clone(),
                 shared_folder.clone(),
-                subscriber_identity.clone(),
+                subscriber_node.clone(),
+                subscriber_profile.clone(),
             ),
             shared_folder,
-            shared_folder_owner,
+            streaming_node,
+            streaming_profile,
             subscription_description: None, // TODO: update api and models to support this
             subscriber_destination_path: None, // TODO: update api to support this
-            subscriber_identity,
+            subscriber_node,
+            subscriber_profile,
             payment,
             state,
             date_created: Utc::now(),

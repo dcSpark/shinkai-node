@@ -10,8 +10,9 @@ impl ShinkaiDB {
 
     /// Adds a subscriber to a shared folder.
     pub fn add_subscriber_subscription(&mut self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
-        let node_name_str = subscription.clone().subscriber_identity.get_node_name();
-        let shared_folder = subscription.clone().shared_folder;
+        let sub_node_name_str = subscription.subscriber_node.get_node_name_string();
+        let sub_profile_name_str = subscription.subscriber_profile.clone();
+        let shared_folder = subscription.shared_folder.clone();
 
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -22,11 +23,7 @@ impl ShinkaiDB {
             subscription.subscription_id.get_unique_id()
         );
 
-        let prefix_folder = format!(
-            "subscriptions_{}_{}",
-            Self::folder_name_to_hash(shared_folder.to_string()),
-            node_name_str
-        );
+        let prefix_folder = Self::generate_prefix_folder(&shared_folder, &sub_node_name_str, &sub_profile_name_str);
 
         let subscription_bytes = bincode::serialize(&subscription).expect("Failed to serialize payment");
 
@@ -40,8 +37,9 @@ impl ShinkaiDB {
 
     /// Updates a subscriber's subscription.
     pub fn update_subscriber_subscription(&mut self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
-        let node_name_str = subscription.clone().subscriber_identity.get_node_name();
-        let shared_folder = subscription.clone().shared_folder;
+        let sub_node_name_str = subscription.subscriber_node.get_node_name_string();
+        let sub_profile_name_str = subscription.subscriber_profile.clone();
+        let shared_folder = subscription.shared_folder.clone();
 
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -52,11 +50,7 @@ impl ShinkaiDB {
             subscription.subscription_id.get_unique_id()
         );
 
-        let prefix_folder = format!(
-            "subscriptions_{}_{}",
-            Self::folder_name_to_hash(shared_folder.to_string()),
-            node_name_str
-        );
+        let prefix_folder = Self::generate_prefix_folder(&shared_folder, &sub_node_name_str, &sub_profile_name_str);
 
         let subscription_bytes = bincode::serialize(&subscription).expect("Failed to serialize subscription");
 
@@ -121,11 +115,13 @@ impl ShinkaiDB {
         let shared_folder = subscription_id
             .extract_shared_folder()
             .map_err(|_| ShinkaiDBError::InvalidData)?;
-        let node_name = subscription_id
-            .extract_node_name_subscriber()
+        let sub_node_name_str = subscription_id
+            .extract_subscriber_node()
             .map_err(|_| ShinkaiDBError::InvalidData)?
-            .get_node_name();
-        let folder_hash = Self::folder_name_to_hash(shared_folder);
+            .get_node_name_string();
+        let sub_profile_name_str = subscription_id
+            .extract_subscriber_profile()
+            .map_err(|_| ShinkaiDBError::InvalidData)?;
 
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
@@ -136,7 +132,7 @@ impl ShinkaiDB {
             subscription_id.get_unique_id()
         );
 
-        let prefix_folder = format!("subscriptions_{}_{}", folder_hash, node_name);
+        let prefix_folder = Self::generate_prefix_folder(&shared_folder, &sub_node_name_str, &sub_profile_name_str);
 
         // Perform the deletion from the database
         let mut batch = rocksdb::WriteBatch::default();
@@ -165,5 +161,15 @@ impl ShinkaiDB {
         }
 
         Ok(subscriptions)
+    }
+
+    /// Generates a prefix folder string.
+    fn generate_prefix_folder(shared_folder: &str, sub_node_name_str: &str, sub_node_profile_str: &str) -> String {
+        format!(
+            "subscriptions_{}_{}_{}",
+            Self::folder_name_to_hash(shared_folder.to_string()),
+            sub_node_name_str,
+            sub_node_profile_str
+        )
     }
 }

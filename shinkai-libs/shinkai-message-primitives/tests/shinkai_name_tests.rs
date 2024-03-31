@@ -1,8 +1,7 @@
-
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use super::*;
+    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
     #[test]
     fn test_valid_names() {
@@ -19,7 +18,7 @@ mod tests {
             "@@alice.sepolia-shinkai/profileName",
             "@@alice.sepolia-shinkai/profileName/agent/myChatGPTAgent",
             "@@alice.sepolia-shinkai/profileName/device/myPhone",
-            "@@_my_9552.sepolia-shinkai/main"
+            "@@_my_9552.sepolia-shinkai/main",
         ];
 
         for name in valid_names {
@@ -38,7 +37,7 @@ mod tests {
             "@@al!ce.shinkai",
             "@@alice.shinkai//",
             "@@alice.shinkai//subidentity",
-            "@@node1.shinkai/profile_1.shinkai"
+            "@@node1.shinkai/profile_1.shinkai",
         ];
 
         for name in invalid_names {
@@ -81,16 +80,16 @@ mod tests {
     }
 
     #[test]
-    fn test_from_node_and_profile_valid() {
+    fn test_from_node_and_profile_names_valid() {
         // Since the function can correct this, we just check for a valid response.
-        let result = ShinkaiName::from_node_and_profile("bob.shinkai".to_string(), "profileBob".to_string());
+        let result = ShinkaiName::from_node_and_profile_names("bob.shinkai".to_string(), "profileBob".to_string());
         assert!(result.is_ok(), "Expected the name to be valid");
     }
 
     #[test]
-    fn test_from_node_and_profile_invalid() {
+    fn test_from_node_and_profile_names_invalid() {
         // If we want to ensure that the format isn't automatically fixed, we could use a clearly invalid name.
-        let result = ShinkaiName::from_node_and_profile("b!ob".to_string(), "profileBob".to_string());
+        let result = ShinkaiName::from_node_and_profile_names("b!ob".to_string(), "profileBob".to_string());
         assert!(result.is_err(), "Expected the name to be invalid");
     }
 
@@ -115,12 +114,12 @@ mod tests {
     }
 
     #[test]
-    fn test_get_profile_name() {
+    fn test_get_profile_name_string() {
         let shinkai_name = ShinkaiName::new("@@frank.shinkai/profileFrank".to_string()).unwrap();
-        assert_eq!(shinkai_name.get_profile_name(), Some("profilefrank".to_string()));
+        assert_eq!(shinkai_name.get_profile_name_string(), Some("profilefrank".to_string()));
 
         let shinkai_name = ShinkaiName::new("@@frank.shinkai/profile_1/device/device_1".to_string()).unwrap();
-        assert_eq!(shinkai_name.get_profile_name(), Some("profile_1".to_string()));
+        assert_eq!(shinkai_name.get_profile_name_string(), Some("profile_1".to_string()));
     }
 
     #[test]
@@ -171,17 +170,26 @@ mod tests {
     }
 
     #[test]
-    fn test_get_fullname_without_node_name() {
+    fn test_get_fullname_string_without_node_name() {
         let shinkai_name1 = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
-        assert_eq!(shinkai_name1.get_fullname_without_node_name(), None);
-    
+        assert_eq!(shinkai_name1.get_fullname_string_without_node_name(), None);
+
         let shinkai_name2 = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
-        assert_eq!(shinkai_name2.get_fullname_without_node_name(), Some("profilename".to_string()));
-    
+        assert_eq!(
+            shinkai_name2.get_fullname_string_without_node_name(),
+            Some("profilename".to_string())
+        );
+
         let shinkai_name3 = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
-        assert_eq!(shinkai_name3.get_fullname_without_node_name(), Some("profilename/agent/mychatgptagent".to_string()));
-    
+        assert_eq!(
+            shinkai_name3.get_fullname_string_without_node_name(),
+            Some("profilename/agent/mychatgptagent".to_string())
+        );
+
         let shinkai_name4 = ShinkaiName::new("@@alice.shinkai/profileName/device/myPhone".to_string()).unwrap();
-        assert_eq!(shinkai_name4.get_fullname_without_node_name(), Some("profilename/device/myphone".to_string()));
+        assert_eq!(
+            shinkai_name4.get_fullname_string_without_node_name(),
+            Some("profilename/device/myphone".to_string())
+        );
     }
 }

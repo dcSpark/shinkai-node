@@ -1,8 +1,6 @@
-use std::fmt;
-
-use shinkai_vector_resources::resource_errors::VRError;
-
 use crate::{db::db_errors::ShinkaiDBError, vector_fs::vector_fs_error::VectorFSError};
+use shinkai_vector_resources::resource_errors::VRError;
+use std::fmt;
 
 // Define a custom error for SubscriberManager operations
 #[derive(Debug)]
@@ -26,7 +24,7 @@ pub enum SubscriberManagerError {
     InvalidSubscriber(String),
     FileSystemUnavailable,
     OperationFailed(String),
-    
+    IdentityProfileNotFound(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -51,6 +49,7 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::InvalidSubscriber(e) => write!(f, "Invalid subscriber: {}", e),
             SubscriberManagerError::FileSystemUnavailable => write!(f, "File system unavailable"),
             SubscriberManagerError::OperationFailed(e) => write!(f, "Operation failed: {}", e),
+            SubscriberManagerError::IdentityProfileNotFound(e) => write!(f, "Identity profile not found: {}", e),
         }
     }
 }

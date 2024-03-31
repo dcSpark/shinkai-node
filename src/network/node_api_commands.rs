@@ -32,10 +32,12 @@ use shinkai_message_primitives::{
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_error::ShinkaiMessageError, shinkai_message_schemas::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_error::ShinkaiMessageError,
+        shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
             MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
-        }
+        },
     },
     shinkai_utils::{
         encryption::{
@@ -149,11 +151,20 @@ impl Node {
         let content = match msg.body {
             MessageBody::Unencrypted(body) => match body.message_data {
                 MessageData::Unencrypted(data) => data.message_raw_content,
-                _ => return Err(NodeError { message: "Message data is encrypted".into() }),
+                _ => {
+                    return Err(NodeError {
+                        message: "Message data is encrypted".into(),
+                    })
+                }
             },
-            _ => return Err(NodeError { message: "Message body is encrypted".into() }),
+            _ => {
+                return Err(NodeError {
+                    message: "Message body is encrypted".into(),
+                })
+            }
         };
-        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> = serde_json::from_str(&content);
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
+            serde_json::from_str(&content);
 
         let last_messages_inbox_request = match last_messages_inbox_request_result {
             Ok(request) => request,
@@ -233,7 +244,8 @@ impl Node {
     ) -> Result<(), NodeError> {
         self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| {
             response.into_iter().filter_map(|msg| msg.first().cloned()).collect()
-        }).await
+        })
+        .await
     }
 
     pub async fn api_get_last_messages_from_inbox_with_branches(
@@ -241,9 +253,8 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<Vec<ShinkaiMessage>>, APIError>>,
     ) -> Result<(), NodeError> {
-        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| {
-            response
-        }).await
+        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| response)
+            .await
     }
 
     pub async fn api_get_last_unread_messages_from_inbox(
@@ -658,7 +669,7 @@ impl Node {
             .as_str(),
         );
 
-        let main_profile_exists = match db.main_profile_exists(self.node_name.get_node_name().as_str()) {
+        let main_profile_exists = match db.main_profile_exists(self.node_name.get_node_name_string().as_str()) {
             Ok(exists) => exists,
             Err(err) => {
                 let _ = res
@@ -707,7 +718,7 @@ impl Node {
         let result = db
             .use_registration_code(
                 &code.clone(),
-                self.node_name.get_node_name().as_str(),
+                self.node_name.get_node_name_string().as_str(),
                 registration_name.as_str(),
                 &profile_identity_pk,
                 &profile_encryption_pk,
@@ -745,8 +756,8 @@ impl Node {
                             string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                        let full_identity_name_result = ShinkaiName::from_node_and_profile(
-                            self.node_name.get_node_name(),
+                        let full_identity_name_result = ShinkaiName::from_node_and_profile_names(
+                            self.node_name.get_node_name_string(),
                             registration_name.clone(),
                         );
 
@@ -779,7 +790,7 @@ impl Node {
                             Ok(_) => {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_name.get_node_name().clone(),
+                                    node_name: self.node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -818,8 +829,8 @@ impl Node {
                         // Check if the profile exists in the identity_manager
                         {
                             let mut identity_manager = self.identity_manager.lock().await;
-                            let profile_identity_name = ShinkaiName::from_node_and_profile(
-                                self.node_name.get_node_name(),
+                            let profile_identity_name = ShinkaiName::from_node_and_profile_names(
+                                self.node_name.get_node_name_string(),
                                 profile_name.clone(),
                             )
                             .unwrap();
@@ -844,8 +855,8 @@ impl Node {
 
                         // Logic for handling device identity
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
-                        let full_identity_name = ShinkaiName::from_node_and_profile_and_type_and_name(
-                            self.node_name.get_node_name(),
+                        let full_identity_name = ShinkaiName::from_node_and_profile_names_and_type_and_name(
+                            self.node_name.get_node_name_string(),
                             profile_name,
                             ShinkaiSubidentityType::Device,
                             registration_name.clone(),
@@ -885,7 +896,7 @@ impl Node {
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_name.get_node_name().clone(),
+                                    node_name: self.node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -1069,7 +1080,7 @@ impl Node {
         match sender {
             Identity::Standard(std_identity) => {
                 // should be safe. previously checked in validate_message
-                let sender_profile_name = match std_identity.full_identity_name.get_profile_name() {
+                let sender_profile_name = match std_identity.full_identity_name.get_profile_name_string() {
                     Some(name) => name,
                     None => {
                         let _ = res
@@ -1119,7 +1130,7 @@ impl Node {
                 }
             }
             Identity::Device(std_device) => {
-                let sender_profile_name = std_device.full_identity_name.get_profile_name().unwrap();
+                let sender_profile_name = std_device.full_identity_name.get_profile_name_string().unwrap();
 
                 if (std_device.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
@@ -1190,8 +1201,8 @@ impl Node {
         if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
             profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
         } else {
-            profile_requested = ShinkaiName::from_node_and_profile(
-                self.node_name.get_node_name(),
+            profile_requested = ShinkaiName::from_node_and_profile_names(
+                self.node_name.get_node_name_string(),
                 profile_requested_str.clone(),
             )
             .map_err(|err| err.to_string())?;
@@ -1201,7 +1212,7 @@ impl Node {
         match sender {
             Identity::Standard(std_identity) => {
                 // should be safe. previously checked in validate_message
-                let sender_profile_name = match std_identity.full_identity_name.get_profile_name() {
+                let sender_profile_name = match std_identity.full_identity_name.get_profile_name_string() {
                     Some(name) => name,
                     None => {
                         let _ = res
@@ -1219,7 +1230,7 @@ impl Node {
                 };
 
                 if (std_identity.permission_type == IdentityPermissions::Admin)
-                    || (sender_profile_name == profile_requested.get_profile_name().unwrap_or("".to_string()))
+                    || (sender_profile_name == profile_requested.get_profile_name_string().unwrap_or("".to_string()))
                 {
                     // Get all inboxes for the profile
                     let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
@@ -1251,10 +1262,10 @@ impl Node {
                 }
             }
             Identity::Device(std_device) => {
-                let sender_profile_name = std_device.full_identity_name.get_profile_name().unwrap();
+                let sender_profile_name = std_device.full_identity_name.get_profile_name_string().unwrap();
 
                 if (std_device.permission_type == IdentityPermissions::Admin)
-                    || (sender_profile_name == profile_requested.get_profile_name().unwrap_or("".to_string()))
+                    || (sender_profile_name == profile_requested.get_profile_name_string().unwrap_or("".to_string()))
                 {
                     // Get all inboxes for the profile
                     let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
@@ -1742,7 +1753,10 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = self
-            .validate_message(potentially_encrypted_msg.clone(), Some(MessageSchemaType::JobMessageSchema))
+            .validate_message(
+                potentially_encrypted_msg.clone(),
+                Some(MessageSchemaType::JobMessageSchema),
+            )
             .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
@@ -1765,10 +1779,10 @@ impl Node {
                     Ok(inbox) => inbox.to_string(),
                     Err(_) => "".to_string(),
                 };
-    
+
                 let scheduled_time = msg.external_metadata.scheduled_time;
                 let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
-    
+
                 let parent_key = if !inbox_name.is_empty() {
                     let db_guard = self.db.lock().await;
                     match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
@@ -1820,7 +1834,7 @@ impl Node {
         };
 
         let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(NodeError {
                 message: "Profile name not found".to_string(),
             })?;
@@ -2200,7 +2214,7 @@ impl Node {
             // Check if the new node name exists in the blockchain and the keys match
             let identity_manager = self.identity_manager.lock().await;
             match identity_manager
-                .external_profile_to_global_identity(new_node_name.get_node_name().as_str())
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
                 .await
             {
                 Ok(standard_identity) => {
@@ -2231,7 +2245,7 @@ impl Node {
         }
 
         // Write to .secret file
-        match update_global_identity_name(new_node_name.get_node_name().as_str()) {
+        match update_global_identity_name(new_node_name.get_node_name_string().as_str()) {
             Ok(_) => {
                 let _ = res.send(Ok(())).await;
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -2256,7 +2270,7 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if self.node_name.get_node_name() == "@@localhost.shinkai" {
+        if self.node_name.get_node_name_string() == "@@localhost.shinkai" {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -2286,11 +2300,11 @@ impl Node {
         //
         let recipient_node_name = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
             .unwrap()
-            .get_node_name();
+            .get_node_name_string();
 
         let sender_node_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&msg.clone())
             .unwrap()
-            .get_node_name();
+            .get_node_name_string();
 
         if recipient_node_name == sender_node_name {
             //

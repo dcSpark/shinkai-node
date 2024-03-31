@@ -336,7 +336,7 @@ impl NetworkJobManager {
             job.receiver_address,
             job.unsafe_sender_address,
             &job.content,
-            my_node_profile_name.get_node_name(),
+            my_node_profile_name.get_node_name_string(),
             my_encryption_secret_key,
             my_signature_secret_key,
             db,
@@ -373,7 +373,9 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<(), NetworkJobQueueError> {
-        let maybe_db = shinkai_db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+        let maybe_db = shinkai_db
+            .upgrade()
+            .ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -392,7 +394,7 @@ impl NetworkJobManager {
         // Extract sender's public keys and verify the signature
         let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
             .unwrap()
-            .get_node_name();
+            .get_node_name_string();
         let sender_identity = identity_manager
             .lock()
             .await

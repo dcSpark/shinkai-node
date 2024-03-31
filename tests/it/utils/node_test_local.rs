@@ -99,7 +99,8 @@ pub async fn local_registration_profile_node(
         );
         assert_eq!(
             node2_all_subidentities[identities_number - 1].full_identity_name,
-            ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
+            ShinkaiName::from_node_and_profile_names(node_identity_name.to_string(), node_profile_name.to_string())
+                .unwrap(),
             "Node has the right subidentity"
         );
 
