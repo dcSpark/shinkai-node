@@ -365,6 +365,12 @@ impl ExternalSubscriberManager {
                 }
                 // Now we send requests to the subscribers to get their current state
                 for subscription_id in post_filtered_subscription_ids.clone() {
+                    // print node name
+                    eprintln!(
+                        ">> (process_subscription_request_state_updates) Sending request to subscriber: {:?}",
+                        subscription_id.get_unique_id().to_string()
+                    );
+                    eprintln!("Node name: {:?}", node_name);
                     let _ = Self::create_and_send_request_updated_state(
                         subscription_id,
                         db.clone(),
@@ -1027,18 +1033,22 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
+            eprintln!("my node name: {:?}", node_name);
+            eprintln!(">>> subscription_id (create_and_send_request_updated_state): {:?}", subscription_id);
+            let all_subs = db.all_subscribers_subscription()?;
+            eprintln!(">>> all_subs: {:?}", all_subs);
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                     "Subscription with ID {} not found",
                     subscription_id.get_unique_id()
                 )),
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
-            })?;
-            subscription
+            });
+            eprintln!(">>> subscription (create_and_send_request_updated_state): {:?}", subscription);
+            subscription?
         };
 
-        // create message to request updated state
-
+        // Create message to request updated state
         if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
             let subscriber_node = subscription.subscriber_node.clone();
             let identity_manager = identity_manager_lock.lock().await;
@@ -1085,6 +1095,7 @@ impl ExternalSubscriberManager {
         subscriber_node: ShinkaiName,
         subscriber_profile: String,
     ) -> Result<(), SubscriberManagerError> {
+        eprintln!("subscriber_current_state_response> Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}", subscription_unique_id, subscriber_node, subscriber_folder_tree);
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Debug,
@@ -1101,7 +1112,12 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
-            db.get_subscription_by_id(&SubscriptionId::from_unique_id(subscription_unique_id.clone()))
+            eprintln!(">>> subscription_id before (subscriber_current_state_response): {:?}", subscription_unique_id);
+            let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
+            let all_subs = db.all_subscribers_subscription()?;
+            eprintln!(">>> all_subs: {:?}", all_subs);
+            eprintln!(">>> subscription_id after (subscriber_current_state_response): {:?}", subscription_id);
+            db.get_subscription_by_id(&subscription_id)
                 .map_err(|e| match e {
                     ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                         "Subscription with ID {} not found",
@@ -1110,6 +1126,7 @@ impl ExternalSubscriberManager {
                     _ => SubscriberManagerError::DatabaseError(e.to_string()),
                 })?
         };
+        eprintln!("subscriber_current_state_response> Subscription: {:?}", subscription);
 
         if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(

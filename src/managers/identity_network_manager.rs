@@ -12,7 +12,7 @@ pub struct IdentityNetworkManager {
 impl IdentityNetworkManager {
     pub async fn new() -> Self {
         // TODO: Update with mainnet values (eventually)
-        let rpc_url = env::var("RPC_URL").unwrap_or("https://rpc.sepolia.org".to_string());
+        let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
         let contract_address = env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
         let abi_path = env::var("ABI_PATH").unwrap_or("".to_string());
         shinkai_log(ShinkaiLogOption::IdentityNetwork, ShinkaiLogLevel::Info, &format!("Identity Network Manager initialized with ABI path: {}", abi_path));

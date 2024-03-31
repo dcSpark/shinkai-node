@@ -491,7 +491,7 @@ impl MySubscriptionsManager {
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
+                .external_profile_to_global_identity(&streamer_node.get_node_name_string())
                 .await?;
             drop(identity_manager);
 
@@ -515,13 +515,16 @@ impl MySubscriptionsManager {
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
-                streamer_node.get_node_name_string(),
-                streamer_profile,
                 subscriber_node.get_node_name_string(),
                 subscriber_profile,
+                streamer_node.get_node_name_string(),
+                streamer_profile,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
-            eprintln!("Sending vecfs_share_current_shared_folder_state {:?}", msg_request_subscription);
+            eprintln!(
+                "Sending vecfs_share_current_shared_folder_state {:?}",
+                msg_request_subscription
+            );
 
             Self::send_message_to_peer(
                 msg_request_subscription,
@@ -565,6 +568,7 @@ impl MySubscriptionsManager {
         })?;
         let receiver_profile_name = receiver_identity.full_identity_name.to_string();
 
+        eprintln!("befpre db.upgrade");
         // Upgrade the weak reference to Node
         // Prepare the parameters for the send function
         let my_encryption_sk = Arc::new(my_encryption_secret_key.clone());
@@ -572,10 +576,12 @@ impl MySubscriptionsManager {
         let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseError(
             "DB not available to be upgraded".to_string(),
         ))?;
+        eprintln!("before maybe_identity_manager.upgrade");
         let maybe_identity_manager = maybe_identity_manager
             .upgrade()
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
+        eprintln!("before Node::send");
         // Call the send function
         Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
 
