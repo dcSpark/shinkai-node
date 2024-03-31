@@ -53,7 +53,7 @@ impl SubscriptionId {
     pub fn extract_shared_folder(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
-            Ok(parts[1].to_string())
+            Ok(parts[2].to_string())
         } else {
             Err("Invalid SubscriptionId format")
         }
@@ -69,21 +69,35 @@ impl SubscriptionId {
         }
     }
 
-    /// Extracts the node name of the subscriber from the unique_id of the SubscriptionId.
-    pub fn extract_subscriber_node(&self) -> Result<ShinkaiName, &'static str> {
+    /// Extracts the shared folder origin node profile from the unique_id of the SubscriptionId.
+    pub fn extract_streamer_profile(&self) -> Result<String, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
-            Ok(ShinkaiName::new(parts[2].to_string())?)
+            Ok(parts[1].to_string())
         } else {
             Err("Invalid SubscriptionId format")
         }
     }
 
-    /// Extracts the shared folder origin node profile from the unique_id of the SubscriptionId.
-    pub fn extract_streamer_profile(&self) -> Result<String, &'static str> {
+    /// Extracts the streamer node and profile from the unique_id of the SubscriptionId
+    /// and tries to create a new ShinkaiName using them.
+    pub fn extract_streamer_node_with_profile(&self) -> Result<ShinkaiName, &'static str> {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
-            Ok(parts[3].to_string())
+            let streamer_node_str = parts[0];
+            let streamer_profile = parts[1];
+            ShinkaiName::new(format!("{}/{}", streamer_node_str, streamer_profile))
+                .map_err(|_| "Failed to create ShinkaiName from streamer node and profile")
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Extracts the node name of the subscriber from the unique_id of the SubscriptionId.
+    pub fn extract_subscriber_node(&self) -> Result<ShinkaiName, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 5 {
+            Ok(ShinkaiName::new(parts[3].to_string())?)
         } else {
             Err("Invalid SubscriptionId format")
         }
@@ -94,6 +108,20 @@ impl SubscriptionId {
         let parts: Vec<&str> = self.unique_id.split(":::").collect();
         if parts.len() == 5 {
             Ok(parts[4].to_string())
+        } else {
+            Err("Invalid SubscriptionId format")
+        }
+    }
+
+    /// Correctly extracts the subscriber node and profile from the unique_id of the SubscriptionId
+    /// and tries to create a new ShinkaiName using them.
+    pub fn extract_subscriber_node_with_profile(&self) -> Result<ShinkaiName, &'static str> {
+        let parts: Vec<&str> = self.unique_id.split(":::").collect();
+        if parts.len() == 5 {
+            let subscriber_node_str = parts[3];
+            let subscriber_profile = parts[4];
+            ShinkaiName::new(format!("{}/{}", subscriber_node_str, subscriber_profile))
+                .map_err(|_| "Failed to create ShinkaiName from subscriber node and profile")
         } else {
             Err("Invalid SubscriptionId format")
         }

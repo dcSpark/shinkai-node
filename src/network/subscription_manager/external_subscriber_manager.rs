@@ -86,6 +86,7 @@ const NUM_THREADS: usize = 2;
 pub struct SubscriptionWithTree {
     pub subscription: ShinkaiSubscription,
     pub subscriber_folder_tree: FSEntryTree,
+    pub symmetric_key: Option<String>,
 }
 
 impl Ord for SubscriptionWithTree {
@@ -403,11 +404,13 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // TODO: fix this is not accessing the same reference
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // TODO: fix this is not accessing the same reference. Maybe it is now. check it
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        // TODO: add something to do a match over
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
+            eprintln!("\n\n\n ----------------- \n\n\n");
             // TODO: Make this code production ready
             eprintln!("my node name: {:?}", node_name);
             println!(
@@ -435,14 +438,68 @@ impl ExternalSubscriberManager {
             );
             eprintln!("process_subscription_job_message_queued>> diff: {:?}", diff);
 
-            // // If at least one diff was found, retrieve the VRPack for the path
-            // if diff.children.len() > 0 {
-            //     let vec_fs = vector_fs.lock().await();
-            //     let writer = VFSWriter::
-            //     vec_fs.
-            // }
+            
+            if subscription_with_tree.symmetric_key.is_none() {
+                eprintln!("process_subscription_job_message_queued>> No symmetric key found");
+                // TODO: send request: p2p_streamer_request_inbox_creation_for_update
+                
 
-            // TODO: here extract the vrpack
+                return Ok(format!(
+                    "Job {} processed successfully",
+                    subscription_with_tree.subscription.subscription_id.get_unique_id()
+                ));
+            }
+
+            // If at least one diff was found, retrieve the VRPack for the path
+            if !diff.children.is_empty() {
+                eprintln!(
+                    "process_subscription_job_message_queued>> Sending diff to subscriber: {:?}",
+                    diff
+                );
+
+                // Note: for now we are just going to get everything
+                // In a later update we will be more granular
+
+                let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                    "VectorFS instance is not available".to_string(),
+                ))?;
+                let mut vector_fs_inst = vector_fs_inst.lock().await;
+
+                let vr_path_shared_folder = VRPath::from_string(&shared_folder)
+                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+                // let vr_path_shared_folder = VRPath::root().push_cloned(shared_folder.clone());
+
+                // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+                let subscription_id = subscription_with_tree.subscription.subscription_id.clone();
+                let streamer = subscription_id.extract_streamer_node_with_profile()?;
+                let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
+                let perms_writer = vector_fs_inst
+                    .new_writer(subscriber, vr_path_shared_folder.clone(), streamer)
+                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+                let reader = perms_writer
+                    .new_reader_copied_data(vr_path_shared_folder, &mut vector_fs_inst)
+                    .unwrap();
+                let vrpack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
+
+                vrpack
+                    .resource
+                    .as_trait_object()
+                    .print_all_nodes_exhaustive(None, true, false);
+
+                let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+
+                // eprintln!(
+                //     "process_subscription_job_message_queued>> unpacked_kais: {:?}",
+                //     unpacked_kais
+                // );
+
+                // TODO: send this to the subscriber
+                // Step 1.- share a new symmetric key
+                // Step 2.- encrypt the vrpack with the symmetric key and send it to the subscriber
+            }
+
             // TODO: here call the network manager to send the vrpack
             // TODO: in network_handlers add a new type SchemaType (needs to be added) to handle the vrpack
             // TODO: create a new fn in my_subscription_manager that gets called form the network_handlers and unpack the vrpack
@@ -556,8 +613,7 @@ impl ExternalSubscriberManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let subscription_with_tree = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            let subscription_with_tree = job_queue_manager.peek(&subscription_id).await;
-                            subscription_with_tree
+                            job_queue_manager.peek(&subscription_id).await
                         };
 
                         match subscription_with_tree {
@@ -580,14 +636,14 @@ impl ExternalSubscriberManager {
                                     if let Ok(Some(_)) = job_queue_manager
                                         .lock()
                                         .await
-                                        .dequeue(&job.subscription.subscription_id.clone().get_unique_id().to_string())
+                                        .dequeue(job.subscription.subscription_id.clone().get_unique_id())
                                         .await
                                     {
                                         result
                                     } else {
                                         Err(SubscriberManagerError::OperationFailed(format!(
                                             "Failed to dequeue job: {}",
-                                            job.subscription.subscription_id.clone().get_unique_id().to_string()
+                                            job.subscription.subscription_id.clone().get_unique_id()
                                         )))
                                     }
                                 };
@@ -613,7 +669,7 @@ impl ExternalSubscriberManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = mem::replace(&mut handles, Vec::new());
+                let handles_to_join = std::mem::take(&mut handles);
                 futures::future::join_all(handles_to_join).await;
                 handles.clear();
 
@@ -1034,7 +1090,10 @@ impl ExternalSubscriberManager {
             let db = db.lock().await;
 
             eprintln!("my node name: {:?}", node_name);
-            eprintln!(">>> subscription_id (create_and_send_request_updated_state): {:?}", subscription_id);
+            eprintln!(
+                ">>> subscription_id (create_and_send_request_updated_state): {:?}",
+                subscription_id
+            );
             let all_subs = db.all_subscribers_subscription()?;
             eprintln!(">>> all_subs: {:?}", all_subs);
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
@@ -1044,7 +1103,10 @@ impl ExternalSubscriberManager {
                 )),
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
             });
-            eprintln!(">>> subscription (create_and_send_request_updated_state): {:?}", subscription);
+            eprintln!(
+                ">>> subscription (create_and_send_request_updated_state): {:?}",
+                subscription
+            );
             subscription?
         };
 
@@ -1112,19 +1174,24 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
-            eprintln!(">>> subscription_id before (subscriber_current_state_response): {:?}", subscription_unique_id);
+            eprintln!(
+                ">>> subscription_id before (subscriber_current_state_response): {:?}",
+                subscription_unique_id
+            );
             let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
             let all_subs = db.all_subscribers_subscription()?;
             eprintln!(">>> all_subs: {:?}", all_subs);
-            eprintln!(">>> subscription_id after (subscriber_current_state_response): {:?}", subscription_id);
-            db.get_subscription_by_id(&subscription_id)
-                .map_err(|e| match e {
-                    ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
-                        "Subscription with ID {} not found",
-                        subscription_unique_id
-                    )),
-                    _ => SubscriberManagerError::DatabaseError(e.to_string()),
-                })?
+            eprintln!(
+                ">>> subscription_id after (subscriber_current_state_response): {:?}",
+                subscription_id
+            );
+            db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
+                ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
+                    "Subscription with ID {} not found",
+                    subscription_unique_id
+                )),
+                _ => SubscriberManagerError::DatabaseError(e.to_string()),
+            })?
         };
         eprintln!("subscriber_current_state_response> Subscription: {:?}", subscription);
 
@@ -1144,14 +1211,13 @@ impl ExternalSubscriberManager {
         let subscription_with_tree = SubscriptionWithTree {
             subscription,
             subscriber_folder_tree,
+            symmetric_key: None,
         };
 
         {
             let mut queue_manager = self.subscriptions_queue_manager.lock().await;
-            if queue_manager.peek(&unique_id).await?.is_none() {
-                eprintln!("Adding to queue: {:?}", subscription_with_tree);
-                let _ = queue_manager.push(&unique_id, subscription_with_tree).await;
-                eprintln!("*** Added to queue!");
+            if queue_manager.peek(unique_id).await?.is_none() {
+                let _ = queue_manager.push(unique_id, subscription_with_tree).await;
             }
         }
 
@@ -1186,6 +1252,6 @@ mod tests {
             },
             Some(10.0)
         );
-        assert_eq!(subscription_requirement.is_free, false);
+        assert!(!subscription_requirement.is_free);
     }
 }

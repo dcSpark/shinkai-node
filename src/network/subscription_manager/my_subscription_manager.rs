@@ -364,7 +364,7 @@ impl MySubscriptionsManager {
             Ok(())
         } else {
             // Handle the case where the identity manager is no longer available
-            return Err(SubscriberManagerError::IdentityManagerUnavailable);
+            Err(SubscriberManagerError::IdentityManagerUnavailable)
         }
     }
 
@@ -419,6 +419,104 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    pub async fn subscription_update_requires_temp_inbox(
+        &self,
+        streamer_node: ShinkaiName,
+        streamer_profile_name: String,
+        subscriber_node: ShinkaiName,
+        subscriber_profile_name: String,
+        subscription_id: String,
+        symmetric_sk: String,
+    ) -> Result<(), SubscriberManagerError> {
+        let subscription_shared_path: String;
+        {
+            // Attempt to upgrade the weak pointer to the DB and lock it
+            let db = self
+                .db
+                .upgrade()
+                .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
+            let db_lock = db.lock().await;
+
+            // Attempt to get the subscription from the DB
+            let subscription = db_lock.get_my_subscription(&subscription_id).map_err(|e| match e {
+                ShinkaiDBError::DataNotFound => {
+                    SubscriberManagerError::SubscriptionNotFound(subscription_id.to_string())
+                }
+                _ => SubscriberManagerError::DatabaseError(e.to_string()),
+            })?;
+
+            // Check that the subscription is not incorrect (for the same node)
+            if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string()
+                || subscription.subscriber_profile != subscriber_profile_name
+            {
+                return Err(SubscriberManagerError::InvalidSubscriber(
+                    "Subscription doesn't belong to the subscriber".to_string(),
+                ));
+            }
+            subscription_shared_path = subscription.shared_folder.clone();
+        }
+
+        // Call Node::process_symmetric_key to create a new inbox
+        let db = self
+            .db
+            .upgrade()
+            .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
+        match Node::process_symmetric_key(symmetric_sk, db).await {
+            Ok(hash_hex) => {
+                println!("Temporary inbox created with hash: {}", hash_hex);
+                // Send confirmation message back to the streamer
+                if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
+                    let identity_manager = identity_manager_lock.lock().await;
+                    let standard_identity = identity_manager
+                        .external_profile_to_global_identity(&streamer_node.get_node_name_string())
+                        .await?;
+                    drop(identity_manager);
+
+                    let receiver_public_key = standard_identity.node_encryption_public_key;
+
+                    // Update to use SubscriptionRequiresTreeUpdateResponse instead
+                    let response = SubscriptionGenericResponse {
+                        subscription_details: format!("Temp inbox generated"),
+                        status: SubscriptionResponseStatus::Success,
+                        shared_folder: subscription_shared_path,
+                        error: None,
+                        metadata: None,
+                    };
+
+                    // TODO: change name
+                    let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
+                        response,
+                        clone_static_secret_key(&self.my_encryption_secret_key),
+                        clone_signature_secret_key(&self.my_signature_secret_key),
+                        receiver_public_key,
+                        subscriber_node.get_node_name_string(),
+                        subscriber_profile_name,
+                        streamer_node.get_node_name_string(),
+                        streamer_profile_name,
+                    )
+                    .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+                    Self::send_message_to_peer(
+                        msg_request_subscription,
+                        self.db.clone(),
+                        standard_identity,
+                        self.my_encryption_secret_key.clone(),
+                        self.identity_manager.clone(),
+                    )
+                    .await?;
+
+                    Ok(())
+                } else {
+                    return Err(SubscriberManagerError::IdentityManagerUnavailable);
+                }
+            }
+            Err(e) => Err(SubscriberManagerError::OperationFailed(format!(
+                "Failed to create temp inbox: {}",
+                e.message
+            ))),
+        }
+    }
+
     pub async fn share_local_shared_folder_copy_state(
         &self,
         streamer_node: ShinkaiName,
@@ -438,7 +536,6 @@ impl MySubscriptionsManager {
             let db_lock = db.lock().await;
 
             // Attempt to get the subscription from the DB
-            eprintln!("> subscription id: {}", subscription_id);
             let subscription = db_lock.get_my_subscription(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => {
                     SubscriberManagerError::SubscriptionNotFound(subscription_id.to_string())
@@ -503,7 +600,7 @@ impl MySubscriptionsManager {
 
             // Update to use SubscriptionRequiresTreeUpdateResponse instead
             let response = SubscriptionGenericResponse {
-                subscription_details: format!("Subscriber shared folder tree state shared"),
+                subscription_details: "Subscriber shared folder tree state shared".to_string(),
                 status: SubscriptionResponseStatus::Success,
                 shared_folder: subscription_shared_path,
                 error: None,
@@ -521,10 +618,6 @@ impl MySubscriptionsManager {
                 streamer_profile,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
-            eprintln!(
-                "Sending vecfs_share_current_shared_folder_state {:?}",
-                msg_request_subscription
-            );
 
             Self::send_message_to_peer(
                 msg_request_subscription,
@@ -568,7 +661,6 @@ impl MySubscriptionsManager {
         })?;
         let receiver_profile_name = receiver_identity.full_identity_name.to_string();
 
-        eprintln!("befpre db.upgrade");
         // Upgrade the weak reference to Node
         // Prepare the parameters for the send function
         let my_encryption_sk = Arc::new(my_encryption_secret_key.clone());
@@ -576,12 +668,10 @@ impl MySubscriptionsManager {
         let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseError(
             "DB not available to be upgraded".to_string(),
         ))?;
-        eprintln!("before maybe_identity_manager.upgrade");
         let maybe_identity_manager = maybe_identity_manager
             .upgrade()
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
-        eprintln!("before Node::send");
         // Call the send function
         Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
 

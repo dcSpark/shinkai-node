@@ -1962,36 +1962,36 @@ impl Node {
         // Extract the content of the message
         let content = decrypted_msg.get_message_content()?;
 
-        // Convert the hex string to bytes
-        let private_key_bytes = match hex::decode(&content) {
-            Ok(bytes) => bytes,
-            Err(_) => {
+        match Self::process_symmetric_key(content, self.db.clone()).await {
+            Ok(_) => {
                 let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: "Invalid private key".to_string(),
-                    }))
+                    .send(Ok(
+                        "Symmetric key stored and files message inbox created successfully".to_string()
+                    ))
                     .await;
-                return Ok(());
+                Ok(())
             }
-        };
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn process_symmetric_key(content: String, db: Arc<Mutex<ShinkaiDB>>) -> Result<String, APIError> {
+        // Convert the hex string to bytes
+        let private_key_bytes = hex::decode(&content).map_err(|_| APIError {
+            code: StatusCode::BAD_REQUEST.as_u16(),
+            error: "Bad Request".to_string(),
+            message: "Invalid private key".to_string(),
+        })?;
 
         // Convert the Vec<u8> to a [u8; 32]
-        let private_key_array: Result<[u8; 32], _> = private_key_bytes.try_into();
-        let private_key_array = match private_key_array {
-            Ok(array) => array,
-            Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: "Failed to convert private key to array".to_string(),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
+        let private_key_array: [u8; 32] = private_key_bytes.try_into().map_err(|_| APIError {
+            code: StatusCode::BAD_REQUEST.as_u16(),
+            error: "Bad Request".to_string(),
+            message: "Failed to convert private key to array".to_string(),
+        })?;
 
         // Calculate the hash of it using blake3 which will act as a sort of public identifier
         let mut hasher = Hasher::new();
@@ -1999,41 +1999,26 @@ impl Node {
         let result = hasher.finalize();
         let hash_hex = hex::encode(result.as_bytes());
 
+        // Lock the database and perform operations
+        let mut db_guard = db.lock().await;
+
         // Write the symmetric key to the database
-        let mut db = self.db.lock().await;
-        match db.write_symmetric_key(&hash_hex, &private_key_array) {
-            Ok(_) => {
-                // Create the files message inbox
-                match db.create_files_message_inbox(hash_hex.clone()) {
-                    Ok(_) => {
-                        let _ = res
-                            .send(Ok(
-                                "Symmetric key stored and files message inbox created successfully".to_string()
-                            ))
-                            .await;
-                        Ok(())
-                    }
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Bad Request".to_string(),
-                            message: format!("Failed to create files message inbox: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                }
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("{}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        }
+        db_guard.write_symmetric_key(&hash_hex, &private_key_array)
+            .map_err(|err| APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("{}", err),
+            })?;
+
+        // Create the files message inbox
+        db_guard.create_files_message_inbox(hash_hex.clone())
+            .map_err(|err| APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Failed to create files message inbox: {}", err),
+            })?;
+
+        Ok(hash_hex)
     }
 
     pub async fn api_get_filenames_in_inbox(

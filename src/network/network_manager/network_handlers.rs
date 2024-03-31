@@ -699,12 +699,9 @@ pub async fn handle_network_message_cases(
                             );
                             // Attempt to deserialize the inner JSON string into FSEntryTree
                             if let Some(metadata) = response.metadata {
-                                eprintln!("Metadata found: {:?}", metadata);
                                 if let Some(tree_content) = metadata.get("folder_state") {
-                                    eprintln!("'folder_state' found in metadata: {}", tree_content);
                                     match serde_json::from_str::<FSEntryTree>(tree_content) {
                                         Ok(item_tree) => {
-                                            eprintln!("Successfully converted to FSEntryTree: {:?}", item_tree);
                                             let subscription_unique_id = SubscriptionId::new(
                                                 streamer_node.clone(),
                                                 streamer_profile_name.clone(),
@@ -712,10 +709,8 @@ pub async fn handle_network_message_cases(
                                                 requester_node.clone(),
                                                 requester_profile_name.clone(),
                                             );
-                                            eprintln!("Subscription ID: {}", subscription_unique_id.get_unique_id());
                                             let external_subscriber_manager =
                                                 external_subscription_manager.lock().await;
-                                            eprintln!("external lock acquired");
                                             let result = external_subscriber_manager
                                                 .subscriber_current_state_response(
                                                     subscription_unique_id.get_unique_id().to_string(),
@@ -748,6 +743,62 @@ pub async fn handle_network_message_cases(
                         "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
                         my_node_profile_name, requester_node_with_profile.get_node_name_string()
                     );
+                }
+                MessageSchemaType::StreamerRequestInboxCreationForUpdate => {
+                    eprintln!(
+                        "StreamerRequestInboxCreationForUpdate Node {}: Handling StreamerRequestInboxCreationForUpdate",
+                        my_node_profile_name
+                    );
+                    let streamer_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    let streamer_node = streamer_node_with_profile.extract_node();
+                    let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();
+
+                    let requester_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let requester_node = requester_node_with_profile.extract_node();
+                    let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
+
+                    // validate that we are actually subscribed to this streamer
+                    // create the inbox and confirm
+
+                    let symmetric_sk_json_content = message.get_message_content().unwrap_or("".to_string());
+
+                    match serde_json::from_str::<SubscriptionGenericResponse>(&symmetric_sk_json_content) {
+                        Ok(response) => {
+                            if let Some(metadata) = response.metadata {
+                                if let Some(symmetric_sk) = metadata.get("symmetric_key") {
+                                    // eprintln!("Symmetric key: {}", symmetric_sk);
+                                    let subscription_id = SubscriptionId::new(
+                                        streamer_node.clone(),
+                                        streamer_profile_name.clone(),
+                                        response.shared_folder.clone(),
+                                        requester_node.clone(),
+                                        requester_profile_name.clone(),
+                                    );
+                                    let my_subscription_manager = my_subscription_manager.lock().await;
+                                    let result = my_subscription_manager
+                                        .subscription_update_requires_temp_inbox(
+                                            streamer_node,
+                                            streamer_profile_name,
+                                            requester_node,
+                                            requester_profile_name,
+                                            subscription_id.get_unique_id().to_string(),
+                                            symmetric_sk.clone(),
+                                        )
+                                        .await;
+                                    eprintln!("subscriber_current_state_response result: {:?}", result);
+                                } else {
+                                    eprintln!("Symmetric key not found in metadata");
+                                }
+                            } else {
+                                eprintln!("Metadata is missing");
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to deserialize outer JSON string to String (potential double-encoding issue): {}", e);
+                        }
+                    }
                 }
                 _ => {
                     // Ignore other schemas

@@ -4,7 +4,7 @@ use crate::{
         APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder,
         APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
         APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
-        SubscriptionGenericResponse,
+        SubscriptionGenericResponse, SubscriptionResponseStatus,
     },
 };
 use ed25519_dalek::SigningKey;
@@ -429,6 +429,73 @@ impl ShinkaiMessageBuilder {
         Self::create_vecfs_message(
             tree_item_response,
             MessageSchemaType::SubscriptionRequiresTreeUpdateResponse,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_profile,
+            node_receiver,
+            node_receiver_profile,
+        )
+    }
+
+    pub fn p2p_streamer_request_inbox_creation_for_update(
+        shared_folder: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_profile: String,
+        node_receiver: ShinkaiNameString,
+        node_receiver_profile: String,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let response = SubscriptionGenericResponse {
+            subscription_details: format!("Request create temp inbox with symmetric key"),
+            status: SubscriptionResponseStatus::Request,
+            shared_folder,
+            error: None,
+            metadata: None,
+        };
+
+        Self::create_vecfs_message(
+            response,
+            MessageSchemaType::StreamerRequestInboxCreationForUpdate,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_profile,
+            node_receiver,
+            node_receiver_profile,
+        )
+    }
+
+    pub fn p2p_streamer_request_inbox_creation_for_update_response(
+        symmetric_key: String,
+        shared_folder: String, 
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_profile: String,
+        node_receiver: ShinkaiNameString,
+        node_receiver_profile: String,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        // Prepare metadata hashmap
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("symmetric_key".to_string(), symmetric_key);
+
+        let response = SubscriptionGenericResponse {
+            subscription_details: format!("Response to the request to create temp inbox with symmetric key"),
+            status: SubscriptionResponseStatus::Request,
+            shared_folder,
+            error: None,
+            metadata: Some(metadata),
+        };
+
+        Self::create_vecfs_message(
+            response,
+            MessageSchemaType::StreamerRequestInboxCreationForUpdateResponse,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
