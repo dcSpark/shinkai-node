@@ -22,6 +22,7 @@ mod tests {
     use shinkai_message_wasm::shinkai_wasm_wrappers::inbox_name_wrapper::InboxNameWrapper;
     use shinkai_message_wasm::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
     use shinkai_message_wasm::{ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper};
+    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_test::*;
 
@@ -968,6 +969,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_vecfs_create_folder() {
         // Initialize test data
+
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
         let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);

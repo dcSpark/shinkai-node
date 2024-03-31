@@ -20,6 +20,9 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
+use shinkai_message_primitives::shinkai_utils::file_encryption::{
+    aes_encryption_key_to_string, random_aes_encryption_key,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::collections::HashMap;
@@ -426,7 +429,6 @@ impl MySubscriptionsManager {
         subscriber_node: ShinkaiName,
         subscriber_profile_name: String,
         subscription_id: String,
-        symmetric_sk: String,
     ) -> Result<(), SubscriberManagerError> {
         let subscription_shared_path: String;
         {
@@ -456,12 +458,15 @@ impl MySubscriptionsManager {
             subscription_shared_path = subscription.shared_folder.clone();
         }
 
+        // Generate symmetric_sk: String,
+        let symmetric_sk = aes_encryption_key_to_string(random_aes_encryption_key());
+
         // Call Node::process_symmetric_key to create a new inbox
         let db = self
             .db
             .upgrade()
             .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
-        match Node::process_symmetric_key(symmetric_sk, db).await {
+        match Node::process_symmetric_key(symmetric_sk.clone(), db).await {
             Ok(hash_hex) => {
                 println!("Temporary inbox created with hash: {}", hash_hex);
                 // Send confirmation message back to the streamer
@@ -474,18 +479,9 @@ impl MySubscriptionsManager {
 
                     let receiver_public_key = standard_identity.node_encryption_public_key;
 
-                    // Update to use SubscriptionRequiresTreeUpdateResponse instead
-                    let response = SubscriptionGenericResponse {
-                        subscription_details: format!("Temp inbox generated"),
-                        status: SubscriptionResponseStatus::Success,
-                        shared_folder: subscription_shared_path,
-                        error: None,
-                        metadata: None,
-                    };
-
-                    // TODO: change name
-                    let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
-                        response,
+                    let msg_return_symmetrical_key = ShinkaiMessageBuilder::p2p_streamer_request_inbox_creation_for_update_response(
+                        symmetric_sk,
+                        subscription_shared_path,
                         clone_static_secret_key(&self.my_encryption_secret_key),
                         clone_signature_secret_key(&self.my_signature_secret_key),
                         receiver_public_key,
@@ -497,7 +493,7 @@ impl MySubscriptionsManager {
                     .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
                     Self::send_message_to_peer(
-                        msg_request_subscription,
+                        msg_return_symmetrical_key,
                         self.db.clone(),
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
@@ -507,7 +503,7 @@ impl MySubscriptionsManager {
 
                     Ok(())
                 } else {
-                    return Err(SubscriberManagerError::IdentityManagerUnavailable);
+                    Err(SubscriberManagerError::IdentityManagerUnavailable)
                 }
             }
             Err(e) => Err(SubscriberManagerError::OperationFailed(format!(
