@@ -403,7 +403,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        identity_manager: Weak<Mutex<IdentityManager>>,
+        maybe_identity_manager: Weak<Mutex<IdentityManager>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // TODO: fix this is not accessing the same reference. Maybe it is now. check it
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
@@ -431,18 +431,52 @@ impl ExternalSubscriberManager {
             eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
             // Calculate diff
-            eprintln!("process_subscription_job_message_queued>> Calculating diff");
+            eprintln!("process_subscription_job_message_queued >> Calculating diff");
             let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
-            eprintln!("process_subscription_job_message_queued>> diff: {:?}", diff);
+            eprintln!("process_subscription_job_message_queued >> diff: {:?}", diff);
 
-            
             if subscription_with_tree.symmetric_key.is_none() {
-                eprintln!("process_subscription_job_message_queued>> No symmetric key found");
-                // TODO: send request: p2p_streamer_request_inbox_creation_for_update
-                
+                eprintln!("process_subscription_job_message_queued >> No symmetric key found");
+
+                // TODO: refactor this
+                // Create message to request updated state
+                if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
+                    let subscriber_node = subscription_with_tree.subscription.subscriber_node.clone();
+                    let identity_manager = identity_manager_lock.lock().await;
+                    let standard_identity = identity_manager
+                        .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
+                        .await?;
+                    drop(identity_manager);
+
+                    let receiver_public_key = standard_identity.node_encryption_public_key;
+
+                    // Update to use SubscriptionRequiresTreeUpdateResponse instead
+                    let msg = ShinkaiMessageBuilder::p2p_streamer_request_inbox_creation_for_update(
+                        shared_folder,
+                        clone_static_secret_key(&my_encryption_secret_key),
+                        my_signature_secret_key,
+                        receiver_public_key,
+                        node_name.get_node_name_string(),
+                        subscription_with_tree.subscription.streaming_profile.clone(),
+                        subscriber_node.get_node_name_string(),
+                        subscription_with_tree.subscription.subscriber_profile.clone(),
+                    )
+                    .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+                    MySubscriptionsManager::send_message_to_peer(
+                        msg,
+                        db.clone(),
+                        standard_identity,
+                        my_encryption_secret_key.clone(),
+                        maybe_identity_manager.clone(),
+                    )
+                    .await?;
+                } else {
+                    return Err(SubscriberManagerError::IdentityManagerUnavailable);
+                }
 
                 return Ok(format!(
                     "Job {} processed successfully",

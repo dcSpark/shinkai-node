@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::shinkai_message_builder::ShinkaiNameString};
 use wasm_bindgen::prelude::*;
 
 use crate::shinkai_wasm_wrappers::shinkai_wasm_error::ShinkaiWasmError;

@@ -800,6 +800,12 @@ pub async fn handle_network_message_cases(
                         }
                     }
                 }
+                MessageSchemaType::StreamerRequestInboxCreationForUpdateResponse => {
+                    eprintln!(
+                        "StreamerRequestInboxCreationForUpdateResponse Node {}: Handling StreamerRequestInboxCreationForUpdateResponse",
+                        my_node_profile_name
+                    );
+                }
                 _ => {
                     // Ignore other schemas
                     println!("Ignoring other schemas");

@@ -15,7 +15,6 @@ mod tests {
         EncryptionMethod,
     };
     use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-    use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
     use shinkai_message_primitives::shinkai_utils::signatures::{
         signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
     };
@@ -979,9 +978,9 @@ mod tests {
 
         let folder_name = "NewFolder".to_string();
         let path = "/root/path/".to_string();
-        let sender = ProfileName::from("@@node.shinkai");
+        let sender = ShinkaiNameString::from("@@node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@node.shinkai");
+        let receiver = ShinkaiNameString::from("@@node.shinkai");
         let receiver_subidentity = "".to_string();
 
         // Call the function and check the result
@@ -1047,9 +1046,9 @@ mod tests {
 
         let origin_path = "/root/origin/".to_string();
         let destination_path = "/root/destination/".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string();
 
         // Call the function and check the result
@@ -1116,9 +1115,9 @@ mod tests {
 
         let origin_path = "/root/origin/".to_string();
         let destination_path = "/root/destination/".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string();
 
         // Call the function and check the result
@@ -1185,9 +1184,9 @@ mod tests {
 
         let origin_path = "/root/origin/item".to_string();
         let destination_path = "/root/destination/item".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string();
 
         // Call the function and check the result
@@ -1254,9 +1253,9 @@ mod tests {
 
         let origin_path = "/root/origin/item".to_string();
         let destination_path = "/root/destination/item".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
 
         // Call the function and check the result
@@ -1325,9 +1324,9 @@ mod tests {
 
         let destination_path = "/root/destination/".to_string();
         let file_inbox = "inbox_for_files".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
 
         // Call the function and check the result
@@ -1395,9 +1394,9 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let path = "/root/resource/path".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
 
         // Call the function and check the result
@@ -1460,9 +1459,9 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let path = "/root/simplified/path".to_string();
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
 
         // Call the function and check the result
@@ -1528,9 +1527,9 @@ mod tests {
         let path = Some("/root/search/path".to_string());
         let max_results = Some(10);
         let max_files_to_scan = Some(100);
-        let sender = ProfileName::from("@@sender_node.shinkai");
+        let sender = ShinkaiNameString::from("@@sender_node.shinkai");
         let sender_subidentity = "main".to_string();
-        let receiver = ProfileName::from("@@receiver_node.shinkai");
+        let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
 
         let result = ShinkaiMessageBuilderWrapper::vecfs_retrieve_vector_search_simplified(

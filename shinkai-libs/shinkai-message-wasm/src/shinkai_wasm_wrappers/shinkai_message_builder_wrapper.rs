@@ -20,7 +20,7 @@ use shinkai_message_primitives::{
             encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
             EncryptionMethod,
         },
-        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
         signatures::{signature_public_key_to_string, string_to_signature_secret_key},
     },
 };
@@ -283,8 +283,8 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<(), JsValue> {
         if let Some(mut inner) = self.inner.take() {
             inner = inner.external_metadata_with_schedule(
-                ProfileName::from(recipient),
-                ProfileName::from(sender),
+                ShinkaiNameString::from(recipient),
+                ShinkaiNameString::from(sender),
                 scheduled_time,
             );
             self.inner = Some(inner);
@@ -368,9 +368,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
     ) -> Result<String, JsValue> {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
@@ -389,9 +389,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         permissions: String,
         code_type: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let permissions =
@@ -427,9 +427,9 @@ impl ShinkaiMessageBuilderWrapper {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
@@ -477,9 +477,9 @@ impl ShinkaiMessageBuilderWrapper {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_device_encryption_sk)?;
@@ -529,8 +529,8 @@ impl ShinkaiMessageBuilderWrapper {
         profile_signature_sk: String,
         registration_name: String,
         sender_subidentity: ShinkaiNameString,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<String, JsValue> {
         let my_device_encryption_sk_type = string_to_encryption_static_key(&my_device_encryption_sk)?;
         let my_device_signature_sk_type = string_to_signature_secret_key(&my_device_signature_sk)?;
@@ -591,9 +591,9 @@ impl ShinkaiMessageBuilderWrapper {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -628,9 +628,9 @@ impl ShinkaiMessageBuilderWrapper {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -663,9 +663,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
         agent_json: &str,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let agent: SerializedAgent =
@@ -693,9 +693,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
@@ -719,9 +719,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         inbox: String,
         up_to_time: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -749,9 +749,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
         data: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        recipient: ProfileName,
+        recipient: ShinkaiNameString,
         recipient_subidentity: String,
         other: &str,
         schema: String,
@@ -789,8 +789,8 @@ impl ShinkaiMessageBuilderWrapper {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<String, JsValue> {
         if message != "Ping" && message != "Pong" {
             return Err(JsValue::from_str("Invalid message: must be 'Ping' or 'Pong'"));
@@ -814,9 +814,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         scope: JsValue,
         is_hidden: bool,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -853,9 +853,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let job_id_clone = job_id.clone();
@@ -894,9 +894,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
     ) -> Result<String, JsValue> {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
@@ -914,9 +914,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         error_msg: String,
     ) -> Result<String, JsValue> {
         let mut builder =
@@ -938,9 +938,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         folder_name: String,
         path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let folder_creation_info = APIVecFsCreateFolder { folder_name, path };
@@ -969,9 +969,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         origin_path: String,
         destination_path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let folder_move_info = APIVecFsMoveFolder {
@@ -1003,9 +1003,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         origin_path: String,
         destination_path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let folder_copy_info = APIVecFsCopyFolder {
@@ -1037,9 +1037,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         origin_path: String,
         destination_path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let item_move_info = APIVecFsMoveItem {
@@ -1071,9 +1071,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         origin_path: String,
         destination_path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let item_copy_info = APIVecFsCopyItem {
@@ -1105,9 +1105,9 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         destination_path: String,
         file_inbox: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let create_items_info = APIConvertFilesAndSaveToFolder {
@@ -1138,9 +1138,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let retrieve_resource_info = APIVecFSRetrieveVectorResource { path };
@@ -1168,9 +1168,9 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         path: String,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let retrieve_path_info = APIVecFsRetrievePathSimplifiedJson { path };
@@ -1201,9 +1201,9 @@ impl ShinkaiMessageBuilderWrapper {
         path: Option<String>,
         max_results: Option<usize>,
         max_files_to_scan: Option<usize>,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
-        receiver: ProfileName,
+        receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let search_info = APIVecFsRetrieveVectorSearchSimplifiedJson {

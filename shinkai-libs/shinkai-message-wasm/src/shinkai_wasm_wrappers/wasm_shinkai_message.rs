@@ -3,7 +3,7 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::{
         ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
     },
-    shinkai_utils::encryption::EncryptionMethod,
+    shinkai_utils::{encryption::EncryptionMethod, shinkai_message_builder::ShinkaiNameString},
 };
 use wasm_bindgen::prelude::*;
 
