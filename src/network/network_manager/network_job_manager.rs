@@ -383,13 +383,12 @@ impl NetworkJobManager {
                     "Processing VRKaiPathPair message type",
                 );
 
-                // Deserialize job.content into NetworkVRKai
                 // Deserialize job.content into NetworkVRKai using bincode
                 let network_vr_kai: Result<NetworkVRKai, _> = bincode::deserialize(&job.content);
                 let network_vr_kai = network_vr_kai.map_err(|_| NetworkJobQueueError::ContentParseFailed)?;
                 eprintln!("NetworkVRKai subscription_id: {:?}", network_vr_kai.subscription_id);
 
-                let _ = Self::handle_vr_kai_path_pair(
+                let _ = Self::handle_receiving_vr_pack_from_subscription(
                     network_vr_kai,
                     db.clone(),
                     vector_fs.clone(),
@@ -419,7 +418,7 @@ impl NetworkJobManager {
         Ok(network_job.receiver_address.to_string())
     }
 
-    pub async fn handle_vr_kai_path_pair(
+    pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
@@ -440,7 +439,7 @@ impl NetworkJobManager {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
             let db_lock = maybe_db.lock().await;
 
-            match db_lock.get_my_subscription(&network_vr_pack.subscription_id.get_unique_id()) {
+            match db_lock.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
                 Ok(sub) => sub,
                 Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
             }
@@ -516,31 +515,27 @@ impl NetworkJobManager {
             // TODO: extend it to support multiple levels of folders
             let result = vector_fs_lock
                 .create_new_folder(&writer, &destination_path.clone());
-            eprintln!("Create Folder Result: {:?}", result);
 
             // Unpack the VRKaiPath pairs
             let result = vector_fs_lock.extract_vrpack_in_folder(&writer, vr_pack);
-            eprintln!("VR Unpack Result: {:?}", result);
+            // eprintln!("VR Unpack Result: {:?}", result);
 
             {
                 // debug. print current files
-                eprintln!("debug current files");
-                // let root_path = VRPath::root();
-                let root_path = VRPath::from_string("/").unwrap();
-                let reader = vector_fs_lock.new_reader(
-                    local_subscriber.clone(),
-                    root_path.clone(),
-                    local_subscriber.clone(),
-                );
-                let reader = reader.unwrap();
-                let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
-                eprintln!("Current files: {:?}", result);
+                // eprintln!("debug current files");
+                // // let root_path = VRPath::root();
+                // let root_path = VRPath::from_string("/").unwrap();
+                // let reader = vector_fs_lock.new_reader(
+                //     local_subscriber.clone(),
+                //     root_path.clone(),
+                //     local_subscriber.clone(),
+                // );
+                // let reader = reader.unwrap();
+                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                // eprintln!("Current files: {:?}", result);
             }
         }
-        {
-            // Testing code shows all my files
-        }
-
+     
         Ok(())
     }
 

@@ -39,48 +39,6 @@ use super::fs_entry_tree::FSEntryTree;
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-/*
-How to subscribe
-- Node can scan multiple nodes and process what they offer. Endpoint: Node (External) -> Shareable stuff? (different than local node endpoint)
-- User sees something that they like
-- They subscribe to it
-- Node validates and adds node to their subscriptors (maybe it should sync from the chain (?)) how do we know which subscription is which one?
-  - can you be switching so you dont pay multiple subscriptions? -> maybe minimal time is good enough to avoid this
-- Node processes the subscription and adds it to the queue
-  - node ask the subscriber what they state
-  - node calculates diff
-  - node sends the diff to the subscriber
-- Node checks for changes every X time and sends the diff to the subscriber in order to update the state
-*/
-
-// Message
-
-// action: subscribe
-// subscription_id: id
-// vector_db: path
-// state: [] or tree
-
-// -> Validation ->
-
-// it comes from the actual node
-// vector_db path is valid and "shareable"
-// state is valid
-// delegation is enough
-
-// -> Processing ->
-// add node to the subscription_db
-// schedule the job to be processed
-
-// -> NetworkJobForProcessing -> (On Demand rather than calculated in advance)
-// shinkai node name
-// subscription_id
-// vector_db
-// state
-
-/// Temp
-
-// Who decides to split it? a cron? the SubscriberManager that checks the state? -> The subscriber manager
-
 const NUM_THREADS: usize = 2;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -467,7 +425,7 @@ impl ExternalSubscriberManager {
                     )
                     .await;
 
-                    // TODO: Update db ?
+                    // TODO: Update db with last modified or something?
                 } else {
                     shinkai_log(
                         ShinkaiLogOption::ExtSubscriptions,

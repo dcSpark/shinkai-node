@@ -342,7 +342,7 @@ pub async fn handle_network_message_cases(
         Node::save_to_db(
             false,
             &message,
-            clone_static_secret_key(&my_encryption_secret_key),
+            clone_static_secret_key(my_encryption_secret_key),
             maybe_db.clone(),
             maybe_identity_manager.clone(),
         )
@@ -350,9 +350,6 @@ pub async fn handle_network_message_cases(
     }
 
     // Check the schema of the message and decide what to do
-    // TODO: add handler that checks for the Schema and decides what to do with the message
-    // TODO: the message may be need to be added to an internal NetworkJobQueue
-    // TODO: Create NetworkJobQueue Struct
     match message.get_message_content_schema() {
         Ok(schema) => {
             match schema {

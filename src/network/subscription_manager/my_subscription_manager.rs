@@ -36,20 +36,6 @@ use super::fs_entry_tree::FSEntryTree;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-/*
-How to subscribe
-- Node can scan multiple nodes and process what they offer. Endpoint: Node (External) -> Shareable stuff? (different than local node endpoint)
-- User sees something that they like
-- They subscribe to it
-- Node validates and adds node to their subscriptors (maybe it should sync from the chain (?)) how do we know which subscription is which one?
-  - can you be switching so you dont pay multiple subscriptions? -> maybe minimal time is good enough to avoid this
-- Node processes the subscription and adds it to the queue
-  - node ask the subscriber what they state
-  - node calculates diff
-  - node sends the diff to the subscriber
-- Node checks for changes every X time and sends the diff to the subscriber in order to update the state
-*/
-
 const NUM_THREADS: usize = 2;
 const LRU_CAPACITY: usize = 100;
 const REFRESH_THRESHOLD_MINUTES: usize = 10;

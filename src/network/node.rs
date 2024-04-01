@@ -47,6 +47,7 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use std::convert::TryInto;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub enum NodeCommand {
@@ -486,7 +487,32 @@ impl Node {
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
 
-        let conn_limiter = Arc::new(ConnectionLimiter::new(5, 10, 3)); // TODO: allow for ENV to set this
+        let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse MAX_CONNECTIONS")
+            .try_into()
+            .expect("MAX_CONNECTIONS value out of range");
+
+        let max_connections_per_ip: u32 = std::env::var("MAX_CONNECTIONS_PER_IP")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse MAX_CONNECTIONS_PER_IP")
+            .try_into()
+            .expect("MAX_CONNECTIONS_PER_IP value out of range");
+
+        let burst_allowance: u32 = std::env::var("BURST_ALLOWANCE")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse BURST_ALLOWANCE")
+            .try_into()
+            .expect("BURST_ALLOWANCE value out of range");
+
+        let conn_limiter = Arc::new(ConnectionLimiter::new(
+            max_connections,
+            burst_allowance,
+            max_connections_per_ip.try_into().unwrap(),
+        ));
 
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
