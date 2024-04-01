@@ -9,11 +9,11 @@ use super::{
 /// Struct that holds the read/write permissions specified for a specific path in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathPermission {
-    read_permission: ReadPermission,
-    write_permission: WritePermission,
+    pub read_permission: ReadPermission,
+    pub write_permission: WritePermission,
     /// Whitelist which specifies per ShinkaiName which perms they have. Checked
     /// if either read or write perms are set to Whitelist, respectively.
-    whitelist: HashMap<ShinkaiName, WhitelistPermission>,
+    pub whitelist: HashMap<ShinkaiName, WhitelistPermission>,
 }
 
 impl PathPermission {
@@ -213,10 +213,11 @@ impl PermissionsIndex {
 
         loop {
             if let Some(path_permission_json) = self.fs_permissions.get(&path) {
+                eprintln!("path_permission_json: {:?}", path_permission_json);
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
-                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                     return Ok(());
                 }
 
@@ -226,7 +227,7 @@ impl PermissionsIndex {
                     ReadPermission::Public => return Ok(()),
                     // If private, then reading is allowed for the specific profile that owns the VectorFS
                     ReadPermission::Private => {
-                        if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                             return Ok(());
                         } else {
                             return Err(VectorFSError::InvalidReadPermission(
@@ -289,7 +290,7 @@ impl PermissionsIndex {
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
-                if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                     return Ok(());
                 }
 
@@ -297,7 +298,7 @@ impl PermissionsIndex {
                 match &path_permission.write_permission {
                     // If private, then writing is allowed for the specific profile that owns the VectorFS
                     WritePermission::Private => {
-                        if requester_name.get_profile_name() == self.profile_name.get_profile_name() {
+                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                             return Ok(());
                         } else {
                             return Err(VectorFSError::InvalidWritePermission(
@@ -358,15 +359,20 @@ impl PermissionsIndex {
 
         // Iterate through the fs_permissions hashmap
         for (path, permission_json) in self.fs_permissions.iter() {
+            eprintln!("\npath: {:?}", path);
+            eprintln!("starting_path: {:?}", starting_path);
+
             // Check if the current path is a descendant of the starting path
-            if starting_path.is_ancestor_path(path) {
+            if starting_path.is_descendant_path(path) {
                 match PathPermission::from_json(permission_json) {
                     Ok(path_permission) => {
+                        eprintln!("\npath: {:?}", path);
+                        eprintln!("path_permission: {:?}", path_permission);
                         if read_permissions_to_find.contains(&path_permission.read_permission) {
                             paths_with_permissions.push((path.clone(), path_permission.read_permission.clone()));
                         }
                     }
-                    Err(_) => (),
+                    Err(_) => {}
                 }
             }
         }
@@ -411,7 +417,10 @@ impl VectorFS {
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
+            eprintln!("path: {:?}", path);
+            eprintln!("internals_map: {:?}", self.internals_map);
             let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            eprintln!("fs_internals: {:?}", fs_internals);
             if fs_internals
                 .permissions_index
                 .validate_read_access(&name_to_check, &path)

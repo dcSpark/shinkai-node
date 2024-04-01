@@ -1,26 +1,34 @@
-use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
+use super::network_manager::network_job_manager::{
+    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai,
+};
+use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::IdentityManager;
-use crate::network::node_message_handlers::{
-    extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
-};
+use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
 use crate::vector_fs::vector_fs::VectorFS;
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::future::Remote;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
+use rand::Rng;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
@@ -33,11 +41,13 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::VRPack;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use std::convert::TryInto;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub enum NodeCommand {
@@ -309,6 +319,30 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     },
+    APIAvailableSharedItems {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APICreateShareableFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIUpdateShareableFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIUnshareFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APISubscribeToSharedFolder {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIMySubscriptions {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -327,7 +361,7 @@ type ProfileName = String;
 // The `Node` struct represents a single node in the network.
 pub struct Node {
     // The profile name of the node.
-    pub node_profile_name: ShinkaiName,
+    pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub identity_secret_key: SigningKey,
     // The public key corresponding to `identity_secret_key`.
@@ -364,13 +398,21 @@ pub struct Node {
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
     pub unstructured_api: UnstructuredAPI,
+    /// Rate Limiter
+    pub conn_limiter: Arc<ConnectionLimiter>,
+    /// External Subscription Manager (when others are subscribing to this node's data)
+    pub ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    /// My Subscription Manager
+    pub my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    // Network Job Manager
+    pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
 }
 
 impl Node {
     // Construct a new node. Returns a `Result` which is `Ok` if the node was successfully created,
     // and `Err` otherwise.
     pub async fn new(
-        node_profile_name: String,
+        node_name: String,
         listen_address: SocketAddr,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
@@ -383,11 +425,11 @@ impl Node {
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         unstructured_api: Option<UnstructuredAPI>,
-    ) -> Node {
+    ) -> Arc<Mutex<Node>> {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
-        match ShinkaiName::new(node_profile_name.to_string().clone()) {
+        match ShinkaiName::new(node_name.to_string().clone()) {
             Ok(_) => (),
-            Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
+            Err(_) => panic!("Invalid node identity name: {}", node_name),
         }
 
         // Get public keys, and update the local node keys in the db
@@ -398,11 +440,11 @@ impl Node {
         let db_arc = Arc::new(Mutex::new(db));
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-        let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
+        let node_name = ShinkaiName::new(node_name).unwrap();
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
-                node_profile_name.clone(),
+                node_name.clone(),
                 encryption_public_key.clone(),
                 identity_public_key.clone(),
             ) {
@@ -414,7 +456,7 @@ impl Node {
 
         // Setup Identity Manager
         let db_weak = Arc::downgrade(&db_arc);
-        let subidentity_manager = IdentityManager::new(db_weak, node_profile_name.clone()).await.unwrap();
+        let subidentity_manager = IdentityManager::new(db_weak, node_name.clone()).await.unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
@@ -425,7 +467,7 @@ impl Node {
         let mut profile_list = vec![];
         {
             let db_lock = db_arc.lock().await;
-            profile_list = match db_lock.get_all_profiles(node_profile_name.clone()) {
+            profile_list = match db_lock.get_all_profiles(node_name.clone()) {
                 Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
                 Err(e) => panic!("Failed to fetch profiles: {}", e),
             };
@@ -437,7 +479,7 @@ impl Node {
             vec![embedding_generator.model_type.clone()],
             profile_list,
             &vector_fs_db_path,
-            node_profile_name.clone(),
+            node_name.clone(),
         )
         .unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
@@ -445,27 +487,97 @@ impl Node {
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
 
-        Node {
-            node_profile_name,
-            identity_secret_key,
+        let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse MAX_CONNECTIONS")
+            .try_into()
+            .expect("MAX_CONNECTIONS value out of range");
+
+        let max_connections_per_ip: u32 = std::env::var("MAX_CONNECTIONS_PER_IP")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse MAX_CONNECTIONS_PER_IP")
+            .try_into()
+            .expect("MAX_CONNECTIONS_PER_IP value out of range");
+
+        let burst_allowance: u32 = std::env::var("BURST_ALLOWANCE")
+            .unwrap_or_else(|_| "3".to_string())
+            .parse::<usize>()
+            .expect("Failed to parse BURST_ALLOWANCE")
+            .try_into()
+            .expect("BURST_ALLOWANCE value out of range");
+
+        let conn_limiter = Arc::new(ConnectionLimiter::new(
+            max_connections,
+            burst_allowance,
+            max_connections_per_ip.try_into().unwrap(),
+        ));
+
+        let ext_subscriber_manager = Arc::new(Mutex::new(
+            ExternalSubscriberManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+            )
+            .await,
+        ));
+
+        let my_subscription_manager = Arc::new(Mutex::new(
+            MySubscriptionsManager::new(
+                Arc::downgrade(&db_arc),
+                Arc::downgrade(&vector_fs_arc),
+                Arc::downgrade(&identity_manager),
+                node_name.clone(),
+                clone_signature_secret_key(&identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+            )
+            .await,
+        ));
+
+        // Create NetworkJobManager with a weak reference to this node
+        let network_manager = NetworkJobManager::new(
+            Arc::downgrade(&db_arc),
+            Arc::downgrade(&vector_fs_arc),
+            node_name.clone(),
+            clone_static_secret_key(&encryption_secret_key),
+            clone_signature_secret_key(&identity_secret_key),
+            identity_manager.clone(),
+            my_subscription_manager.clone(),
+            ext_subscriber_manager.clone(),
+        )
+        .await;
+
+        let node = Arc::new(Mutex::new(Node {
+            node_name: node_name.clone(),
+            identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             identity_public_key,
-            encryption_secret_key,
+            encryption_secret_key: clone_static_secret_key(&encryption_secret_key),
             encryption_public_key,
             peers: CHashMap::new(),
             listen_address,
             ping_interval_secs,
             commands,
-            identity_manager,
-            db: db_arc,
+            identity_manager: identity_manager.clone(),
+            db: db_arc.clone(),
             job_manager: None,
             cron_manager: None,
             first_device_needs_registration_code,
             initial_agents,
             js_toolkit_executor_remote,
-            vector_fs: vector_fs_arc,
+            vector_fs: vector_fs_arc.clone(),
             embedding_generator,
             unstructured_api,
-        }
+            conn_limiter,
+            ext_subscription_manager: ext_subscriber_manager,
+            my_subscription_manager: my_subscription_manager,
+            network_job_manager: Arc::new(Mutex::new(network_manager)),
+        }));
+
+        node
     }
 
     // Start the node's operations.
@@ -477,7 +589,7 @@ impl Node {
                 db_weak,
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
-                self.node_profile_name.clone(),
+                self.node_name.clone(),
                 vector_fs_weak,
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
@@ -488,7 +600,7 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("Starting node with name: {}", self.node_profile_name),
+            &format!("Starting node with name: {}", self.node_name),
         );
         let db_weak = Arc::downgrade(&self.db);
         self.cron_manager = match &self.job_manager {
@@ -496,7 +608,7 @@ impl Node {
                 CronManager::new(
                     db_weak,
                     clone_signature_secret_key(&self.identity_secret_key),
-                    self.node_profile_name.clone(),
+                    self.node_name.clone(),
                     Arc::clone(job_manager),
                 )
                 .await,
@@ -611,6 +723,12 @@ impl Node {
                             Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
                             Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
+                            Some(NodeCommand::APIAvailableSharedItems { msg, res }) => self.api_subscription_available_shared_items(msg, res).await?,
+                            Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
+                            Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
+                            Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
+                            Some(NodeCommand::APISubscribeToSharedFolder { msg, res }) => self.api_subscription_subscribe_to_shared_folder(msg, res).await?,
+                            Some(NodeCommand::APIMySubscriptions { msg, res }) => self.api_subscription_my_subscriptions(msg, res).await?,
                             _ => {},
                         }
                     }
@@ -643,39 +761,92 @@ impl Node {
             &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
         );
 
+        // Initialize your connection limiter
         loop {
             let (mut socket, addr) = listener.accept().await?;
+            // Too many requests by IP protection
+            let ip = addr.ip().to_string();
+            let conn_limiter_clone = self.conn_limiter.clone();
+
+            if !conn_limiter_clone.check_rate_limit(&ip).await {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Rate limit exceeded for IP: {}", ip),
+                );
+                continue;
+            }
+
+            if !conn_limiter_clone.increment_connection(&ip).await {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Too many connections from IP: {}", ip),
+                );
+                continue;
+            }
+
             let socket = Arc::new(Mutex::new(socket));
             let db = Arc::clone(&self.db);
             let identity_manager = Arc::clone(&self.identity_manager);
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
             let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
-            let node_profile_name_clone = self.node_profile_name.clone();
+            let node_profile_name_clone = self.node_name.clone();
+            let network_job_manager = Arc::clone(&self.network_job_manager);
 
             tokio::spawn(async move {
-                let mut buffer = Vec::new();
                 let mut socket = socket.lock().await;
-                socket.read_to_end(&mut buffer).await.unwrap();
+                let mut header = [0u8; 1]; // Buffer for the message type identifier
+                if socket.read_exact(&mut header).await.is_ok() {
+                    let mut buffer = Vec::new();
+                    if socket.read_to_end(&mut buffer).await.is_ok() {
+                        let message_type = match header[0] {
+                            0x01 => NetworkMessageType::ShinkaiMessage,
+                            0x02 => NetworkMessageType::VRKaiPathPair,
+                            // Add cases for other message types as needed
+                            _ => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    "Received message with unknown type identifier",
+                                );
+                                return; // Skip processing for unknown message types
+                            }
+                        };
 
-                let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                let _ = Node::handle_message(
-                    addr,
-                    destination_socket.clone(),
-                    &buffer,
-                    node_profile_name_clone.clone().get_node_name(),
-                    clone_static_secret_key(&encryption_secret_key_clone),
-                    clone_signature_secret_key(&identity_secret_key_clone),
-                    db.clone(),
-                    identity_manager.clone(),
-                )
-                .await;
-                if let Err(e) = socket.flush().await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to flush the socket: {}", e),
-                    );
+                        let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                        let network_job = NetworkJobQueue {
+                            receiver_address: addr,
+                            unsafe_sender_address: destination_socket,
+                            message_type,
+                            content: buffer.clone(),
+                            date_created: Utc::now(),
+                        };
+
+                        let mut network_job_manager = network_job_manager.lock().await;
+                        if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to add network job to queue: {}", e),
+                            );
+                        }
+                        if let Err(e) = socket.flush().await {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to flush the socket: {}", e),
+                            );
+                        }
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            "Failed to read the message type identifier",
+                        );
+                    }
                 }
+                conn_limiter_clone.decrement_connection(&ip).await;
             });
         }
     }
@@ -724,8 +895,13 @@ impl Node {
 
     // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
-        return self.peers.clone();
+        self.peers.clone()
     }
+
+    // TODO: Add a new send that schedules messages to be sent at a later time.
+    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were already generated
+    // and the time associated with the message may be too old to be recognized by the other node.
+    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the time to the current time
 
     // Send a message to a peer.
     pub fn send(
@@ -750,7 +926,9 @@ impl Node {
             match stream {
                 Ok(mut stream) => {
                     let encoded_msg = message.encode_message().unwrap();
-                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let mut data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                    data_to_send.extend_from_slice(&encoded_msg);
+                    let _ = stream.write_all(&data_to_send).await;
                     let _ = stream.flush().await;
                     shinkai_log(
                         ShinkaiLogOption::Node,
@@ -779,15 +957,72 @@ impl Node {
                     let retry_count = retry.unwrap_or(0) + 1;
                     let db = db.lock().await;
                     let retry_message = RetryMessage {
-                        retry_count: retry_count,
+                        retry_count,
                         message: message.as_ref().clone(),
                         peer: peer.clone(),
                         save_to_db_flag,
                     };
                     // Calculate the delay for the next retry
-                    let delay_seconds = (4 as u64).pow(retry_count - 1);
+                    let delay_seconds = 4_u64.pow(retry_count - 1);
                     let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
                     db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                }
+            }
+        });
+    }
+
+    pub async fn send_encrypted_vrpack(
+        vr_pack: VRPack,
+        subscription_id: SubscriptionId,
+        encryption_key_hex: String,
+        peer: SocketAddr,
+    ) {
+        tokio::spawn(async move {
+            // Serialize only the VRKaiPath pairs
+            let serialized_data = bincode::serialize(&vr_pack).unwrap();
+            let encryption_key = hex::decode(encryption_key_hex.clone()).unwrap();
+            let key = GenericArray::from_slice(&encryption_key);
+            let cipher = Aes256Gcm::new(key);
+
+            // Generate a random nonce
+            let mut nonce = [0u8; 12];
+            rand::thread_rng().fill(&mut nonce);
+            let nonce_generic = GenericArray::from_slice(&nonce);
+
+            // Encrypt the data
+            let encrypted_data = cipher
+                .encrypt(nonce_generic, serialized_data.as_ref())
+                .expect("encryption failure!");
+
+            // Calculate the hash of the symmetric key
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(encryption_key_hex.as_bytes());
+            let result = hasher.finalize();
+            let symmetric_key_hash = hex::encode(result.as_bytes());
+
+            // Create the NetworkVRKai struct with the encrypted pairs, subscription ID, nonce, and symmetric key hash
+            let vr_kai = NetworkVRKai {
+                enc_pairs: encrypted_data,
+                subscription_id,
+                nonce: hex::encode(nonce),
+                symmetric_key_hash,
+            };
+            let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
+
+            // Prepend nonce to the encrypted data to use it during decryption
+            let mut data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
+            data_to_send.extend_from_slice(&vr_kai_serialized);
+
+            // Convert to Vec<u8> to send over TCP
+            let stream_result = TcpStream::connect(peer).await;
+            match stream_result {
+                Ok(mut stream) => {
+                    let _ = stream.write_all(&data_to_send).await;
+                    let _ = stream.flush().await;
+                    println!("Encrypted data sent to {}", peer);
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to {}: {}", peer, e);
                 }
             }
         });
@@ -878,7 +1113,7 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let mut db = db.lock().await;
+        let db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
         match db_result {
             Ok(_) => (),
@@ -894,95 +1129,5 @@ impl Node {
             }
         }
         Ok(())
-    }
-
-    pub async fn handle_message(
-        receiver_address: SocketAddr,
-        unsafe_sender_address: SocketAddr,
-        bytes: &[u8],
-        my_node_profile_name: String,
-        my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SigningKey,
-        maybe_db: Arc<Mutex<ShinkaiDB>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> Result<(), NodeError> {
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
-        );
-
-        // Extract and validate the message
-        let message = extract_message(bytes, receiver_address)?;
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Decoded Message: {:?}", receiver_address, message),
-        );
-
-        // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
-            .unwrap()
-            .get_node_name();
-        let sender_identity = maybe_identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&sender_profile_name_string)
-            .await
-            .unwrap();
-
-        verify_message_signature(sender_identity.node_signature_public_key, &message)?;
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!(
-                "{} > Sender Profile Name: {:?}",
-                receiver_address, sender_profile_name_string
-            ),
-        );
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
-        );
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Verified message signature", receiver_address),
-        );
-
-        // Save to db
-        {
-            Node::save_to_db(
-                false,
-                &message,
-                clone_static_secret_key(&my_encryption_secret_key),
-                maybe_db.clone(),
-                maybe_identity_manager.clone(),
-            )
-            .await?;
-        }
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
-        );
-
-        handle_based_on_message_content_and_encryption(
-            message.clone(),
-            sender_identity.node_encryption_public_key,
-            sender_identity.addr.clone().unwrap(),
-            sender_profile_name_string,
-            &my_encryption_secret_key,
-            &my_signature_secret_key,
-            &my_node_profile_name,
-            maybe_db,
-            maybe_identity_manager,
-            receiver_address,
-            unsafe_sender_address,
-        )
-        .await
     }
 }

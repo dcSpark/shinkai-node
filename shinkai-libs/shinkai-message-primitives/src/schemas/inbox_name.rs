@@ -3,6 +3,7 @@ use std::fmt;
 use super::shinkai_name::{ShinkaiName, ShinkaiNameError};
 use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::source::ShinkaiNameString;
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
@@ -131,7 +132,7 @@ impl InboxName {
 
     pub fn get_regular_inbox_name_from_params(
         sender: String,
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient: String,
         recipient_subidentity: String,
         is_e2e: bool,
@@ -179,13 +180,6 @@ impl InboxName {
         InboxName::new(inbox_name)
     }
 
-    pub fn to_string(&self) -> String {
-        match self {
-            InboxName::RegularInbox { value, .. } => value.clone(),
-            InboxName::JobInbox { value, .. } => value.clone(),
-        }
-    }
-
     /// Returns the first half of the blake3 hash of the inbox name's value
     pub fn hash_value_first_half(&self) -> String {
         let value = match self {
@@ -208,7 +202,7 @@ impl InboxName {
 
 impl fmt::Display for InboxName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.get_value())
     }
 }
 

@@ -26,6 +26,9 @@ pub enum ShinkaiLogOption {
     Blockchain,
     Database,
     Identity,
+    IdentityNetwork,
+    ExtSubscriptions,
+    MySubscriptions,
     CryptoIdentity,
     JobExecution,
     CronExecution,
@@ -63,6 +66,9 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::Blockchain,
             ShinkaiLogOption::Database,
             ShinkaiLogOption::Identity,
+            ShinkaiLogOption::IdentityNetwork,
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogOption::MySubscriptions,
             ShinkaiLogOption::CryptoIdentity,
             ShinkaiLogOption::JobExecution,
             ShinkaiLogOption::CronExecution,
@@ -85,6 +91,15 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_IDENTITY").is_ok() {
         active_options.push(ShinkaiLogOption::Identity);
+    }
+    if std::env::var("LOG_IDENTITY_NETWORK").is_ok() {
+        active_options.push(ShinkaiLogOption::IdentityNetwork);
+    }
+    if std::env::var("LOG_EXT_SUBSCRIPTIONS").is_ok() {
+        active_options.push(ShinkaiLogOption::ExtSubscriptions);
+    }
+    if std::env::var("LOG_MY_SUBSCRIPTIONS").is_ok() {
+        active_options.push(ShinkaiLogOption::MySubscriptions);
     }
     if std::env::var("LOG_CRYPTO_IDENTITY").is_ok() {
         active_options.push(ShinkaiLogOption::CryptoIdentity);

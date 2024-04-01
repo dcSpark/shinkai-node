@@ -30,4 +30,5 @@ mod it {
     mod vector_fs_api_tests;
     mod vector_fs_tests;
     mod websocket_tests;
+    mod subscription_manager_tests;
 }

@@ -201,7 +201,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsCreateFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -230,7 +230,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsCreateFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -295,7 +295,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::ConvertFilesAndSaveToFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -354,10 +354,10 @@ fn vector_fs_api_tests() {
                 // Upload .pdf file to inbox
                 // Prepare the file to be read
                 let filename = "files/shinkai_intro.pdf";
-                let file_path = Path::new(filename.clone());
+                let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
+                let file_data = std::fs::read(file_path)
                     .map_err(|_| VRError::FailedPDFParsing)
                     .unwrap();
 
@@ -398,7 +398,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::ConvertFilesAndSaveToFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),

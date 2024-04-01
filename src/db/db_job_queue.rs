@@ -1,59 +1,80 @@
 use std::collections::HashMap;
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
-use crate::agent::{queue::job_queue_manager::{JobQueueManager, JobForProcessing}};
-use rocksdb::IteratorMode;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use crate::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
+use rocksdb::{ColumnFamily, IteratorMode};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 impl ShinkaiDB {
     pub fn persist_job_queues<T: Serialize>(
         &self,
+        cf_name: &str,
         job_id: &str,
         queue: &Vec<T>,
+        prefix: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
         let cf_handle = self
             .db
-            .cf_handle(Topic::JobQueues.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                Topic::JobQueues.as_str().to_string(),
-            ))?;
-        self.db.put_cf(cf_handle, job_id.as_bytes(), &serialized_queue)?;
+            .cf_handle(cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name.to_string()))?;
+        let full_job_id = match &prefix {
+            Some(p) => format!("{}{}", p, job_id),
+            None => job_id.to_string(),
+        };
+        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+        self.db.put_cf(cf_handle, full_job_id.as_bytes(), &serialized_queue)?;
         Ok(())
     }
 
-    pub fn get_job_queues<T: DeserializeOwned>(&self, job_id: &str) -> Result<Vec<T>, ShinkaiDBError> {
+    pub fn get_job_queues<T: DeserializeOwned>(
+        &self,
+        cf_name: &str,
+        job_id: &str,
+        prefix: Option<String>,
+    ) -> Result<Vec<T>, ShinkaiDBError> {
         let cf_handle = self
             .db
-            .cf_handle(Topic::JobQueues.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                Topic::JobQueues.as_str().to_string(),
-            ))?;
+            .cf_handle(cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name.to_string()))?;
+        let full_job_id = match &prefix {
+            Some(p) => format!("{}{}", p, job_id),
+            None => job_id.to_string(),
+        };
         let serialized_queue = self
             .db
-            .get_cf(cf_handle, job_id.as_bytes())?
+            .get_cf(cf_handle, full_job_id.as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let queue: Vec<T> =
-            bincode::deserialize(&serialized_queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+        let queue: Vec<T> = bincode::deserialize(&serialized_queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
         Ok(queue)
     }
 
-    pub fn get_all_queues<T: DeserializeOwned>(&self) -> Result<HashMap<String, Vec<T>>, ShinkaiDBError> {
+    pub fn get_all_queues<T: DeserializeOwned>(
+        &self,
+        cf_name: &str,
+        prefix: Option<String>,
+    ) -> Result<HashMap<String, Vec<T>>, ShinkaiDBError> {
         let cf_handle = self
             .db
-            .cf_handle(Topic::JobQueues.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                Topic::JobQueues.as_str().to_string(),
-            ))?;
+            .cf_handle(cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name.to_string()))?;
         let mut queues = HashMap::new();
 
-        let iterator = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+        // Use prefix_iterator_cf if a prefix is provided, otherwise use a full iterator
+        let iterator = match &prefix {
+            Some(p) => self.db.prefix_iterator_cf(cf_handle, p.as_bytes()),
+            None => self.db.iterator_cf(cf_handle, IteratorMode::Start),
+        };
 
         for res in iterator {
             let (key, value) = res.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-            let job_id = String::from_utf8(key.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
-            let queue: Vec<T> =
-                bincode::deserialize(&value).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+            let mut job_id = String::from_utf8(key.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+            // If a prefix is provided, remove it from the job_id
+            if let Some(p) = &prefix {
+                if job_id.starts_with(p) {
+                    job_id = job_id[p.len()..].to_string();
+                }
+            }
+            let queue: Vec<T> = bincode::deserialize(&value).map_err(|e| ShinkaiDBError::BincodeError(e))?;
             queues.insert(job_id, queue);
         }
 
@@ -62,17 +83,23 @@ impl ShinkaiDB {
 
     pub fn persist_queue<T: Serialize>(
         &self,
+        cf_name: &str,
         job_id: &str,
         queue: &Vec<T>,
+        prefix: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
         let cf_handle = self
             .db
-            .cf_handle(Topic::JobQueues.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                Topic::JobQueues.as_str().to_string(),
-            ))?;
-        self.db.put_cf(cf_handle, job_id.as_bytes(), &serialized_queue)?;
+            .cf_handle(cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name.to_string()))?;
+
+        let full_job_id = match &prefix {
+            Some(p) => format!("{}{}", p, job_id),
+            None => job_id.to_string(),
+        };
+
+        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+        self.db.put_cf(cf_handle, full_job_id.as_bytes(), &serialized_queue)?;
         Ok(())
     }
 }

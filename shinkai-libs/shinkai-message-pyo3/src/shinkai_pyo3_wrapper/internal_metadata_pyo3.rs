@@ -5,12 +5,13 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::InternalMetadata, shinkai_utils::encryption::EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 
 #[pymethods]
 impl PyInternalMetadata {
     #[new]
     fn new(
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         signature: String,

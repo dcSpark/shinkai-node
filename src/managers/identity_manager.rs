@@ -2,8 +2,8 @@ use super::identity_network_manager::IdentityNetworkManager;
 use crate::crypto_identities::shinkai_registry::ShinkaiRegistryError;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
-use crate::network::node_message_handlers::verify_message_signature;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use async_trait::async_trait;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -44,7 +44,9 @@ impl IdentityManager {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+                "Couldn't convert to strong db".to_string(),
+            ))?;
             let db = db_arc.lock().await;
             db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
@@ -52,7 +54,9 @@ impl IdentityManager {
         };
 
         let agents = {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+                "Couldn't convert to strong db".to_string(),
+            ))?;
             let db = db_arc.lock().await;
             db.get_all_agents()?
                 .into_iter()
@@ -60,7 +64,9 @@ impl IdentityManager {
                 .collect::<Vec<_>>()
         };
         {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError("Couldn't convert to strong db".to_string()))?;
+            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+                "Couldn't convert to strong db".to_string(),
+            ))?;
             let db = db_arc.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
         }
@@ -181,12 +187,18 @@ impl IdentityManager {
     }
 
     pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
-        let db_arc = self.db.upgrade().ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
+        let db_arc = self
+            .db
+            .upgrade()
+            .ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
         let db = db_arc.lock().await;
         db.get_all_agents()
     }
 
-    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String> {
+    pub async fn external_profile_to_global_identity(
+        &self,
+        full_profile_name: &str,
+    ) -> Result<StandardIdentity, String> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
@@ -214,7 +226,7 @@ impl IdentityManager {
                 ));
             }
         };
-        let node_name = full_identity_name.get_node_name().to_string();
+        let node_name = full_identity_name.get_node_name_string().to_string();
 
         let external_im = self.external_identity_manager.lock().await;
 
@@ -245,7 +257,10 @@ impl IdentityManager {
                 }
                 Err(_) => Err("Failed to get first address".to_string()),
             },
-            Err(_) => Err(format!("Failed to get identity network manager for profile name: {}", full_profile_name)),
+            Err(_) => Err(format!(
+                "Failed to get identity network manager for profile name: {}",
+                full_profile_name
+            )),
         }
     }
 }
@@ -266,7 +281,9 @@ impl IdentityManagerTrait for IdentityManager {
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
-    
+        eprintln!("search_identity > node_name: {}", node_name);
+        eprintln!("local node name: {}", self.local_node_name);
+
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
             self.search_local_identity(full_identity_name).await

@@ -26,7 +26,7 @@ use crate::{
 
 use super::{
     encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
-    shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+    shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
@@ -35,8 +35,8 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content("ACK".to_string())
@@ -51,8 +51,8 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         if message != "Ping" && message != "Pong" {
             return Err("Invalid message: must be 'Ping' or 'Pong'");
@@ -71,10 +71,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_creation = JobCreationInfo {
             scope,
@@ -105,10 +105,10 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        node_sender: ProfileName,
-        sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
+        node_sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
         let job_message = JobMessage {
@@ -143,8 +143,8 @@ impl ShinkaiMessageBuilder {
         content: String,
         files_inbox: String,
         my_signature_secret_key: SigningKey,
-        node_sender: ProfileName,
-        node_receiver: ProfileName,
+        node_sender: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
         let job_message = JobMessage {
@@ -185,8 +185,8 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content("terminate".to_string())
@@ -202,9 +202,9 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let registration_code_request = RegistrationCodeRequest { permissions, code_type };
 
@@ -228,9 +228,9 @@ impl ShinkaiMessageBuilder {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let profile_signature_pk = profile_signature_sk.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
@@ -268,9 +268,9 @@ impl ShinkaiMessageBuilder {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let my_device_signature_pk = my_device_signature_sk.verifying_key();
         let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
@@ -307,9 +307,9 @@ impl ShinkaiMessageBuilder {
         profile_encryption_sk: EncryptionStaticKey,
         profile_signature_sk: SigningKey,
         registration_name: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let my_device_signature_pk = my_device_signature_sk.verifying_key();
         let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
@@ -354,9 +354,9 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         symmetric_key_sk: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(
             my_subidentity_encryption_sk,
@@ -382,9 +382,9 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         full_profile: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(
             my_subidentity_encryption_sk,
@@ -412,9 +412,9 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
@@ -442,9 +442,9 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
@@ -470,9 +470,9 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         agent: SerializedAgent,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let add_agent = APIAddAgentRequest { agent };
 
@@ -494,9 +494,9 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         up_to_time: String,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let read_up_to_time = APIReadUpToTimeRequest { inbox_name, up_to_time };
@@ -518,9 +518,9 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         data: T,
-        sender_subidentity: String,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender_subidentity: ShinkaiNameString,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
         schema: MessageSchemaType,
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&data).map_err(|_| "Failed to serialize data to JSON")?;
@@ -550,8 +550,8 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
-        receiver: ProfileName,
+        sender: ShinkaiNameString,
+        receiver: ShinkaiNameString,
         error_msg: String,
     ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)

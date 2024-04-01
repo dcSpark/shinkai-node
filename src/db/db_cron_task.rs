@@ -49,7 +49,7 @@ impl ShinkaiDB {
         agent_id: String,
     ) -> Result<(), ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;
 
         // Use Topic::CronQueues with standard prefixes for each task attribute
@@ -99,7 +99,7 @@ impl ShinkaiDB {
 
     pub fn remove_cron_task(&mut self, profile: ShinkaiName, task_id: String) -> Result<(), ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;
 
         // Use Topic::CronQueues with standard prefixes for each task attribute
@@ -195,7 +195,7 @@ impl ShinkaiDB {
             // Assuming StandardIdentity has a method to get the profile name
             let profile_name = profile
                 .full_identity_name
-                .get_profile_name()
+                .get_profile_name_string()
                 .ok_or_else(|| ShinkaiDBError::InvalidAttributeName("Profile name not found".to_string()))?;
 
             // Construct the prefix for the cron tasks of this profile
@@ -244,7 +244,7 @@ impl ShinkaiDB {
         profile: ShinkaiName,
     ) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;
         let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
 
@@ -288,7 +288,7 @@ impl ShinkaiDB {
 
     pub fn get_cron_task(&self, profile: ShinkaiName, task_id: String) -> Result<CronTask, ShinkaiDBError> {
         let profile_name = profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;
         let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
 

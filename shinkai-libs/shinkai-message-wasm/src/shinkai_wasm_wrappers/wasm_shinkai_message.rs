@@ -1,5 +1,10 @@
 use anyhow::Result;
-use shinkai_message_primitives::{shinkai_message::shinkai_message::{ExternalMetadata, InternalMetadata, ShinkaiBody, MessageData, ShinkaiMessage, MessageBody, ShinkaiVersion}, shinkai_utils::encryption::EncryptionMethod};
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message::{
+        ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage, ShinkaiVersion,
+    },
+    shinkai_utils::{encryption::EncryptionMethod, shinkai_message_builder::ShinkaiNameString},
+};
 use wasm_bindgen::prelude::*;
 
 use super::shinkai_wasm_error::ShinkaiWasmError;
@@ -20,7 +25,7 @@ pub trait SerdeWasmMethods {
 
 pub trait InternalMetadataMethods {
     fn new(
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         encryption: String,
@@ -32,7 +37,7 @@ pub trait InternalMetadataMethods {
 
 impl InternalMetadataMethods for InternalMetadata {
     fn new(
-        sender_subidentity: String,
+        sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
         inbox: String,
         encryption: String,
@@ -83,16 +88,22 @@ pub trait ExternalMetadataMethods {
         Self: Sized;
 }
 
-
 impl ExternalMetadataMethods for ExternalMetadata {
-    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String, intra_sender: String) -> Self {
+    fn new(
+        sender: String,
+        recipient: String,
+        scheduled_time: String,
+        signature: String,
+        other: String,
+        intra_sender: String,
+    ) -> Self {
         ExternalMetadata {
             sender,
             recipient,
             scheduled_time,
             signature,
             other,
-            intra_sender
+            intra_sender,
         }
     }
 }

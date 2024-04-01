@@ -24,6 +24,7 @@ use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -106,7 +107,8 @@ fn subidentity_registration() {
             node1_fs_db_path,
             None,
             None,
-        );
+        )
+        .await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         let mut node2 = Node::new(
@@ -123,7 +125,8 @@ fn subidentity_registration() {
             node2_fs_db_path,
             None,
             None,
-        );
+        )
+        .await;
 
         // Printing
         eprintln!(
@@ -200,18 +203,20 @@ fn subidentity_registration() {
 
         eprintln!("Starting nodes");
         // Start node1 and node2
+        let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 1");
-            let _ = node1.await.start().await;
+            let _ = node1_clone.lock().await.start().await;
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
 
+        let node2_clone = Arc::clone(&node2);
         let node2_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 2");
-            let _ = node2.await.start().await;
+            let _ = node2_clone.lock().await.start().await;
         });
         let node2_abort_handler = node2_handler.abort_handle();
 
@@ -334,7 +339,7 @@ fn subidentity_registration() {
                     "Message from Node 2 to Node 1 is not body encrypted for Node 1 (receiver)"
                 );
 
-                let message_to_check = node2_last_messages[1].clone();
+                let message_to_check = node2_last_messages[0].clone();
                 // Check that the message is body encrypted
                 assert_eq!(
                     ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
@@ -371,7 +376,7 @@ fn subidentity_registration() {
                 );
 
                 assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().other,
+                    node2_last_messages[0].external_metadata.clone().other,
                     encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 2 sends the subidentity's pk in other"
                 );
@@ -381,7 +386,7 @@ fn subidentity_registration() {
                     encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 1 has the other's public key"
                 );
-                println!("Node 2 sent message to Node 1 successfully");
+                eprintln!("Node 2 sent message to Node 1 successfully");
             }
 
             // Create Node 1 tries to recreate the same subidentity
@@ -499,13 +504,12 @@ fn subidentity_registration() {
                     "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right recipient."
                 );
 
-                // Check that identity exists in identity manager
+                // TODO: Check that identity can be found using identity manager
             }
 
             // Send message from Node 1 subidentity to Node 2 subidentity
             {
                 eprintln!("Final trick. Sending a fat message from Node 1 subidentity to Node 2 subidentity");
-                // let message_content = "test encrypted body content from node1 subidentity to node2 subidentity".to_string();
                 let message_content = std::iter::repeat("hola-").take(10_000).collect::<String>();
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node1_profile_encryption_sk,
@@ -547,6 +551,7 @@ fn subidentity_registration() {
                 assert!(send_result.is_ok(), "Failed to send onionized message");
 
                 {
+                    let mut is_successful = false;
                     for _ in 0..30 {
                         let (res2_sender, res2_receiver) = async_channel::bounded(1);
                         node2_commands_sender
@@ -557,84 +562,59 @@ fn subidentity_registration() {
                             .await
                             .unwrap();
                         let node2_last_messages = res2_receiver.recv().await.unwrap();
-                        eprintln!("node2_last_messages: {:?}", node2_last_messages);
+                        // eprintln!("node2_last_messages: {:?}", node2_last_messages);
 
-                        match node2_last_messages[0].get_message_content() {
-                            Ok(message) => {
-                                if message == message_content {
-                                    break;
-                                }
-                            }
-                            Err(_) => {
-                                // nothing
-                            }
+                        let message_to_check = node2_last_messages[0].clone();
+
+                        // Check if the message is not body encrypted
+                        if ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()) {
+                            eprintln!("Message from Node 1 to Node 2 is not body encrypted as expected. Retrying...");
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
                         }
 
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        // Check if the content is encrypted
+                        if !ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()) {
+                            eprintln!(
+                                "Message from Node 1 to Node 2 is not content encrypted as expected. Retrying..."
+                            );
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+
+                        // Check sender and recipient subidentity
+                        if message_to_check.get_sender_subidentity().unwrap() != node1_profile_name.to_string() {
+                            eprintln!("The message does not have the right sender. Retrying...");
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+
+                        if message_to_check.get_recipient_subidentity().unwrap() != node2_profile_name.to_string() {
+                            eprintln!("The message does not have the right recipient. Retrying...");
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+
+                        // Decrypt the message content and check if it matches the expected content
+                        let message_to_check_content_unencrypted = message_to_check
+                            .clone()
+                            .decrypt_inner_layer(&node2_subencryption_sk_clone.clone(), &node1_profile_encryption_pk)
+                            .unwrap();
+
+                        if message_content != message_to_check_content_unencrypted.get_message_content().unwrap() {
+                            eprintln!("Decrypted message content does not match the expected content. Retrying...");
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+
+                        is_successful = true;
+                        break;
+                    }
+                    if !is_successful {
+                        assert!(is_successful, "Failed to send fat message from Node 1 to Node 2");
                     }
                 }
 
-                tokio::time::sleep(Duration::from_millis(1000)).await;
-                // Get Node2 messages
-                let (res2_sender, res2_receiver) = async_channel::bounded(1);
-                node2_commands_sender
-                    .send(NodeCommand::FetchLastMessages {
-                        limit: 2,
-                        res: res2_sender,
-                    })
-                    .await
-                    .unwrap();
-                let node2_last_messages = res2_receiver.recv().await.unwrap();
-
-                // println!("\n\n");
-                // println!("\n***********\n");
-                // println!("\n***********\n");
-                // println!("\n***********\n");
-                // println!("Node 1 last messages: {:?}", node1_last_messages);
-                // println!("\n\nNode 2 last messages: {:?}", node2_last_messages);
-
-                let message_to_check = node2_last_messages[0].clone();
-
-                // Check that the message is body encrypted
-                assert_eq!(
-                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
-                    false,
-                    "Message from Node 1 to Node 2 is body encrypted"
-                );
-
-                // Check that the content is encrypted
-                eprintln!("Message to check: {:?}", message_to_check.clone());
-                assert_eq!(
-                    ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
-                    true,
-                    "Message from Node 1 to Node 2 is content encrypted"
-                );
-
-                {
-                    assert_eq!(
-                        message_to_check.get_sender_subidentity().unwrap(),
-                        node1_profile_name.to_string(),
-                        "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
-                    );
-
-                    assert_eq!(
-                        message_to_check.get_recipient_subidentity().unwrap(),
-                        node2_profile_name.to_string(),
-                        "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
-                    );
-                }
-
-                let message_to_check_content_unencrypted = message_to_check
-                    .clone()
-                    .decrypt_inner_layer(&node2_subencryption_sk_clone.clone(), &node1_profile_encryption_pk)
-                    .unwrap();
-
-                // This check can't be done using a static value because the nonce is randomly generated
-                assert_eq!(
-                    message_content,
-                    message_to_check_content_unencrypted.get_message_content().unwrap(),
-                    "Node 1's profile send an encrypted message to Node 1's profile"
-                );
                 node1_abort_handler.abort();
                 node2_abort_handler.abort();
             }

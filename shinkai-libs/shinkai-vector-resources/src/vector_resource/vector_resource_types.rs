@@ -869,9 +869,13 @@ impl VRPath {
             .all(|(self_id, path_id)| self_id == path_id)
     }
 
-    /// Checks if the input path is an ancestor of self.
+    /// Checks if self is an ancestor of the input path.
     /// An ancestor path is one that is a prefix of self but is shorter.
     pub fn is_ancestor_path(&self, path: &VRPath) -> bool {
+        if self.path_ids.len() == 0 && path.path_ids.len() != 0 {
+            return true;
+        }
+
         if path.path_ids.len() >= self.path_ids.len() {
             return false;
         }

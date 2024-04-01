@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use crate::network::node_proxy::ProxyIdentity;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use std::{net::SocketAddr, collections::HashMap};
+use std::{collections::HashMap, net::SocketAddr};
 
 impl ShinkaiDB {
     pub fn insert_proxied_identities(
@@ -41,7 +41,7 @@ impl ShinkaiDB {
         let proxy_identities_cf = self.get_cf_handle(Topic::ProxyIdentities).unwrap();
 
         // Get the node name from the ShinkaiName, which will be used as the key
-        let key = shinkai_name.get_node_name();
+        let key = shinkai_name.get_node_name_string();
 
         // Get the value associated with the key from the "ProxyIdentities" column family
         match self.db.get_cf(proxy_identities_cf, key)? {
@@ -78,8 +78,8 @@ impl ShinkaiDB {
                 // If a value is found, deserialize it into a ProxyIdentity
                 let my_proxy: ProxyIdentity = bincode::deserialize(&value).map_err(|_| ShinkaiDBError::InvalidData)?;
                 Ok(Some(my_proxy))
-            },
-            None => Ok(None),  // If no value is found, return None
+            }
+            None => Ok(None), // If no value is found, return None
         }
     }
 }

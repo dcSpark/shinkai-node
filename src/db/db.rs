@@ -1,10 +1,7 @@
 use super::db_errors::ShinkaiDBError;
-use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
+use crate::network::ws_manager::WSUpdateHandler;
 use chrono::{DateTime, Utc};
-use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
-    LogLevel, Options, SingleThreaded, WriteBatch, DB,
-};
+use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, LogLevel, Options, DB};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -21,7 +18,7 @@ pub enum Topic {
     Toolkits,
     MessagesToRetry,
     TempFilesInbox,
-    JobQueues,
+    AnyQueuesPrefixed,
     CronQueues,
     NodeAndUsers,
     MessageBoxSymmetricKeys,
@@ -36,7 +33,7 @@ impl Topic {
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
             Self::TempFilesInbox => "temp_files_inbox",
-            Self::JobQueues => "jobs",
+            Self::AnyQueuesPrefixed => "any_queues_prefixed",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
@@ -78,7 +75,7 @@ impl ShinkaiDB {
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::TempFilesInbox.as_str().to_string(),
-                Topic::JobQueues.as_str().to_string(),
+                Topic::AnyQueuesPrefixed.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
                 Topic::NodeAndUsers.as_str().to_string(),
             ]
@@ -91,6 +88,8 @@ impl ShinkaiDB {
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
                 "temp_files_inbox" => Some(47),
+                "subscriptions" => Some(47),
+                "any_queues_prefixed" => Some(24),
                 _ => None, // No prefix extractor for other CFs
             };
             let db_opts = Self::create_cf_options(prefix_length);
@@ -182,9 +181,9 @@ impl ShinkaiDB {
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping
-    pub fn get_profile_name(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
+    pub fn get_profile_name_string(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
         profile
-            .get_profile_name()
+            .get_profile_name_string()
             .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
     }
 

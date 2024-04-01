@@ -1,7 +1,9 @@
+use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
+use std::collections::HashMap;
 use std::fmt;
 
 use super::shinkai_message::ShinkaiMessage;
@@ -36,7 +38,17 @@ pub enum MessageSchemaType {
     VecFsMoveItem,
     VecFsCopyItem,
     VecFsDeleteItem,
+    AvailableSharedItems,
+    AvailableSharedItemsResponse,
+    CreateShareableFolder,
+    UpdateShareableFolder,
+    UnshareFolder,
     ConvertFilesAndSaveToFolder,
+    SubscribeToSharedFolder,
+    SubscribeToSharedFolderResponse,
+    MySubscriptions,
+    SubscriptionRequiresTreeUpdate,
+    SubscriptionRequiresTreeUpdateResponse,
 }
 
 impl MessageSchemaType {
@@ -70,7 +82,17 @@ impl MessageSchemaType {
             "VecFsMoveItem" => Some(Self::VecFsMoveItem),
             "VecFsCopyItem" => Some(Self::VecFsCopyItem),
             "VecFsDeleteItem" => Some(Self::VecFsDeleteItem),
+            "AvailableSharedItems" => Some(Self::AvailableSharedItems),
+            "AvailableSharedItemsResponse" => Some(Self::AvailableSharedItemsResponse),
+            "CreateShareableFolder" => Some(Self::CreateShareableFolder),
+            "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
+            "UnshareFolder" => Some(Self::UnshareFolder),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
+            "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
+            "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
+            "MySubscriptions" => Some(Self::MySubscriptions),
+            "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
+            "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
             _ => None,
         }
     }
@@ -104,7 +126,17 @@ impl MessageSchemaType {
             Self::VecFsMoveItem => "VecFsMoveItem",
             Self::VecFsCopyItem => "VecFsCopyItem",
             Self::VecFsDeleteItem => "VecFsDeleteItem",
+            Self::AvailableSharedItems => "AvailableSharedItems",
+            Self::AvailableSharedItemsResponse => "AvailableSharedItemsResponse",
+            Self::CreateShareableFolder => "CreateShareableFolder",
+            Self::UpdateShareableFolder => "UpdateShareableFolder",
+            Self::UnshareFolder => "UnshareFolder",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
+            Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
+            Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
+            Self::MySubscriptions => "MySubscriptions",
+            Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
+            Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
             Self::Empty => "",
         }
     }
@@ -218,6 +250,44 @@ impl JobRecipient {
     }
 }
 
+/// Represents the response for a subscription request, providing details
+/// about the subscription status and any errors encountered.
+/// Note(Nico): I know things will be much simpler if we added SubscriptionId here
+/// but can't trust other nodes, we need to generate those on your side.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SubscriptionGenericResponse {
+    // Explanation of what is taking place with this generic response
+    pub subscription_details: String,
+    /// The overall status of the subscription request.
+    pub shared_folder: String,
+    /// The overall status of the subscription request.
+    pub status: SubscriptionResponseStatus,
+    /// Detailed error information, if any errors occurred during the process.
+    pub error: Option<SubscriptionError>,
+    /// Additional metadata related to the subscription, for extensibility.
+    pub metadata: Option<HashMap<String, String>>,
+}
+
+/// Represents the status of a subscription request.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum SubscriptionResponseStatus {
+    Success,
+    Failure,
+    Pending,
+    Request,
+}
+
+/// Provides structured error information for subscription requests.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SubscriptionError {
+    /// A code representing the type of error encountered.
+    pub code: String,
+    /// A human-readable message describing the error.
+    pub message: String,
+    /// Additional details or metadata about the error.
+    pub details: Option<HashMap<String, String>>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
     pub inbox: String,
@@ -313,6 +383,38 @@ pub struct APIVecFsMoveItem {
 pub struct APIVecFsCopyItem {
     pub origin_path: String,
     pub destination_path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIAvailableSharedItems {
+    pub path: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APISubscribeToSharedFolder {
+    pub path: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
+    pub payment: SubscriptionPayment,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APICreateShareableFolder {
+    pub path: String,
+    pub subscription_req: FolderSubscription,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIUpdateShareableFolder {
+    pub path: String,
+    pub subscription: FolderSubscription,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIUnshareFolder {
+    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -406,7 +406,8 @@ async fn test_vector_fs_saving_reading() {
     assert_eq!("shinkai_intro", res[0].as_trait_object().name());
 
     // Validate permissions checking in reader gen
-    let invalid_requester = ShinkaiName::from_node_and_profile("alice".to_string(), "mainProfile".to_string()).unwrap();
+    let invalid_requester =
+        ShinkaiName::from_node_and_profile_names("alice".to_string(), "mainProfile".to_string()).unwrap();
     let reader = vector_fs.new_reader(invalid_requester.clone(), VRPath::root(), default_test_profile());
     assert!(reader.is_err());
 

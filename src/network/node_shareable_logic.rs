@@ -58,7 +58,7 @@ pub async fn validate_message_main_logic(
                     &potentially_encrypted_msg.clone(),
                 )?;
 
-                // eprintln!("sender_name: {:?}", sender_name);
+                eprintln!("sender_name: {:?}", sender_name);
                 let sender_encryption_pk = match identity_manager
                     .lock()
                     .await
@@ -140,7 +140,7 @@ pub async fn validate_message_main_logic(
     };
 
     // We (currently) don't proxy external messages from other nodes to other nodes
-    if sender_name.get_node_name() != node_profile_name.get_node_name() {
+    if sender_name.get_node_name_string() != node_profile_name.get_node_name_string() {
         return Err(APIError {
             code: StatusCode::BAD_REQUEST.as_u16(),
             error: "Bad Request".to_string(),

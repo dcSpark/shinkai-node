@@ -527,6 +527,72 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/available_shared_items
+    let api_available_shared_items = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "available_shared_items")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_subscription_available_shared_items_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/my_subscriptions
+    let my_subscriptions = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "my_subscriptions")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_my_subscriptions_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/create_shareable_folder
+    let api_create_shareable_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "create_shareable_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_subscription_create_shareable_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/subscribe_to_shared_folder
+    let subscribe_to_shared_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "subscribe_to_shared_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                subscribe_to_shared_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/update_shareable_folder
+    let api_update_shareable_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_shareable_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_subscription_update_shareable_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/unshare_folder
+    let api_unshare_folder = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "unshare_folder")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_subscription_unshare_folder_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -570,6 +636,12 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(api_vec_fs_remove_folder)
         .or(api_vec_fs_retrieve_vector_resource)
         .or(api_convert_files_and_save_to_folder)
+        .or(api_available_shared_items)
+        .or(api_create_shareable_folder)
+        .or(api_update_shareable_folder)
+        .or(api_unshare_folder)
+        .or(my_subscriptions)
+        .or(subscribe_to_shared_folder)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -643,6 +715,66 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
             "error": "Error occurred while pinging all nodes"
         }))),
     }
+}
+
+async fn api_subscription_available_shared_items_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItems {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_subscription_create_shareable_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APICreateShareableFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_subscription_update_shareable_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateShareableFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_subscription_unshare_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIUnshareFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
 }
 
 async fn add_toolkit_handler(
@@ -870,6 +1002,21 @@ async fn api_convert_files_and_save_to_folder_handler(
     .await
 }
 
+async fn subscribe_to_shared_folder_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APISubscribeToSharedFolder {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 async fn change_nodes_name_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -880,6 +1027,21 @@ async fn change_nodes_name_handler(
             res: res_sender,
         }
     })
+    .await
+}
+
+async fn api_my_subscriptions_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIMySubscriptions {
+            msg: message,
+            res: res_sender,
+        },
+    )
     .await
 }
 

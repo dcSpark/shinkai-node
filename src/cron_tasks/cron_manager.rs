@@ -260,7 +260,7 @@ impl CronManager {
             format!("Processing job: {:?}", cron_job).as_str(),
         );
 
-        let shinkai_profile = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile)?;
+        let shinkai_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile)?;
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJob(cron_job.clone()),
             shinkai_profile: Some(shinkai_profile.clone()),

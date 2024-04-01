@@ -1,9 +1,8 @@
 use super::error::AgentError;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::agent::agent::Agent;
-pub use crate::agent::execution::job_execution_core::*;
 use crate::agent::job::JobLike;
-use crate::db::ShinkaiDB;
+use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
@@ -79,7 +78,14 @@ impl JobManager {
             }
         }
 
-        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
+        let db_prefix = "job_manager_abcdeprefix_";
+        let job_queue = JobQueueManager::<JobForProcessing>::new(
+            db.clone(),
+            Topic::AnyQueuesPrefixed.as_str(),
+            Some(db_prefix.to_string()),
+        )
+        .await
+        .unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")
@@ -297,7 +303,8 @@ impl JobManager {
                                 MessageSchemaType::JobCreationSchema => {
                                     let agent_name =
                                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
-                                    let agent_id = agent_name.get_agent_name().ok_or(AgentError::AgentNotFound)?;
+                                    let agent_id =
+                                        agent_name.get_agent_name_string().ok_or(AgentError::AgentNotFound)?;
                                     let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                         .map_err(|_| AgentError::ContentParseFailed)?;
                                     self.process_job_creation(job_creation, &profile, &agent_id).await

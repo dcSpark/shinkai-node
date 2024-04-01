@@ -28,12 +28,12 @@ impl ShinkaiNameWrapper {
     }
 
     #[wasm_bindgen(method, getter)]
-    pub fn get_node_name(&self) -> JsValue {
+    pub fn get_node_name_string(&self) -> JsValue {
         JsValue::from_str(&self.inner.node_name)
     }
 
     #[wasm_bindgen(method, getter)]
-    pub fn get_profile_name(&self) -> JsValue {
+    pub fn get_profile_name_string(&self) -> JsValue {
         match &self.inner.profile_name {
             Some(profile_name) => JsValue::from_str(profile_name),
             None => JsValue::NULL,

@@ -135,7 +135,7 @@ impl ShinkaiDB {
     pub fn main_profile_exists(&self, node_name: &str) -> Result<bool, ShinkaiDBError> {
         let profile_name = "main".to_string();
         let current_identity_name =
-            match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
+            match ShinkaiName::from_node_and_profile_names(node_name.to_string(), profile_name.to_lowercase()) {
                 Ok(name) => name,
                 Err(_) => {
                     return Err(ShinkaiDBError::InvalidIdentityName(format!(
@@ -184,7 +184,7 @@ impl ShinkaiDB {
         match code_info.code_type {
             RegistrationCodeType::Profile => {
                 let current_identity_name =
-                    match ShinkaiName::from_node_and_profile(node_name.to_string(), new_name.to_lowercase()) {
+                    match ShinkaiName::from_node_and_profile_names(node_name.to_string(), new_name.to_lowercase()) {
                         Ok(name) => name,
                         Err(_) => {
                             return Err(ShinkaiDBError::InvalidIdentityName(format!(
@@ -199,7 +199,8 @@ impl ShinkaiDB {
                         let (node_encryption_public_key, node_signature_public_key) =
                             self.get_local_node_keys(current_identity_name)?;
                         let full_identity_name =
-                            match ShinkaiName::from_node_and_profile(node_name.to_string(), new_name.to_string()) {
+                            match ShinkaiName::from_node_and_profile_names(node_name.to_string(), new_name.to_string())
+                            {
                                 Ok(name) => name,
                                 Err(_) => {
                                     return Err(ShinkaiDBError::InvalidIdentityName(format!(
@@ -232,16 +233,18 @@ impl ShinkaiDB {
                 }
             }
             RegistrationCodeType::Device(profile_name) => {
-                let current_identity_name =
-                    match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
-                        Ok(name) => name,
-                        Err(_) => {
-                            return Err(ShinkaiDBError::InvalidIdentityName(format!(
-                                "{}/{}",
-                                node_name, new_name
-                            )))
-                        }
-                    };
+                let current_identity_name = match ShinkaiName::from_node_and_profile_names(
+                    node_name.to_string(),
+                    profile_name.to_lowercase(),
+                ) {
+                    Ok(name) => name,
+                    Err(_) => {
+                        return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                            "{}/{}",
+                            node_name, new_name
+                        )))
+                    }
+                };
 
                 let profile = match self.get_profile(current_identity_name.clone())? {
                     None if profile_name == "main" => {
@@ -250,7 +253,7 @@ impl ShinkaiDB {
                             self.get_local_node_keys(current_identity_name)?;
 
                         let full_identity_name =
-                            match ShinkaiName::from_node_and_profile(node_name.to_string(), "main".to_string()) {
+                            match ShinkaiName::from_node_and_profile_names(node_name.to_string(), "main".to_string()) {
                                 Ok(name) => name,
                                 Err(_) => {
                                     return Err(ShinkaiDBError::InvalidIdentityName(format!("{}/main", node_name)))
@@ -282,7 +285,7 @@ impl ShinkaiDB {
                     Some(existing_profile) => existing_profile,
                 };
 
-                let full_identity_name = match ShinkaiName::from_node_and_profile_and_type_and_name(
+                let full_identity_name = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
                     node_name.to_string(),
                     profile_name.to_string(),
                     ShinkaiSubidentityType::Device,
@@ -402,7 +405,7 @@ impl ShinkaiDB {
         encryption_pk: EncryptionPublicKey,
         signature_pk: VerifyingKey,
     ) -> Result<(), ShinkaiDBError> {
-        let node_name = my_node_identity_name.get_node_name().to_string();
+        let node_name = my_node_identity_name.get_node_name_string().to_string();
 
         // Use Topic::NodeAndUsers with appropriate prefixes for node keys
         let cf_node_and_users = self
@@ -442,7 +445,7 @@ impl ShinkaiDB {
         &self,
         my_node_identity_name: ShinkaiName,
     ) -> Result<(EncryptionPublicKey, VerifyingKey), ShinkaiDBError> {
-        let node_name = my_node_identity_name.get_node_name().to_string();
+        let node_name = my_node_identity_name.get_node_name_string().to_string();
 
         // Use Topic::NodeAndUsers for both encryption and signature keys with specific prefixes
         let cf_node_and_users = self

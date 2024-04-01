@@ -1,3 +1,4 @@
+use super::vector_fs_permissions::PathPermission;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
@@ -131,6 +132,33 @@ impl VectorFS {
             internals
                 .permissions_index
                 .copy_path_permission(writer.path.clone(), destination_path.clone())?;
+        }
+
+        // Determine and copy permissions from the parent of the new copied folder
+        let parent_path = destination_path.parent_path();
+        let (read_permission, write_permission) = if parent_path == VRPath::root() {
+            (ReadPermission::Private, WritePermission::Private)
+        } else {
+            let parent_permissions = self
+                .get_profile_fs_internals(&writer.profile)?
+                .permissions_index
+                .get_path_permission(&parent_path)
+                .unwrap_or(PathPermission {
+                    read_permission: ReadPermission::Private,
+                    write_permission: WritePermission::Private,
+                    whitelist: HashMap::new(),
+                });
+            (parent_permissions.read_permission, parent_permissions.write_permission)
+        };
+
+        // Set permissions for the new copied folder
+        {
+            let internals = self.get_profile_fs_internals(&writer.profile)?;
+            internals.permissions_index.insert_path_permission(
+                destination_child_path.clone(),
+                read_permission,
+                write_permission,
+            )?;
         }
 
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
@@ -303,11 +331,32 @@ impl VectorFS {
         // Save the copied item w/new resource id into the new destination w/permissions
         let new_item =
             self._add_vr_header_to_core_resource(&destination_writer, header, item_metadata, current_datetime, false)?;
+
+        // Determine and set permissions based on the parent of the destination path
+        let parent_path = destination_path.parent_path();
+        let (read_permission, write_permission) = if parent_path == VRPath::root() {
+            (ReadPermission::Private, WritePermission::Private)
+        } else {
+            let parent_permissions = self
+                .get_profile_fs_internals(&writer.profile)?
+                .permissions_index
+                .get_path_permission(&parent_path)
+                .unwrap_or(PathPermission {
+                    read_permission: ReadPermission::Private,
+                    write_permission: WritePermission::Private,
+                    whitelist: HashMap::new(),
+                });
+            (parent_permissions.read_permission, parent_permissions.write_permission)
+        };
+
+        // Set permissions for the new copied item
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
-            internals
-                .permissions_index
-                .copy_path_permission(writer.path.clone(), new_item.path.clone())?;
+            internals.permissions_index.insert_path_permission(
+                new_item.path.clone(),
+                read_permission,
+                write_permission,
+            )?;
         }
 
         // Save fs internals, new VR, and new SFM to the DB
@@ -340,7 +389,7 @@ impl VectorFS {
         }
 
         // If the item was moved successfully in memory, then commit to the DB
-        let move_result = self._internal_move_item(writer, &destination_writer, current_datetime);
+        let move_result = self._internal_move_item(writer, &destination_writer, current_datetime, destination_path);
         if let Ok(new_item) = move_result {
             let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
             let mut write_batch = writer.new_write_batch()?;
@@ -361,6 +410,7 @@ impl VectorFS {
         writer: &VFSWriter,
         destination_writer: &VFSWriter,
         current_datetime: DateTime<Utc>,
+        destination_path: VRPath,
     ) -> Result<FSItem, VectorFSError> {
         // Remove the existing item
         let (item_node, _) = self._remove_node_from_core_resource(writer)?;
@@ -369,11 +419,32 @@ impl VectorFS {
         // And save the item into the new destination w/permissions
         let new_item =
             self._add_vr_header_to_core_resource(&destination_writer, header, item_metadata, current_datetime, false)?;
+
+        // Determine and set permissions based on the parent of the destination path
+        let (read_permission, write_permission) = if destination_path == VRPath::root() {
+            (ReadPermission::Private, WritePermission::Private)
+        } else {
+            let parent_permissions = self
+                .get_profile_fs_internals(&writer.profile)?
+                .permissions_index
+                .get_path_permission(&destination_path)
+                .unwrap_or(PathPermission {
+                    read_permission: ReadPermission::Private,
+                    write_permission: WritePermission::Private,
+                    whitelist: HashMap::new(),
+                });
+            (parent_permissions.read_permission, parent_permissions.write_permission)
+        };
+
+        // Set permissions for the new moved item
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
-            internals
-                .permissions_index
-                .copy_path_permission(writer.path.clone(), new_item.path.clone())?;
+            internals.permissions_index.insert_path_permission(
+                new_item.path.clone(),
+                read_permission,
+                write_permission,
+            )?;
+            // Remove the original item's permissions
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
         Ok(new_item)
@@ -405,7 +476,7 @@ impl VectorFS {
         }
 
         // If the folder was moved successfully in memory, then commit to the DB
-        let move_result = self.internal_move_folder(writer, &destination_writer, current_datetime);
+        let move_result = self.internal_move_folder(writer, &destination_writer, current_datetime, destination_path);
         if let Ok(new_folder) = move_result {
             let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
             let mut write_batch = writer.new_write_batch()?;
@@ -426,21 +497,44 @@ impl VectorFS {
         writer: &VFSWriter,
         destination_writer: &VFSWriter,
         current_datetime: DateTime<Utc>,
+        destination_path: VRPath,
     ) -> Result<FSFolder, VectorFSError> {
         // Copy the folder to the new destination
         let new_folder = self.internal_copy_folder(writer, destination_writer, current_datetime)?;
 
-        // Remove the existing folder
-        self._remove_node_from_core_resource(writer)?;
+        // Determine and set permissions based on the parent of the destination path
+        let (read_permission, write_permission) = if destination_path == VRPath::root() {
+            (ReadPermission::Private, WritePermission::Private)
+        } else {
+            let parent_permissions = self
+                .get_profile_fs_internals(&writer.profile)?
+                .permissions_index
+                .get_path_permission(&destination_path)
+                .unwrap_or(PathPermission {
+                    read_permission: ReadPermission::Private,
+                    write_permission: WritePermission::Private,
+                    whitelist: HashMap::new(),
+                });
+            (parent_permissions.read_permission, parent_permissions.write_permission)
+        };
 
-        // Copy over/Remove the original folder's permissions
+        // Set permissions for the new moved folder
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
-            internals
-                .permissions_index
-                .copy_path_permission(writer.path.clone(), new_folder.path.clone())?;
+            internals.permissions_index.insert_path_permission(
+                new_folder.path.clone(),
+                read_permission,
+                write_permission,
+            )?;
+            // Remove the original folder's permissions
             internals.permissions_index.remove_path_permission(writer.path.clone());
         }
+
+        // Remove the existing folder
+        println!("Deleting node from core resource.");
+        self._remove_node_from_core_resource(writer)?;
+        println!("Deleted.");
+
         Ok(new_folder)
     }
 
@@ -523,14 +617,33 @@ impl VectorFS {
             self._add_existing_vr_to_core_resource(writer, new_vr, embedding, metadata, current_datetime)?;
         let new_folder_path = new_folder.path.clone();
 
-        // Add private read/write permission for the folder path
+        // Determine permissions based on whether the parent folder is root
+        let read_permission;
+        let write_permission;
+        if writer.path == VRPath::root() {
+            read_permission = ReadPermission::Private;
+            write_permission = WritePermission::Private;
+        } else {
+            // Read the permissions of the parent folder
+            let parent_permissions = self
+                .get_profile_fs_internals(&writer.profile)?
+                .permissions_index
+                .get_path_permission(&writer.path)
+                .unwrap_or(PathPermission {
+                    read_permission: ReadPermission::Private,
+                    write_permission: WritePermission::Private,
+                    whitelist: HashMap::new(),
+                });
+            read_permission = parent_permissions.read_permission;
+            write_permission = parent_permissions.write_permission;
+        }
+
+        // Add read/write permission for the folder path
         {
             let internals = self.get_profile_fs_internals(&writer.profile)?;
-            internals.permissions_index.insert_path_permission(
-                new_folder_path,
-                ReadPermission::Whitelist,
-                WritePermission::Whitelist,
-            )?;
+            internals
+                .permissions_index
+                .insert_path_permission(new_folder_path, read_permission, write_permission)?;
         }
 
         // Save the FSInternals into the FSDB
@@ -540,6 +653,59 @@ impl VectorFS {
         self.db.write_pb(write_batch)?;
 
         Ok(new_folder)
+    }
+
+    /// Updates the permissions of a folder, all its subfolders, and subitems recursively.
+    pub fn update_permissions_recursively(
+        &mut self,
+        writer: &VFSWriter,
+        read_permission: ReadPermission,
+        write_permission: WritePermission,
+    ) -> Result<(), VectorFSError> {
+        // Ensure the path points to a folder before proceeding
+        self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
+
+        // Retrieve the folder node
+        let (folder_node, _) = self._get_node_from_core_resource(writer)?;
+        let mut folder_resource = folder_node.node.get_vector_resource_content()?.clone();
+
+        // Update permissions for the current folder
+        {
+            let internals = self.get_profile_fs_internals(&writer.profile)?;
+            internals.permissions_index.insert_path_permission(
+                writer.path.clone(),
+                read_permission.clone(),
+                write_permission.clone(),
+            )?;
+        }
+
+        // Recursively update permissions for all child nodes
+        if let NodeContent::Resource(_) = folder_node.node.content {
+            let nodes_embeddings = folder_resource.as_trait_object_mut().remove_root_nodes()?;
+            for (node, _) in nodes_embeddings {
+                let child_writer = writer.new_writer_copied_data(writer.path.push_cloned(node.id.clone()), self)?;
+                match node.content {
+                    NodeContent::Resource(res) => {
+                        self.update_permissions_recursively(
+                            &child_writer,
+                            read_permission.clone(),
+                            write_permission.clone(),
+                        )?;
+                    }
+                    NodeContent::VRHeader(_) => {
+                        let internals = self.get_profile_fs_internals(&child_writer.profile)?;
+                        internals.permissions_index.insert_path_permission(
+                            child_writer.path.clone(),
+                            read_permission.clone(),
+                            write_permission.clone(),
+                        )?;
+                    }
+                    _ => continue,
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// TODO: Propagate the merkle hashes from the folders/items in the VRPack, and save them into the VectorFS. Requires reworking whole logic here.
@@ -588,7 +754,7 @@ impl VectorFS {
         resource: BaseVectorResource,
         source_file_map: Option<SourceFileMap>,
     ) -> Result<FSItem, VectorFSError> {
-        let batch = ProfileBoundWriteBatch::new(&writer.profile);
+        let batch = ProfileBoundWriteBatch::new(&writer.profile); // QuestionTo(@Rob): is this doing anything?
         let mut resource = resource;
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
@@ -600,7 +766,7 @@ impl VectorFS {
         let mut new_item = None;
 
         {
-            let internals = self.get_profile_fs_internals(&writer.profile)?;
+            let internals = self.get_profile_fs_internals(&writer.profile)?; // QuestionTo(@Rob): is this doing anything?
 
             // Ensure path of writer points at a folder before proceeding
             self.validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
@@ -656,13 +822,31 @@ impl VectorFS {
 
         // Now that we've inserted the the new item into the fs internals core VR proceed forward
         if let Some(item) = new_item {
-            // Add private read/write permission for the new item path
+            // Determine permissions based on whether the parent folder is root
+            // This shouldn't be possible now but just to play it safe
+            let (read_permission, write_permission) = if writer.path == VRPath::root() {
+                (ReadPermission::Private, WritePermission::Private)
+            } else {
+                // Read the permissions of the parent folder
+                let parent_permissions = self
+                    .get_profile_fs_internals(&writer.profile)?
+                    .permissions_index
+                    .get_path_permission(&writer.path)
+                    .unwrap_or(PathPermission {
+                        read_permission: ReadPermission::Private,
+                        write_permission: WritePermission::Private,
+                        whitelist: HashMap::new(),
+                    });
+                (parent_permissions.read_permission, parent_permissions.write_permission)
+            };
+
+            // Add read/write permission for the new item path
             {
                 let internals = self.get_profile_fs_internals(&writer.profile)?;
                 internals.permissions_index.insert_path_permission(
                     item.path.clone(),
-                    ReadPermission::Whitelist,
-                    WritePermission::Whitelist,
+                    read_permission,
+                    write_permission,
                 )?;
             }
 
