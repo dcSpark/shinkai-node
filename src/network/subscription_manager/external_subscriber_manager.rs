@@ -5,6 +5,7 @@ use crate::managers::IdentityManager;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
+use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_error::VectorFSError;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
@@ -24,7 +25,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -86,7 +87,7 @@ const NUM_THREADS: usize = 2;
 pub struct SubscriptionWithTree {
     pub subscription: ShinkaiSubscription,
     pub subscriber_folder_tree: FSEntryTree,
-    pub symmetric_key: Option<String>,
+    pub symmetric_key: String,
 }
 
 impl Ord for SubscriptionWithTree {
@@ -438,52 +439,6 @@ impl ExternalSubscriberManager {
             );
             eprintln!("process_subscription_job_message_queued >> diff: {:?}", diff);
 
-            if subscription_with_tree.symmetric_key.is_none() {
-                eprintln!("process_subscription_job_message_queued >> No symmetric key found");
-
-                // TODO: refactor this
-                // Create message to request updated state
-                if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
-                    let subscriber_node = subscription_with_tree.subscription.subscriber_node.clone();
-                    let identity_manager = identity_manager_lock.lock().await;
-                    let standard_identity = identity_manager
-                        .external_profile_to_global_identity(&subscriber_node.get_node_name_string())
-                        .await?;
-                    drop(identity_manager);
-
-                    let receiver_public_key = standard_identity.node_encryption_public_key;
-
-                    // Update to use SubscriptionRequiresTreeUpdateResponse instead
-                    let msg = ShinkaiMessageBuilder::p2p_streamer_request_inbox_creation_for_update(
-                        shared_folder,
-                        clone_static_secret_key(&my_encryption_secret_key),
-                        my_signature_secret_key,
-                        receiver_public_key,
-                        node_name.get_node_name_string(),
-                        subscription_with_tree.subscription.streaming_profile.clone(),
-                        subscriber_node.get_node_name_string(),
-                        subscription_with_tree.subscription.subscriber_profile.clone(),
-                    )
-                    .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
-
-                    MySubscriptionsManager::send_message_to_peer(
-                        msg,
-                        db.clone(),
-                        standard_identity,
-                        my_encryption_secret_key.clone(),
-                        maybe_identity_manager.clone(),
-                    )
-                    .await?;
-                } else {
-                    return Err(SubscriberManagerError::IdentityManagerUnavailable);
-                }
-
-                return Ok(format!(
-                    "Job {} processed successfully",
-                    subscription_with_tree.subscription.subscription_id.get_unique_id()
-                ));
-            }
-
             // If at least one diff was found, retrieve the VRPack for the path
             if !diff.children.is_empty() {
                 eprintln!(
@@ -515,34 +470,75 @@ impl ExternalSubscriberManager {
                 let reader = perms_writer
                     .new_reader_copied_data(vr_path_shared_folder, &mut vector_fs_inst)
                     .unwrap();
-                let vrpack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
+                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
 
-                vrpack
-                    .resource
-                    .as_trait_object()
-                    .print_all_nodes_exhaustive(None, true, false);
+                eprintln!("Sending vr_pack");
 
-                let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
+                if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
+                    let identity_manager = identity_manager_lock.lock().await;
+                    let standard_identity = identity_manager
+                        .external_profile_to_global_identity(
+                            &subscription_with_tree
+                                .subscription
+                                .subscriber_node
+                                .get_node_name_string(),
+                        )
+                        .await?;
+                    drop(identity_manager);
 
-                // eprintln!(
-                //     "process_subscription_job_message_queued>> unpacked_kais: {:?}",
-                //     unpacked_kais
-                // );
+                    let result = Self::send_vr_pack_to_peer(
+                        vr_pack,
+                        subscription_id,
+                        standard_identity,
+                        subscription_with_tree.symmetric_key,
+                    )
+                    .await;
 
-                // TODO: send this to the subscriber
-                // Step 1.- share a new symmetric key
-                // Step 2.- encrypt the vrpack with the symmetric key and send it to the subscriber
+                    eprintln!("process_subscription_job_message_queued >> result: {:?}", result);
+
+                    // TODO: Update db ?
+                } else {
+                    eprintln!("Identity manager is not available");
+                    return Err(SubscriberManagerError::IdentityManagerUnavailable);
+                }
             }
-
-            // TODO: here call the network manager to send the vrpack
-            // TODO: in network_handlers add a new type SchemaType (needs to be added) to handle the vrpack
-            // TODO: create a new fn in my_subscription_manager that gets called form the network_handlers and unpack the vrpack
 
             Ok(format!(
                 "Job {} processed successfully",
                 subscription_with_tree.subscription.subscription_id.get_unique_id()
             ))
         })
+    }
+
+    pub async fn send_vr_pack_to_peer(
+        vr_pack: VRPack,
+        subscription_id: SubscriptionId,
+        receiver_identity: StandardIdentity,
+        symmetric_key: String,
+    ) -> Result<(), SubscriberManagerError> {
+        eprintln!("send_vrpack_to_peer>: vrpack len: {:?}", vr_pack.merkle_root());
+        eprintln!(
+            "send_vrpack_to_peer>: {}",
+            receiver_identity.full_identity_name.extract_node()
+        );
+        eprintln!("send_vrpack_to_peer>: {:?}", receiver_identity.addr);
+        eprintln!("send_vrpack_to_peer>: {:?}", receiver_identity.full_identity_name);
+
+        // Extract the receiver's socket address and profile name from the StandardIdentity
+        let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
+            SubscriberManagerError::AddressUnavailable(
+                format!(
+                    "Shinkai ID doesn't have a valid socket address: {}",
+                    receiver_identity.full_identity_name.extract_node()
+                )
+                .to_string(),
+            )
+        })?;
+
+        // Call the send_encrypted_vrkaipath_pairs function
+        Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr).await;
+
+        Ok(())
     }
 
     pub async fn process_subscription_queue(
@@ -1190,6 +1186,7 @@ impl ExternalSubscriberManager {
         subscriber_folder_tree: FSEntryTree,
         subscriber_node: ShinkaiName,
         subscriber_profile: String,
+        symmetric_key: String,
     ) -> Result<(), SubscriberManagerError> {
         eprintln!("subscriber_current_state_response> Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}", subscription_unique_id, subscriber_node, subscriber_folder_tree);
         shinkai_log(
@@ -1245,7 +1242,7 @@ impl ExternalSubscriberManager {
         let subscription_with_tree = SubscriptionWithTree {
             subscription,
             subscriber_folder_tree,
-            symmetric_key: None,
+            symmetric_key,
         };
 
         {

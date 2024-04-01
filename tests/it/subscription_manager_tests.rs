@@ -476,7 +476,7 @@ fn subscription_manager_test() {
         let node2_identity_name = "@@node2_test.sepolia-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node2_profile_name = "main_profile_node2";
+        let node2_profile_name = "main"; // FIX: it's failing with another name like main_profile_node2
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);

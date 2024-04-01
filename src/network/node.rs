@@ -1,8 +1,10 @@
-use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
-use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData};
+use super::network_manager::network_job_manager::{
+    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai,
+};
+use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use super::subscription_manager::my_subscription_manager::{self, MySubscriptionsManager};
+use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
@@ -12,6 +14,10 @@ use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
 use crate::vector_fs::vector_fs::VectorFS;
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -19,8 +25,10 @@ use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
+use rand::Rng;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
@@ -33,6 +41,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::VRPack;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -760,32 +769,56 @@ impl Node {
             let network_job_manager = Arc::clone(&self.network_job_manager);
 
             tokio::spawn(async move {
-                let mut buffer = Vec::new();
                 let mut socket = socket.lock().await;
-                socket.read_to_end(&mut buffer).await.unwrap();
+                let mut header = [0u8; 1]; // Buffer for the message type identifier
+                if socket.read_exact(&mut header).await.is_ok() {
+                    let mut buffer = Vec::new();
+                    if socket.read_to_end(&mut buffer).await.is_ok() {
+                        let message_type = match header[0] {
+                            0x01 => NetworkMessageType::ShinkaiMessage,
+                            0x02 => NetworkMessageType::VRKaiPathPair,
+                            // Add cases for other message types as needed
+                            _ => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    "Received message with unknown type identifier",
+                                );
+                                return; // Skip processing for unknown message types
+                            }
+                        };
 
-                let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                let network_job = NetworkJobQueue {
-                    receiver_address: addr,
-                    unsafe_sender_address: destination_socket.clone(),
-                    content: buffer.clone(),
-                    date_created: Utc::now(),
-                };
+                        let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                        let network_job = NetworkJobQueue {
+                            receiver_address: addr,
+                            unsafe_sender_address: destination_socket,
+                            message_type,
+                            content: buffer.clone(),
+                            date_created: Utc::now(),
+                        };
 
-                let mut network_job_manager = network_job_manager.lock().await;
-                if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to add network job to queue: {}", e),
-                    );
-                }
-                if let Err(e) = socket.flush().await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to flush the socket: {}", e),
-                    );
+                        let mut network_job_manager = network_job_manager.lock().await;
+                        if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to add network job to queue: {}", e),
+                            );
+                        }
+                        if let Err(e) = socket.flush().await {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to flush the socket: {}", e),
+                            );
+                        }
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            "Failed to read the message type identifier",
+                        );
+                    }
                 }
                 conn_limiter_clone.decrement_connection(&ip).await;
             });
@@ -836,7 +869,7 @@ impl Node {
 
     // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
-        return self.peers.clone();
+        self.peers.clone()
     }
 
     // TODO: Add a new send that schedules messages to be sent at a later time.
@@ -867,7 +900,9 @@ impl Node {
             match stream {
                 Ok(mut stream) => {
                     let encoded_msg = message.encode_message().unwrap();
-                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let mut data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                    data_to_send.extend_from_slice(&encoded_msg);
+                    let _ = stream.write_all(&data_to_send).await;
                     let _ = stream.flush().await;
                     shinkai_log(
                         ShinkaiLogOption::Node,
@@ -896,13 +931,13 @@ impl Node {
                     let retry_count = retry.unwrap_or(0) + 1;
                     let db = db.lock().await;
                     let retry_message = RetryMessage {
-                        retry_count: retry_count,
+                        retry_count,
                         message: message.as_ref().clone(),
                         peer: peer.clone(),
                         save_to_db_flag,
                     };
                     // Calculate the delay for the next retry
-                    let delay_seconds = (4 as u64).pow(retry_count - 1);
+                    let delay_seconds = 4_u64.pow(retry_count - 1);
                     let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
                     db.add_message_to_retry(&retry_message, retry_time).unwrap();
                 }
@@ -910,79 +945,58 @@ impl Node {
         });
     }
 
-    pub fn subscriber_test_fn(&self) -> String {
-        // return encryption key
-        let encryption_secret_key = self.encryption_secret_key.clone();
-        encryption_secret_key_to_string(encryption_secret_key)
-    }
-
-    pub fn send_file(
-        message: ShinkaiMessage,
-        my_encryption_sk: Arc<EncryptionStaticKey>,
-        peer: (SocketAddr, ProfileName),
-        db: Arc<Mutex<ShinkaiDB>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-        save_to_db_flag: bool,
-        retry: Option<u32>,
+    pub async fn send_encrypted_vrpack(
+        vr_pack: VRPack,
+        subscription_id: SubscriptionId,
+        encryption_key_hex: String,
+        peer: SocketAddr,
     ) {
-        // TODO: redo all of this
-        // Step 1: send symmetric key to peer
-        // Step 2: convert file to chunks
-        // Step 3: encrypt and send chunks to peer
-
-        // TODO: the receiver should delete the inbox after the file is received
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("Sending {:?} to {:?}", message, peer),
-        );
-        let address = peer.0;
-        let message = Arc::new(message);
-
         tokio::spawn(async move {
-            let stream = TcpStream::connect(address).await;
-            match stream {
+            // Serialize only the VRKaiPath pairs
+            let serialized_data = bincode::serialize(&vr_pack).unwrap();
+            let encryption_key = hex::decode(encryption_key_hex.clone()).unwrap();
+            let key = GenericArray::from_slice(&encryption_key);
+            let cipher = Aes256Gcm::new(key);
+
+            // Generate a random nonce
+            let mut nonce = [0u8; 12];
+            rand::thread_rng().fill(&mut nonce);
+            let nonce_generic = GenericArray::from_slice(&nonce);
+
+            // Encrypt the data
+            let encrypted_data = cipher
+                .encrypt(nonce_generic, serialized_data.as_ref())
+                .expect("encryption failure!");
+
+            // Calculate the hash of the symmetric key
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(encryption_key_hex.as_bytes());
+            let result = hasher.finalize();
+            let symmetric_key_hash = hex::encode(result.as_bytes());
+
+            // Create the NetworkVRKai struct with the encrypted pairs, subscription ID, nonce, and symmetric key hash
+            let vr_kai = NetworkVRKai {
+                enc_pairs: encrypted_data,
+                subscription_id,
+                nonce: hex::encode(nonce),
+                symmetric_key_hash,
+            };
+            let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
+
+            // Prepend nonce to the encrypted data to use it during decryption
+            let mut data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
+            data_to_send.extend_from_slice(&vr_kai_serialized);
+
+            // Convert to Vec<u8> to send over TCP
+            let stream_result = TcpStream::connect(peer).await;
+            match stream_result {
                 Ok(mut stream) => {
-                    let encoded_msg = message.encode_message().unwrap();
-                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let _ = stream.write_all(&data_to_send).await;
                     let _ = stream.flush().await;
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Sent message to {}", stream.peer_addr().unwrap()),
-                    );
-                    if save_to_db_flag {
-                        let _ = Node::save_to_db(
-                            true,
-                            &message,
-                            Arc::clone(&my_encryption_sk).as_ref().clone(),
-                            db.clone(),
-                            maybe_identity_manager.clone(),
-                        )
-                        .await;
-                    }
+                    println!("Encrypted data sent to {}", peer);
                 }
                 Err(e) => {
-                    eprintln!("Failed to connect to {}: {}", address, e);
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to connect to {}: {}", address, e),
-                    );
-                    // If retry is enabled, add the message to retry list on failure
-                    let retry_count = retry.unwrap_or(0) + 1;
-                    let db = db.lock().await;
-                    let retry_message = RetryMessage {
-                        retry_count: retry_count,
-                        message: message.as_ref().clone(),
-                        peer: peer.clone(),
-                        save_to_db_flag,
-                    };
-                    // Calculate the delay for the next retry
-                    let delay_seconds = (4 as u64).pow(retry_count - 1);
-                    let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                    db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                    eprintln!("Failed to connect to {}: {}", peer, e);
                 }
             }
         });
@@ -1073,7 +1087,7 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let mut db = db.lock().await;
+        let db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
         match db_result {
             Ok(_) => (),

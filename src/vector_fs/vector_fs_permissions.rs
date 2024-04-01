@@ -213,6 +213,7 @@ impl PermissionsIndex {
 
         loop {
             if let Some(path_permission_json) = self.fs_permissions.get(&path) {
+                eprintln!("path_permission_json: {:?}", path_permission_json);
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
@@ -416,7 +417,10 @@ impl VectorFS {
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
+            eprintln!("path: {:?}", path);
+            eprintln!("internals_map: {:?}", self.internals_map);
             let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            eprintln!("fs_internals: {:?}", fs_internals);
             if fs_internals
                 .permissions_index
                 .validate_read_access(&name_to_check, &path)

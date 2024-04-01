@@ -2,17 +2,22 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
-use crate::network::subscription_manager::my_subscription_manager::{self, MySubscriptionsManager};
-use crate::network::Node;
+use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::vector_fs::vector_fs::VectorFS;
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -29,10 +34,25 @@ use super::network_handlers::{
 };
 use super::network_job_manager_error::NetworkJobQueueError;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkVRKai {
+    pub enc_pairs: Vec<u8>, // encrypted VRPack
+    pub subscription_id: SubscriptionId,
+    pub nonce: String,
+    pub symmetric_key_hash: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub enum NetworkMessageType {
+    ShinkaiMessage,
+    VRKaiPathPair,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct NetworkJobQueue {
     pub receiver_address: SocketAddr,
     pub unsafe_sender_address: SocketAddr,
+    pub message_type: NetworkMessageType,
     pub content: Vec<u8>,
     pub date_created: DateTime<Utc>,
 }
@@ -329,22 +349,61 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<String, NetworkJobQueueError> {
-        // TODO: Remove later
-        eprintln!("Processing job {:?}", job.receiver_address.to_string());
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            format!(
+                "Processing job {:?} and type {:?}",
+                job.receiver_address.to_string(),
+                job.message_type
+            )
+            .as_str(),
+        );
 
-        let _ = Self::handle_message_internode(
-            job.receiver_address,
-            job.unsafe_sender_address,
-            &job.content,
-            my_node_profile_name.get_node_name_string(),
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            db,
-            identity_manager,
-            my_subscription_manager,
-            external_subscription_manager,
-        )
-        .await;
+        match job.message_type {
+            NetworkMessageType::ShinkaiMessage => {
+                let _ = Self::handle_message_internode(
+                    job.receiver_address,
+                    job.unsafe_sender_address,
+                    &job.content,
+                    my_node_profile_name.get_node_name_string(),
+                    my_encryption_secret_key,
+                    my_signature_secret_key,
+                    db.clone(),
+                    identity_manager.clone(),
+                    my_subscription_manager.clone(),
+                    external_subscription_manager.clone(),
+                )
+                .await;
+            }
+            NetworkMessageType::VRKaiPathPair => {
+                eprintln!("Processing VRKaiPathPair message type");
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    "Processing VRKaiPathPair message type",
+                );
+
+                // Deserialize job.content into NetworkVRKai
+                // Deserialize job.content into NetworkVRKai using bincode
+                let network_vr_kai: Result<NetworkVRKai, _> = bincode::deserialize(&job.content);
+                let network_vr_kai = network_vr_kai.map_err(|_| NetworkJobQueueError::ContentParseFailed)?;
+                eprintln!("NetworkVRKai subscription_id: {:?}", network_vr_kai.subscription_id);
+
+                let _ = Self::handle_vr_kai_path_pair(
+                    network_vr_kai,
+                    db.clone(),
+                    vector_fs.clone(),
+                    my_node_profile_name.clone(),
+                    my_encryption_secret_key,
+                    my_signature_secret_key,
+                    identity_manager.clone(),
+                    my_subscription_manager.clone(),
+                    external_subscription_manager.clone(),
+                )
+                .await;
+            }
+        }
 
         Ok("OK".to_string())
     }
@@ -359,6 +418,151 @@ impl NetworkJobManager {
             .await;
 
         Ok(network_job.receiver_address.to_string())
+    }
+
+    pub async fn handle_vr_kai_path_pair(
+        network_vr_pack: NetworkVRKai,
+        db: Weak<Mutex<ShinkaiDB>>,
+        vector_fs: Weak<Mutex<VectorFS>>,
+        my_node_profile_name: ShinkaiName,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    ) -> Result<(), NetworkJobQueueError> {
+        eprintln!("Handling VRPack from {:?}...", my_node_profile_name);
+        // check that the subscription exists
+        let subscription = {
+            let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+            let db_lock = maybe_db.lock().await;
+
+            match db_lock.get_my_subscription(&network_vr_pack.subscription_id.get_unique_id()) {
+                Ok(sub) => sub,
+                Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
+            }
+        };
+
+        eprintln!("Subscription: {:?}", subscription);
+        eprintln!("Symm Hash: {:?}", network_vr_pack.symmetric_key_hash);
+        // get the symmetric key from the database
+        let symmetric_sk_bytes = {
+            let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
+            let db_lock = maybe_db.lock().await;
+
+            // Retrieve the symmetric key using the symmetric_key_hash from the database
+            match db_lock.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
+                Ok(key) => key,
+                Err(_) => {
+                    return Err(NetworkJobQueueError::SymmetricKeyNotFound(
+                        network_vr_pack.symmetric_key_hash.clone(),
+                    ))
+                }
+            }
+        };
+
+        let key = GenericArray::from_slice(&symmetric_sk_bytes);
+        let cipher = Aes256Gcm::new(key);
+
+        // Decode the nonce from hex string to bytes
+        let nonce_bytes = hex::decode(&network_vr_pack.nonce).map_err(|_| NetworkJobQueueError::NonceParseFailed)?;
+        let nonce = GenericArray::from_slice(&nonce_bytes);
+
+        // Decrypt the enc_pairs
+        let decrypted_data = cipher
+            .decrypt(nonce, network_vr_pack.enc_pairs.as_ref())
+            .map_err(|_| NetworkJobQueueError::DecryptionFailed)?;
+
+        eprintln!("After decrypted_data");
+        // Deserialize the decrypted data back into Vec<(VRKai, VRPath)>
+        let vr_pack: VRPack = bincode::deserialize(&decrypted_data)
+            .map_err(|_| NetworkJobQueueError::DeserializationFailed("Failed to deserialize VRPack".to_string()))?;
+
+        // Find destination path from my_subscripton
+        let destination_path = {
+            if subscription.subscriber_destination_path.is_none() {
+                subscription.shared_folder.clone()
+            } else {
+                subscription.subscriber_destination_path.clone().unwrap()
+            }
+        };
+
+        let local_subscriber = ShinkaiName::from_node_and_profile_names(
+            subscription.subscriber_node.node_name,
+            subscription.subscriber_profile,
+        )?;
+        eprintln!("Local Subscriber: {:?}", local_subscriber);
+
+        // Check if the folder already exists. For now, we delete the folder and recreate it
+        {
+            let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
+            let mut vector_fs_lock = maybe_vector_fs.lock().await;
+            eprintln!("Vector FS Lock obtained");
+
+            let vr_path = VRPath::from_string(&destination_path)
+                .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
+
+            let path_already_exists = vector_fs_lock
+                .validate_path_points_to_folder(vr_path.clone(), &local_subscriber.clone())
+                .is_ok();
+
+            {
+                // debug. print current files
+                eprintln!("debug current files");
+                // let root_path = VRPath::root();
+                let root_path = VRPath::from_string("/").unwrap();
+                let reader = vector_fs_lock.new_reader(
+                    local_subscriber.clone(),
+                    root_path.clone(),
+                    local_subscriber.clone(),
+                );
+                eprintln!("reader: {:?}", reader);
+                let reader = reader.unwrap();
+                let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                eprintln!("Current files: {:?}", result);
+            }
+
+            // eprintln!("vr path: {:?}", vr_path);
+            eprintln!("path already exists: {:?}", path_already_exists);
+            let writer = vector_fs_lock
+                .new_writer(local_subscriber.clone(), vr_path.clone(), local_subscriber.clone())
+                .unwrap();
+
+            if path_already_exists {
+                eprintln!("Deleting folder: {:?}", vr_path);
+                let deletion_writer = writer.new_writer_copied_data(vr_path, &mut vector_fs_lock).unwrap();
+                vector_fs_lock.delete_folder(&deletion_writer)?;
+            }
+
+            // TODO: extend it to support multiple levels of folders
+            let result = vector_fs_lock
+                .create_new_folder(&writer, &destination_path.clone());
+            eprintln!("Create Folder Result: {:?}", result);
+
+            // Unpack the VRKaiPath pairs
+            let result = vector_fs_lock.extract_vrpack_in_folder(&writer, vr_pack);
+            eprintln!("VR Unpack Result: {:?}", result);
+
+            {
+                // debug. print current files
+                eprintln!("debug current files");
+                // let root_path = VRPath::root();
+                let root_path = VRPath::from_string("/").unwrap();
+                let reader = vector_fs_lock.new_reader(
+                    local_subscriber.clone(),
+                    root_path.clone(),
+                    local_subscriber.clone(),
+                );
+                let reader = reader.unwrap();
+                let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                eprintln!("Current files: {:?}", result);
+            }
+        }
+        {
+            // Testing code shows all my files
+        }
+
+        Ok(())
     }
 
     pub async fn handle_message_internode(
@@ -432,7 +636,7 @@ impl NetworkJobManager {
         handle_based_on_message_content_and_encryption(
             message.clone(),
             sender_identity.node_encryption_public_key,
-            sender_identity.addr.clone().unwrap(),
+            sender_identity.addr.unwrap(),
             sender_profile_name_string,
             &my_encryption_secret_key,
             &my_signature_secret_key,

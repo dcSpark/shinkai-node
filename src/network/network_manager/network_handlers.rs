@@ -699,7 +699,13 @@ pub async fn handle_network_message_cases(
                             );
                             // Attempt to deserialize the inner JSON string into FSEntryTree
                             if let Some(metadata) = response.metadata {
-                                if let Some(tree_content) = metadata.get("folder_state") {
+                                let symmetric_key = metadata.get("symmetric_key").cloned();
+                                if symmetric_key.is_none() {
+                                    println!("'symmetric_key' not found in metadata.");
+                                    // Handle the case where 'symmetric_key' is missing in metadata
+                                    // Potentially return or handle error here
+                                } else if let Some(tree_content) = metadata.get("folder_state") {
+                                    let symmetric_key = symmetric_key.unwrap();
                                     match serde_json::from_str::<FSEntryTree>(tree_content) {
                                         Ok(item_tree) => {
                                             let subscription_unique_id = SubscriptionId::new(
@@ -717,6 +723,7 @@ pub async fn handle_network_message_cases(
                                                     item_tree,
                                                     requester_node,
                                                     requester_profile_name,
+                                                    symmetric_key
                                                 )
                                                 .await;
                                             eprintln!("subscriber_current_state_response result: {:?}", result);
@@ -742,59 +749,6 @@ pub async fn handle_network_message_cases(
                     eprintln!(
                         "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
                         my_node_profile_name, requester_node_with_profile.get_node_name_string()
-                    );
-                }
-                MessageSchemaType::StreamerRequestInboxCreationForUpdate => {
-                    eprintln!(
-                        "StreamerRequestInboxCreationForUpdate Node {}: Handling StreamerRequestInboxCreationForUpdate",
-                        my_node_profile_name
-                    );
-                    let streamer_node_with_profile =
-                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    let streamer_node = streamer_node_with_profile.extract_node();
-                    let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();
-
-                    let requester_node_with_profile =
-                        ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
-                    let requester_node = requester_node_with_profile.extract_node();
-                    let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
-
-                    // validate that we are actually subscribed to this streamer
-                    // create the inbox and confirm
-
-                    let symmetric_sk_json_content = message.get_message_content().unwrap_or("".to_string());
-
-                    match serde_json::from_str::<SubscriptionGenericResponse>(&symmetric_sk_json_content) {
-                        Ok(response) => {
-                            // eprintln!("Symmetric key: {}", symmetric_sk);
-                            let subscription_id = SubscriptionId::new(
-                                streamer_node.clone(),
-                                streamer_profile_name.clone(),
-                                response.shared_folder.clone(),
-                                requester_node.clone(),
-                                requester_profile_name.clone(),
-                            );
-                            let my_subscription_manager = my_subscription_manager.lock().await;
-                            let result = my_subscription_manager
-                                .subscription_update_requires_temp_inbox(
-                                    streamer_node,
-                                    streamer_profile_name,
-                                    requester_node,
-                                    requester_profile_name,
-                                    subscription_id.get_unique_id().to_string(),
-                                )
-                                .await;
-                            eprintln!("subscriber_current_state_response result: {:?}", result);
-                        }
-                        Err(e) => {
-                            println!("Failed to deserialize outer JSON string to String (potential double-encoding issue): {}", e);
-                        }
-                    }
-                }
-                MessageSchemaType::StreamerRequestInboxCreationForUpdateResponse => {
-                    eprintln!(
-                        "StreamerRequestInboxCreationForUpdateResponse Node {}: Handling StreamerRequestInboxCreationForUpdateResponse",
-                        my_node_profile_name
                     );
                 }
                 _ => {

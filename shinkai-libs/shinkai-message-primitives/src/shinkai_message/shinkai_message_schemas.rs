@@ -49,8 +49,6 @@ pub enum MessageSchemaType {
     MySubscriptions,
     SubscriptionRequiresTreeUpdate,
     SubscriptionRequiresTreeUpdateResponse,
-    StreamerRequestInboxCreationForUpdate,
-    StreamerRequestInboxCreationForUpdateResponse,
 }
 
 impl MessageSchemaType {
@@ -95,8 +93,6 @@ impl MessageSchemaType {
             "MySubscriptions" => Some(Self::MySubscriptions),
             "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
             "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
-            "StreamerRequestInboxCreationForUpdate" => Some(Self::StreamerRequestInboxCreationForUpdate),
-            "StreamerRequestInboxCreationForUpdateResponse" => Some(Self::StreamerRequestInboxCreationForUpdateResponse),
             _ => None,
         }
     }
@@ -141,8 +137,6 @@ impl MessageSchemaType {
             Self::MySubscriptions => "MySubscriptions",
             Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
             Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
-            Self::StreamerRequestInboxCreationForUpdate => "StreamerRequestInboxCreationForUpdate",
-            Self::StreamerRequestInboxCreationForUpdateResponse => "StreamerRequestInboxCreationForUpdateResponse",
             Self::Empty => "",
         }
     }

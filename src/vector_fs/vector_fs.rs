@@ -84,6 +84,7 @@ impl VectorFS {
         path: VRPath,
         profile: ShinkaiName,
     ) -> Result<VFSReader, VectorFSError> {
+        eprintln!("Creating new reader for: {:?}", requester_name);
         VFSReader::new(requester_name, path, self, profile)
     }
 
@@ -234,6 +235,7 @@ impl VectorFS {
     /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map.
     pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
+        // eprintln!("Getting profile fs internals for: {:?}", self.internals_map);
         self.internals_map
             .get_mut(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
@@ -245,6 +247,7 @@ impl VectorFS {
         &self,
         profile: &ShinkaiName,
     ) -> Result<&VectorFSInternals, VectorFSError> {
+        // eprintln!("Getting profile fs internals for: {:?}", self.internals_map);
         self.internals_map
             .get(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
