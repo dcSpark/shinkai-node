@@ -25,7 +25,6 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -47,11 +46,6 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
-
-    // TODO: add a new property to store the user's subscriptions
-    pub subscribed_folders_trees: HashMap<String, Arc<FSEntryTree>>, // We want it to be stored in the DB
-    // maybe we can just check directly in the db?
-    // what was this for?
 
     // Cache for shared folders including the ones that you are not subscribed to
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
@@ -110,7 +104,6 @@ impl MySubscriptionsManager {
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
-            subscribed_folders_trees: HashMap::new(),
             external_node_shared_folders,
             node_name,
             my_signature_secret_key,
@@ -191,7 +184,7 @@ impl MySubscriptionsManager {
             let msg_request_shared_folders = ShinkaiMessageBuilder::vecfs_available_shared_items(
                 None,
                 streamer_full_name.get_node_name_string(),
-                "".to_string(), // TODO: fix this
+                streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
                 clone_static_secret_key(&self.my_encryption_secret_key),
                 clone_signature_secret_key(&self.my_signature_secret_key),
                 receiver_public_key,
@@ -216,7 +209,6 @@ impl MySubscriptionsManager {
                         external_node_shared_folders.put(streamer_full_name.clone(), placeholder_shared_folder.clone());
                     }
                     // Send the message to the network queue
-                    // TODO: move this process_subscription_queue
                     Self::send_message_to_peer(
                         msg_request_shared_folders,
                         self.db.clone(),
@@ -238,7 +230,6 @@ impl MySubscriptionsManager {
                 external_node_shared_folders.put(streamer_full_name.clone(), placeholder_shared_folder.clone());
             }
             // Send the message to the network queue
-            // TODO: move this process_subscription_queue
             Self::send_message_to_peer(
                 msg_request_shared_folders,
                 self.db.clone(),
