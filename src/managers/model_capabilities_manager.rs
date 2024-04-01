@@ -359,10 +359,10 @@ impl ModelCapabilitiesManager {
             }
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
-                    32_000
+                    return 32_000;
                 }
                 else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
-                    32_000
+                    return 32_000;
                 }
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
