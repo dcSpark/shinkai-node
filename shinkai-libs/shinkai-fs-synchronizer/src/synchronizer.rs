@@ -1,7 +1,6 @@
 // use alloc::sync;
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ProfileName;
-use shinkai_vector_resources::vector_resource::SimplifiedFSRoot;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 
 use crate::communication::PostRequestError;
 use crate::shinkai_manager::ShinkaiManager;
@@ -14,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncingFolder {
-    pub profile_name: ProfileName,
+    pub profile_name: ShinkaiNameString,
     pub vector_fs_path: Option<String>,
     pub local_os_folder_path: LocalOSFolderPath,
     pub last_synchronized_file_datetime: Option<u64>, // UTC with milliseconds

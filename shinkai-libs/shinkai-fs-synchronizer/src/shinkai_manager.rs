@@ -16,7 +16,7 @@ use shinkai_message_primitives::{
             aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
             random_aes_encryption_key, unsafe_deterministic_aes_encryption_key,
         },
-        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
         signatures::string_to_signature_secret_key,
     },
 };
@@ -71,11 +71,11 @@ pub struct ShinkaiManager {
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub my_signature_secret_key: SigningKey,
     pub receiver_public_key: EncryptionPublicKey,
-    pub sender: ProfileName,
+    pub sender: ShinkaiNameString,
     pub sender_subidentity: String,
-    pub node_receiver: ProfileName,
-    pub node_receiver_subidentity: ProfileName,
-    pub profile_name: ProfileName,
+    pub node_receiver: ShinkaiNameString,
+    pub node_receiver_subidentity: ShinkaiNameString,
+    pub profile_name: ShinkaiNameString,
     pub node_address: String,
 
     pub keys: DeviceKeys,
@@ -97,6 +97,7 @@ impl fmt::Debug for ShinkaiManager {
     }
 }
 
+// TODO: why used this again
 pub fn string_to_static_key(key_str: String) -> Result<EncryptionStaticKey, &'static str> {
     let key_bytes = hex::decode(key_str).map_err(|_| "Failed to decode hex string")?;
     let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| "Invalid key length")?;
@@ -114,11 +115,11 @@ impl ShinkaiManager {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        sender: ProfileName,
+        sender: ShinkaiNameString,
         sender_subidentity: String,
-        node_receiver: ProfileName,
-        node_receiver_subidentity: ProfileName,
-        profile_name: ProfileName,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+        profile_name: ShinkaiNameString,
         node_address: String,
         keys: DeviceKeys,
     ) -> Self {
