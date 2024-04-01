@@ -289,7 +289,7 @@ mod tests {
         let mut receiver = manager.subscribe("job_id::123::false").await;
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
-            while let Some(msg) = receiver.recv().await {
+            if let Some(msg) = receiver.recv().await {
                 println!("Received (from subscriber): {:?}", msg);
 
                 let results = manager_clone.get_all_elements_interleave().await.unwrap();
@@ -310,7 +310,6 @@ mod tests {
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
                 }
-                break;
             }
         });
 
@@ -413,7 +412,7 @@ mod tests {
         let mut receiver = manager.subscribe("my_queue").await;
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
-            while let Some(msg) = receiver.recv().await {
+            if let Some(msg) = receiver.recv().await {
                 println!("Received (from subscriber): {:?}", msg);
 
                 // Dequeue from the queue inside the subscriber thread
@@ -428,7 +427,6 @@ mod tests {
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
                 }
-                break;
             }
         });
 
