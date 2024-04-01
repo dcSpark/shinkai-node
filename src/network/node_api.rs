@@ -538,6 +538,17 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/my_subscriptions
+    let my_subscriptions = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "my_subscriptions")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_my_subscriptions_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // POST v1/create_shareable_folder
     let api_create_shareable_folder = {
         let node_commands_sender = node_commands_sender.clone();
@@ -629,6 +640,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(api_create_shareable_folder)
         .or(api_update_shareable_folder)
         .or(api_unshare_folder)
+        .or(my_subscriptions)
         .or(subscribe_to_shared_folder)
         .recover(handle_rejection)
         .with(log)
@@ -1015,6 +1027,21 @@ async fn change_nodes_name_handler(
             res: res_sender,
         }
     })
+    .await
+}
+
+async fn api_my_subscriptions_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIMySubscriptions {
+            msg: message,
+            res: res_sender,
+        },
+    )
     .await
 }
 

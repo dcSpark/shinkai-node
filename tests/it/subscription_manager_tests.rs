@@ -1185,7 +1185,7 @@ fn subscription_manager_test() {
                         node2_encryption_pk,
                     &node2_identity_name.to_string().clone(),
                     &node2_profile_name.to_string().clone(),
-                    &node2_identity_name,
+                    node2_identity_name,
                     "",
                 );
             
