@@ -5,6 +5,7 @@ use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::InternalMetadata, shinkai_utils::encryption::EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 
 #[pymethods]
 impl PyInternalMetadata {

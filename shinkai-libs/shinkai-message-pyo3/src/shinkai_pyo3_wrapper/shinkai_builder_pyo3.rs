@@ -25,6 +25,7 @@ use shinkai_message_primitives::{
     },
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 
 #[pyclass]
 pub struct PyShinkaiMessageBuilder {
