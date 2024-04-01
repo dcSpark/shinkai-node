@@ -106,13 +106,14 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(Vec<GroupedText>, u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+
         let new_text_groups = Self::generate_text_group_embeddings(
-            &text_groups,
+            text_groups,
             generator.box_clone(),
             31,
             max_chunk_size,
@@ -123,7 +124,9 @@ impl UnstructuredParser {
         let mut resource =
             Self::process_new_doc_resource(new_text_groups, &*generator, &name, desc, source, parsing_tags, None)
                 .await?;
+
         resource.as_trait_object_mut().set_distribution_info(distribution_info);
+
         Ok(resource)
     }
 
@@ -138,22 +141,22 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(Vec<GroupedText>, u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
         let cloned_generator = generator.box_clone();
-
+    
         // Use block_on to run the async-based batched embedding generation logic
         let new_text_groups = Self::generate_text_group_embeddings_blocking(
-            &text_groups,
+            text_groups,
             cloned_generator,
             31,
             max_chunk_size,
             collect_texts_and_indices,
         )?;
-
+    
         let mut resource = Self::process_new_doc_resource_blocking(
             new_text_groups,
             &*generator,
@@ -163,8 +166,9 @@ impl UnstructuredParser {
             parsing_tags,
             None,
         )?;
-
+    
         resource.as_trait_object_mut().set_distribution_info(distribution_info);
+    
         Ok(resource)
     }
 

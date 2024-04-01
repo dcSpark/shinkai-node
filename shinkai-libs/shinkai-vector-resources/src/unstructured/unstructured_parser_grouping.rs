@@ -11,33 +11,33 @@ use std::collections::HashMap;
 impl UnstructuredParser {
     /// Recursive function to collect all texts from the text groups and their subgroups
     pub fn collect_texts_and_indices(
-        text_groups: &[GroupedText],
-        texts: &mut Vec<String>,
-        indices: &mut Vec<(Vec<usize>, usize)>,
+        text_groups: Vec<GroupedText>,
         max_chunk_size: u64,
         path: Vec<usize>,
-    ) {
-        for (i, text_group) in text_groups.iter().enumerate() {
+    ) -> (Vec<String>, Vec<(Vec<usize>, usize)>) {
+        let mut texts = Vec::new();
+        let mut indices = Vec::new();
+
+        for (i, text_group) in text_groups.into_iter().enumerate() {
             texts.push(text_group.format_text_for_embedding(max_chunk_size));
             let mut current_path = path.clone();
             current_path.push(i);
             indices.push((current_path.clone(), texts.len() - 1));
+
             for (j, sub_group) in text_group.sub_groups.iter().enumerate() {
                 texts.push(sub_group.format_text_for_embedding(max_chunk_size));
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
                 indices.push((sub_path, texts.len() - 1));
             }
-            for sub_group in &text_group.sub_groups {
-                Self::collect_texts_and_indices(
-                    &sub_group.sub_groups,
-                    texts,
-                    indices,
-                    max_chunk_size,
-                    current_path.clone(),
-                );
-            }
+
+            let (sub_texts, sub_indices) =
+                Self::collect_texts_and_indices(text_group.sub_groups, max_chunk_size, current_path.clone());
+            texts.extend(sub_texts);
+            indices.extend(sub_indices);
         }
+
+        (texts, indices)
     }
 
     /// Recursive function to assign the generated embeddings back to the text groups and their subgroups
@@ -62,19 +62,15 @@ impl UnstructuredParser {
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
     pub async fn generate_text_group_embeddings(
-        text_groups: &Vec<GroupedText>,
+        text_groups: Vec<GroupedText>,
         generator: Box<dyn EmbeddingGenerator>,
-        mut max_batch_size: u64,
+        max_batch_size: u64,
         max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(Vec<GroupedText>, u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
     ) -> Result<Vec<GroupedText>, VRError> {
-        // Clone the input text_groups
-        let mut text_groups = text_groups.clone();
-
         // Collect all texts from the text groups and their subgroups
-        let mut texts = Vec::new();
-        let mut indices = Vec::new();
-        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size, vec![]);
+        let text_groups_clone = text_groups.clone();
+        let (texts, indices) = collect_texts_and_indices(text_groups, max_chunk_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
@@ -99,6 +95,7 @@ impl UnstructuredParser {
 
         // Process each group of up to 10 futures in sequence
         let mut embeddings = Vec::new();
+
         for futures_group in all_futures {
             let results = futures::future::join_all(futures_group).await;
             for result in results {
@@ -108,11 +105,11 @@ impl UnstructuredParser {
                     }
                     Err(e) => {
                         if max_batch_size > 5 {
-                            max_batch_size -= 5;
+                            let new_max_batch_size = max_batch_size - 5;
                             return Self::generate_text_group_embeddings(
-                                &text_groups,
+                                text_groups_clone.clone(),
                                 generator,
-                                max_batch_size,
+                                new_max_batch_size,
                                 max_chunk_size,
                                 collect_texts_and_indices,
                             )
@@ -126,7 +123,8 @@ impl UnstructuredParser {
         }
 
         // Assign the generated embeddings back to the text groups and their subgroups
-        Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
+        let mut text_groups = text_groups_clone;
+        UnstructuredParser::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
 
         Ok(text_groups)
     }
@@ -135,23 +133,19 @@ impl UnstructuredParser {
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
     pub fn generate_text_group_embeddings_blocking(
-        text_groups: &Vec<GroupedText>,
+        text_groups: Vec<GroupedText>,
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(Vec<GroupedText>, u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
     ) -> Result<Vec<GroupedText>, VRError> {
-        // Clone the input text_groups
-        let mut text_groups = text_groups.clone();
-
         // Collect all texts from the text groups and their subgroups
-        let mut texts = Vec::new();
-        let mut indices = Vec::new();
-        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size, vec![]);
+        let (texts, indices) = collect_texts_and_indices(text_groups.clone(), max_chunk_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
         let mut embeddings = Vec::new();
+
         for batch in texts.chunks(max_batch_size as usize) {
             let batch_ids = &ids[..batch.len()];
             match generator.generate_embeddings_blocking(&batch.to_vec(), &batch_ids.to_vec()) {
@@ -162,7 +156,7 @@ impl UnstructuredParser {
                     if max_batch_size > 5 {
                         max_batch_size -= 5;
                         return Self::generate_text_group_embeddings_blocking(
-                            &text_groups,
+                            text_groups,
                             generator,
                             max_batch_size,
                             max_chunk_size,
@@ -176,6 +170,7 @@ impl UnstructuredParser {
         }
 
         // Assign the generated embeddings back to the text groups and their subgroups
+        let mut text_groups = text_groups.clone();
         Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
 
         Ok(text_groups)
