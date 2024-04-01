@@ -476,7 +476,7 @@ fn subscription_manager_test() {
         let node2_identity_name = "@@node2_test.sepolia-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node2_profile_name = "main"; // FIX: it's failing with another name like main_profile_node2
+        let node2_profile_name = "main_profile_node2";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -695,7 +695,7 @@ fn subscription_manager_test() {
                     "shared_test_folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
@@ -720,7 +720,7 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                     "/",
@@ -735,11 +735,11 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                     "/private_test_folder",
-                    &file_path,
+                    file_path,
                     0,
                 )
                 .await;
@@ -842,7 +842,7 @@ fn subscription_manager_test() {
                     "/shared_test_folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
@@ -854,7 +854,7 @@ fn subscription_manager_test() {
                         &node1_commands_sender,
                         node1_profile_encryption_sk.clone(),
                         clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk.clone(),
+                        node1_encryption_pk,
                         node1_identity_name,
                         node1_profile_name,
                         "/",
@@ -872,7 +872,7 @@ fn subscription_manager_test() {
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
@@ -899,7 +899,7 @@ fn subscription_manager_test() {
                     node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node2_encryption_pk.clone(),
+                    node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
@@ -1050,7 +1050,7 @@ fn subscription_manager_test() {
                     node1_profile_name.to_string(),
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node2_encryption_pk.clone(),
+                    node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
@@ -1088,7 +1088,7 @@ fn subscription_manager_test() {
                 let msg = ShinkaiMessageBuilder::my_subscriptions(
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node2_encryption_pk.clone(),
+                    node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
@@ -1104,7 +1104,7 @@ fn subscription_manager_test() {
                 // Send the command
                 node2_commands_sender
                 .send(NodeCommand::APIMySubscriptions {
-                    msg: msg,
+                    msg,
                     res: res_send_msg_sender,
                 })
                 .await
@@ -1118,13 +1118,13 @@ fn subscription_manager_test() {
                 // Expected response template without dates for comparison
                 let expected_resp_template = r#"[{
                     "subscription_id": {
-                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main"
+                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main_profile_node2"
                     },
                     "shared_folder": "/shared_test_folder",
                     "streaming_node": "@@node1_test.sepolia-shinkai",
                     "streaming_profile": "main",
                     "subscriber_node": "@@node2_test.sepolia-shinkai",
-                    "subscriber_profile": "main",
+                    "subscriber_profile": "main_profile_node2",
                     "payment": "Free",
                     "state": "SubscriptionConfirmed",
                     "subscriber_destination_path": null,
@@ -1148,21 +1148,9 @@ fn subscription_manager_test() {
             }
             {
                 eprintln!("Send updates to subscribers");
-                // add delay of 5 seconds
                 tokio::time::sleep(Duration::from_secs(10)).await;
-                eprintln!("next sleep");
-                tokio::time::sleep(Duration::from_secs(10)).await; 
-                // --
-                // TODO: request current state from subscriber node
-                // TODO: process request from the subscriber node and compute diff
-                // TODO: generate the node network jobs to send the files
-                // TODO: subscriber node see the requests and check if it's from the subscription
-                // TODO: subscriber node save the files using vector fs
-                // --
-                // TODO: maybe check for connections over X amount if it's from a subscriber if not end the connection (avoid spam)
-                // Note(Nico): what happens if I'm trying to send a file (retry or whatever)
-                // and another thing is also trying to send it (retry or new schedule)?
-                // maybe create a deterministic identifier so it's easier to track the process
+                
+                // TODO: check that node2 has the files from node1
             }
             {
                 // Dont forget to do this at the end

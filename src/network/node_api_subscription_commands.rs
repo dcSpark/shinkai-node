@@ -224,12 +224,14 @@ impl Node {
             }
         };
 
+        let requester_profile = requester_name.get_profile_name_string().unwrap_or("".to_string());
+
         let streamer_full_name = match ShinkaiName::from_node_and_profile_names(
             input_payload.streamer_node_name.clone(),
             input_payload.streamer_profile_name.clone(),
         ) {
             Ok(shinkai_name) => shinkai_name,
-            Err(e) => {
+            Err(_) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
@@ -245,7 +247,7 @@ impl Node {
             .subscribe_to_shared_folder(
                 streamer_full_name.extract_node(),
                 input_payload.streamer_profile_name.clone(),
-                input_payload.streamer_profile_name,
+                requester_profile,
                 input_payload.path,
                 input_payload.payment,
             )

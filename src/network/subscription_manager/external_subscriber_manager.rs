@@ -276,9 +276,14 @@ impl ExternalSubscriberManager {
                 // Wait until subscription_ids_are_sync has at least 1 value
                 loop {
                     if !subscription_ids_are_sync.is_empty() {
-                        eprintln!(
-                            ">> subscription_ids_are_sync moving to the loop in 5s: {:?}",
-                            subscription_ids_are_sync
+                        shinkai_log(
+                            ShinkaiLogOption::ExtSubscriptions,
+                            ShinkaiLogLevel::Debug,
+                            format!(
+                                "IS TESTING> subscription_ids_are_sync is not empty: {:?}. Starting loop...",
+                                subscription_ids_are_sync
+                            )
+                            .as_str(),
                         );
                         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                         break;
@@ -288,7 +293,6 @@ impl ExternalSubscriberManager {
             }
 
             loop {
-                eprintln!("process_subscription_request_state_updates> Starting subscribers processing loop");
                 // Game Plan:
                 // Phase 1
                 // 1. Find all subscriptions
@@ -321,7 +325,6 @@ impl ExternalSubscriberManager {
                         }
                     }
                 };
-                eprintln!(">> Subscriptions to process: {:?}", subscriptions_ids_to_process);
 
                 // We keep a ephemeral versioning of the shared folders to know if a specific subscription is already sync
                 // This is useful to avoid processing the same subscription multiple times
@@ -341,7 +344,6 @@ impl ExternalSubscriberManager {
                         true
                     })
                     .collect::<Vec<SubscriptionId>>();
-                eprintln!(">> Filtered subscriptions: {:?}", filtered_subscription_ids);
 
                 // Check if a job with this subscription_id is already queued in the job_manager
                 let mut post_filtered_subscription_ids = Vec::new();
@@ -349,16 +351,13 @@ impl ExternalSubscriberManager {
                     let subscription_id_str = subscription_id.get_unique_id().to_string();
                     // Perform the asynchronous check
                     let is_not_queued = {
-                        eprintln!("process_subscription_request_state_updates >> Checking if subscription is already queued: {:?}", subscription_id);
                         let job_queue_manager_clone = Arc::clone(&job_queue_manager);
-                        eprintln!("process_subscription_request_state_updates >> Acquiring lock");
                         let result = job_queue_manager_clone
                             .lock()
                             .await
                             .peek(&subscription_id_str)
                             .await
                             .map_or(true, |opt| opt.is_none());
-                        eprintln!("process_subscription_request_state_updates >> Lock acquired and relased");
                         result
                     };
                     if is_not_queued {
@@ -405,49 +404,28 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // TODO: fix this is not accessing the same reference. Maybe it is now. check it
+        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-        // TODO: add something to do a match over
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
-            eprintln!("\n\n\n ----------------- \n\n\n");
-            // TODO: Make this code production ready
-            eprintln!("my node name: {:?}", node_name);
-            println!(
-                "process_subscription_job_message_queued> Processing job: {:?}",
-                subscription_with_tree.subscription.subscription_id
-            );
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
 
-            eprintln!("user subscription_with_tree: {:?}", subscription_with_tree);
-            eprintln!(
-                "user shared folder: {:?}",
-                subscription_with_tree.subscriber_folder_tree
-            );
             let local_shared_folder_state = shared_folders_trees
                 .get(&shared_folder)
                 // todo: this should actually go to the db to read it if not available
                 .map_or(FSEntryTree::new_empty(), |entry| entry.value().tree.clone());
-            eprintln!("local shared folder: {:?}", local_shared_folder_state);
 
             // Calculate diff
-            eprintln!("process_subscription_job_message_queued >> Calculating diff");
             let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
                 &local_shared_folder_state,
             );
-            eprintln!("process_subscription_job_message_queued >> diff: {:?}", diff);
 
             // If at least one diff was found, retrieve the VRPack for the path
             if !diff.children.is_empty() {
-                eprintln!(
-                    "process_subscription_job_message_queued>> Sending diff to subscriber: {:?}",
-                    diff
-                );
-
                 // Note: for now we are just going to get everything
-                // In a later update we will be more granular
+                // TODO: In a later update we will be more granular
 
                 let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
@@ -457,22 +435,17 @@ impl ExternalSubscriberManager {
                 let vr_path_shared_folder = VRPath::from_string(&shared_folder)
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-                // let vr_path_shared_folder = VRPath::root().push_cloned(shared_folder.clone());
-
                 // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
                 let subscription_id = subscription_with_tree.subscription.subscription_id.clone();
+                eprintln!(
+                    "\n\nprocess_subscription_job_message_queued >> subscription_id: {:?}",
+                    subscription_id
+                );
                 let streamer = subscription_id.extract_streamer_node_with_profile()?;
                 let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
-                let perms_writer = vector_fs_inst
-                    .new_writer(subscriber, vr_path_shared_folder.clone(), streamer)
-                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-                let reader = perms_writer
-                    .new_reader_copied_data(vr_path_shared_folder, &mut vector_fs_inst)
-                    .unwrap();
+                let reader = vector_fs_inst.new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())?;
                 let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
-
-                eprintln!("Sending vr_pack");
 
                 if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
                     let identity_manager = identity_manager_lock.lock().await;
@@ -494,11 +467,13 @@ impl ExternalSubscriberManager {
                     )
                     .await;
 
-                    eprintln!("process_subscription_job_message_queued >> result: {:?}", result);
-
                     // TODO: Update db ?
                 } else {
-                    eprintln!("Identity manager is not available");
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Error,
+                        "Identity manager is not available",
+                    );
                     return Err(SubscriberManagerError::IdentityManagerUnavailable);
                 }
             }
@@ -516,14 +491,6 @@ impl ExternalSubscriberManager {
         receiver_identity: StandardIdentity,
         symmetric_key: String,
     ) -> Result<(), SubscriberManagerError> {
-        eprintln!("send_vrpack_to_peer>: vrpack len: {:?}", vr_pack.merkle_root());
-        eprintln!(
-            "send_vrpack_to_peer>: {}",
-            receiver_identity.full_identity_name.extract_node()
-        );
-        eprintln!("send_vrpack_to_peer>: {:?}", receiver_identity.addr);
-        eprintln!("send_vrpack_to_peer>: {:?}", receiver_identity.full_identity_name);
-
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
             SubscriberManagerError::AddressUnavailable(
@@ -535,9 +502,10 @@ impl ExternalSubscriberManager {
             )
         })?;
 
+        shinkai_log(ShinkaiLogOption::ExtSubscriptions, ShinkaiLogLevel::Info, format!("Sending VRPack to subscriber: {:?}", subscription_id).as_str());
+
         // Call the send_encrypted_vrkaipath_pairs function
         Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr).await;
-
         Ok(())
     }
 
@@ -585,7 +553,6 @@ impl ExternalSubscriberManager {
             let mut handles = Vec::new();
             loop {
                 let mut continue_immediately = false;
-                eprintln!("process_subscription_queue> Starting subscribers processing loop");
                 // Phase 2
                 // 4. Calc. diff and schedule network requests (async) -> Process
 
@@ -617,10 +584,6 @@ impl ExternalSubscriberManager {
                     std::mem::drop(processing_jobs_lock);
                     filtered_jobs
                 };
-                eprintln!(
-                    "process_subscription_queue>> Jobs to process: {:?}",
-                    job_ids_to_perform_comparisons_and_send_files
-                );
 
                 for subscription_id in job_ids_to_perform_comparisons_and_send_files {
                     let job_queue_manager = Arc::clone(&job_queue_manager);
@@ -709,13 +672,8 @@ impl ExternalSubscriberManager {
                     continue;
                 }
 
-                eprintln!("process_subscription_queue>> Waiting for new jobs");
                 // Receive new jobs
                 if let Some(new_job) = receiver.recv().await {
-                    eprintln!(
-                        "process_subscription_queue>> Received new job: {:?}",
-                        new_job.subscription.subscription_id
-                    );
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Info,
@@ -730,7 +688,6 @@ impl ExternalSubscriberManager {
         })
     }
 
-    /// The return type is (shareable_path, permission, tree, subscription_requirement)
     pub async fn available_shared_folders(
         &mut self,
         streamer_node: ShinkaiName,
@@ -799,7 +756,6 @@ impl ExternalSubscriberManager {
                     tree,
                     subscription_requirement,
                 };
-                eprintln!("available_shared_folders> result {:?}", result);
 
                 // Check if the value of shared_folders_trees is different than the new value inserted
                 let should_update_version = self
@@ -808,7 +764,6 @@ impl ExternalSubscriberManager {
                     .map_or(true, |existing| *existing.value() != result);
 
                 if should_update_version {
-                    eprintln!("available_shared_folders> Updating shared_folders_trees");
                     // Update shared_folders_to_ephemeral_versioning
                     self.shared_folders_to_ephemeral_versioning
                         .entry(path_str.clone())
@@ -824,13 +779,6 @@ impl ExternalSubscriberManager {
                 );
             }
         }
-
-        // TODO: convert eprintlns to shinkai_logs
-        eprintln!(
-            "Node: {} Converted results: {:?}",
-            self.node_name.clone(),
-            converted_results
-        );
 
         Ok(converted_results)
     }
@@ -882,8 +830,6 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
-        // TODO: check that you are actually an admin of the folder
-        // Note: I think is done automatically
         {
             let vector_fs = self
                 .vector_fs
@@ -1010,9 +956,6 @@ impl ExternalSubscriberManager {
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
-        eprintln!("requester_shinkai_identity: {:?}", requester_shinkai_identity);
-        eprintln!("streamer_shinkai_identity: {:?}", streamer_shinkai_identity);
-
         // Validate that the requester actually did the alleged payment
         match subscription_requirement.clone() {
             SubscriptionPayment::Free => {
@@ -1119,13 +1062,6 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
-            eprintln!("my node name: {:?}", node_name);
-            eprintln!(
-                ">>> subscription_id (create_and_send_request_updated_state): {:?}",
-                subscription_id
-            );
-            let all_subs = db.all_subscribers_subscription()?;
-            eprintln!(">>> all_subs: {:?}", all_subs);
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                     "Subscription with ID {} not found",
@@ -1133,10 +1069,6 @@ impl ExternalSubscriberManager {
                 )),
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
             });
-            eprintln!(
-                ">>> subscription (create_and_send_request_updated_state): {:?}",
-                subscription
-            );
             subscription?
         };
 
@@ -1188,7 +1120,6 @@ impl ExternalSubscriberManager {
         subscriber_profile: String,
         symmetric_key: String,
     ) -> Result<(), SubscriberManagerError> {
-        eprintln!("subscriber_current_state_response> Received current state response for subscription ID: {}, from subscriber: {}. Tree: {:?}", subscription_unique_id, subscriber_node, subscriber_folder_tree);
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogLevel::Debug,
@@ -1205,17 +1136,8 @@ impl ExternalSubscriberManager {
             ))?;
             let db = db.lock().await;
 
-            eprintln!(
-                ">>> subscription_id before (subscriber_current_state_response): {:?}",
-                subscription_unique_id
-            );
             let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
             let all_subs = db.all_subscribers_subscription()?;
-            eprintln!(">>> all_subs: {:?}", all_subs);
-            eprintln!(
-                ">>> subscription_id after (subscriber_current_state_response): {:?}",
-                subscription_id
-            );
             db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
                     "Subscription with ID {} not found",
@@ -1224,7 +1146,6 @@ impl ExternalSubscriberManager {
                 _ => SubscriberManagerError::DatabaseError(e.to_string()),
             })?
         };
-        eprintln!("subscriber_current_state_response> Subscription: {:?}", subscription);
 
         if subscription.subscriber_node.get_node_name_string() != subscriber_node.get_node_name_string() {
             return Err(SubscriberManagerError::InvalidSubscriber(

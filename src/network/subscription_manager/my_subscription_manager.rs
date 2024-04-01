@@ -387,16 +387,9 @@ impl MySubscriptionsManager {
             my_node_name,
             my_profile,
         );
-        eprintln!("update_subscription_status>: subscription_id: {:?}", subscription_id);
 
         match action {
             MessageSchemaType::SubscribeToSharedFolderResponse => {
-                eprintln!(
-                    "Updating subscription status for folder: {} with payload: {:?}",
-                    payload.shared_folder.clone(),
-                    payload
-                );
-
                 // Validate that we requested the subscription
                 let db_lock = self
                     .db
@@ -412,7 +405,6 @@ impl MySubscriptionsManager {
                 }
                 // Update the subscription status in the db
                 let new_subscription = subscription_result.with_state(ShinkaiSubscriptionStatus::SubscriptionConfirmed);
-                eprintln!("Updating subscription status to: {:?}", new_subscription);
                 db.update_my_subscription(new_subscription)?;
             }
             _ => {
@@ -506,7 +498,6 @@ impl MySubscriptionsManager {
 
             match Node::process_symmetric_key(symmetric_sk.clone(), db).await {
                 Ok(hash_hex) => {
-                    println!("Temporary inbox created with hash: {}", hash_hex);
                     // Prepare metadata hashmap
                     let mut metadata = std::collections::HashMap::new();
                     metadata.insert("folder_state".to_string(), result_json);
@@ -563,14 +554,6 @@ impl MySubscriptionsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
-        eprintln!("send_message_to_peer>: message: {:?}", message);
-        eprintln!(
-            "send_message_to_peer>: {}",
-            receiver_identity.full_identity_name.extract_node()
-        );
-        eprintln!("send_message_to_peer>: {:?}", receiver_identity.addr);
-        eprintln!("send_message_to_peer>: {:?}", receiver_identity.full_identity_name);
-
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
             SubscriberManagerError::AddressUnavailable(
