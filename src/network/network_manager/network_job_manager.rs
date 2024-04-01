@@ -377,7 +377,6 @@ impl NetworkJobManager {
                 .await;
             }
             NetworkMessageType::VRKaiPathPair => {
-                eprintln!("Processing VRKaiPathPair message type");
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Debug,
@@ -431,7 +430,11 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<(), NetworkJobQueueError> {
-        eprintln!("Handling VRPack from {:?}...", my_node_profile_name);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Handling VRPack from {:?}", my_node_profile_name),
+        );
         // check that the subscription exists
         let subscription = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
@@ -443,8 +446,6 @@ impl NetworkJobManager {
             }
         };
 
-        eprintln!("Subscription: {:?}", subscription);
-        eprintln!("Symm Hash: {:?}", network_vr_pack.symmetric_key_hash);
         // get the symmetric key from the database
         let symmetric_sk_bytes = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
@@ -473,7 +474,6 @@ impl NetworkJobManager {
             .decrypt(nonce, network_vr_pack.enc_pairs.as_ref())
             .map_err(|_| NetworkJobQueueError::DecryptionFailed)?;
 
-        eprintln!("After decrypted_data");
         // Deserialize the decrypted data back into Vec<(VRKai, VRPath)>
         let vr_pack: VRPack = bincode::deserialize(&decrypted_data)
             .map_err(|_| NetworkJobQueueError::DeserializationFailed("Failed to deserialize VRPack".to_string()))?;
@@ -491,13 +491,11 @@ impl NetworkJobManager {
             subscription.subscriber_node.node_name,
             subscription.subscriber_profile,
         )?;
-        eprintln!("Local Subscriber: {:?}", local_subscriber);
 
         // Check if the folder already exists. For now, we delete the folder and recreate it
         {
             let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
             let mut vector_fs_lock = maybe_vector_fs.lock().await;
-            eprintln!("Vector FS Lock obtained");
 
             let vr_path = VRPath::from_string(&destination_path)
                 .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
@@ -506,30 +504,11 @@ impl NetworkJobManager {
                 .validate_path_points_to_folder(vr_path.clone(), &local_subscriber.clone())
                 .is_ok();
 
-            {
-                // debug. print current files
-                eprintln!("debug current files");
-                // let root_path = VRPath::root();
-                let root_path = VRPath::from_string("/").unwrap();
-                let reader = vector_fs_lock.new_reader(
-                    local_subscriber.clone(),
-                    root_path.clone(),
-                    local_subscriber.clone(),
-                );
-                eprintln!("reader: {:?}", reader);
-                let reader = reader.unwrap();
-                let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
-                eprintln!("Current files: {:?}", result);
-            }
-
-            // eprintln!("vr path: {:?}", vr_path);
-            eprintln!("path already exists: {:?}", path_already_exists);
             let writer = vector_fs_lock
                 .new_writer(local_subscriber.clone(), vr_path.clone(), local_subscriber.clone())
                 .unwrap();
 
             if path_already_exists {
-                eprintln!("Deleting folder: {:?}", vr_path);
                 let deletion_writer = writer.new_writer_copied_data(vr_path, &mut vector_fs_lock).unwrap();
                 vector_fs_lock.delete_folder(&deletion_writer)?;
             }

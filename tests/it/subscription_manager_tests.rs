@@ -236,6 +236,29 @@ fn remove_timestamps_from_shared_folder_cache_response(value: &mut serde_json::V
     }
 }
 
+// Function to recursively remove date-related fields from a JSON value
+fn remove_date_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let keys_to_remove: Vec<String> = map.iter()
+                .filter_map(|(k, _)| if k.contains("datetime") || k.contains("date") { Some(k.clone()) } else { None })
+                .collect();
+            for key in keys_to_remove {
+                map.remove(&key);
+            }
+            for v in map.values_mut() {
+                remove_date_fields(v);
+            }
+        },
+        serde_json::Value::Array(vec) => {
+            for v in vec {
+                remove_date_fields(v);
+            }
+        },
+        _ => {}
+    }
+}
+
 async fn retrieve_file_info(
     commands_sender: &Sender<NodeCommand>,
     encryption_sk: EncryptionStaticKey,
@@ -1151,6 +1174,31 @@ fn subscription_manager_test() {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 
                 // TODO: check that node2 has the files from node1
+                eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+
+                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                        node2_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node2_subidentity_sk),
+                        node2_encryption_pk,
+                    &node2_identity_name.to_string().clone(),
+                    &node2_profile_name.to_string().clone(),
+                    &node2_identity_name,
+                    "",
+                );
+            
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+            
+                // Send the command
+                node2_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                print_tree_simple(&resp);
             }
             {
                 // Dont forget to do this at the end
