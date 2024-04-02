@@ -1,8 +1,7 @@
+use crate::resource_errors::VRError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer}; // pub use llm::ModelArchitecture;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-
-use crate::resource_errors::VRError;
 
 // Alias for embedding model type string
 pub type EmbeddingModelTypeString = String;
@@ -10,7 +9,6 @@ pub type EmbeddingModelTypeString = String;
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
 pub enum EmbeddingModelType {
     TextEmbeddingsInference(TextEmbeddingsInference),
-    BertCPP(BertCPP),
     OpenAI(OpenAIModelType),
 }
 
@@ -19,7 +17,6 @@ impl EmbeddingModelType {
     pub fn to_string(&self) -> String {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string(),
-            EmbeddingModelType::BertCPP(model) => model.to_string(),
             EmbeddingModelType::OpenAI(model) => model.to_string(),
         }
     }
@@ -31,9 +28,6 @@ impl EmbeddingModelType {
         }
         if let Ok(model) = OpenAIModelType::from_string(s) {
             return Ok(EmbeddingModelType::OpenAI(model));
-        }
-        if let Ok(model) = BertCPP::from_string(s) {
-            return Ok(EmbeddingModelType::BertCPP(model));
         }
         Err(VRError::InvalidModelArchitecture)
     }
@@ -56,12 +50,6 @@ impl EmbeddingModelType {
                 TextEmbeddingsInference::MultilingualE5Large => 510,
                 TextEmbeddingsInference::Other(_) => 510,
             },
-            EmbeddingModelType::BertCPP(model) => match model {
-                BertCPP::AllMiniLML6v2 => 510,
-                BertCPP::AllMiniLML12v2 => 510,
-                BertCPP::MultiQAMiniLML6 => 510,
-                BertCPP::Other(_) => 510,
-            },
             EmbeddingModelType::OpenAI(model) => match model {
                 OpenAIModelType::OpenAITextEmbeddingAda002 => 8190,
             },
@@ -73,7 +61,6 @@ impl fmt::Display for EmbeddingModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string().fmt(f),
-            EmbeddingModelType::BertCPP(model) => model.to_string().fmt(f),
             EmbeddingModelType::OpenAI(model) => model.to_string().fmt(f),
         }
     }
@@ -149,44 +136,6 @@ impl TextEmbeddingsInference {
 }
 
 impl fmt::Display for TextEmbeddingsInference {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
-    }
-}
-
-/// Bert.CPP (https://github.com/skeskinen/bert.cpp)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum BertCPP {
-    AllMiniLML6v2,
-    AllMiniLML12v2,
-    MultiQAMiniLML6,
-    Other(String),
-}
-impl BertCPP {
-    const ALL_MINI_LML6V2: &'static str = "bert-cpp/all-MiniLM-L6-v2";
-    const ALL_MINI_LML12V2: &'static str = "bert-cpp/all-MiniLM-L12-v2";
-    const MULTI_QA_MINI_LML6: &'static str = "bert-cpp/multi-qa-MiniLM-L6-cos-v1";
-
-    fn to_string(&self) -> String {
-        match self {
-            BertCPP::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
-            BertCPP::AllMiniLML12v2 => Self::ALL_MINI_LML12V2.to_string(),
-            BertCPP::MultiQAMiniLML6 => Self::MULTI_QA_MINI_LML6.to_string(),
-            BertCPP::Other(name) => format!("bert-cpp/{}", name),
-        }
-    }
-
-    fn from_string(s: &str) -> Result<Self, VRError> {
-        match s {
-            Self::ALL_MINI_LML6V2 => Ok(BertCPP::AllMiniLML6v2),
-            Self::ALL_MINI_LML12V2 => Ok(BertCPP::AllMiniLML12v2),
-            Self::MULTI_QA_MINI_LML6 => Ok(BertCPP::MultiQAMiniLML6),
-            _ => Err(VRError::InvalidModelArchitecture),
-        }
-    }
-}
-
-impl fmt::Display for BertCPP {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_string())
     }
