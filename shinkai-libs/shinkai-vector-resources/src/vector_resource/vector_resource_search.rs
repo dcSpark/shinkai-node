@@ -6,7 +6,7 @@ use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
-pub use crate::source::VRSource;
+pub use crate::source::VRSourceReference;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;

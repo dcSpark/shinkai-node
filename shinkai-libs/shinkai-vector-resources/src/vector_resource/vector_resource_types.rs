@@ -5,7 +5,7 @@ use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
 use crate::source::DistributionInfo;
 pub use crate::source::{
-    DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
+    DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSourceReference,
 };
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use blake3::hash;
@@ -543,7 +543,7 @@ pub struct VRHeader {
     pub resource_name: String,
     pub resource_id: String,
     pub resource_base_type: VRBaseType,
-    pub resource_source: VRSource,
+    pub resource_source: VRSourceReference,
     pub resource_embedding: Option<Embedding>,
     pub resource_created_datetime: DateTime<Utc>,
     pub resource_last_written_datetime: DateTime<Utc>,
@@ -565,7 +565,7 @@ impl VRHeader {
         resource_base_type: VRBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
-        resource_source: VRSource,
+        resource_source: VRSourceReference,
         resource_created_datetime: DateTime<Utc>,
         resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
@@ -597,7 +597,7 @@ impl VRHeader {
         resource_base_type: VRBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
-        resource_source: VRSource,
+        resource_source: VRSourceReference,
         resource_created_datetime: DateTime<Utc>,
         resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,

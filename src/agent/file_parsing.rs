@@ -14,7 +14,7 @@ use shinkai_vector_resources::unstructured::unstructured_api::{self, Unstructure
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
-use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
+use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
 use std::io::Cursor;
 
@@ -226,7 +226,7 @@ impl ParsingHelper {
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
         distribution_info: DistributionInfo,
@@ -318,9 +318,9 @@ impl ParsingHelper {
         file_buffer: Vec<u8>,
         file_name: String,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<(String, VRSource, Vec<UnstructuredElement>), AgentError> {
+    ) -> Result<(String, VRSourceReference, Vec<UnstructuredElement>), AgentError> {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let source = VRSource::from_file(&file_name, None, TextChunkingStrategy::V1)?;
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
         let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
         Ok((resource_id, source, elements))
     }

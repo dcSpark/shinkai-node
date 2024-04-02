@@ -1,3 +1,4 @@
+use super::DistributionInfo;
 use crate::resource_errors::VRError;
 use crate::source::notary_source::{
     NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile, TLSNotaryProof,
@@ -20,90 +21,76 @@ pub enum TextChunkingStrategy {
     V1,
 }
 
-/// The source of a Vector Resource as either the file contents of the source file itself,
-/// or a reference to the source file (either external such as URL, or a FileRef)
+/// Information about the source content a Vector Resource came from
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum VRSource {
-    Reference(SourceReference),
+pub enum VRSourceReference {
+    Standard(SourceReference),
     Notarized(NotarizedSourceReference),
     None,
 }
 
-impl VRSource {
+impl VRSourceReference {
     /// Formats a printable string based on the source
     pub fn format_source_string(&self) -> String {
         match self {
-            VRSource::Reference(reference) => reference.format_source_string(),
-            VRSource::Notarized(notarized_reference) => notarized_reference.format_source_string(),
-            VRSource::None => String::from("None"),
+            VRSourceReference::Standard(reference) => reference.format_source_string(),
+            VRSourceReference::Notarized(notarized_reference) => notarized_reference.format_source_string(),
+            VRSourceReference::None => String::from("None"),
         }
     }
 
-    /// Creates a VRSource from an external URI or URL
-    pub fn new_uri_ref(uri: &str, original_creation_datetime: Option<DateTime<Utc>>) -> Self {
-        Self::Reference(SourceReference::new_external_uri(
-            uri.to_string(),
-            original_creation_datetime,
-        ))
+    /// Creates a VRSourceReference from an external URI or URL
+    pub fn new_uri_ref(uri: &str) -> Self {
+        Self::Standard(SourceReference::new_external_uri(uri.to_string()))
     }
 
-    /// Creates a VRSource reference to an original source file
+    /// Creates a VRSourceReference reference to an original source file
     pub fn new_source_file_ref(
         file_name: String,
         file_type: SourceFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
-        VRSource::Reference(SourceReference::FileRef(SourceFileReference {
+        VRSourceReference::Standard(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
-            original_creation_datetime,
             text_chunking_strategy,
         }))
     }
 
-    /// Creates a VRSource reference using an arbitrary String
+    /// Creates a VRSourceReference reference using an arbitrary String
     pub fn new_other_ref(other: &str) -> Self {
-        Self::Reference(SourceReference::new_other(other.to_string()))
+        Self::Standard(SourceReference::new_other(other.to_string()))
     }
 
-    /// Creates a VRSource which represents no/unknown source.
+    /// Creates a VRSourceReference which represents no/unknown source.
     pub fn none() -> Self {
-        VRSource::None
+        VRSourceReference::None
     }
 
-    /// Serializes the VRSource to a JSON string
+    /// Serializes the VRSourceReference to a JSON string
     pub fn to_json(&self) -> Result<String, VRError> {
         Ok(serde_json::to_string(self)?)
     }
 
-    /// Deserializes a VRSource from a JSON string
+    /// Deserializes a VRSourceReference from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VRError> {
         Ok(serde_json::from_str(json)?)
     }
 
-    /// Creates a VRSource using file_name/content to auto-detect and create an instance of Self.
+    /// Creates a VRSourceReference using file_name/content to auto-detect and create an instance of Self.
     /// Errors if can not detect matching extension in file_name.
-    pub fn from_file(
-        file_name: &str,
-        original_creation_datetime: Option<DateTime<Utc>>,
-        text_chunking_strategy: TextChunkingStrategy,
-    ) -> Result<Self, VRError> {
+    pub fn from_file(file_name: &str, text_chunking_strategy: TextChunkingStrategy) -> Result<Self, VRError> {
         let re = Regex::new(r"\.[^.]+$").unwrap();
         let file_name_without_extension = re.replace(file_name, "");
         // Attempt to auto-detect, else use file extension
         let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
-            Ok(VRSource::new_uri_ref(
-                &file_name_without_extension,
-                original_creation_datetime,
-            ))
+            Ok(VRSourceReference::new_uri_ref(&file_name_without_extension))
         } else {
             let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
-            Ok(VRSource::new_source_file_ref(
+            Ok(VRSourceReference::new_source_file_ref(
                 file_name_without_extension.to_string(),
                 file_type,
-                original_creation_datetime,
                 text_chunking_strategy,
             ))
         }
@@ -122,13 +109,13 @@ impl SourceFile {
         file_name: String,
         file_type: SourceFileType,
         file_content: Vec<u8>,
-        original_creation_datetime: Option<DateTime<Utc>>,
+        distribution_info: Option<DistributionInfo>,
     ) -> Self {
         Self::Standard(StandardSourceFile {
             file_name,
             file_type,
             file_content,
-            original_creation_datetime,
+            distribution_info,
         })
     }
 
@@ -136,14 +123,14 @@ impl SourceFile {
         file_name: String,
         file_type: SourceFileType,
         file_content: Vec<u8>,
-        original_creation_datetime: Option<DateTime<Utc>>,
+        distribution_info: Option<DistributionInfo>,
         proof: TLSNotaryProof,
     ) -> Self {
         Self::TLSNotarized(TLSNotarizedSourceFile {
             file_name,
             file_type,
             file_content,
-            original_creation_datetime,
+            distribution_info,
             proof,
         })
     }
@@ -166,7 +153,7 @@ pub struct StandardSourceFile {
     pub file_type: SourceFileType,
     pub file_content: Vec<u8>,
     // Creation/publication time of the original content which is inside this struct
-    pub original_creation_datetime: Option<DateTime<Utc>>,
+    pub distribution_info: Option<DistributionInfo>,
 }
 
 impl StandardSourceFile {
@@ -180,13 +167,13 @@ impl StandardSourceFile {
         file_name: String,
         file_type: SourceFileType,
         file_content: Vec<u8>,
-        original_creation_datetime: Option<DateTime<Utc>>,
+        distribution_info: Option<DistributionInfo>,
     ) -> Self {
         Self {
             file_name,
             file_type,
             file_content,
-            original_creation_datetime,
+            distribution_info,
         }
     }
 
@@ -220,8 +207,6 @@ pub enum SourceReference {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ExternalURIReference {
     pub uri: String,
-    // Creation/publication time of the original content which is specified at the uri
-    pub original_creation_datetime: Option<DateTime<Utc>>,
 }
 
 impl SourceReference {
@@ -238,14 +223,12 @@ impl SourceReference {
     /// Errors if extension is not found or not implemented yet.
     pub fn new_file_reference_auto_detect(
         file_name: String,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Result<Self, VRError> {
         let file_type = SourceFileType::detect_file_type(&file_name)?;
         Ok(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
-            original_creation_datetime,
             text_chunking_strategy,
         }))
     }
@@ -254,13 +237,11 @@ impl SourceReference {
     pub fn new_file_image_reference(
         file_name: String,
         image_type: ImageFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Image(image_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -269,13 +250,11 @@ impl SourceReference {
     pub fn new_file_doc_reference(
         file_name: String,
         doc_type: DocumentFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Document(doc_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -284,13 +263,11 @@ impl SourceReference {
     pub fn new_file_code_reference(
         file_name: String,
         code_type: CodeFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Code(code_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -299,13 +276,11 @@ impl SourceReference {
     pub fn new_file_config_reference(
         file_name: String,
         config_type: ConfigFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::ConfigFileType(config_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -314,13 +289,11 @@ impl SourceReference {
     pub fn new_file_video_reference(
         file_name: String,
         video_type: VideoFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Video(video_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -329,13 +302,11 @@ impl SourceReference {
     pub fn new_file_audio_reference(
         file_name: String,
         audio_type: AudioFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Audio(audio_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
@@ -344,23 +315,18 @@ impl SourceReference {
     pub fn new_file_shinkai_reference(
         file_name: String,
         shinkai_type: ShinkaiFileType,
-        original_creation_datetime: Option<DateTime<Utc>>,
         text_chunking_strategy: TextChunkingStrategy,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Shinkai(shinkai_type),
-            original_creation_datetime,
             text_chunking_strategy,
         })
     }
 
     /// Creates a new SourceReference for an external URI
-    pub fn new_external_uri(uri: String, original_creation_datetime: Option<DateTime<Utc>>) -> Self {
-        SourceReference::ExternalURI(ExternalURIReference {
-            uri,
-            original_creation_datetime,
-        })
+    pub fn new_external_uri(uri: String) -> Self {
+        SourceReference::ExternalURI(ExternalURIReference { uri })
     }
 
     /// Creates a new SourceReference for custom use cases
@@ -373,14 +339,7 @@ impl fmt::Display for SourceReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             SourceReference::FileRef(reference) => write!(f, "{}", reference),
-            SourceReference::ExternalURI(uri) => {
-                write!(
-                    f,
-                    "{} - {:?}",
-                    uri.uri,
-                    uri.original_creation_datetime.map(|dt| dt.to_rfc3339())
-                )
-            }
+            SourceReference::ExternalURI(uri) => write!(f, "{}", uri.uri),
             SourceReference::Other(s) => write!(f, "{}", s),
         }
     }
@@ -390,8 +349,6 @@ impl fmt::Display for SourceReference {
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
-    // Creation/publication time of the original content that this VR was created from
-    pub original_creation_datetime: Option<DateTime<Utc>>,
     pub text_chunking_strategy: TextChunkingStrategy,
 }
 
@@ -403,11 +360,7 @@ impl SourceFileReference {
 
 impl fmt::Display for SourceFileReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "File Name: {}, File Type: {},  Original Creation Datetime: {:?}",
-            self.file_name, self.file_type, self.original_creation_datetime
-        )
+        write!(f, "File Name: {}, File Type: {}", self.file_name, self.file_type)
     }
 }
 

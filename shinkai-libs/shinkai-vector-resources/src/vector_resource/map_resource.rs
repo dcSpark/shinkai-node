@@ -5,7 +5,7 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
-use crate::source::{DistributionInfo, SourceReference, VRSource};
+use crate::source::{DistributionInfo, SourceReference, VRSourceReference};
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::vector_resource::vector_search_traversal::VRHeader;
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 pub struct MapVectorResource {
     name: String,
     description: Option<String>,
-    source: VRSource,
+    source: VRSourceReference,
     resource_id: String,
     resource_embedding: Embedding,
     resource_base_type: VRBaseType,
@@ -122,7 +122,7 @@ impl VectorResourceCore for MapVectorResource {
         self.description.as_deref()
     }
 
-    fn source(&self) -> VRSource {
+    fn source(&self) -> VRSourceReference {
         self.source.clone()
     }
 
@@ -142,7 +142,7 @@ impl VectorResourceCore for MapVectorResource {
         self.description = new_description;
     }
 
-    fn set_source(&mut self, new_source: VRSource) {
+    fn set_source(&mut self, new_source: VRSourceReference) {
         self.source = new_source;
     }
 
@@ -366,7 +366,7 @@ impl MapVectorResource {
     pub fn new(
         name: &str,
         desc: Option<&str>,
-        source: VRSource,
+        source: VRSourceReference,
         resource_embedding: Embedding,
         embeddings: HashMap<String, Embedding>,
         nodes: HashMap<String, Node>,
@@ -408,7 +408,7 @@ impl MapVectorResource {
 
     /// Initializes an empty `MapVectorResource` with empty defaults. Of note, make sure EmbeddingModelType
     /// is correct before adding any nodes into the VR.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, is_merkelized: bool) -> Self {
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSourceReference, is_merkelized: bool) -> Self {
         MapVectorResource::new(
             name,
             desc,

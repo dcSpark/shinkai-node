@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::source::VRSource;
+use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::ElementType;
@@ -61,7 +61,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
             &generator,
             file_name.to_string(),
             None,
-            VRSource::None,
+            VRSourceReference::None,
             &vec![],
             500,
         )
@@ -105,7 +105,7 @@ fn test_unstructured_parse_txt_vector_resource() {
             &generator,
             file_name.to_string(),
             None,
-            VRSource::None,
+            VRSourceReference::None,
             &vec![],
             200,
         )
@@ -148,7 +148,7 @@ fn test_unstructured_parse_epub_vector_resource() {
             &generator,
             file_name.to_string(),
             None,
-            VRSource::None,
+            VRSourceReference::None,
             &vec![],
             300,
         )
@@ -191,7 +191,7 @@ fn test_unstructured_parse_html_vector_resource() {
             &generator,
             file_name.to_string(),
             None,
-            VRSource::None,
+            VRSourceReference::None,
             &vec![],
             300,
         )

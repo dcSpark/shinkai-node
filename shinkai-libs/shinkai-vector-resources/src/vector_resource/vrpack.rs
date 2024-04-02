@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{
     BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption, VRKai, VRPath, VRSource,
+    TraversalOption, VRKai, VRPath, VRSourceReference,
 };
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -72,7 +72,12 @@ impl VRPack {
     pub fn new_empty(name: &str) -> Self {
         VRPack {
             name: name.to_string(),
-            resource: BaseVectorResource::Map(MapVectorResource::new_empty("vrpack", None, VRSource::None, true)),
+            resource: BaseVectorResource::Map(MapVectorResource::new_empty(
+                "vrpack",
+                None,
+                VRSourceReference::None,
+                true,
+            )),
             version: Self::default_vrpack_version(),
             vrkai_count: 0,
             folder_count: 0,
@@ -203,7 +208,12 @@ impl VRPack {
 
     /// Creates a folder inside the VRPack at the specified parent path.
     pub fn create_folder(&mut self, folder_name: &str, parent_path: VRPath) -> Result<(), VRError> {
-        let resource = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None, true));
+        let resource = BaseVectorResource::Map(MapVectorResource::new_empty(
+            folder_name,
+            None,
+            VRSourceReference::None,
+            true,
+        ));
         let node = Node::new_vector_resource(folder_name.to_string(), &resource, None);
         let embedding = Embedding::new_empty();
 
