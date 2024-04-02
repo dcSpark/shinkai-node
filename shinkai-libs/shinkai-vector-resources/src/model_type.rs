@@ -48,6 +48,7 @@ impl EmbeddingModelType {
                 TextEmbeddingsInference::BgeSmallEn1_5 => 510,
                 TextEmbeddingsInference::E5BaseV2 => 510,
                 TextEmbeddingsInference::MultilingualE5Large => 510,
+                TextEmbeddingsInference::NomicEmbedText1_5 => 8190,
                 TextEmbeddingsInference::Other(_) => 510,
             },
             EmbeddingModelType::OpenAI(model) => match model {
@@ -82,6 +83,7 @@ pub enum TextEmbeddingsInference {
     BgeSmallEn1_5,
     E5BaseV2,
     MultilingualE5Large,
+    NomicEmbedText1_5,
     Other(String),
 }
 impl TextEmbeddingsInference {
@@ -101,8 +103,10 @@ impl TextEmbeddingsInference {
     const E5_BASE_V2: &'static str = "intfloat/e5-base-v2#1c644c92ad3ba1efdad3f1451a637716616a20e8";
     const MULTILINGUAL_E5_LARGE: &'static str =
         "intfloat/multilingual-e5-large#ab10c1a7f42e74530fe7ae5be82e6d4f11a719eb";
+    const NOMIC_EMBED_TEXT_1_5: &'static str =
+        "nomic-ai/nomic-embed-text-v1.5#7a5549b77c439ed64573143699547131d4218046";
 
-    pub const SUPPORTED_MODELS: [&'static str; 12] = [
+    pub const SUPPORTED_MODELS: [&'static str; 13] = [
         Self::ALL_MINI_LML6V2,
         Self::ALL_MINI_LML12V2,
         Self::MULTI_QA_MINI_LML6,
@@ -115,26 +119,33 @@ impl TextEmbeddingsInference {
         Self::E5_LARGE_V2,
         Self::E5_BASE_V2,
         Self::MULTILINGUAL_E5_LARGE,
+        Self::NOMIC_EMBED_TEXT_1_5,
     ];
 
     /// Returns the model name + commit in the format of "hftei/<model>#<commit>"
     fn to_string(&self) -> String {
-        let model_str = match self {
-            TextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2,
-            TextEmbeddingsInference::AllMiniLML12v2 => Self::ALL_MINI_LML12V2,
-            TextEmbeddingsInference::MultiQAMiniLML6 => Self::MULTI_QA_MINI_LML6,
-            TextEmbeddingsInference::BgeLargeEnv1_5 => Self::BGE_LARGE_ENV1_5,
-            TextEmbeddingsInference::BgeBaseEn1_5 => Self::BGE_BASE_EN1_5,
-            TextEmbeddingsInference::BgeSmallEn1_5 => Self::BGE_SMALL_EN1_5,
-            TextEmbeddingsInference::EmberV1 => Self::EMBER_V1,
-            TextEmbeddingsInference::GteLarge => Self::GTE_LARGE,
-            TextEmbeddingsInference::GteBase => Self::GTE_BASE,
-            TextEmbeddingsInference::E5LargeV2 => Self::E5_LARGE_V2,
-            TextEmbeddingsInference::E5BaseV2 => Self::E5_BASE_V2,
-            TextEmbeddingsInference::MultilingualE5Large => Self::MULTILINGUAL_E5_LARGE,
-            TextEmbeddingsInference::Other(name) => name,
-        };
+        let model_str = self.to_unprefixed_string();
         format!("hftei/{}", model_str)
+    }
+
+    /// Returns the model name + commit without the "hftei/" prefix
+    fn to_unprefixed_string(&self) -> String {
+        match self {
+            TextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
+            TextEmbeddingsInference::AllMiniLML12v2 => Self::ALL_MINI_LML12V2.to_string(),
+            TextEmbeddingsInference::MultiQAMiniLML6 => Self::MULTI_QA_MINI_LML6.to_string(),
+            TextEmbeddingsInference::BgeLargeEnv1_5 => Self::BGE_LARGE_ENV1_5.to_string(),
+            TextEmbeddingsInference::BgeBaseEn1_5 => Self::BGE_BASE_EN1_5.to_string(),
+            TextEmbeddingsInference::BgeSmallEn1_5 => Self::BGE_SMALL_EN1_5.to_string(),
+            TextEmbeddingsInference::EmberV1 => Self::EMBER_V1.to_string(),
+            TextEmbeddingsInference::GteLarge => Self::GTE_LARGE.to_string(),
+            TextEmbeddingsInference::GteBase => Self::GTE_BASE.to_string(),
+            TextEmbeddingsInference::E5LargeV2 => Self::E5_LARGE_V2.to_string(),
+            TextEmbeddingsInference::E5BaseV2 => Self::E5_BASE_V2.to_string(),
+            TextEmbeddingsInference::MultilingualE5Large => Self::MULTILINGUAL_E5_LARGE.to_string(),
+            TextEmbeddingsInference::NomicEmbedText1_5 => Self::NOMIC_EMBED_TEXT_1_5.to_string(),
+            TextEmbeddingsInference::Other(name) => name.clone(),
+        }
     }
 
     /// Parses a string in the format of "hftei/<model>#<commit>" into a TextEmbeddingsInference
@@ -153,6 +164,7 @@ impl TextEmbeddingsInference {
             Self::E5_LARGE_V2 => Ok(TextEmbeddingsInference::E5LargeV2),
             Self::E5_BASE_V2 => Ok(TextEmbeddingsInference::E5BaseV2),
             Self::MULTILINGUAL_E5_LARGE => Ok(TextEmbeddingsInference::MultilingualE5Large),
+            Self::NOMIC_EMBED_TEXT_1_5 => Ok(TextEmbeddingsInference::NomicEmbedText1_5),
             _ => Ok(TextEmbeddingsInference::Other(stripped.to_string())),
         }
     }
