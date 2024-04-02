@@ -2,7 +2,7 @@ use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
-use crate::source::{distribution, VRSource};
+use crate::source::{distribution, VRSourceReference};
 use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
 use distribution::DistributionInfo;
@@ -49,7 +49,7 @@ impl UnstructuredAPI {
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
@@ -81,7 +81,7 @@ impl UnstructuredAPI {
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,

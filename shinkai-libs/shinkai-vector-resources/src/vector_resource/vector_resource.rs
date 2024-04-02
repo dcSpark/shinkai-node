@@ -14,7 +14,7 @@ use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiStringTime;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::DistributionInfo;
-pub use crate::source::VRSource;
+pub use crate::source::VRSourceReference;
 use crate::utils::{hash_string, random_string};
 use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
@@ -33,12 +33,12 @@ pub trait VectorResource: Send + Sync + VectorResourceCore + VectorResourceSearc
 pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
-    fn source(&self) -> VRSource;
+    fn source(&self) -> VRSourceReference;
     fn keywords(&self) -> &VRKeywords;
     fn keywords_mut(&mut self) -> &mut VRKeywords;
     fn set_name(&mut self, new_name: String);
     fn set_description(&mut self, new_description: Option<String>);
-    fn set_source(&mut self, new_source: VRSource);
+    fn set_source(&mut self, new_source: VRSourceReference);
     fn resource_id(&self) -> &str;
     fn set_resource_id(&mut self, id: String);
     fn resource_embedding(&self) -> &Embedding;

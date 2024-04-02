@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
 use shinkai_vector_resources::{
-    source::{SourceFile, VRSource},
+    source::{SourceFile, VRSourceReference},
     vector_resource::BaseVectorResource,
     vector_resource::VRHeader,
 };
@@ -143,7 +143,7 @@ pub struct LocalScopeVRPackEntry {
 pub struct VectorFSItemScopeEntry {
     pub name: String,
     pub path: VRPath,
-    pub source: VRSource,
+    pub source: VRSourceReference,
 }
 
 /// A Scope Entry for a FSFolder saved in the VectorFS.

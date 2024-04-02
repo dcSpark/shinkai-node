@@ -10,7 +10,7 @@ use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::source::{SourceFileType, VRSource};
+use shinkai_vector_resources::source::{SourceFileType, VRSourceReference};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;

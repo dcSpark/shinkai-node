@@ -12,7 +12,9 @@ use shinkai_vector_resources::source::{DistributionInfo, DistributionOrigin, Sou
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai, VRPack};
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    vector_resource::{BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSource, VectorResourceCore},
+    vector_resource::{
+        BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSourceReference, VectorResourceCore,
+    },
 };
 use std::collections::HashMap;
 
@@ -590,7 +592,7 @@ impl VectorFS {
         let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(
             new_folder_name,
             None,
-            VRSource::None,
+            VRSourceReference::None,
             true,
         ));
         let embedding = Embedding::new_empty(); // Empty embedding as folders do not score in VecFS search

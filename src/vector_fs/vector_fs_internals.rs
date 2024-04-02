@@ -13,7 +13,7 @@ use shinkai_vector_resources::{
     resource_errors::VRError,
     source::DistributionInfo,
     vector_resource::{
-        BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSource, VectorResource,
+        BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSourceReference, VectorResource,
         VectorResourceCore,
     },
 };
@@ -37,7 +37,7 @@ impl VectorFSInternals {
         let core_resource = MapVectorResource::new(
             "VecFS Core Resource",
             None,
-            VRSource::None,
+            VRSourceReference::None,
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),
