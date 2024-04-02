@@ -8,11 +8,13 @@ use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 #[cfg(feature = "native-http")]
 use reqwest::Client as AsyncClient;
+use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native-http")]
 use std::io::{prelude::*, Cursor};
 #[cfg(feature = "native-http")]
 use std::net::TcpStream;
+use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
@@ -256,8 +258,9 @@ impl RemoteEmbeddingGenerator {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),
         };
 
-        // Create the HTTP client
-        let client = AsyncClient::new();
+        // Create the HTTP client with a custom timeout
+        let timeout = Duration::from_secs(60);
+        let client = ClientBuilder::new().timeout(timeout).build()?;
 
         // Build the request
         let mut request = client
@@ -270,11 +273,28 @@ impl RemoteEmbeddingGenerator {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        // Send the request and check for errors
-        let response = request.send().await.map_err(|err| {
-            // Handle any HTTP client errors here (e.g., request creation failure)
-            VRError::RequestFailed(format!("HTTP request failed: {}", err))
-        })?;
+        // Send the request with retries
+        let max_retries = 3;
+        let mut retry_count = 0;
+        let response = loop {
+            match request.try_clone().unwrap().send().await {
+                Ok(response) => break response,
+                Err(err) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        eprintln!(
+                            "Request failed with error: {}. Retrying ({}/{})...",
+                            err, retry_count, max_retries
+                        );
+                    } else {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after {} retries: {}",
+                            max_retries, err
+                        )));
+                    }
+                }
+            }
+        };
 
         // Check if the response is successful
         if response.status().is_success() {
