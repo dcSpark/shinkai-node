@@ -16,7 +16,6 @@ tokio = { version = "1.36", features = ["full"] }
 anyhow = "1.0.72"
 serde_json = "1.0.105"
 
-dashmap = "5.5.3"
 chrono = "0.4"
 chrono-tz = "0.5"
 multipart = "0.17"
@@ -28,6 +27,11 @@ libsodium-sys-stable = "1.20.5"
 aes-gcm = "0.10.3"
 async-channel = "1.6.1"
 warp = "0.3.6"
+
+[dependencies.rocksdb]
+version = "0.22.0"
+default-features = false
+features = ["lz4"]
 
 [dependencies.serde]
 version = "1.0.188"

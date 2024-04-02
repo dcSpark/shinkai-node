@@ -12,15 +12,19 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
 
+use crate::http_requests::PostRequestError;
+use crate::persistence::{ShinkaiMirrorDB, ShinkaiMirrorDBError};
 use crate::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncingFolder {
     local_last_synchronized_file_datetime: SystemTime,
 }
@@ -30,8 +34,19 @@ pub struct FilesystemSynchronizer {
     pub shinkai_manager_for_sync: ShinkaiManagerForSync,
     pub folder_to_watch: PathBuf,
     pub destination_path: PathBuf,
-    pub syncing_folders: DashMap<PathBuf, SyncingFolder>,
+    pub profile_name: String,
+    pub syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
     pub sync_thread_handle: Option<thread::JoinHandle<()>>,
+}
+
+impl std::fmt::Debug for FilesystemSynchronizer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilesystemSynchronizer")
+            .field("folder_to_watch", &self.folder_to_watch)
+            .field("destination_path", &self.destination_path)
+            .field("profile_name", &self.profile_name)
+            .finish()
+    }
 }
 
 impl FilesystemSynchronizer {
@@ -39,58 +54,79 @@ impl FilesystemSynchronizer {
         shinkai_manager_for_sync: ShinkaiManagerForSync,
         folder_to_watch: PathBuf,
         destination_path: PathBuf,
-        syncing_folders_restore: HashMap<PathBuf, SyncingFolder>,
+        db_path: String,
         sync_interval_min: Option<Duration>,
-    ) -> Self {
-        let syncing_folders_clone = DashMap::new();
-        for (key, value) in syncing_folders_restore {
-            syncing_folders_clone.insert(key, value);
-        }
+    ) -> Result<Self, ShinkaiMirrorDBError> {
+        let db = ShinkaiMirrorDB::new(&db_path)?;
+        let syncing_folders_db = Arc::new(Mutex::new(db));
+        let profile_name = shinkai_manager_for_sync.sender_subidentity.clone();
 
+        let profile_name_clone = profile_name.clone();
         let shinkai_manager_clone = shinkai_manager_for_sync.clone();
         let folder_to_watch_clone = folder_to_watch.clone();
-        let syncing_folders_clone_thread = syncing_folders_clone.clone();
+        let syncing_folders_db_clone = syncing_folders_db.clone();
+        let destination_clone = destination_path.clone();
 
         let handle = tokio::spawn(async move {
             let sync_interval = sync_interval_min.unwrap_or_else(|| Duration::from_secs(60 * 5));
 
             loop {
-                let _ = Self::process_updates(
+                eprintln!("Syncing folders");
+                let result = Self::process_updates(
                     &shinkai_manager_clone,
                     &folder_to_watch_clone,
-                    &syncing_folders_clone_thread,
+                    &profile_name_clone,
+                    &destination_clone,
+                    syncing_folders_db_clone.clone(),
                 )
                 .await;
+                eprintln!("Syncing folders finished. Result: {:?}", result);
 
                 // Sleep until the next iteration
                 std::thread::sleep(sync_interval);
             }
         });
 
-        FilesystemSynchronizer {
+        Ok(FilesystemSynchronizer {
+            profile_name,
             shinkai_manager_for_sync,
             folder_to_watch,
             destination_path,
-            syncing_folders: syncing_folders_clone,
+            syncing_folders_db,
             sync_thread_handle: None,
             abort_handler: handle.abort_handle(),
-        }
+        })
     }
 
-    pub fn scan_folders_and_calculate_difference(
+    pub async fn scan_folders_and_calculate_difference(
         folder_to_watch: &PathBuf,
-        syncing_folders: &DashMap<PathBuf, SyncingFolder>,
+        profile_name: &str,
+        syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
     ) -> Vec<PathBuf> {
         let current_folder_files = Self::scan_folders(folder_to_watch);
         let mut files_to_update = Vec::new();
 
         for (path, modified_time) in current_folder_files {
-            if let Some(syncing_folder) = syncing_folders.get(&path) {
-                if modified_time > syncing_folder.local_last_synchronized_file_datetime {
+            let syncing_folders = syncing_folders_db.lock().await;
+            // Use get_file_mirror_state to check if the file exists in the database
+            match syncing_folders.get_file_mirror_state(profile_name.to_string(), path.clone()) {
+                Ok(Some(syncing_folder)) => {
+                    // If the file exists and the modified time is greater than the last synchronized time, add it to the update list
+                    if modified_time > syncing_folder.local_last_synchronized_file_datetime {
+                        files_to_update.push(path);
+                    }
+                }
+                Ok(None) => {
+                    // If the file does not exist in the database, add it to the update list
                     files_to_update.push(path);
+                }
+                Err(e) => {
+                    // Handle potential errors, for example, log them or push them to an error list
+                    eprintln!("Error accessing database for file {:?}: {}", path, e);
                 }
             }
         }
+        eprintln!("scan_folders_and_calculate_difference> {:?}", files_to_update);
 
         files_to_update
     }
@@ -117,6 +153,7 @@ impl FilesystemSynchronizer {
                 }
             }
         }
+        eprintln!("scan_folders> {:?}", folder_files);
 
         folder_files
     }
@@ -124,51 +161,145 @@ impl FilesystemSynchronizer {
     pub async fn upload_files(
         shinkai_manager_for_sync: &ShinkaiManagerForSync,
         files: Vec<PathBuf>,
-        syncing_folders: &DashMap<PathBuf, SyncingFolder>,
-    ) -> Result<(), &'static str> {
+        profile_name: &str,
+        destination_path: &PathBuf,
+        syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    ) -> Result<(), PostRequestError> {
+        // Adjusted return type
+        eprintln!("upload_files> {:?}", files);
         for file_path in files {
-            let file_data = std::fs::read(&file_path).map_err(|_| "Failed to read file data")?;
+            let file_data = std::fs::read(&file_path)
+                .map_err(|_| PostRequestError::FSFolderNotFound("Failed to read file data".into()))?;
             let filename = file_path
                 .file_name()
-                .ok_or("Failed to extract filename")?
+                .ok_or(PostRequestError::Unknown("Failed to extract filename".into()))?
                 .to_str()
-                .ok_or("Failed to convert filename to string")?;
+                .ok_or(PostRequestError::Unknown("Failed to convert filename to string".into()))?;
+
+            // Construct the destination PathBuf
+            let destination_buf = destination_path.join(file_path.strip_prefix(destination_path).unwrap_or(&file_path));
+            // Extract the directory part of the destination PathBuf, removing the filename
+            let destination_dir_buf = destination_buf.parent().unwrap_or(&destination_buf);
+            // Convert PathBuf to a string slice
+            let mut destination_str = destination_dir_buf.to_string_lossy().into_owned();
+
+            // Remove leading '.' if it exists
+            if destination_str.starts_with('.') {
+                destination_str.remove(0);
+            }
+
+            let path_components: Vec<&str> = destination_str.split('/').filter(|c| !c.is_empty()).collect();
+            let mut current_path = String::new();
+
+            for (index, component) in path_components.iter().enumerate() {
+                if index > 0 {
+                    current_path.push('/');
+                }
+                current_path.push_str(component);
+
+                let folder_check_path = if index == 0 {
+                    format!("/{}", current_path)
+                } else {
+                    current_path.clone()
+                };
+
+                match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
+                    Ok(_) => eprintln!("Folder exists: {}", folder_check_path),
+                    Err(_) => {
+                        let create_folder_path = if index == 0 {
+                            "/".to_string()
+                        } else {
+                            current_path[..current_path.rfind('/').unwrap_or(0)].to_string()
+                        };
+
+                        eprintln!(
+                            "Folder does not exist, creating: {} in {}",
+                            component, create_folder_path
+                        );
+                        if let Err(e) = shinkai_manager_for_sync
+                            .create_folder(component, &create_folder_path)
+                            .await
+                        {
+                            eprintln!("Failed to create folder: {:?}, error: {}", folder_check_path, e);
+                            return Err(PostRequestError::Unknown(format!(
+                                "Failed to create folder: {}",
+                                folder_check_path
+                            )));
+                        }
+                    }
+                }
+            }
 
             // Attempt to upload the file, only proceed if successful
-            if shinkai_manager_for_sync.upload_file(&file_data, filename).await.is_ok() {
-                // Update the last synchronized file datetime in syncing_folders
+            let upload_result = shinkai_manager_for_sync
+                .upload_file(&file_data, filename, &destination_str)
+                .await;
+            if let Ok(_) = upload_result {
+                // Update the last synchronized file datetime in syncing_folders_db
                 let parent_path = file_path.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
-                if let Some(mut syncing_folder) = syncing_folders.get_mut(&parent_path) {
-                    syncing_folder.local_last_synchronized_file_datetime = SystemTime::now();
+                let mut db = syncing_folders_db.lock().await;
+                let syncing_folder = SyncingFolder {
+                    local_last_synchronized_file_datetime: SystemTime::now(),
+                };
+                // Use add_or_update_file_mirror_state to update the database
+                if let Err(_) =
+                    db.add_or_update_file_mirror_state(profile_name.to_string(), parent_path, syncing_folder)
+                {
+                    eprintln!("Failed to update file mirror state");
+                    return Err(PostRequestError::Unknown("Failed to update file mirror state".into()));
                 }
-            } else {
+            } else if let Err(e) = upload_result {
                 // If an error occurs during file upload, return the error
-                return Err("Failed to upload file");
+                eprintln!("Failed to upload file: {:?}", e);
+                return Err(e);
             }
         }
 
+        eprintln!("upload_files> Done");
         Ok(())
     }
 
-    fn stop(self) -> HashMap<PathBuf, SyncingFolder> {
-        // Wait for synchronizer thread to finish
+    fn stop(self) {
         self.abort_handler.abort();
-
-        let mut hashmap = HashMap::new();
-        for entry in self.syncing_folders.iter() {
-            hashmap.insert(entry.key().clone(), entry.value().clone());
-        }
-
-        hashmap
     }
 
     pub async fn process_updates(
         shinkai_manager_for_sync: &ShinkaiManagerForSync,
         folder_to_watch: &PathBuf,
-        syncing_folders: &DashMap<PathBuf, SyncingFolder>,
-    ) -> Result<(), &'static str> {
-        let files_to_update = Self::scan_folders_and_calculate_difference(folder_to_watch, syncing_folders);
-        Self::upload_files(shinkai_manager_for_sync, files_to_update, syncing_folders).await
+        profile_name: &str,
+        destination_path: &PathBuf,
+        syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    ) -> Result<(), PostRequestError> {
+        // Updated return type
+        // Check the health of the external service before proceeding
+        match shinkai_manager_for_sync.check_node_health().await {
+            Ok(health_status) => {
+                println!("Node health check passed: {:?}", health_status);
+                // Proceed with the updates if the health check is successful
+                let files_to_update = Self::scan_folders_and_calculate_difference(
+                    folder_to_watch,
+                    profile_name,
+                    syncing_folders_db.clone(),
+                )
+                .await;
+                Self::upload_files(
+                    shinkai_manager_for_sync,
+                    files_to_update,
+                    profile_name,
+                    destination_path,
+                    syncing_folders_db,
+                )
+                .await
+            }
+            Err(health_check_error) => {
+                // Handle the case where the health check fails
+                eprintln!("Node health check failed: {}", health_check_error);
+                Err(PostRequestError::Unknown(format!(
+                    "Node health check failed: {}",
+                    health_check_error
+                ))) // Adjusted to use PostRequestError
+            }
+        }
     }
 
     // For later:

@@ -287,7 +287,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
-    // POST v1/vec_fs/retrieve_vector_resource
+    // POST v1/vec_fs/convert_files_and_save_to_folder
     let api_convert_files_and_save_to_folder = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "vec_fs" / "convert_files_and_save_to_folder")

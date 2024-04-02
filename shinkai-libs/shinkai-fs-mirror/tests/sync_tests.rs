@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -14,7 +16,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::network::node_api::APIError;
+use shinkai_node::network::node_api::{self, APIError};
 use shinkai_node::schemas::identity::{Identity, IdentityType};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::collections::HashMap;
@@ -45,6 +47,11 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 fn setup() {
     let path = Path::new("db_tests/");
+    let _ = fs::remove_dir_all(path);
+}
+
+fn persistence_setup() {
+    let path = Path::new("db_tests_persistence/");
     let _ = fs::remove_dir_all(path);
 }
 
@@ -84,6 +91,7 @@ fn folder_setup() {
 fn sync_tests() {
     eprintln!("Starting sync tests");
     setup();
+    persistence_setup();
     // folder_setup();
     let rt = Runtime::new().unwrap();
 
@@ -180,6 +188,20 @@ fn sync_tests() {
             let _ = node1_clone.lock().await.start().await;
         });
 
+        // add 2 sec delay
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Setup API Server task
+        let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082); 
+        let node1_commands_sender_clone = node1_commands_sender.clone();
+        let api_server = tokio::spawn(async move {
+            node_api::run_api(
+                node1_commands_sender_clone.clone(),
+                api_listen_address,
+                node1_identity_name.to_string(),
+            )
+            .await;
+        });
+
         let node1_abort_handler = node1_handler.abort_handle();
         let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
 
@@ -205,6 +227,7 @@ fn sync_tests() {
             }
 
             // Create a New ShinkaiManagerForSync
+            let node_address = format!("http://{}", api_listen_address);
             let shinkai_manager_sync = ShinkaiManagerForSync::new(
                 node1_profile_encryption_sk.clone(),
                 clone_signature_secret_key(&node1_profile_identity_sk),
@@ -213,10 +236,11 @@ fn sync_tests() {
                 node1_profile_name.to_string(),
                 node1_identity_name.to_string(),
                 node1_identity_name.to_string(),
-                addr1.to_string(),
+                node_address,
             );
 
-            let syncing_folders = FilesystemSynchronizer::new(shinkai_manager_sync, Path::new("./knowledge").to_path_buf(), Path::new("./knowledge").to_path_buf(), HashMap::new(), Some(Duration::from_secs(5)));
+            let syncing_folders = FilesystemSynchronizer::new(shinkai_manager_sync, Path::new("./knowledge").to_path_buf(), Path::new("./knowledge").to_path_buf(), "db_tests_persistence/".to_string(), Some(Duration::from_secs(5))).await.unwrap();
+            eprintln!("syncing_folders: {:?}", syncing_folders);
             // sleep for 10 seconds
             tokio::time::sleep(Duration::from_secs(10)).await;
             // let res = syncing_folders.scan_folders();
@@ -227,6 +251,38 @@ fn sync_tests() {
                 // Check that the file is uploaded
             }
 
+            {   
+                eprintln!("\n\nChecking the current file system files\n\n");
+                let payload = APIVecFsRetrievePathSimplifiedJson {
+                    path: "/".to_string(),
+                };
+
+                let msg = generate_message_with_payload(
+                    serde_json::to_string(&payload).unwrap(),
+                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                    node1_identity_name,
+                );
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                // eprintln!("resp for current file system files: {}", resp);
+                eprintln!("\n\n Checking the current file system files\n\n");
+                print_tree_simple(&resp);
+                
+            }
+            let _ = node1_abort_handler.abort();
             panic!("end of the road for now");
             // Testing Some Stuff
             {
@@ -373,10 +429,10 @@ fn sync_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp for current file system files: {}", resp);
             }
-            node1_abort_handler.abort();
+            let _ = node1_abort_handler.abort();
         });
         // Wait for all tasks to complete
-        let result = tokio::try_join!(node1_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, api_server, interactions_handler);
         match result {
             Ok(_) => {}
             Err(e) => {
@@ -519,4 +575,76 @@ fn generate_message_with_payload<T: ToString>(
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
         .unwrap()
+}
+
+fn print_tree_simple(json_str: &str) {
+    // TODO: fix there is some extra space
+    // /
+    // ├── private_test_folder
+    //     │   └── shinkai_intro
+    // └── shared_test_folder
+    //         ├── crypto
+    //         │   └── shinkai_intro
+    //         └── shinkai_intro
+    // eprintln!("print_tree_simple JSON: {}", json_str);
+    // Parse the JSON string into a serde_json::Value
+
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+        eprintln!("/");
+        if let Some(folders) = val["child_folders"].as_array() {
+            let folders_len = folders.len();
+            for (index, folder) in folders.iter().enumerate() {
+                let folder_name = folder["name"].as_str().unwrap_or("Unknown Folder");
+                let prefix = if index < folders_len - 1 {
+                    "├── "
+                } else {
+                    "└── "
+                };
+                eprintln!("{}{}", prefix, folder_name);
+                print_subtree(folder, "    ", index == folders_len - 1);
+            }
+        }
+    } else {
+        eprintln!("Failed to parse JSON");
+    }
+}
+
+fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
+    let mut new_indent = String::from(indent);
+    if !is_last {
+        new_indent.push_str("│   ");
+    } else {
+        new_indent.push_str("    ");
+    }
+
+    // Create a longer-lived empty Vec that can be borrowed
+    let empty_vec = vec![];
+
+    // Use a reference to `empty_vec` instead of creating a temporary value inline
+    let subfolders = folder["child_folders"].as_array().unwrap_or(&empty_vec);
+    let items = folder["child_items"].as_array().unwrap_or(&empty_vec);
+
+    let subfolders_len = subfolders.len();
+    let total_len = subfolders_len + items.len();
+
+    for (index, subfolder) in subfolders.iter().enumerate() {
+        let subfolder_name = subfolder["name"].as_str().unwrap_or("Unknown Subfolder");
+        let prefix = if index < subfolders_len - 1 || !items.is_empty() {
+            "├── "
+        } else {
+            "└── "
+        };
+        eprintln!("{}{}{}", new_indent, prefix, subfolder_name);
+        print_subtree(subfolder, &new_indent, index == total_len - 1);
+    }
+
+    for (index, item) in items.iter().enumerate() {
+        let item_name = item["name"].as_str().unwrap_or("Unknown Item");
+        let prefix = if index < items.len() - 1 {
+            "├── "
+        } else {
+            "└── "
+        };
+        eprintln!("{}{}{}", new_indent, prefix, item_name);
+    }
 }

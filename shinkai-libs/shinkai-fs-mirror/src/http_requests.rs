@@ -1,8 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use std::env;
-
 #[derive(Debug)]
 pub enum PostRequestError {
     RequestFailed(String),
@@ -32,7 +30,6 @@ pub struct PostDataResponse {
     pub data: serde_json::Value,
 }
 
-use reqwest::header::HeaderMap;
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -58,6 +55,7 @@ pub struct UrlDetails {
 pub async fn request_post(api_url: String, input: String, path: &str) -> Result<PostDataResponse, PostRequestError> {
     let client = Client::new();
     let url = format!("{}{}", api_url, path);
+    eprintln!("Requesting POST to {}", &url);
     match client
         .post(&url)
         .header("Content-Type", "application/json")
@@ -74,13 +72,11 @@ pub async fn request_post(api_url: String, input: String, path: &str) -> Result<
                 .await
                 .unwrap_or_else(|_| "Failed to get response text".to_string());
 
-            if status_code == 500 {
-                if response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
-                    return Err(PostRequestError::FSFolderNotFound(format!(
-                        "FS folder not found. Response: {}",
-                        &response_text
-                    )));
-                }
+            if status_code == 500 && response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
+                return Err(PostRequestError::FSFolderNotFound(format!(
+                    "FS folder not found. Response: {}",
+                    &response_text
+                )));
             }
 
             // TODO: handle 400 specifically
@@ -124,9 +120,18 @@ pub async fn request_post_multipart(
                 .await
                 .unwrap_or_else(|_| "Failed to get response text".to_string());
 
-            if status_code == 500 {
-                if response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
-                    return Err(PostRequestError::FSFolderNotFound("FS folder not found.".to_string()));
+            if status_code == 500 && response_path == "/v1/vec_fs/retrieve_path_simplified_json" {
+                return Err(PostRequestError::FSFolderNotFound("FS folder not found.".to_string()));
+            }
+
+            // Handle success message directly
+            if status_code.is_success() {
+                // Check if the response is not in expected JSON format
+                if response_text.contains("File added successfully") {
+                    return Ok(PostDataResponse {
+                        status: "Success".to_string(),
+                        data: serde_json::Value::String("File added successfully".to_string()),
+                    });
                 }
             }
 
