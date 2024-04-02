@@ -1,6 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::source::VRSource;
+use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
 use shinkai_vector_resources::vector_resource::vrkai::VRKai;
@@ -18,7 +18,7 @@ pub fn default_vector_resource_doc() -> DocumentVectorResource {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com", None),
         true,
     );
 
@@ -195,7 +195,7 @@ fn test_manual_resource_vector_search() {
     let mut map_resource = MapVectorResource::new_empty(
         "Tech Facts",
         Some("A collection of facts about technology"),
-        VRSource::new_uri_ref("veryrealtechfacts.com", None),
+        VRSourceReference::new_uri_ref("veryrealtechfacts.com", None),
         true,
     );
 
@@ -226,7 +226,7 @@ fn test_manual_resource_vector_search() {
     let mut fruit_doc = DocumentVectorResource::new_empty(
         "Fruit Facts",
         Some("A collection of facts about fruits"),
-        VRSource::new_uri_ref("ostensiblyrealfruitfacts.com", None),
+        VRSourceReference::new_uri_ref("ostensiblyrealfruitfacts.com", None),
         true,
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -654,7 +654,7 @@ fn test_manual_syntactic_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "CV Data From Resume",
         Some("A bunch of data theoretically parsed out of a CV"),
-        VRSource::None,
+        VRSourceReference::None,
         true,
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -744,7 +744,7 @@ fn test_checking_embedding_similarity() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com", None),
         true,
     );
 
@@ -815,7 +815,7 @@ async fn test_embeddings_coherence() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com", None),
         true,
     );
 

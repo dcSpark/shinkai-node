@@ -4,7 +4,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::source::DistributionInfo;
-use crate::source::VRSource;
+use crate::source::VRSourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
@@ -50,7 +50,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
@@ -77,7 +77,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
@@ -103,7 +103,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
@@ -135,7 +135,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
@@ -176,7 +176,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
@@ -235,7 +235,7 @@ impl UnstructuredParser {
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<String>,
-        source: VRSource,
+        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {

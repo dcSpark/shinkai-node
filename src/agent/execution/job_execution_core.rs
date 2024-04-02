@@ -19,7 +19,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{
-    DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource,
+    DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSourceReference,
 };
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};

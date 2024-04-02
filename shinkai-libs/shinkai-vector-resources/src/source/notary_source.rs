@@ -1,3 +1,4 @@
+use super::DistributionInfo;
 use crate::resource_errors::VRError;
 use crate::source::TextChunkingStrategy;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
@@ -24,8 +25,7 @@ pub struct TLSNotarizedSourceFile {
     pub file_name: String,
     pub file_type: SourceFileType,
     pub file_content: Vec<u8>,
-    // Creation/publication time of the original content which is inside this struct
-    pub original_creation_datetime: Option<DateTime<Utc>>,
+    pub distribution_info: Option<DistributionInfo>,
     pub proof: TLSNotaryProof,
 }
 
@@ -40,14 +40,14 @@ impl TLSNotarizedSourceFile {
         file_name: String,
         file_type: SourceFileType,
         file_content: Vec<u8>,
-        original_creation_datetime: Option<DateTime<Utc>>,
+        distribution_info: Option<DistributionInfo>,
         proof: TLSNotaryProof,
     ) -> Self {
         Self {
             file_name,
             file_type,
             file_content,
-            original_creation_datetime,
+            distribution_info,
             proof,
         }
     }

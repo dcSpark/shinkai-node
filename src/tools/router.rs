@@ -4,7 +4,7 @@ use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::source::VRSource;
+use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
 };
@@ -283,7 +283,7 @@ impl ToolRouter {
     pub fn new() -> Self {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
-        let source = VRSource::None;
+        let source = VRSourceReference::None;
 
         // Initialize the MapVectorResource and add all of the rust tools by default
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);

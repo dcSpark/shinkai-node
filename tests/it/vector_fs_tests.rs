@@ -17,7 +17,7 @@ use shinkai_vector_resources::source::{
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSource, VectorResource, VectorResourceCore,
+    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResource, VectorResourceCore,
     VectorResourceSearch,
 };
 use std::collections::HashMap;
@@ -280,7 +280,7 @@ async fn test_vector_fs_saving_reading() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com"),
         true,
     );
     doc.set_embedding_model_used(generator.model_type());
