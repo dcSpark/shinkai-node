@@ -8,7 +8,7 @@ use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use fs_extra::dir::{self, CopyOptions};
 use shinkai_fs_mirror::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
-use shinkai_fs_mirror::synchronizer::FilesystemSynchronizer;
+use shinkai_fs_mirror::synchronizer::{FilesystemSynchronizer, SyncInterval};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
@@ -238,19 +238,21 @@ fn sync_tests() {
                 node1_identity_name.to_string(),
                 node_address,
             );
+            // TODO: change the time to manual. Maybe create an Enum to pass it?
 
-            let syncing_folders = FilesystemSynchronizer::new(shinkai_manager_sync, Path::new("./knowledge").to_path_buf(), Path::new("./knowledge").to_path_buf(), "db_tests_persistence/".to_string(), Some(Duration::from_secs(5))).await.unwrap();
+            let syncing_folders = FilesystemSynchronizer::new(
+                shinkai_manager_sync, 
+                Path::new("./knowledge").to_path_buf(), 
+                Path::new("./knowledge").to_path_buf(), 
+                "db_tests_persistence/".to_string(), 
+                SyncInterval::Timed(Duration::from_secs(5))
+            ).await.unwrap();
+            
             eprintln!("syncing_folders: {:?}", syncing_folders);
             // sleep for 10 seconds
             tokio::time::sleep(Duration::from_secs(10)).await;
             // let res = syncing_folders.scan_folders();
             // eprintln!("res: {:?}", res);
-            {
-                // Upload something
-
-                // Check that the file is uploaded
-            }
-
             {   
                 eprintln!("\n\nChecking the current file system files\n\n");
                 let payload = APIVecFsRetrievePathSimplifiedJson {
@@ -279,10 +281,19 @@ fn sync_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 // eprintln!("resp for current file system files: {}", resp);
                 eprintln!("\n\n Checking the current file system files\n\n");
-                print_tree_simple(&resp);
-                
+                print_tree_simple(&resp);   
+                // TODO: check that the response matches the expectation
             }
-            let _ = node1_abort_handler.abort();
+            {
+                // TODO: Make modifications
+                // Add a new file
+                // update a file
+                // add sub folders
+            }
+            {
+                // 
+            }
+            node1_abort_handler.abort();
             panic!("end of the road for now");
             // Testing Some Stuff
             {
@@ -429,7 +440,7 @@ fn sync_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp for current file system files: {}", resp);
             }
-            let _ = node1_abort_handler.abort();
+            node1_abort_handler.abort();
         });
         // Wait for all tasks to complete
         let result = tokio::try_join!(node1_handler, api_server, interactions_handler);

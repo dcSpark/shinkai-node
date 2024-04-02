@@ -13,7 +13,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -29,14 +28,19 @@ pub struct SyncingFolder {
     local_last_synchronized_file_datetime: SystemTime,
 }
 
+pub enum SyncInterval {
+    Immediate,
+    Timed(Duration),
+    None,
+}
+
 pub struct FilesystemSynchronizer {
-    pub abort_handler: AbortHandle,
+    pub abort_handler: Option<AbortHandle>,
     pub shinkai_manager_for_sync: ShinkaiManagerForSync,
     pub folder_to_watch: PathBuf,
     pub destination_path: PathBuf,
     pub profile_name: String,
     pub syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
-    pub sync_thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl std::fmt::Debug for FilesystemSynchronizer {
@@ -55,37 +59,54 @@ impl FilesystemSynchronizer {
         folder_to_watch: PathBuf,
         destination_path: PathBuf,
         db_path: String,
-        sync_interval_min: Option<Duration>,
+        sync_interval: SyncInterval,
     ) -> Result<Self, ShinkaiMirrorDBError> {
         let db = ShinkaiMirrorDB::new(&db_path)?;
         let syncing_folders_db = Arc::new(Mutex::new(db));
         let profile_name = shinkai_manager_for_sync.sender_subidentity.clone();
 
-        let profile_name_clone = profile_name.clone();
-        let shinkai_manager_clone = shinkai_manager_for_sync.clone();
-        let folder_to_watch_clone = folder_to_watch.clone();
-        let syncing_folders_db_clone = syncing_folders_db.clone();
-        let destination_clone = destination_path.clone();
+        let task_handle = match sync_interval {
+            SyncInterval::Immediate | SyncInterval::Timed(_) => {
+                let shinkai_manager_clone = shinkai_manager_for_sync.clone();
+                let folder_to_watch_clone = folder_to_watch.clone();
+                let syncing_folders_db_clone = syncing_folders_db.clone();
+                let destination_clone = destination_path.clone();
+                let profile_name_clone = profile_name.clone();
 
-        let handle = tokio::spawn(async move {
-            let sync_interval = sync_interval_min.unwrap_or_else(|| Duration::from_secs(60 * 5));
-
-            loop {
-                eprintln!("Syncing folders");
-                let result = Self::process_updates(
-                    &shinkai_manager_clone,
-                    &folder_to_watch_clone,
-                    &profile_name_clone,
-                    &destination_clone,
-                    syncing_folders_db_clone.clone(),
-                )
-                .await;
-                eprintln!("Syncing folders finished. Result: {:?}", result);
-
-                // Sleep until the next iteration
-                std::thread::sleep(sync_interval);
+                Some(tokio::spawn(async move {
+                    if let SyncInterval::Immediate = sync_interval {
+                        // Immediate sync logic
+                        let result = FilesystemSynchronizer::process_updates(
+                            &shinkai_manager_clone,
+                            &folder_to_watch_clone,
+                            &profile_name_clone,
+                            &destination_clone,
+                            syncing_folders_db_clone.clone(),
+                        )
+                        .await;
+                        eprintln!("Immediate sync finished. Result: {:?}", result);
+                    } else if let SyncInterval::Timed(duration) = sync_interval {
+                        // Timed sync logic
+                        loop {
+                            eprintln!("Syncing folders");
+                            let result = FilesystemSynchronizer::process_updates(
+                                &shinkai_manager_clone,
+                                &folder_to_watch_clone,
+                                &profile_name_clone,
+                                &destination_clone,
+                                syncing_folders_db_clone.clone(),
+                            )
+                            .await;
+                            eprintln!("Syncing folders finished. Result: {:?}", result);
+                            tokio::time::sleep(duration).await;
+                        }
+                    }
+                }))
             }
-        });
+            SyncInterval::None => None,
+        };
+
+        let abort_handle = task_handle.map(|handle| handle.abort_handle());
 
         Ok(FilesystemSynchronizer {
             profile_name,
@@ -93,8 +114,7 @@ impl FilesystemSynchronizer {
             folder_to_watch,
             destination_path,
             syncing_folders_db,
-            sync_thread_handle: None,
-            abort_handler: handle.abort_handle(),
+            abort_handler: abort_handle,
         })
     }
 
@@ -260,7 +280,9 @@ impl FilesystemSynchronizer {
     }
 
     fn stop(self) {
-        self.abort_handler.abort();
+        if let Some(handle) = self.abort_handler {
+            handle.abort();
+        }
     }
 
     pub async fn process_updates(
@@ -301,58 +323,4 @@ impl FilesystemSynchronizer {
             }
         }
     }
-
-    // For later:
-    // {
-    //     "name": "Zeko_Mina_Rollup",
-    //     "path": "/test_folder/Zeko_Mina_Rollup",
-    //     "vr_header": {
-    //       "resource_name": "Zeko_Mina_Rollup",
-    //       "resource_id": "dbd162851a56481c1b376d6be505f8d4365c03b860e1d317796915c1c2ccaa0f",
-    //       "resource_base_type": "Document",
-    //       "resource_source": {
-    //         "Reference": {
-    //           "FileRef": {
-    //             "file_name": "files/Zeko_Mina_Rollup",
-    //             "file_type": {
-    //               "Document": "Pdf"
-    //             },
-    //             "original_creation_datetime": null,
-    //             "text_chunking_strategy": "V1"
-    //           }
-    //         }
-    //       },
-    //       "resource_embedding": null,
-    //       "resource_created_datetime": "2024-04-02T02:20:31.292269Z",
-    //       "resource_last_written_datetime": "2024-04-02T02:20:46.551353Z",
-    //       "resource_embedding_model_used": {
-    //         "TextEmbeddingsInference": "AllMiniLML6v2"
-    //       },
-    //       "resource_merkle_root": "7597614731185beae509021556fff2f7ff86d12518e40d7435ed262fc5c5acd1",
-    //       "resource_keywords": {
-    //         "keyword_list": [],
-    //         "keywords_embedding": null
-    //       },
-    //       "resource_distribution_info": {
-    //         "origin": null,
-    //         "release_datetime": null
-    //       },
-    //       "data_tag_names": [],
-    //       "metadata_index_keys": [
-    //         "page_numbers"
-    //       ]
-    //     },
-    //     "created_datetime": "2024-04-02T02:20:31.292269Z",
-    //     "last_written_datetime": "2024-04-02T02:20:46.551353Z",
-    //     "last_read_datetime": "2024-04-02T02:20:46.695135Z",
-    //     "vr_last_saved_datetime": "2024-04-02T02:20:46.553970Z",
-    //     "source_file_map_last_saved_datetime": "2024-04-02T02:20:46.553970Z",
-    //     "distribution_info": {
-    //       "origin": null,
-    //       "release_datetime": null
-    //     },
-    //     "vr_size": 2482698,
-    //     "source_file_map_size": 908844,
-    //     "merkle_hash": "7597614731185beae509021556fff2f7ff86d12518e40d7435ed262fc5c5acd1"
-    //   }
 }
