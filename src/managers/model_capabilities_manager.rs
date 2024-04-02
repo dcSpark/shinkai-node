@@ -333,7 +333,11 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for GenericAPI
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
-                } else {
+                }
+                else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
+                    32_000
+                }
+                else {
                     4096
                 }
             }
@@ -354,6 +358,12 @@ impl ModelCapabilitiesManager {
                 }
             }
             AgentLLMInterface::Ollama(ollama) => {
+                if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
+                    return 32_000;
+                }
+                else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
+                    return 32_000;
+                }
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
                 match re.captures(&ollama.model_type) {
