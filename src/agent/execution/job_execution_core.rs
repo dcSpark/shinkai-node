@@ -113,6 +113,7 @@ impl JobManager {
             generator,
         )
         .await;
+
         if let Err(e) = inference_chain_result {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
         }

@@ -245,17 +245,27 @@ async fn no_json_object_retry_logic(
                     ShinkaiLogLevel::Error,
                     &format!("Qa inference chain failure due to no parsable JSON produced: {}\nUsing summary backup to respond to user.", e),
                 );
-            let mut summary_answer = String::new();
             // Try from previous iteration
+            let mut summary_answer = String::new();
             if let Some(summary_str) = &summary_text {
-                summary_answer = summary_str.to_string()
+                if summary_str.len() > 2 {
+                    summary_answer = summary_str.to_string();
+                } else {
+                    // This propagates the error upwards
+                    response?;
+                }
             }
-            // Else use the VR summary. We create _temp_res to have `response?` resolve to pushing the error properly
+            // Else use the VR summary.
             else {
                 let mut _temp_resp = JsonValue::Null;
-                match summary_node_text {
-                    Some(text) => summary_answer = text.to_string(),
-                    None => _temp_resp = response?,
+                if let Some(text) = summary_node_text {
+                    if text.len() > 2 {
+                        summary_answer = text.to_string();
+                    } else {
+                        response?;
+                    }
+                } else {
+                    response?;
                 }
             }
 
