@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 mod it {
     mod agent_integration_tests;
     mod cron_job_tests;
@@ -31,4 +33,5 @@ mod it {
     mod vector_fs_tests;
     mod websocket_tests;
     mod subscription_manager_tests;
+    mod shinkai_mirror_tests;
 }

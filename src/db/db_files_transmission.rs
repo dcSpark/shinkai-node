@@ -126,8 +126,6 @@ impl ShinkaiDB {
                     // Attempt to convert the key to a String and strip the prefix
                     match String::from_utf8(key.to_vec()) {
                         Ok(key_str) => {
-                            eprintln!("Key: {}", key_str);
-                            eprintln!("Prefix: {}", prefix);
                             if let Some(file_name) = key_str.strip_prefix(&prefix) {
                                 files.push((file_name.to_string(), value.to_vec()));
                             } else {

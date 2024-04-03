@@ -84,7 +84,6 @@ impl VectorFS {
         path: VRPath,
         profile: ShinkaiName,
     ) -> Result<VFSReader, VectorFSError> {
-        eprintln!("Creating new reader for: {:?}", requester_name);
         VFSReader::new(requester_name, path, self, profile)
     }
 
