@@ -56,7 +56,7 @@ fn folder_setup() -> (PathBuf, TempDir) {
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let temp_path = temp_dir.path();
 
-    let source_path = Path::new("./files/knowledge");
+    let source_path = Path::new("./knowledge");
     dir::copy(source_path, temp_path, &CopyOptions::new()).expect("Failed to copy knowledge folder");
 
     eprintln!("Created temp dir");
@@ -399,7 +399,7 @@ fn mirror_sync_tests() {
                     .unwrap();
                 eprintln!("(after) resp: {:?}", resp.data);
 
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                tokio::time::sleep(Duration::from_secs(3)).await;
             }
             {
                 // Some modifications are made to the folder

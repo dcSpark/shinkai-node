@@ -255,8 +255,10 @@ impl FilesystemSynchronizer {
     ) -> Result<(), PostRequestError> {
         eprintln!("upload_files> {:?}", files);
         for (file_path, modified_time) in files {
+            eprintln!("upload_files> file_path: {:?}", file_path);
             let file_data = std::fs::read(&file_path)
                 .map_err(|_| PostRequestError::FSFolderNotFound("Failed to read file data".into()))?;
+            eprintln!("upload_files> file_data: {:?}", file_data.len());
             let filename = file_path
                 .file_name()
                 .ok_or(PostRequestError::Unknown("Failed to extract filename".into()))?
