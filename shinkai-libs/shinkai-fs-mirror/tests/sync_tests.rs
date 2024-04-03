@@ -1,27 +1,25 @@
 #![recursion_limit = "256"]
 
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use fs_extra::dir::{self, CopyOptions};
+use serde_json::Value;
 use shinkai_fs_mirror::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 use shinkai_fs_mirror::synchronizer::{FilesystemSynchronizer, SyncInterval};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
-    unsafe_deterministic_aes_encryption_key,
-};
+use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::network::node_api::{self, APIError};
 use shinkai_node::schemas::identity::{Identity, IdentityType};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::{fs, path::Path};
-use tempfile::tempdir;
+use tempfile::{tempdir, TempDir};
 use tokio::runtime::Runtime;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -55,35 +53,86 @@ fn persistence_setup() {
     let _ = fs::remove_dir_all(path);
 }
 
-fn folder_setup() {
+fn folder_setup() -> (PathBuf, TempDir) {
     // Create a temporary directory
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let temp_path = temp_dir.path();
 
-    // Example: Copying "../knowledge" into the temporary directory
-    let source_path = Path::new("../knowledge");
+    let source_path = Path::new("./knowledge");
     dir::copy(source_path, temp_path, &CopyOptions::new()).expect("Failed to copy knowledge folder");
 
-    // // Remove existing files in the temporary directory
-    // for entry in fs::read_dir(temp_path).expect("Failed to read temp dir") {
-    //     let entry = entry.expect("Failed to read entry");
-    //     let path = entry.path();
-    //     if path.is_file() {
-    //         fs::remove_file(path).expect("Failed to remove file");
-    //     }
-    // }
+    eprintln!("Created temp dir");
+    print_dir(temp_path, 0);
 
-    // // Add a new file to the temporary directory
-    // let new_file_path = temp_path.join("new_file.txt");
-    // let mut file = File::create(&new_file_path).expect("Failed to create new file");
-    // writeln!(file, "This is a new file.").expect("Failed to write to new file");
+    (temp_path.to_path_buf(), temp_dir)
+}
+
+fn modify_temp_dir(temp_dir: PathBuf) {
+    // Define paths based on the temporary directory
+    let file_to_remove = temp_dir.join("knowledge/test_1/file1.txt");
+    let file_to_move = temp_dir.join("knowledge/test_1/file2.txt");
+    let file_destination = temp_dir.join("knowledge/test_1/file4.txt");
+    let new_sub_folder = temp_dir.join("knowledge/test_1/sub_test1");
+    let new_file_in_sub_folder = new_sub_folder.join("file1.txt");
+    let folder_to_remove = temp_dir.join("knowledge/test_2");
+
+    // Remove file1.txt
+    if file_to_remove.exists() {
+        let _ = fs::remove_file(&file_to_remove);
+    }
+
+    // Move file2.txt to file4.txt
+    if file_to_move.exists() {
+        let _ = fs::rename(&file_to_move, &file_destination);
+    }
+
+    // Create a new subfolder and a new file within it
+    if fs::create_dir_all(&new_sub_folder).is_ok() {
+        let _ = File::create(&new_file_in_sub_folder).map(|mut file| {
+            let _ = writeln!(file, "This is a new file in the subfolder.");
+        });
+    }
+
+    // Remove the test_2 folder
+    if folder_to_remove.exists() {
+        let _ = fs::remove_dir_all(&folder_to_remove);
+    }
+
+    eprintln!("Modified temp dir");
+    print_dir(&temp_dir, 0);
+}
+
+fn print_dir(path: &Path, indent: usize) {
+    if path.is_dir() {
+        fs::read_dir(path)
+            .unwrap()
+            .flatten() // Use flatten to directly handle Ok values
+            .for_each(|entry| {
+                let path = entry.path();
+                let metadata = fs::metadata(&path).unwrap();
+                if metadata.is_dir() {
+                    eprintln!(
+                        "{}{}/",
+                        " ".repeat(indent * 2),
+                        path.file_name().unwrap().to_str().unwrap()
+                    );
+                    print_dir(&path, indent + 1);
+                } else {
+                    eprintln!(
+                        "{}{}",
+                        " ".repeat(indent * 2),
+                        path.file_name().unwrap().to_str().unwrap()
+                    );
+                }
+            });
+    }
 }
 
 // Done: We can import a ShinkaiNode and start it from scratch
 // Done: Then we can register a new identity and profile (ready for testing)
 // Done: Then we copy a starting folder and
-// We sync the filesystem from a specific folder (files + subfolders with more items)
-// We check that the files are correctly synced
+// Done: We sync the filesystem from a specific folder (files + subfolders with more items)
+// Done: We check that the files are correctly synced
 // Then we add a new file and remove another file
 // These changes should be reflected in the Node system
 
@@ -92,7 +141,7 @@ fn sync_tests() {
     eprintln!("Starting sync tests");
     setup();
     persistence_setup();
-    // folder_setup();
+    let (test_folder, _temp_dir) = folder_setup();
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
@@ -191,7 +240,7 @@ fn sync_tests() {
         // add 2 sec delay
         tokio::time::sleep(Duration::from_secs(2)).await;
         // Setup API Server task
-        let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082); 
+        let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
         let node1_commands_sender_clone = node1_commands_sender.clone();
         let api_server = tokio::spawn(async move {
             node_api::run_api(
@@ -203,7 +252,6 @@ fn sync_tests() {
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
-        let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
 
         let interactions_handler = tokio::spawn(async move {
             eprintln!("Starting interactions");
@@ -238,26 +286,37 @@ fn sync_tests() {
                 node1_identity_name.to_string(),
                 node_address,
             );
-            // TODO: change the time to manual. Maybe create an Enum to pass it?
+
+            // Current folder structure
+            //     knowledge/
+            //     test_1/
+            //         file2.txt
+            //         file3.txt
+            //         file1.txt
+            //     test.txt
+            //     test_2/
+            //         file2.txt
+            //         file3.txt
+            //         file1.txt
 
             let syncing_folders = FilesystemSynchronizer::new(
-                shinkai_manager_sync, 
-                Path::new("./knowledge").to_path_buf(), 
-                Path::new("./knowledge").to_path_buf(), 
-                "db_tests_persistence/".to_string(), 
-                SyncInterval::Timed(Duration::from_secs(5))
-            ).await.unwrap();
-            
-            eprintln!("syncing_folders: {:?}", syncing_folders);
-            // sleep for 10 seconds
-            tokio::time::sleep(Duration::from_secs(10)).await;
+                shinkai_manager_sync,
+                test_folder.clone(),
+                Path::new("./").to_path_buf(),
+                "db_tests_persistence/".to_string(),
+                SyncInterval::None,
+            )
+            .await
+            .unwrap();
+
+            let _ = syncing_folders.force_process_updates().await;
+            // eprintln!("result: {:?}", result);
+            tokio::time::sleep(Duration::from_secs(5)).await;
             // let res = syncing_folders.scan_folders();
             // eprintln!("res: {:?}", res);
-            {   
+            {
                 eprintln!("\n\nChecking the current file system files\n\n");
-                let payload = APIVecFsRetrievePathSimplifiedJson {
-                    path: "/".to_string(),
-                };
+                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
 
                 let msg = generate_message_with_payload(
                     serde_json::to_string(&payload).unwrap(),
@@ -280,143 +339,48 @@ fn sync_tests() {
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 // eprintln!("resp for current file system files: {}", resp);
-                eprintln!("\n\n Checking the current file system files\n\n");
-                print_tree_simple(&resp);   
-                // TODO: check that the response matches the expectation
-            }
-            {
-                // TODO: Make modifications
-                // Add a new file
-                // update a file
-                // add sub folders
-            }
-            {
-                // 
-            }
-            node1_abort_handler.abort();
-            panic!("end of the road for now");
-            // Testing Some Stuff
-            {
-                eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+                let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                // Sort the parsed response paths
+                parsed_resp.sort();
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk);
-                let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    "job::test::false".to_string(),
-                    message_content.clone(),
-                    node1_profile_name.to_string(),
-                    node1_identity_name.to_string(),
-                    node1_identity_name.to_string(),
-                )
-                .unwrap();
+                let mut expected_paths = vec![
+                    PathBuf::from("/knowledge/test"),
+                    PathBuf::from("/knowledge/test_2/file2"),
+                    PathBuf::from("/knowledge/test_2/file3"),
+                    PathBuf::from("/knowledge/test_2/file1"),
+                    PathBuf::from("/knowledge/test_1/file3"),
+                    PathBuf::from("/knowledge/test_1/file1"),
+                    PathBuf::from("/knowledge/test_1/file2"),
+                ];
+                // Sort the expected paths
+                expected_paths.sort();
 
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-                node1_commands_sender
-                    .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
-            }
-            {
-                 // Create Folder
-                 let payload = APIVecFsCreateFolder {
-                    path: "/".to_string(),
-                    folder_name: "test_folder".to_string(),
-                };
-
-                let msg = generate_message_with_payload(
-                    serde_json::to_string(&payload).unwrap(),
-                    MessageSchemaType::VecFsCreateFolder,
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
-                    node1_identity_name,
+                assert_eq!(
+                    parsed_resp, expected_paths,
+                    "The parsed response did not match the expected file paths."
                 );
 
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp: {:?}", resp);
+                // eprintln!("\n\n Checking the current file system files\n\n");
+                // print_tree_simple(&resp);
             }
             {
-                // let filename = "files/shinkai_intro.vrkai";
-                let filename = "files/Zeko_Mina_Rollup.pdf";
-                let file_path = Path::new(filename);
-
-                // Read the file into a buffer
-                let file_data = std::fs::read(file_path)
-                    .map_err(|_| VRError::FailedPDFParsing)
-                    .unwrap();
-
-                // Encrypt the file using Aes256Gcm
-                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
-                let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let nonce_slice = nonce.as_slice();
-                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
-
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: filename.to_string(),
-                        file: ciphertext,
-                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
-                        encrypted_nonce: nonce_str,
-                        res: res_sender,
-                    })
-                    .await
-                    .unwrap();
-
-                // Receive the response
-                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive response"); 
+                // Some modifications are made to the folder
+                // Updated directory structure:
+                //     knowledge/
+                //     test_1/
+                //         file3.txt
+                //         file4.txt
+                //         sub_test1/
+                //              file1.txt
+                //     test.txt
+                modify_temp_dir(test_folder.clone());
+                syncing_folders.force_process_updates().await.unwrap();
+                // 5 sec delay
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
             {
-                 // Convert File and Save to Folder
-                 let payload = APIConvertFilesAndSaveToFolder {
-                    path: "/test_folder".to_string(),
-                    file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
-                };
-
-                let msg = generate_message_with_payload(
-                    serde_json::to_string(&payload).unwrap(),
-                    MessageSchemaType::ConvertFilesAndSaveToFolder,
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
-                    node1_identity_name,
-                );
-
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp: {:?}", resp);
-            }
-            {
-                let payload = APIVecFsRetrievePathSimplifiedJson {
-                    // path: "/test_folder/shinkai_intro".to_string(),
-                    path: "/test_folder/Zeko_Mina_Rollup".to_string(),
-                };
+                eprintln!("\n\nChecking the current file system files\n\n");
+                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
 
                 let msg = generate_message_with_payload(
                     serde_json::to_string(&payload).unwrap(),
@@ -438,7 +402,26 @@ fn sync_tests() {
                     .await
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp for current file system files: {}", resp);
+                let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                eprintln!("parsed_resp: {:?}", parsed_resp);
+
+                // eprintln!("resp for current file system files: {}", resp);
+                // eprintln!("\n\n Checking the current file system files\n\n");
+                // print_tree_simple(&resp);
+
+                parsed_resp.sort();
+                let mut expected_paths = vec![
+                    PathBuf::from("/knowledge/test"),
+                    PathBuf::from("/knowledge/test_1/file1"),
+                    PathBuf::from("/knowledge/test_1/file3"),
+                    PathBuf::from("/knowledge/test_1/file4"),
+                    PathBuf::from("/knowledge/test_1/sub_test1/file1"),
+                    PathBuf::from("/knowledge/test_2/file1"),
+                    PathBuf::from("/knowledge/test_2/file2"),
+                    PathBuf::from("/knowledge/test_2/file3"),
+                ];
+                // Sort the expected paths for consistent comparison
+                expected_paths.sort();
             }
             node1_abort_handler.abort();
         });
@@ -657,5 +640,38 @@ fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
             "└── "
         };
         eprintln!("{}{}{}", new_indent, prefix, item_name);
+    }
+}
+
+fn extract_files_paths(folder: &Value, base_path: PathBuf) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    // Check if the current node has child items (files) and add them to the paths vector
+    if let Some(items) = folder["child_items"].as_array() {
+        for item in items {
+            if let Some(name) = item["name"].as_str() {
+                paths.push(base_path.join(name));
+            }
+        }
+    }
+
+    // Recursively process child folders
+    if let Some(folders) = folder["child_folders"].as_array() {
+        for subfolder in folders {
+            if let Some(name) = subfolder["name"].as_str() {
+                let new_base = base_path.join(name);
+                paths.extend(extract_files_paths(subfolder, new_base));
+            }
+        }
+    }
+
+    paths
+}
+
+fn parse_and_extract_file_paths(json_str: &str) -> Vec<PathBuf> {
+    if let Ok(val) = serde_json::from_str::<Value>(json_str) {
+        extract_files_paths(&val, PathBuf::from("/"))
+    } else {
+        Vec::new() // Return an empty vector if parsing fails
     }
 }

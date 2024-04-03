@@ -112,6 +112,12 @@ impl ShinkaiManagerForSync {
         filename: &str,
         destination: &str,
     ) -> Result<(), PostRequestError> {
+        let destination = if destination.starts_with("./") {
+            &destination[1..] // Skip the first character and use the rest of the string
+        } else {
+            destination
+        };
+        
         eprintln!(
             "Uploading file: {} to node address: {} with destination: {}",
             filename,

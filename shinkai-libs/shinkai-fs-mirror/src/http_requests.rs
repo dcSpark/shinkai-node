@@ -55,7 +55,6 @@ pub struct UrlDetails {
 pub async fn request_post(api_url: String, input: String, path: &str) -> Result<PostDataResponse, PostRequestError> {
     let client = Client::new();
     let url = format!("{}{}", api_url, path);
-    eprintln!("Requesting POST to {}", &url);
     match client
         .post(&url)
         .header("Content-Type", "application/json")

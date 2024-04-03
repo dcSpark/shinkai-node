@@ -38,18 +38,15 @@ impl VFSReader {
             profile: profile.clone(),
         };
 
-        eprintln!("Validating path: {:?}", path);
         // Validate that the path exists
         if vector_fs.validate_path_points_to_entry(path.clone(), &profile).is_err() {
             return Err(VectorFSError::NoEntryAtPath(path));
         }
 
-        eprintln!("Validating read access for path: {:?}", path);
         // Validate read permissions to ensure requester_name has rights
         vector_fs
             .validate_read_access_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
             .map_err(|e| {
-                eprintln!("Error: {:?}", e);
                 VectorFSError::InvalidReaderPermission(requester_name.clone(), profile.clone(), path.clone())
             })?;
 

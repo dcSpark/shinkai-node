@@ -153,18 +153,12 @@ impl FilesystemSynchronizer {
 
     pub fn scan_folders(folder_to_watch: &PathBuf) -> HashMap<PathBuf, SystemTime> {
         let mut folder_files = HashMap::new();
-        let paths = std::fs::read_dir(folder_to_watch).expect("Could not read directory");
-
-        for path in paths {
-            let path = path.expect("Could not read path").path();
+        fn scan_path(path: PathBuf, folder_files: &mut HashMap<PathBuf, SystemTime>) {
             if path.is_dir() {
-                let inner_paths = std::fs::read_dir(&path).expect("Could not read inner directory");
-                for inner_path in inner_paths {
-                    let inner_path = inner_path.expect("Could not read inner path").path();
-                    if let Ok(metadata) = inner_path.metadata() {
-                        if let Ok(modified) = metadata.modified() {
-                            folder_files.insert(inner_path, modified);
-                        }
+                if let Ok(paths) = std::fs::read_dir(&path) {
+                    for path in paths.filter_map(Result::ok) {
+                        let path = path.path();
+                        scan_path(path, folder_files); // Recursively scan the path
                     }
                 }
             } else if let Ok(metadata) = path.metadata() {
@@ -173,9 +167,74 @@ impl FilesystemSynchronizer {
                 }
             }
         }
+
+        scan_path(folder_to_watch.clone(), &mut folder_files);
         eprintln!("scan_folders> {:?}", folder_files);
 
         folder_files
+    }
+
+    pub async fn create_folders(
+        shinkai_manager_for_sync: &ShinkaiManagerForSync,
+        files: &Vec<PathBuf>,
+        folder_to_watch: &PathBuf,
+        destination_path: &PathBuf,
+    ) -> Result<(), PostRequestError> {
+        let mut folders_to_create = std::collections::HashSet::new();
+
+        for file_path in files {
+            let relative_path = file_path.strip_prefix(folder_to_watch).unwrap_or(file_path);
+            let destination_buf = destination_path.join(relative_path);
+            if let Some(destination_dir) = destination_buf.parent() {
+                // Convert PathBuf to a string slice, ensuring it's a valid UTF-8 path
+                let mut destination_str = destination_dir.to_string_lossy().into_owned();
+                // Check if the destination_str starts with "./" and remove it
+                if destination_str.starts_with("./") {
+                    destination_str = destination_str[2..].to_string();
+                }
+                folders_to_create.insert(destination_str);
+            }
+        }
+
+        for folder_path in folders_to_create {
+            if folder_path == "." {
+                continue;
+            }
+
+            let path_components: Vec<&str> = folder_path.split('/').filter(|c| !c.is_empty()).collect();
+            let mut current_path = String::new();
+
+            for (index, component) in path_components.iter().enumerate() {
+                if index > 0 {
+                    current_path.push('/');
+                }
+                current_path.push_str(component);
+
+                let folder_check_path = format!("/{}", current_path);
+
+                match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
+                    Ok(_) => eprintln!("Folder exists: {}", folder_check_path),
+                    Err(_) => {
+                        // Correctly construct the create_folder_path without the erroneous "./"
+                        let create_folder_path = if current_path.contains('/') {
+                            format!("/{}", &current_path[..current_path.rfind('/').unwrap_or(0)])
+                        } else {
+                            "/".to_string()
+                        };
+                        eprintln!("Creating folder: {} in {}", component, create_folder_path);
+                        shinkai_manager_for_sync
+                            .create_folder(component, &create_folder_path)
+                            .await
+                            .map_err(|e| {
+                                eprintln!("Failed to create folder: {:?}, error: {}", folder_check_path, e);
+                                PostRequestError::Unknown(format!("Failed to create folder: {}", folder_check_path))
+                            })?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn upload_files(
@@ -184,8 +243,8 @@ impl FilesystemSynchronizer {
         profile_name: &str,
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+        folder_to_watch: &PathBuf,
     ) -> Result<(), PostRequestError> {
-        // Adjusted return type
         eprintln!("upload_files> {:?}", files);
         for file_path in files {
             let file_data = std::fs::read(&file_path)
@@ -196,80 +255,24 @@ impl FilesystemSynchronizer {
                 .to_str()
                 .ok_or(PostRequestError::Unknown("Failed to convert filename to string".into()))?;
 
-            // Construct the destination PathBuf
-            let destination_buf = destination_path.join(file_path.strip_prefix(destination_path).unwrap_or(&file_path));
-            // Extract the directory part of the destination PathBuf, removing the filename
-            let destination_dir_buf = destination_buf.parent().unwrap_or(&destination_buf);
-            // Convert PathBuf to a string slice
-            let mut destination_str = destination_dir_buf.to_string_lossy().into_owned();
+            let relative_path = file_path.strip_prefix(folder_to_watch).unwrap_or(&file_path);
+            // Ensure destination_buf is the directory path only, not including the file name
+            let destination_dir = destination_path.join(relative_path.parent().unwrap_or_else(|| Path::new("")));
+            let destination_str = destination_dir.to_string_lossy();
 
-            // Remove leading '.' if it exists
-            if destination_str.starts_with('.') {
-                destination_str.remove(0);
-            }
-
-            let path_components: Vec<&str> = destination_str.split('/').filter(|c| !c.is_empty()).collect();
-            let mut current_path = String::new();
-
-            for (index, component) in path_components.iter().enumerate() {
-                if index > 0 {
-                    current_path.push('/');
-                }
-                current_path.push_str(component);
-
-                let folder_check_path = if index == 0 {
-                    format!("/{}", current_path)
-                } else {
-                    current_path.clone()
-                };
-
-                match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
-                    Ok(_) => eprintln!("Folder exists: {}", folder_check_path),
-                    Err(_) => {
-                        let create_folder_path = if index == 0 {
-                            "/".to_string()
-                        } else {
-                            current_path[..current_path.rfind('/').unwrap_or(0)].to_string()
-                        };
-
-                        eprintln!(
-                            "Folder does not exist, creating: {} in {}",
-                            component, create_folder_path
-                        );
-                        if let Err(e) = shinkai_manager_for_sync
-                            .create_folder(component, &create_folder_path)
-                            .await
-                        {
-                            eprintln!("Failed to create folder: {:?}, error: {}", folder_check_path, e);
-                            return Err(PostRequestError::Unknown(format!(
-                                "Failed to create folder: {}",
-                                folder_check_path
-                            )));
-                        }
-                    }
-                }
-            }
-
-            // Attempt to upload the file, only proceed if successful
             let upload_result = shinkai_manager_for_sync
                 .upload_file(&file_data, filename, &destination_str)
                 .await;
+
             if let Ok(_) = upload_result {
-                // Update the last synchronized file datetime in syncing_folders_db
-                let parent_path = file_path.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+                let parent_path = relative_path.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
                 let mut db = syncing_folders_db.lock().await;
                 let syncing_folder = SyncingFolder {
                     local_last_synchronized_file_datetime: SystemTime::now(),
                 };
-                // Use add_or_update_file_mirror_state to update the database
-                if let Err(_) =
-                    db.add_or_update_file_mirror_state(profile_name.to_string(), parent_path, syncing_folder)
-                {
-                    eprintln!("Failed to update file mirror state");
-                    return Err(PostRequestError::Unknown("Failed to update file mirror state".into()));
-                }
+                db.add_or_update_file_mirror_state(profile_name.to_string(), parent_path, syncing_folder)
+                    .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
             } else if let Err(e) = upload_result {
-                // If an error occurs during file upload, return the error
                 eprintln!("Failed to upload file: {:?}", e);
                 return Err(e);
             }
@@ -292,7 +295,6 @@ impl FilesystemSynchronizer {
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
     ) -> Result<(), PostRequestError> {
-        // Updated return type
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
             Ok(health_status) => {
@@ -304,12 +306,25 @@ impl FilesystemSynchronizer {
                     syncing_folders_db.clone(),
                 )
                 .await;
+                eprintln!("\n\nprocess_updates> files to update: {:?}\n\n", files_to_update);
+
+                // First, create necessary folders based on the files' relative paths
+                Self::create_folders(
+                    shinkai_manager_for_sync,
+                    &files_to_update,
+                    folder_to_watch,
+                    destination_path,
+                )
+                .await?;
+
+                // Then, upload the files
                 Self::upload_files(
                     shinkai_manager_for_sync,
                     files_to_update,
                     profile_name,
                     destination_path,
                     syncing_folders_db,
+                    folder_to_watch,
                 )
                 .await
             }
@@ -319,8 +334,19 @@ impl FilesystemSynchronizer {
                 Err(PostRequestError::Unknown(format!(
                     "Node health check failed: {}",
                     health_check_error
-                ))) // Adjusted to use PostRequestError
+                )))
             }
         }
+    }
+
+    pub async fn force_process_updates(&self) -> Result<(), PostRequestError> {
+        FilesystemSynchronizer::process_updates(
+            &self.shinkai_manager_for_sync,
+            &self.folder_to_watch,
+            &self.profile_name,
+            &self.destination_path,
+            self.syncing_folders_db.clone(),
+        )
+        .await
     }
 }
