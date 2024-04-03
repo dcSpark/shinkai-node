@@ -441,8 +441,7 @@ fn mirror_sync_tests() {
                     .unwrap();
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 let mut parsed_resp = parse_and_extract_file_paths(&resp);
-                eprintln!("parsed_resp: {:?}", parsed_resp);
-
+                // eprintln!("parsed_resp: {:?}", parsed_resp);
                 // eprintln!("resp for current file system files: {}", resp);
                 // eprintln!("\n\n Checking the current file system files\n\n");
                 // print_tree_simple(&resp);

@@ -141,13 +141,13 @@ impl FilesystemSynchronizer {
                                 eprintln!("Failed to read file: {:?}, error: {}", full_path, e);
                             }
                         }
-                        files_to_update.push((path, modified_time));
+                        files_to_update.push((full_path, modified_time));
                     }
                 }
                 Ok(None) => {
                     eprintln!("File not found in database: {:?}", path);
                     // If the file does not exist in the database, add it to the update list
-                    files_to_update.push((path, modified_time));
+                    files_to_update.push((full_path, modified_time));
                 }
                 Err(e) => {
                     // Handle potential errors, for example, log them or push them to an error list
@@ -353,12 +353,17 @@ impl FilesystemSynchronizer {
     }
 
     pub async fn get_scan_folders_and_calculate_difference(&self) -> Vec<(PathBuf, SystemTime)> {
-        FilesystemSynchronizer::scan_folders_and_calculate_difference(
+        let differences = FilesystemSynchronizer::scan_folders_and_calculate_difference(
             &self.folder_to_watch,
             &self.profile_name,
             self.syncing_folders_db.clone(),
         )
-        .await
+        .await;
+    
+        differences.into_iter().map(|(full_path, modified_time)| {
+            let relative_path = full_path.strip_prefix(&self.folder_to_watch).unwrap_or(&full_path);
+            (relative_path.to_path_buf(), modified_time)
+        }).collect()
     }
 
     pub async fn force_process_updates(&self) -> Result<(), PostRequestError> {
