@@ -4,36 +4,30 @@ use chrono::{DateTime, Utc};
 pub type ShinkaiNameString = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-/// Info about where the source data was acquired from, and when it was originally distributed (aka. release origin/date)
+/// Info about where the source data was acquired from, and when it was originally distributed
 pub struct DistributionInfo {
     pub origin: Option<DistributionOrigin>,
-    pub release_datetime: Option<DateTime<Utc>>,
+    pub datetime: Option<DateTime<Utc>>,
 }
 
 impl DistributionInfo {
-    /// Creates a new instance of DistributionInfo with specified origin and release_datetime
-    pub fn new(origin: Option<DistributionOrigin>, release_datetime: Option<DateTime<Utc>>) -> Self {
-        Self {
-            origin,
-            release_datetime,
-        }
+    /// Creates a new instance of DistributionInfo with specified origin and datetime
+    pub fn new(origin: Option<DistributionOrigin>, datetime: Option<DateTime<Utc>>) -> Self {
+        Self { origin, datetime }
     }
 
     /// Creates a new instance of DistributionInfo with auto-detecting origin based on file name
-    pub fn new_auto(file_name: &str, release_datetime: Option<DateTime<Utc>>) -> Self {
+    pub fn new_auto(file_name: &str, datetime: Option<DateTime<Utc>>) -> Self {
         let origin = DistributionOrigin::new_auto(file_name);
 
-        Self {
-            origin,
-            release_datetime,
-        }
+        Self { origin, datetime }
     }
 
-    /// Creates a new, empty instance of DistributionInfo with no origin and no release_datetime
+    /// Creates a new, empty instance of DistributionInfo with no origin and no datetime
     pub fn new_empty() -> Self {
         Self {
             origin: None,
-            release_datetime: None,
+            datetime: None,
         }
     }
 }
