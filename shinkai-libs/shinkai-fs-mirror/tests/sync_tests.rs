@@ -67,6 +67,15 @@ fn folder_setup() -> (PathBuf, TempDir) {
     (temp_path.to_path_buf(), temp_dir)
 }
 
+fn modify_file_content(temp_dir: PathBuf) {
+    let file_path = temp_dir.join("knowledge/test.txt");
+    if file_path.exists() {
+        let _ = fs::write(&file_path, "Shinkai whitepaper was written by Nico and Rob. Shinkai is an AI-Powered Operating System.");
+    }
+
+    eprintln!("Modified file content");
+}
+
 fn modify_temp_dir(temp_dir: PathBuf) {
     // Define paths based on the temporary directory
     let file_to_remove = temp_dir.join("knowledge/test_1/file1.txt");
@@ -359,9 +368,47 @@ fn sync_tests() {
                     parsed_resp, expected_paths,
                     "The parsed response did not match the expected file paths."
                 );
+            }
+            {
+                // we don't modify anything so the diff calculation should be empty
+                let results = syncing_folders.get_scan_folders_and_calculate_difference().await;
+                // results should be an empty vec
+                assert_eq!(results, vec![], "The results should be an empty vec");
+            }
+            {
+                let resp = syncing_folders
+                    .shinkai_manager_for_sync
+                    .retrieve_vector_resource("/knowledge/test")
+                    .await
+                    .unwrap();
+                eprintln!("(before) data_string: {:?}", resp.data);
 
-                // eprintln!("\n\n Checking the current file system files\n\n");
-                // print_tree_simple(&resp);
+                // we modify just one file /knowledge/test.txt
+                eprintln!("Modifying file content of /knowledge/test.txt");
+                modify_file_content(test_folder.clone());
+                let results = syncing_folders.get_scan_folders_and_calculate_difference().await;
+                assert_eq!(
+                    results.len(),
+                    1,
+                    "Expected results to contain exactly one modified file."
+                );
+                let file_path = results[0].0.to_str().unwrap();
+                assert_eq!(
+                    file_path, "knowledge/test.txt",
+                    "Expected the modified file to be 'knowledge/test.txt'."
+                );
+
+                let result = syncing_folders.force_process_updates().await;
+                eprintln!("result: {:?}", result);
+
+                let resp = syncing_folders
+                    .shinkai_manager_for_sync
+                    .retrieve_vector_resource("/knowledge/test")
+                    .await
+                    .unwrap();
+                eprintln!("(after) resp: {:?}", resp.data);
+
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
             {
                 // Some modifications are made to the folder

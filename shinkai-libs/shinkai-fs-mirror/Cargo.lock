@@ -5320,6 +5320,7 @@ dependencies = [
  "base64 0.22.0",
  "chrono",
  "chrono-tz",
+ "clap 3.2.25",
  "dotenv",
  "ed25519-dalek",
  "fs_extra",

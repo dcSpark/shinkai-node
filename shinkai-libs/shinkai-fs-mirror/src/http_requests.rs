@@ -30,6 +30,12 @@ pub struct PostDataResponse {
     pub data: serde_json::Value,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PostStringResponse {
+    pub status: String,
+    pub data: String,
+}
+
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -90,7 +96,7 @@ pub async fn request_post(api_url: String, input: String, path: &str) -> Result<
                 Ok(data) => Ok(data),
                 Err(e) => Err(PostRequestError::SerializationError(format!(
                     "Couldn't serialize the response {} {}",
-                    e.to_string(),
+                    e,
                     &response_text
                 ))),
             }

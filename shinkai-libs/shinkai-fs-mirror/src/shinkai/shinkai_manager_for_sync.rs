@@ -1,4 +1,7 @@
-use crate::http_requests::{request_post, request_post_multipart, PostRequestError};
+use std::fs;
+use std::path::Path;
+
+use crate::http_requests::{request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -16,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::{
 use shinkai_vector_resources::vector_resource::SimplifiedFSEntry;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use super::shinkai_utils::decrypt_exported_keys;
 use super::{shinkai_device_keys::ShinkaiDeviceKeys, shinkai_response_types::NodeHealthStatus};
 
 #[derive(Clone)]
@@ -77,6 +81,13 @@ impl ShinkaiManagerForSync {
             sender_subidentity, // node_receiver_subidentity
             keys.node_address.clone(),
         )
+    }
+
+    pub fn initialize_from_encrypted_file_path(file_path: &Path, passphrase: &str) -> Result<Self, &'static str> {
+        let encrypted_keys = fs::read_to_string(file_path).map_err(|_| "Failed to read encrypted keys from file")?;
+        let decrypted_keys = decrypt_exported_keys(&encrypted_keys, passphrase)?;
+
+        Ok(Self::initialize(decrypted_keys))
     }
 
     // Need review
@@ -237,7 +248,7 @@ impl ShinkaiManagerForSync {
 
         match simplified_path_json_response {
             Ok(response) => {
-                let fs_entry = SimplifiedFSEntry::from_json(&response.as_str().unwrap_or("")).unwrap();
+                let fs_entry = SimplifiedFSEntry::from_json(response.as_str().unwrap_or("")).unwrap();
                 Ok(fs_entry)
             }
             Err(e) => Err(e),
@@ -295,5 +306,44 @@ impl ShinkaiManagerForSync {
         }
 
         Ok(())
+    }
+
+    pub async fn retrieve_vector_resource(&self, path: &str) -> Result<PostDataResponse, PostRequestError> {
+        let formatted_path = if path.starts_with("/") {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        };
+    
+        println!("Retrieving vector resource for path: {}", &formatted_path);
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_resource(
+            &formatted_path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            self.node_receiver_subidentity.clone(),
+        ).unwrap(); // Consider handling this unwrap more gracefully
+    
+        let retrieve_resource_message = serde_json::json!(shinkai_message);
+        let response = request_post(
+            self.node_address.clone(),
+            retrieve_resource_message.to_string(),
+            "/v1/vec_fs/retrieve_vector_resource",
+        )
+        .await;
+    
+        match response {
+            Ok(resp) => {
+                // println!("Vector resource retrieval successful: {:?}", resp);
+                Ok(resp)
+            },
+            Err(e) => {
+                eprintln!("Failed to retrieve vector resource: {:?}", e);
+                Err(PostRequestError::RequestFailed(format!("Failed to retrieve vector resource: {:?}", e)))
+            }
+        }
     }
 }

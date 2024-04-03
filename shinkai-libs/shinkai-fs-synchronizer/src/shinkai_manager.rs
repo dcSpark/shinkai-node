@@ -104,11 +104,6 @@ pub fn string_to_static_key(key_str: String) -> Result<EncryptionStaticKey, &'st
     Ok(x25519_dalek::StaticSecret::from(key_array))
 }
 
-pub enum SynchronizerMode {
-    Standalone,
-    Library,
-}
-
 impl ShinkaiManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -142,6 +137,13 @@ impl ShinkaiManager {
             node_address,
             keys,
         }
+    }
+
+    pub fn initialize_from_encrypted_file_path(file_path: &Path, passphrase: &str) -> Result<Self, &'static str> {
+        let encrypted_keys = fs::read_to_string(file_path).map_err(|_| "Failed to read encrypted keys from file")?;
+        let decrypted_keys = Self::decrypt_exported_keys(&encrypted_keys, passphrase)?;
+
+        Ok(Self::initialize(decrypted_keys))
     }
 
     pub fn initialize_from_encrypted_file() -> Result<Self, &'static str> {
