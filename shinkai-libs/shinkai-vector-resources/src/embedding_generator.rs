@@ -8,11 +8,13 @@ use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 #[cfg(feature = "native-http")]
 use reqwest::Client as AsyncClient;
+use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native-http")]
 use std::io::{prelude::*, Cursor};
 #[cfg(feature = "native-http")]
 use std::net::TcpStream;
+use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
@@ -104,14 +106,6 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             .collect();
 
         match self.model_type {
-            EmbeddingModelType::BertCPP(_) => {
-                let mut embeddings = Vec::new();
-                for (input_string, id) in input_strings.iter().zip(ids) {
-                    let vector = self.generate_embedding_bert_cpp_blocking(input_string)?;
-                    embeddings.push(Embedding::new(id, vector));
-                }
-                Ok(embeddings)
-            }
             EmbeddingModelType::TextEmbeddingsInference(_) => {
                 self.generate_embedding_tei_blocking(input_strings.clone(), ids.clone())
             }
@@ -161,9 +155,6 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             .collect();
 
         match self.model_type {
-            EmbeddingModelType::BertCPP(_) => Err(VRError::FailedEmbeddingGeneration(
-                "BertCPP support does not include async operation".to_string(),
-            )),
             EmbeddingModelType::TextEmbeddingsInference(_) => {
                 self.generate_embedding_tei(input_strings.clone(), ids.clone()).await
             }
@@ -220,11 +211,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
-    /// to the webserver of a local running instance of BertCPP using the
-    /// default set port.
-    ///
-    /// Expected to have downloaded & be using the AllMiniLML6v2 model.
+    /// Create a RemoteEmbeddingGenerator that uses the default model and server
     pub fn new_default() -> RemoteEmbeddingGenerator {
         let model_architecture = EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
         RemoteEmbeddingGenerator {
@@ -256,8 +243,9 @@ impl RemoteEmbeddingGenerator {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),
         };
 
-        // Create the HTTP client
-        let client = AsyncClient::new();
+        // Create the HTTP client with a custom timeout
+        let timeout = Duration::from_secs(60);
+        let client = ClientBuilder::new().timeout(timeout).build()?;
 
         // Build the request
         let mut request = client
@@ -270,11 +258,28 @@ impl RemoteEmbeddingGenerator {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        // Send the request and check for errors
-        let response = request.send().await.map_err(|err| {
-            // Handle any HTTP client errors here (e.g., request creation failure)
-            VRError::RequestFailed(format!("HTTP request failed: {}", err))
-        })?;
+        // Send the request with retries
+        let max_retries = 3;
+        let mut retry_count = 0;
+        let response = loop {
+            match request.try_clone().unwrap().send().await {
+                Ok(response) => break response,
+                Err(err) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        eprintln!(
+                            "Request failed with error: {}. Retrying ({}/{})...",
+                            err, retry_count, max_retries
+                        );
+                    } else {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after {} retries: {}",
+                            max_retries, err
+                        )));
+                    }
+                }
+            }
+        };
 
         // Check if the response is successful
         if response.status().is_success() {
@@ -312,7 +317,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     #[cfg(feature = "native-http")]
-    /// Generates embeddings using a Text Embeddings Inference server
+    /// Generates embeddings using a Hugging Face Text Embeddings Inference server
     fn generate_embedding_tei_blocking(
         &self,
         input_strings: Vec<String>,
@@ -323,8 +328,12 @@ impl RemoteEmbeddingGenerator {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),
         };
 
-        // Create the HTTP client
-        let client = Client::new();
+        // Create the HTTP client with a custom timeout
+        let timeout = Duration::from_secs(60); // Set the desired timeout duration
+        let client = Client::builder()
+            .timeout(timeout)
+            .build()
+            .map_err(|err| VRError::RequestFailed(format!("Failed to create HTTP client: {}", err)))?;
 
         // Build the request
         let mut request = client
@@ -337,11 +346,29 @@ impl RemoteEmbeddingGenerator {
             request = request.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        // Send the request and check for errors
-        let response = request.send().map_err(|err| {
-            // Handle any HTTP client errors here (e.g., request creation failure)
-            VRError::RequestFailed(format!("HTTP request failed: {}", err))
-        })?;
+        // Send the request with retries
+        let max_retries = 3;
+        let mut retry_count = 0;
+        let response = loop {
+            match request.try_clone().unwrap().send() {
+                Ok(response) => break response,
+                Err(err) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        eprintln!(
+                            "Request failed with error: {}. Retrying ({}/{})...",
+                            err, retry_count, max_retries
+                        );
+                        std::thread::sleep(Duration::from_secs(1)); // Optional: Add a delay between retries
+                    } else {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after {} retries: {}",
+                            max_retries, err
+                        )));
+                    }
+                }
+            }
+        };
 
         // Check if the response is successful
         if response.status().is_success() {
@@ -375,52 +402,6 @@ impl RemoteEmbeddingGenerator {
                 "HTTP request failed with status: {}",
                 response.status()
             )))
-        }
-    }
-
-    #[cfg(feature = "native-http")]
-    /// This function takes a string and a TcpStream and sends the string to the Bert-CPP server
-    fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, VRError> {
-        // Send the input text to the server
-        server
-            .write_all(input_text.as_bytes())
-            .map_err(|_| VRError::FailedEmbeddingGeneration("Failed writing input text to TcpStream".to_string()))?;
-
-        // Receive the data from the server
-        let mut data = vec![0u8; N_EMBD * 4];
-        server.read_exact(&mut data).map_err(|_| {
-            VRError::FailedEmbeddingGeneration(
-                "Failed reading embedding generation response from TcpStream".to_string(),
-            )
-        })?;
-
-        // Convert the data into a vector of floats
-        let mut rdr = Cursor::new(data);
-        let mut embeddings = Vec::new();
-
-        while let Ok(x) = rdr.read_f32::<LittleEndian>() {
-            embeddings.push(x);
-        }
-
-        Ok(embeddings)
-    }
-
-    #[cfg(feature = "native-http")]
-    /// Generates embeddings for a given text using a local BERT C++ server.
-    /// Of note, requires using TcpStream as the server has an arbitrary
-    /// implementation that is not proper HTTP.
-    fn generate_embedding_bert_cpp_blocking(&self, input_text: &str) -> Result<Vec<f32>, VRError> {
-        let mut server_connection = TcpStream::connect(self.api_url.clone())
-            .map_err(|_| VRError::FailedEmbeddingGeneration("Failed connecting to TcpStream".to_string()))?;
-        let mut buffer = [0; 4];
-        server_connection.read_exact(&mut buffer).map_err(|_| {
-            VRError::FailedEmbeddingGeneration("Failed reading initial buffer from TcpStream".to_string())
-        })?;
-
-        let embedding = Self::bert_cpp_embeddings_fetch(&input_text, &mut server_connection);
-        match embedding {
-            Ok(embed) => Ok(embed),
-            Err(e) => Err(e),
         }
     }
 
