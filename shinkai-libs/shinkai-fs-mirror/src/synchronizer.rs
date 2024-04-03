@@ -128,24 +128,10 @@ impl FilesystemSynchronizer {
                 Ok(Some(syncing_folder)) => {
                     // If the file exists and the modified time is greater than the last synchronized time, add it to the update list
                     if modified_time != syncing_folder.local_last_synchronized_file_datetime {
-                        eprintln!(
-                            "File modified: {:?} value: {:?} prev: {:?}",
-                            path, modified_time, syncing_folder.local_last_synchronized_file_datetime
-                        );
-                        // Read and print out the content of the file
-                        match std::fs::read_to_string(&full_path) {
-                            Ok(content) => {
-                                eprintln!("Content of the file: {}", content);
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to read file: {:?}, error: {}", full_path, e);
-                            }
-                        }
                         files_to_update.push((full_path, modified_time));
                     }
                 }
                 Ok(None) => {
-                    eprintln!("File not found in database: {:?}", path);
                     // If the file does not exist in the database, add it to the update list
                     files_to_update.push((full_path, modified_time));
                 }
@@ -155,7 +141,7 @@ impl FilesystemSynchronizer {
                 }
             }
         }
-        eprintln!("scan_folders_and_calculate_difference> {:?}", files_to_update);
+        eprintln!("Files to update: {:?}", files_to_update.len());
         files_to_update
     }
 
@@ -177,7 +163,6 @@ impl FilesystemSynchronizer {
         }
 
         scan_path(folder_to_watch.clone(), &mut folder_files);
-        eprintln!("scan_folders> {:?}", folder_files);
 
         folder_files
     }
@@ -221,7 +206,7 @@ impl FilesystemSynchronizer {
                 let folder_check_path = format!("/{}", current_path);
 
                 match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
-                    Ok(_) => eprintln!("Folder exists: {}", folder_check_path),
+                    Ok(_) => (), // eprintln!("Folder exists: {}", folder_check_path)
                     Err(_) => {
                         // Correctly construct the create_folder_path without the erroneous "./"
                         let create_folder_path = if current_path.contains('/') {
@@ -229,7 +214,6 @@ impl FilesystemSynchronizer {
                         } else {
                             "/".to_string()
                         };
-                        eprintln!("Creating folder: {} in {}", component, create_folder_path);
                         shinkai_manager_for_sync
                             .create_folder(component, &create_folder_path)
                             .await
@@ -253,12 +237,9 @@ impl FilesystemSynchronizer {
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         folder_to_watch: &PathBuf,
     ) -> Result<(), PostRequestError> {
-        eprintln!("upload_files> {:?}", files);
         for (file_path, modified_time) in files {
-            eprintln!("upload_files> file_path: {:?}", file_path);
             let file_data = std::fs::read(&file_path)
                 .map_err(|_| PostRequestError::FSFolderNotFound("Failed to read file data".into()))?;
-            eprintln!("upload_files> file_data: {:?}", file_data.len());
             let filename = file_path
                 .file_name()
                 .ok_or(PostRequestError::Unknown("Failed to extract filename".into()))?
@@ -280,7 +261,6 @@ impl FilesystemSynchronizer {
                 let syncing_folder = SyncingFolder {
                     local_last_synchronized_file_datetime: modified_time,
                 };
-                eprintln!("file path for db: {:?}", file_path_for_db);
                 db.add_or_update_file_mirror_state(profile_name.to_string(), file_path_for_db, syncing_folder)
                     .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
             } else if let Err(e) = upload_result {
@@ -289,7 +269,6 @@ impl FilesystemSynchronizer {
             }
         }
 
-        eprintln!("upload_files> Done");
         Ok(())
     }
 
@@ -309,7 +288,6 @@ impl FilesystemSynchronizer {
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
             Ok(health_status) => {
-                println!("Node health check passed: {:?}", health_status);
                 // Proceed with the updates if the health check is successful
                 let files_to_update = Self::scan_folders_and_calculate_difference(
                     folder_to_watch,
@@ -317,7 +295,6 @@ impl FilesystemSynchronizer {
                     syncing_folders_db.clone(),
                 )
                 .await;
-                eprintln!("\n\nprocess_updates> files to update: {:?}\n\n", files_to_update);
 
                 let paths_to_create: Vec<PathBuf> = files_to_update.iter().map(|(path, _)| path.clone()).collect();
 
@@ -343,7 +320,6 @@ impl FilesystemSynchronizer {
             }
             Err(health_check_error) => {
                 // Handle the case where the health check fails
-                eprintln!("Node health check failed: {}", health_check_error);
                 Err(PostRequestError::Unknown(format!(
                     "Node health check failed: {}",
                     health_check_error

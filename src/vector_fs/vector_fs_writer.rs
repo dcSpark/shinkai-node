@@ -41,6 +41,11 @@ impl VFSWriter {
             profile: profile.clone(),
         };
 
+        // Validate profile ShinkaiName has an actual profile inside
+        if profile.extract_profile().is_err() {
+            return Err(VectorFSError::ProfileNameNonExistent(profile.to_string()));
+        }
+
         // Validate write permissions to ensure requester_name has rights
         vector_fs
             .validate_write_access_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
@@ -533,9 +538,7 @@ impl VectorFS {
         }
 
         // Remove the existing folder
-        println!("Deleting node from core resource.");
         self._remove_node_from_core_resource(writer)?;
-        println!("Deleted.");
 
         Ok(new_folder)
     }

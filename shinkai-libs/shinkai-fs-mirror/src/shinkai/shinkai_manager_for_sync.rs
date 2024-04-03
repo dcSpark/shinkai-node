@@ -217,7 +217,7 @@ impl ShinkaiManagerForSync {
             format!("/{}", path)
         };
     
-        println!("Checking {} in vector FS using vecfs_retrieve_path_simplified", &path);
+        // println!("Checking {} in vector FS using vecfs_retrieve_path_simplified", &path);
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
             &formatted_path,
             self.my_encryption_secret_key.clone(),
@@ -260,11 +260,11 @@ impl ShinkaiManagerForSync {
             name
         };
 
-        println!(
-            "Creating folder: {} in path: {}",
-            &folder_name.to_string(),
-            &formatted_path
-        );
+        // println!(
+        //     "Creating folder: {} in path: {}",
+        //     &folder_name.to_string(),
+        //     &formatted_path
+        // );
         let shinkai_message = ShinkaiMessageBuilder::vecfs_create_folder(
             folder_name,
             &formatted_path,
@@ -286,8 +286,8 @@ impl ShinkaiManagerForSync {
         .await;
 
         match resp {
-            Ok(response) => {
-                println!("Folder creation successful: {:?}", response);
+            Ok(_) => {
+                // println!("Folder creation successful: {:?}", response);
             }
             Err(e) => {
                 return Err("Failed to create folder");
@@ -304,7 +304,6 @@ impl ShinkaiManagerForSync {
             format!("/{}", path)
         };
     
-        println!("Retrieving vector resource for path: {}", &formatted_path);
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_resource(
             &formatted_path,
             self.my_encryption_secret_key.clone(),

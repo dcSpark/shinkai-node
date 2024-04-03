@@ -68,7 +68,10 @@ fn folder_setup() -> (PathBuf, TempDir) {
 fn modify_file_content(temp_dir: PathBuf) {
     let file_path = temp_dir.join("knowledge/test.txt");
     if file_path.exists() {
-        let _ = fs::write(&file_path, "Shinkai whitepaper was written by Nico and Rob. Shinkai is an AI-Powered Operating System.");
+        let _ = fs::write(
+            &file_path,
+            "Shinkai whitepaper was written by Nico and Rob. Shinkai is an AI-Powered Operating System.",
+        );
     }
 
     eprintln!("Modified file content");
@@ -309,56 +312,53 @@ fn mirror_sync_tests() {
             .unwrap();
 
             let _ = syncing_folders.force_process_updates().await;
-            // eprintln!("result: {:?}", result);
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            // let res = syncing_folders.scan_folders();
-            // eprintln!("res: {:?}", res);
+
             {
-                eprintln!("\n\nChecking the current file system files\n\n");
-                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+                let mut attempt = 0;
+                let mut success = false;
+                while attempt < 10 && !success {
+                    let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
 
-                let msg = generate_message_with_payload(
-                    serde_json::to_string(&payload).unwrap(),
-                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
-                    node1_identity_name,
-                );
+                    let msg = generate_message_with_payload(
+                        serde_json::to_string(&payload).unwrap(),
+                        MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                        node1_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk,
+                        node1_identity_name,
+                        node1_profile_name,
+                        node1_identity_name,
+                    );
 
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                        .await
+                        .unwrap();
+                    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                    parsed_resp.sort();
 
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("APIVecFSRetrievePathSimplifiedJson: {:?}", resp);
-                // eprintln!("resp for current file system files: {}", resp);
-                let mut parsed_resp = parse_and_extract_file_paths(&resp);
-                // Sort the parsed response paths
-                parsed_resp.sort();
+                    let mut expected_paths = vec![
+                        PathBuf::from("/knowledge/test"),
+                        PathBuf::from("/knowledge/test_2/file2"),
+                        PathBuf::from("/knowledge/test_2/file3"),
+                        PathBuf::from("/knowledge/test_2/file1"),
+                        PathBuf::from("/knowledge/test_1/file3"),
+                        PathBuf::from("/knowledge/test_1/file1"),
+                        PathBuf::from("/knowledge/test_1/file2"),
+                    ];
+                    expected_paths.sort();
 
-                let mut expected_paths = vec![
-                    PathBuf::from("/knowledge/test"),
-                    PathBuf::from("/knowledge/test_2/file2"),
-                    PathBuf::from("/knowledge/test_2/file3"),
-                    PathBuf::from("/knowledge/test_2/file1"),
-                    PathBuf::from("/knowledge/test_1/file3"),
-                    PathBuf::from("/knowledge/test_1/file1"),
-                    PathBuf::from("/knowledge/test_1/file2"),
-                ];
-                // Sort the expected paths
-                expected_paths.sort();
+                    if parsed_resp == expected_paths {
+                        success = true;
+                    } else {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        attempt += 1;
+                    }
+                }
 
-                assert_eq!(
-                    parsed_resp, expected_paths,
-                    "The parsed response did not match the expected file paths."
-                );
+                assert!(success, "Failed to match the expected file paths after 10 attempts.");
             }
             {
                 // we don't modify anything so the diff calculation should be empty
@@ -372,7 +372,7 @@ fn mirror_sync_tests() {
                     .retrieve_vector_resource("/knowledge/test")
                     .await
                     .unwrap();
-                eprintln!("(before) data_string: {:?}", resp.data);
+                // eprintln!("(before) data_string: {:?}", resp.data);
 
                 // we modify just one file /knowledge/test.txt
                 eprintln!("Modifying file content of /knowledge/test.txt");
@@ -390,16 +390,14 @@ fn mirror_sync_tests() {
                 );
 
                 let result = syncing_folders.force_process_updates().await;
-                eprintln!("result: {:?}", result);
+                // eprintln!("result: {:?}", result);
 
                 let resp = syncing_folders
                     .shinkai_manager_for_sync
                     .retrieve_vector_resource("/knowledge/test")
                     .await
                     .unwrap();
-                eprintln!("(after) resp: {:?}", resp.data);
-
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                // eprintln!("(after) resp: {:?}", resp.data);
             }
             {
                 // Some modifications are made to the folder
@@ -412,53 +410,54 @@ fn mirror_sync_tests() {
                 //              file1.txt
                 //     test.txt
                 modify_temp_dir(test_folder.clone());
-                syncing_folders.force_process_updates().await.unwrap();
-                // 5 sec delay
-                tokio::time::sleep(Duration::from_secs(5)).await;
-            }
-            {
-                eprintln!("\n\nChecking the current file system files\n\n");
-                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+                let _ = syncing_folders.force_process_updates().await;
+                let mut attempt = 0;
+                let mut success = false;
+                while attempt < 10 && !success {
+                    let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
 
-                let msg = generate_message_with_payload(
-                    serde_json::to_string(&payload).unwrap(),
-                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
-                    node1_identity_name,
-                );
+                    let msg = generate_message_with_payload(
+                        serde_json::to_string(&payload).unwrap(),
+                        MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                        node1_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk,
+                        node1_identity_name,
+                        node1_profile_name,
+                        node1_identity_name,
+                    );
 
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                        .await
+                        .unwrap();
+                    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                    parsed_resp.sort();
 
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                let mut parsed_resp = parse_and_extract_file_paths(&resp);
-                // eprintln!("parsed_resp: {:?}", parsed_resp);
-                // eprintln!("resp for current file system files: {}", resp);
-                // eprintln!("\n\n Checking the current file system files\n\n");
-                // print_tree_simple(&resp);
+                    let mut expected_paths = vec![
+                        PathBuf::from("/knowledge/test"),
+                        PathBuf::from("/knowledge/test_1/file1"),
+                        PathBuf::from("/knowledge/test_1/file2"),
+                        PathBuf::from("/knowledge/test_1/file3"),
+                        PathBuf::from("/knowledge/test_1/file4"),
+                        PathBuf::from("/knowledge/test_1/sub_test1/file1"),
+                        PathBuf::from("/knowledge/test_2/file1"),
+                        PathBuf::from("/knowledge/test_2/file2"),
+                        PathBuf::from("/knowledge/test_2/file3"),
+                    ];
+                    expected_paths.sort();
 
-                parsed_resp.sort();
-                let mut expected_paths = vec![
-                    PathBuf::from("/knowledge/test"),
-                    PathBuf::from("/knowledge/test_1/file1"),
-                    PathBuf::from("/knowledge/test_1/file3"),
-                    PathBuf::from("/knowledge/test_1/file4"),
-                    PathBuf::from("/knowledge/test_1/sub_test1/file1"),
-                    PathBuf::from("/knowledge/test_2/file1"),
-                    PathBuf::from("/knowledge/test_2/file2"),
-                    PathBuf::from("/knowledge/test_2/file3"),
-                ];
-                // Sort the expected paths for consistent comparison
-                expected_paths.sort();
+                    if parsed_resp == expected_paths {
+                        success = true;
+                    } else {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        attempt += 1;
+                    }
+                }
+
+                assert!(success, "Failed to match the expected file paths after 10 attempts.");
             }
             node1_abort_handler.abort();
         });

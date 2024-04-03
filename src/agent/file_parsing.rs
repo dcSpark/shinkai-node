@@ -87,7 +87,6 @@ impl JobManager {
         // Parse the `.vrkai` files
         for vrkai_file in vrkai_files {
             let filename = vrkai_file.0;
-            eprintln!("Processing file: {}", filename);
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
@@ -100,7 +99,6 @@ impl JobManager {
         // Parse the other files by generating a Vector Resource from scratch
         for file in other_files {
             let filename = file.0.clone();
-            eprintln!("Processing file: {}", filename);
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
