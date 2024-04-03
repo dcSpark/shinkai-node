@@ -83,7 +83,12 @@ impl JobManager {
         // Inference the agent's LLM with the prompt
         let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
-        if response.is_err() {
+
+        if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
+            return Err(AgentError::LLMProviderInferenceLimitReached(e.to_string()));
+        } else if let Err(AgentError::LLMProviderUnexpectedError(e)) = &response {
+            return Err(AgentError::LLMProviderUnexpectedError(e.to_string()));
+        } else if response.is_err() {
             return no_json_object_retry_logic(
                 response,
                 db,
@@ -245,17 +250,27 @@ async fn no_json_object_retry_logic(
                     ShinkaiLogLevel::Error,
                     &format!("Qa inference chain failure due to no parsable JSON produced: {}\nUsing summary backup to respond to user.", e),
                 );
-            let mut summary_answer = String::new();
             // Try from previous iteration
+            let mut summary_answer = String::new();
             if let Some(summary_str) = &summary_text {
-                summary_answer = summary_str.to_string()
+                if summary_str.len() > 2 {
+                    summary_answer = summary_str.to_string();
+                } else {
+                    // This propagates the error upwards
+                    response?;
+                }
             }
-            // Else use the VR summary. We create _temp_res to have `response?` resolve to pushing the error properly
+            // Else use the VR summary.
             else {
                 let mut _temp_resp = JsonValue::Null;
-                match summary_node_text {
-                    Some(text) => summary_answer = text.to_string(),
-                    None => _temp_resp = response?,
+                if let Some(text) = summary_node_text {
+                    if text.len() > 2 {
+                        summary_answer = text.to_string();
+                    } else {
+                        response?;
+                    }
+                } else {
+                    response?;
                 }
             }
 
