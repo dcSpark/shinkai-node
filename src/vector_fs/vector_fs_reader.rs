@@ -38,6 +38,11 @@ impl VFSReader {
             profile: profile.clone(),
         };
 
+        // Validate profile ShinkaiName has an actual profile inside
+        if profile.extract_profile().is_err() {
+            return Err(VectorFSError::ProfileNameNonExistent(profile.to_string()));
+        }
+
         // Validate that the path exists
         if vector_fs.validate_path_points_to_entry(path.clone(), &profile).is_err() {
             return Err(VectorFSError::NoEntryAtPath(path));
