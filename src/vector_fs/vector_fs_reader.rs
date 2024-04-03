@@ -292,8 +292,6 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<RetrievedNode, VectorFSError> {
-        eprintln!("Retrieving node at path: {:?}", path);
-        eprintln!("internals read only: {:?}", self.internals_map);
         let internals = self.get_profile_fs_internals_read_only(profile)?;
         internals
             .fs_core_resource

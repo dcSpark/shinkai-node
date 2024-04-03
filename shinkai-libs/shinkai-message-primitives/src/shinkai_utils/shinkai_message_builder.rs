@@ -33,6 +33,7 @@ pub type ShinkaiNameString = String;
 
 // TODO: refactor this so you don't need to give all the keys to the builder in new
 // but rather give them to the build function that way you can have the two level of encryptions
+#[derive(Clone)]
 pub struct ShinkaiMessageBuilder {
     message_raw_content: String,
     message_content_schema: MessageSchemaType,
