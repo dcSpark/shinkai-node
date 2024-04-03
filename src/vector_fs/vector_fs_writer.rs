@@ -572,7 +572,7 @@ impl VectorFS {
         Ok(new_folder)
     }
 
-    /// Automatically creates new FSFolders along the given path that do not exist.
+    /// Automatically creates new FSFolders along the given path that do not exist, including the final path id (aka. don't supply an FSItem's path, use its parent path).
     pub fn create_new_folder_auto(&mut self, writer: &VFSWriter, path: VRPath) -> Result<(), VectorFSError> {
         let mut current_path = VRPath::root();
         for segment in path.path_ids {
@@ -718,8 +718,9 @@ impl VectorFS {
     /// as the folder name which everything gets extracted into.
     pub fn extract_vrpack_in_folder(&mut self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {
         // Construct the base path for the VRPack extraction
-        let mut vec_fs_base_path = writer.path.clone();
-        vec_fs_base_path.push(vrpack.name.clone());
+        let vec_fs_base_path = writer.path.clone();
+        let mut vec_fs_folder_path = writer.path.clone();
+        vec_fs_folder_path.push(vrpack.name.clone());
 
         // Check if an entry already exists at vec_fs_base_path
         if self
@@ -732,11 +733,12 @@ impl VectorFS {
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
 
         for (vrkai, path) in vrkais_with_paths {
-            let new_writer = writer.new_writer_copied_data(path.clone(), self)?;
-            self.create_new_folder_auto(&new_writer, path.clone())?;
-
+            let parent_folder_path = vec_fs_folder_path.append_path_cloned(&path.parent_path());
+            let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self)?;
+            // Create the folders
+            self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())?;
             // Save the VRKai in its final location
-            self.save_vrkai_in_folder(&new_writer, vrkai)?;
+            self.save_vrkai_in_folder(&parent_folder_writer, vrkai)?;
         }
 
         Ok(())
