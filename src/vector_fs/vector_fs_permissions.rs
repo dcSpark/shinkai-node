@@ -213,7 +213,6 @@ impl PermissionsIndex {
 
         loop {
             if let Some(path_permission_json) = self.fs_permissions.get(&path) {
-                eprintln!("path_permission_json: {:?}", path_permission_json);
                 let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
                 // Global profile owner check
