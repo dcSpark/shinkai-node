@@ -83,7 +83,12 @@ impl JobManager {
         // Inference the agent's LLM with the prompt
         let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
-        if response.is_err() {
+
+        if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
+            return Err(AgentError::LLMProviderInferenceLimitReached(e.to_string()));
+        } else if let Err(AgentError::LLMProviderUnexpectedError(e)) = &response {
+            return Err(AgentError::LLMProviderUnexpectedError(e.to_string()));
+        } else if response.is_err() {
             return no_json_object_retry_logic(
                 response,
                 db,
