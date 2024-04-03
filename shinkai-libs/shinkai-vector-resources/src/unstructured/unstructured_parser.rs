@@ -138,7 +138,7 @@ impl UnstructuredParser {
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-        collect_texts_and_indices: fn(Vec<GroupedText>, u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
