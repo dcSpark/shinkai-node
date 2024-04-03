@@ -728,10 +728,9 @@ impl VectorFS {
 
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
 
-        for (vrkai, parent_path) in vrkais_with_paths {
-            let real_path = vec_fs_base_path.append_path_cloned(&parent_path);
-            let new_writer = writer.new_writer_copied_data(real_path.clone(), self)?;
-            self.create_new_folder_auto(&new_writer, real_path.clone())?;
+        for (vrkai, path) in vrkais_with_paths {
+            let new_writer = writer.new_writer_copied_data(path.clone(), self)?;
+            self.create_new_folder_auto(&new_writer, path.clone())?;
 
             // Save the VRKai in its final location
             self.save_vrkai_in_folder(&new_writer, vrkai)?;

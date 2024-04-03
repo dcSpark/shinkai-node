@@ -474,7 +474,7 @@ impl NetworkJobManager {
             .map_err(|_| NetworkJobQueueError::DecryptionFailed)?;
 
         // Deserialize the decrypted data back into Vec<(VRKai, VRPath)>
-        let vr_pack: VRPack = bincode::deserialize(&decrypted_data)
+        let mut vr_pack: VRPack = bincode::deserialize(&decrypted_data)
             .map_err(|_| NetworkJobQueueError::DeserializationFailed("Failed to deserialize VRPack".to_string()))?;
 
         // Find destination path from my_subscripton
@@ -485,6 +485,8 @@ impl NetworkJobManager {
                 subscription.subscriber_destination_path.clone().unwrap()
             }
         };
+        let destination_vr_path =
+            VRPath::from_string(&destination_path).map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
 
         let local_subscriber = ShinkaiName::from_node_and_profile_names(
             subscription.subscriber_node.node_name,
@@ -496,29 +498,45 @@ impl NetworkJobManager {
             let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
             let mut vector_fs_lock = maybe_vector_fs.lock().await;
 
-            let vr_path = VRPath::from_string(&destination_path)
-                .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
+            // If we're syncing into a different folder name, then update vr_pack name to match
+            if let Ok(path_id) = destination_vr_path.last_path_id() {
+                if path_id != vr_pack.name {
+                    vr_pack.name = path_id;
+                }
+            }
 
             let path_already_exists = vector_fs_lock
-                .validate_path_points_to_folder(vr_path.clone(), &local_subscriber.clone())
+                .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
                 .is_ok();
 
             let writer = vector_fs_lock
-                .new_writer(local_subscriber.clone(), vr_path.clone(), local_subscriber.clone())
+                .new_writer(
+                    local_subscriber.clone(),
+                    destination_vr_path.clone(),
+                    local_subscriber.clone(),
+                )
                 .unwrap();
 
             if path_already_exists {
-                let deletion_writer = writer.new_writer_copied_data(vr_path, &mut vector_fs_lock).unwrap();
+                let deletion_writer = writer
+                    .new_writer_copied_data(destination_vr_path.clone(), &mut vector_fs_lock)
+                    .unwrap();
                 vector_fs_lock.delete_folder(&deletion_writer)?;
             }
 
-            // TODO: extend it to support multiple levels of folders
-            let result = vector_fs_lock
-                .create_new_folder(&writer, &destination_path.clone());
+            // Create all folders up and until the parent folder
+            let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
+            let result = vector_fs_lock.create_new_folder_auto(&writer, parent_vr_path.clone());
 
-            // Unpack the VRKaiPath pairs
-            let result = vector_fs_lock.extract_vrpack_in_folder(&writer, vr_pack);
-            // eprintln!("VR Unpack Result: {:?}", result);
+            // Unpack the VRPack
+            let parent_writer = vector_fs_lock
+                .new_writer(
+                    local_subscriber.clone(),
+                    parent_vr_path.clone(),
+                    local_subscriber.clone(),
+                )
+                .unwrap();
+            let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);
 
             {
                 // debug. print current files
@@ -535,7 +553,7 @@ impl NetworkJobManager {
                 // eprintln!("Current files: {:?}", result);
             }
         }
-     
+
         Ok(())
     }
 
