@@ -4,10 +4,7 @@ use shinkai_fs_mirror::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 use shinkai_fs_mirror::synchronizer::{FilesystemSynchronizer, SyncInterval};
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
-use tokio::sync::mpsc;
-use tokio::time::sleep;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
@@ -42,6 +39,30 @@ async fn main() {
                 .takes_value(true)
                 .required(true), // Marking this argument as required
         )
+        .arg(
+            Arg::with_name("folder_to_watch")
+                .short('w')
+                .long("watch")
+                .value_name("FOLDER_TO_WATCH")
+                .help("Folder path to watch for changes")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("db_path")
+                .short('b')
+                .long("db")
+                .value_name("DB_PATH")
+                .help("Database path for storing synchronization data")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("sync_interval")
+                .short('i')
+                .long("interval")
+                .value_name("SYNC_INTERVAL")
+                .help("Sync interval (immediate, timed:<seconds>, none)")
+                .takes_value(true),
+        )
         .get_matches();
 
     let encrypted_file_path = env::var("ENCRYPTED_FILE_PATH")
@@ -64,10 +85,25 @@ async fn main() {
         })
         .expect("Required");
 
-    // Example usage, adjust according to your actual needs
-    let folder_to_watch = PathBuf::from("/path/to/watch");
-    let db_path = "path/to/db".to_string();
-    let sync_interval = SyncInterval::Immediate; // Or whatever logic you want to determine this
+    let folder_to_watch = matches
+        .value_of("folder_to_watch")
+        .map(PathBuf::from)
+        .or_else(|| env::var("FOLDER_TO_WATCH").ok().map(PathBuf::from))
+        .expect("Folder to watch is required");
+
+    let db_path = matches
+        .value_of("db_path")
+        .map(String::from)
+        .or_else(|| env::var("DB_PATH").ok())
+        .unwrap_or_else(|| "mirror_db".to_string());
+
+    let sync_interval_str = matches
+        .value_of("sync_interval")
+        .map(String::from)
+        .or_else(|| env::var("SYNC_INTERVAL").ok())
+        .unwrap_or_else(|| "immediate".to_string()); // Default value
+
+    let sync_interval = parse_sync_interval(&sync_interval_str).expect("Failed to parse sync interval");
 
     // Example of creating a FilesystemSynchronizer
     let shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
@@ -87,4 +123,24 @@ async fn main() {
     .expect("Failed to create FilesystemSynchronizer");
 
     println!("{:?}", synchronizer);
+
+    println!("Running. Press Ctrl+C to exit.");
+    tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    println!("Exiting.");
+}
+
+fn parse_sync_interval(input: &str) -> Result<SyncInterval, &'static str> {
+    match input.to_lowercase().as_str() {
+        "immediate" => Ok(SyncInterval::Immediate),
+        "none" => Ok(SyncInterval::None),
+        s if s.starts_with("timed:") => {
+            let seconds_str = &s[6..];
+            seconds_str
+                .parse::<u64>()
+                .map(Duration::from_secs)
+                .map(SyncInterval::Timed)
+                .map_err(|_| "Failed to parse duration for timed sync interval")
+        }
+        _ => Err("Invalid sync interval format"),
+    }
 }
