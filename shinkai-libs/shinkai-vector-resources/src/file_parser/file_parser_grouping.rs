@@ -265,4 +265,17 @@ impl ShinkaiFileParser {
             .collect::<Vec<String>>()
             .join(" ")
     }
+
+    /// Concatenate  text up to a maximum size.
+    pub fn concatenate_groups_up_to_max_size(elements: &Vec<GroupedText>, max_size: usize) -> String {
+        let mut desc = String::new();
+        for e in elements {
+            if desc.len() + e.text.len() + 1 > max_size {
+                break; // Stop appending if adding the next element would exceed max_size
+            }
+            desc.push_str(&e.text);
+            desc.push('\n'); // Add a line break after each element's text
+        }
+        desc.trim_end().to_string() // Trim any trailing space before returning
+    }
 }

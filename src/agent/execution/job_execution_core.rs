@@ -1,6 +1,7 @@
 use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
+use crate::agent::parsing_helper::ParsingHelper;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
@@ -558,7 +559,7 @@ impl JobManager {
         }
 
         let processed_vrkais =
-            JobManager::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
+            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), unstructured_api.clone())
                 .await?;
 
         // Save the vrkai into scope (and potentially VectorFS)

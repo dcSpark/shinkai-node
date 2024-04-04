@@ -28,7 +28,13 @@ impl ShinkaiFileParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let name = ShinkaiFileParser::clean_name(&name);
-        let resource_desc = Self::setup_resource_description(desc, &text_groups);
+        let max_embedding_token_count = generator.model_type().max_input_token_count();
+        let resource_desc = Self::setup_resource_description(
+            desc,
+            &text_groups,
+            max_embedding_token_count,
+            max_embedding_token_count.checked_div(2).unwrap_or(100),
+        );
         let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
@@ -88,7 +94,13 @@ impl ShinkaiFileParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let name = ShinkaiFileParser::clean_name(&name);
-        let resource_desc = Self::setup_resource_description(desc, &text_groups);
+        let max_embedding_token_count = generator.model_type().max_input_token_count();
+        let resource_desc = Self::setup_resource_description(
+            desc,
+            &text_groups,
+            max_embedding_token_count,
+            max_embedding_token_count / 2,
+        );
         let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
@@ -131,25 +143,6 @@ impl ShinkaiFileParser {
         }
 
         Ok(BaseVectorResource::Document(doc))
-    }
-
-    /// Helper method for setting a description if none provided for process_new_doc_resource
-    fn setup_resource_description(desc: Option<String>, text_groups: &Vec<GroupedText>) -> Option<String> {
-        if let Some(description) = desc {
-            Some(description.to_string())
-        } else if !text_groups.is_empty() {
-            Some(text_groups[0].text.to_string())
-        } else {
-            None
-        }
-    }
-
-    /// Generates a Blake3 hash of the data in the buffer
-    pub fn generate_data_hash(buffer: &[u8]) -> String {
-        let mut hasher = Hasher::new();
-        hasher.update(buffer);
-        let result = hasher.finalize();
-        result.to_hex().to_string()
     }
 
     #[cfg(feature = "native-http")]
@@ -319,6 +312,72 @@ impl ShinkaiFileParser {
         let cleaned_name = SourceFileType::clean_string_of_extension(&http_cleaned);
 
         cleaned_name
+    }
+
+    /// Helper function that processes groups into a list of descriptions.
+    /// Only takes the top level Group text, does not traverse deeper.
+    pub fn process_groups_into_descriptions_list(
+        groups: &Vec<GroupedText>,
+        max_size: usize,
+        max_node_size: usize,
+    ) -> Vec<String> {
+        let mut descriptions = Vec::new();
+        let mut description = String::new();
+        let mut total_size = 0;
+
+        for group in groups {
+            let element_text = &group.text;
+            if description.len() + element_text.len() > max_node_size {
+                descriptions.push(description.clone());
+                total_size += description.len();
+                description.clear();
+            }
+            if total_size + element_text.len() > max_size {
+                break;
+            }
+            description.push_str(element_text);
+            description.push(' ');
+        }
+        if !description.is_empty() {
+            descriptions.push(description);
+        }
+
+        descriptions
+    }
+
+    /// Processes groups into a single description string.
+    /// Only takes the top level Group text, does not traverse deeper.
+    pub fn process_groups_into_description(groups: &Vec<GroupedText>, max_size: usize, max_node_size: usize) -> String {
+        let descriptions = Self::process_groups_into_descriptions_list(groups, max_size, max_node_size);
+        descriptions.join(" ")
+    }
+
+    /// Helper method for setting a description if none provided for process_new_doc_resource
+    fn setup_resource_description(
+        desc: Option<String>,
+        text_groups: &Vec<GroupedText>,
+        max_size: usize,
+        max_node_size: usize,
+    ) -> Option<String> {
+        if let Some(description) = desc {
+            Some(description.to_string())
+        } else if !text_groups.is_empty() {
+            Some(Self::process_groups_into_description(
+                text_groups,
+                max_size,
+                max_node_size,
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Generates a Blake3 hash of the data in the buffer
+    pub fn generate_data_hash(buffer: &[u8]) -> String {
+        let mut hasher = Hasher::new();
+        hasher.update(buffer);
+        let result = hasher.finalize();
+        result.to_hex().to_string()
     }
 }
 

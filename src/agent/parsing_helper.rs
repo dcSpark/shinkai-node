@@ -9,6 +9,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::file_parser_types::GroupedText;
 use shinkai_vector_resources::file_parser::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::file_parser::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::file_parser::unstructured_types::UnstructuredElement;
@@ -19,15 +20,17 @@ use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
 use std::io::Cursor;
 
-impl JobManager {
-    /// Given a list of UnstructuredElements generates a description using the Agent's LLM
-    // TODO: the 2000 should be dynamic depending on the agent model capabilities
+pub struct ParsingHelper {}
+
+impl ParsingHelper {
+    /// Given a list of GroupedText, generates a description using the Agent's LLM
     pub async fn generate_description(
-        elements: &Vec<UnstructuredElement>,
+        text_groups: &Vec<GroupedText>,
         agent: SerializedAgent,
         max_node_size: u64,
     ) -> Result<String, AgentError> {
-        let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
+        let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 3000, 300);
+        let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
@@ -63,9 +66,12 @@ impl JobManager {
                 "Failed to generate VR description after multiple attempts. Defaulting to text from first N nodes."
             );
 
-            let concat_text =
-                UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
-            let desc = ParsingHelper::ending_stripper(&concat_text);
+            let desc = ShinkaiFileParser::process_groups_into_description(
+                &text_groups,
+                max_node_size as usize,
+                max_node_size.checked_div(2).unwrap_or(100) as usize,
+            );
+            let desc = ParsingHelper::ending_stripper(&desc);
             Ok(desc)
         }
     }
@@ -95,9 +101,13 @@ impl JobManager {
 
         let mut desc = String::new();
         if let Some(actual_agent) = agent {
-            desc = Self::generate_description(&elements, actual_agent, max_node_size).await?;
+            desc = Self::generate_description(&text_groups, actual_agent, max_node_size).await?;
         } else {
-            desc = UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
+            desc = ShinkaiFileParser::process_groups_into_description(
+                &text_groups,
+                max_node_size as usize,
+                max_node_size.checked_div(2).unwrap_or(100) as usize,
+            );
         }
 
         Ok(ShinkaiFileParser::process_groups_into_resource(
@@ -150,7 +160,7 @@ impl JobManager {
                 &format!("Processing file: {}", filename),
             );
 
-            let resource = JobManager::parse_file_into_resource_gen_desc(
+            let resource = ParsingHelper::parse_file_into_resource_gen_desc(
                 file.1.clone(),
                 generator,
                 filename.clone(),
@@ -172,11 +182,7 @@ impl JobManager {
 
         Ok(processed_vrkais)
     }
-}
 
-pub struct ParsingHelper {}
-
-impl ParsingHelper {
     /// Generates Blake3 hash of the input data.
     fn generate_data_hash_blake3(content: &[u8]) -> String {
         ShinkaiFileParser::generate_data_hash(content)
@@ -205,33 +211,6 @@ impl ParsingHelper {
         }
 
         cleaned_string
-    }
-
-    /// Takes the provided elements and creates a description prompt ready to be used
-    /// to inference with an LLM.
-    pub fn process_elements_into_description_prompt(elements: &Vec<UnstructuredElement>, max_size: usize) -> Prompt {
-        let max_node_size = 300;
-        let mut descriptions = Vec::new();
-        let mut description = String::new();
-        let mut total_size = 0;
-
-        for element in elements {
-            let element_text = &element.text;
-            if description.len() + element_text.len() > max_node_size {
-                descriptions.push(description.clone());
-                total_size += description.len();
-                description.clear();
-            }
-            if total_size + element_text.len() > max_size {
-                break;
-            }
-            description.push_str(element_text);
-            description.push(' ');
-        }
-        if !description.is_empty() {
-            descriptions.push(description);
-        }
-        JobPromptGenerator::simple_doc_description(descriptions)
     }
 
     /// Given an input string, if the whole string parses into a JSON Value, then
