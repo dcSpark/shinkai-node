@@ -6,6 +6,7 @@ use super::{
     node_api::APIError,
     node_error::NodeError,
     subscription_manager::{
+        subscription_manager::external_subscriber_manager::SharedFolderInfo,
         external_subscriber_manager::ExternalSubscriberManager,
         my_subscription_manager::{self, MySubscriptionsManager},
     },
@@ -320,7 +321,7 @@ impl Node {
         node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         input_payload: APIAvailableSharedItems,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Vec<SharedFolderInfo>, APIError>>,
     ) -> Result<(), NodeError> {
         if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
             let mut subscription_manager = ext_subscription_manager.lock().await;
@@ -328,20 +329,7 @@ impl Node {
             let path = "/";
             let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
 
-            match to_string(&shared_folder_infos) {
-                Ok(json_string) => {
-                    let _ = res.send(Ok(json_string)).await.map_err(|_| ());
-                }
-                Err(e) => {
-                    // Handle serialization error
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to serialize response: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                }
-            }
+            let _ = res.send(Ok(shared_folder_infos)).await.map_err(|_| ());
         } else {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
