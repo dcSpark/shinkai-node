@@ -78,6 +78,7 @@ pub struct ExternalSubscriberManager {
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+    pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
     /// and the `usize` is the last sync version of the folder. The version is a counter that increments
     /// with each change in the folder, providing a non-deterministic but sequential tracking of updates.
@@ -110,6 +111,7 @@ impl ExternalSubscriberManager {
         let shared_folders_trees = Arc::new(DashMap::new());
         let subscription_ids_are_sync = Arc::new(DashMap::new());
         let shared_folders_to_ephemeral_versioning = Arc::new(DashMap::new());
+        let last_refresh = Arc::new(Mutex::new(Utc::now()));
 
         let thread_number = env::var("SUBSCRIBER_MANAGER_NETWORK_CONCURRENCY")
             .unwrap_or(NUM_THREADS.to_string())
@@ -173,6 +175,7 @@ impl ExternalSubscriberManager {
         ExternalSubscriberManager {
             db,
             vector_fs,
+            last_refresh,
             identity_manager,
             subscriptions_queue_manager,
             subscription_processing_task: Some(subscription_queue_handler),
@@ -186,7 +189,26 @@ impl ExternalSubscriberManager {
         }
     }
 
-    pub async fn get_cached_shared_folder_tree(&self, path: &str) -> Vec<SharedFolderInfo> {
+    pub async fn get_cached_shared_folder_tree(&mut self, path: &str) -> Vec<SharedFolderInfo> {
+        let now = Utc::now();
+        {
+            let last_refresh_lock = self.last_refresh.lock().await;
+            if now.signed_duration_since(*last_refresh_lock).num_minutes() >= 5 {
+                // Drop the lock explicitly before the mutable borrow
+                drop(last_refresh_lock);
+                // Now `self` can be mutably borrowed because the immutable borrow has ended
+                let _ = self.available_shared_folders(
+                    self.node_name.clone(),
+                    "".to_string(),
+                    self.node_name.clone(),
+                    "".to_string(),
+                    "/".to_string(),
+                ).await;
+                // Re-acquire the lock to update the last refresh time
+                *self.last_refresh.lock().await = now;
+            }
+        } // The lock is dropped here if not already dropped
+
         if path == "/" {
             // Collect all values into a Vec
             self.shared_folders_trees
@@ -460,7 +482,11 @@ impl ExternalSubscriberManager {
             )
         })?;
 
-        shinkai_log(ShinkaiLogOption::ExtSubscriptions, ShinkaiLogLevel::Info, format!("Sending VRPack to subscriber: {:?}", subscription_id).as_str());
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Info,
+            format!("Sending VRPack to subscriber: {:?}", subscription_id).as_str(),
+        );
 
         // Call the send_encrypted_vrkaipath_pairs function
         Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr).await;

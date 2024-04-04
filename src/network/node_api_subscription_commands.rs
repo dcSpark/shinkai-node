@@ -161,7 +161,10 @@ impl Node {
         } else {
             let mut my_subscription_manager = self.my_subscription_manager.lock().await;
 
-            match ShinkaiName::from_node_and_profile_names(input_payload.streamer_node_name.clone(), input_payload.streamer_profile_name.clone()) {
+            match ShinkaiName::from_node_and_profile_names(
+                input_payload.streamer_node_name.clone(),
+                input_payload.streamer_profile_name.clone(),
+            ) {
                 Ok(ext_node_name) => {
                     let result = my_subscription_manager.get_shared_folder(&ext_node_name).await;
                     match result {
@@ -200,6 +203,44 @@ impl Node {
                     let _ = res.send(Err(api_error)).await;
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn api_subscription_available_shared_items_open(
+        &self,
+        input_payload: APIAvailableSharedItems,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        if input_payload.streamer_node_name == self.node_name.clone().get_node_name_string() {
+            let mut subscription_manager = self.ext_subscription_manager.lock().await;
+            // TODO: update. only feasible for root for now.
+            let path = "/";
+            let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
+
+            match to_string(&shared_folder_infos) {
+                Ok(json_string) => {
+                    let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+                }
+                Err(e) => {
+                    // Handle serialization error
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to serialize response: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Streamer name doesn't match".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
         }
 
         Ok(())

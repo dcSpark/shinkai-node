@@ -360,7 +360,7 @@ pub async fn handle_network_message_cases(
                     let mut response = "".to_string();
 
                     // Access the subscription_manager, which is of type Arc<Mutex<Option<SubscriberManager>>>
-                    let subscription_manager = external_subscription_manager.lock().await;
+                    let mut subscription_manager = external_subscription_manager.lock().await;
 
                     // Now, the lock is released, and we can proceed without holding onto the `MutexGuard`
                     let path = "/"; // Define the path you want to query

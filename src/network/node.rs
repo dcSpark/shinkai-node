@@ -31,7 +31,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, JobToolCall, RegistrationCodeType,
+    APIAvailableSharedItems, IdentityPermissions, JobToolCall, RegistrationCodeType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -321,6 +321,10 @@ pub enum NodeCommand {
     },
     APIAvailableSharedItems {
         msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIAvailableSharedItemsOpen {
+        msg: APIAvailableSharedItems,
         res: Sender<Result<String, APIError>>,
     },
     APICreateShareableFolder {
@@ -724,6 +728,7 @@ impl Node {
                             Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
                             Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
                             Some(NodeCommand::APIAvailableSharedItems { msg, res }) => self.api_subscription_available_shared_items(msg, res).await?,
+                            Some(NodeCommand::APIAvailableSharedItemsOpen { msg, res }) => self.api_subscription_available_shared_items_open(msg, res).await?,
                             Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
                             Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
