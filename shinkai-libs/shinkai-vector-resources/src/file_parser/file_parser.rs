@@ -5,6 +5,7 @@ use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::source::DistributionInfo;
 use crate::source::VRSourceReference;
+use crate::vector_resource::SourceFileType;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
@@ -26,8 +27,9 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
+        let name = ShinkaiFileParser::clean_name(&name);
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
+        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets the keywords
@@ -85,8 +87,9 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
+        let name = ShinkaiFileParser::clean_name(&name);
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
+        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets the keywords and generates a keyword embedding
@@ -275,6 +278,47 @@ impl ShinkaiFileParser {
 
         resource.as_trait_object_mut().set_distribution_info(distribution_info);
         Ok(resource)
+    }
+
+    /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
+    pub fn clean_name(name: &str) -> String {
+        // Decode URL-encoded characters to simplify processing.
+        let decoded_name = urlencoding::decode(name).unwrap_or_else(|_| name.into());
+
+        // Check if the name ends with ".htm" or ".html" and calculate the position to avoid deletion.
+        let avoid_deletion_position = if decoded_name.ends_with(".htm") || decoded_name.ends_with(".html") {
+            decoded_name.len().saturating_sub(4) // Position before ".htm" or ".html"
+        } else {
+            decoded_name.len() // Use the full length if not ending with ".htm" or ".html"
+        };
+        // Find the last occurrence of "/" or "%2F" that is not too close to the ".htm" extension.
+        let last_relevant_slash_position = decoded_name.rmatch_indices(&['/', '%']).find_map(|(index, _)| {
+            if index + 3 < avoid_deletion_position && decoded_name[index..].starts_with("%2F") {
+                Some(index)
+            } else if index + 1 < avoid_deletion_position && decoded_name[index..].starts_with("/") {
+                Some(index)
+            } else {
+                None
+            }
+        });
+        // If a relevant slash is found, slice the string from the character immediately following this slash.
+        let http_cleaned = match last_relevant_slash_position {
+            Some(index) => decoded_name
+                .get((index + if decoded_name[index..].starts_with("%2F") { 3 } else { 1 })..)
+                .unwrap_or(&decoded_name),
+            None => &decoded_name,
+        };
+
+        let http_cleaned = if http_cleaned.is_empty() || http_cleaned == ".html" || http_cleaned == ".htm" {
+            decoded_name.to_string()
+        } else {
+            http_cleaned.to_string()
+        };
+
+        // Remove extension
+        let cleaned_name = SourceFileType::clean_string_of_extension(&http_cleaned);
+
+        cleaned_name
     }
 }
 

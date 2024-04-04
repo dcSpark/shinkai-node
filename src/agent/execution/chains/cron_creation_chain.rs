@@ -1,9 +1,9 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
-use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
+use crate::agent::parsing_helper::ParsingHelper;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::ShinkaiDB;
 use crate::planner::shinkai_plan::ShinkaiPlan;

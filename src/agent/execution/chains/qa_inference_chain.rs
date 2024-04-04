@@ -1,8 +1,8 @@
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
-use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
+use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;

@@ -3,7 +3,7 @@ use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
-use crate::source::{distribution, VRSourceReference};
+use crate::source::{distribution, TextChunkingStrategy, VRSourceReference};
 use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
 use distribution::DistributionInfo;
@@ -43,24 +43,25 @@ impl UnstructuredAPI {
 
     /// Makes a blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf`
+    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
     pub fn process_file_blocking(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
-        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
 
         // Cleans out the file extension from the file_name
-        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
+        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
 
         ShinkaiFileParser::process_groups_into_resource_blocking(
             text_groups,
@@ -76,24 +77,25 @@ impl UnstructuredAPI {
 
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf`
+    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
     pub async fn process_file(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
-        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
 
         // Cleans out the file extension from the file_name
-        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
+        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
 
         ShinkaiFileParser::process_groups_into_resource(
             text_groups,

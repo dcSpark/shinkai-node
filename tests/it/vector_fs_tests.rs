@@ -1,6 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_node::agent::file_parsing::ParsingHelper;
+use shinkai_node::agent::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
@@ -64,19 +64,21 @@ pub async fn get_shinkai_intro_doc_async(
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
 
+    let unstructured = UnstructuredAPI::new_default();
+
     let desc = "An initial introduction to the Shinkai Network.";
-    let resource = ParsingHelper::parse_file_into_resource(
-        buffer.clone(),
-        generator,
-        "shinkai_intro.pdf".to_string(),
-        Some(desc.to_string()),
-        data_tags,
-        500,
-        UnstructuredAPI::new_default(),
-        DistributionInfo::new_empty(),
-    )
-    .await
-    .unwrap();
+    let resource = unstructured
+        .process_file(
+            buffer.clone(),
+            generator,
+            "shinkai_intro.pdf".to_string(),
+            Some(desc.to_string()),
+            data_tags,
+            500,
+            DistributionInfo::new_empty(),
+        )
+        .await
+        .unwrap();
 
     let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
     let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);

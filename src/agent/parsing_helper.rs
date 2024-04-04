@@ -70,6 +70,49 @@ impl JobManager {
         }
     }
 
+    ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
+    ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
+    ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
+    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
+    pub async fn parse_file_into_resource_gen_desc(
+        file_buffer: Vec<u8>,
+        generator: &dyn EmbeddingGenerator,
+        file_name: String,
+        parsing_tags: &Vec<DataTag>,
+        agent: Option<SerializedAgent>,
+        max_node_size: u64,
+        unstructured_api: UnstructuredAPI,
+        distribution_info: DistributionInfo,
+    ) -> Result<BaseVectorResource, AgentError> {
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+
+        // Parse into Unstructured elements, and then into text_groups
+        let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_node_size);
+
+        // Cleans out the file extension from the file_name
+        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+
+        let mut desc = String::new();
+        if let Some(actual_agent) = agent {
+            desc = Self::generate_description(&elements, actual_agent, max_node_size).await?;
+        } else {
+            desc = UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
+        }
+
+        Ok(ShinkaiFileParser::process_groups_into_resource(
+            text_groups,
+            generator,
+            cleaned_name,
+            Some(desc),
+            source,
+            parsing_tags,
+            max_node_size,
+            distribution_info,
+        )
+        .await?)
+    }
+
     /// Processes the list of files into VRKai structs ready to be used/saved/etc.
     /// Supports both `.vrkai` files, and standard doc/html/etc which get generated into VRs.
     pub async fn process_files_into_vrkai(
@@ -129,42 +172,6 @@ impl JobManager {
 
         Ok(processed_vrkais)
     }
-
-    ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
-    ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
-    ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
-    /// Note: The file name must include the extension ie. `*.pdf`
-    pub async fn parse_file_into_resource_gen_desc(
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        parsing_tags: &Vec<DataTag>,
-        agent: Option<SerializedAgent>,
-        max_node_size: u64,
-        unstructured_api: UnstructuredAPI,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, AgentError> {
-        let (_, source, elements) =
-            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
-        let mut desc = String::new();
-        if let Some(actual_agent) = agent {
-            desc = Self::generate_description(&elements, actual_agent, max_node_size).await?;
-        } else {
-            desc = UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
-        }
-
-        ParsingHelper::parse_elements_into_resource(
-            elements,
-            generator,
-            name,
-            Some(desc),
-            source,
-            parsing_tags,
-            max_node_size,
-            distribution_info,
-        )
-        .await
-    }
 }
 
 pub struct ParsingHelper {}
@@ -173,66 +180,6 @@ impl ParsingHelper {
     /// Generates Blake3 hash of the input data.
     fn generate_data_hash_blake3(content: &[u8]) -> String {
         ShinkaiFileParser::generate_data_hash(content)
-    }
-
-    ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
-    ///  generates all embeddings,  and returns a finalized BaseVectorResource.
-    /// Note: The file name must include the extension ie. `*.pdf`
-    pub async fn parse_file_into_resource(
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        file_name: String,
-        desc: Option<String>,
-        parsing_tags: &Vec<DataTag>,
-        max_node_size: u64,
-        unstructured_api: UnstructuredAPI,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, AgentError> {
-        let (_, source, elements) =
-            ParsingHelper::parse_file_helper(file_buffer.clone(), file_name.clone(), unstructured_api).await?;
-
-        // Cleans out the file extension from the file_name
-        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
-
-        Self::parse_elements_into_resource(
-            elements,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_node_size,
-            distribution_info,
-        )
-        .await
-    }
-
-    /// Helper method which keeps core logic related to parsing elements into a BaseVectorResource
-    pub async fn parse_elements_into_resource(
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_node_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, AgentError> {
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_node_size);
-        let name = Self::clean_name(&name);
-        let resource = ShinkaiFileParser::process_groups_into_resource(
-            text_groups,
-            generator,
-            name,
-            desc,
-            source,
-            parsing_tags,
-            max_node_size,
-            distribution_info,
-        )
-        .await?;
-
-        Ok(resource)
     }
 
     /// Cleans the JSON response string using regex, including replacing `\_` with `_` and removing unnecessary line breaks.
@@ -258,59 +205,6 @@ impl ParsingHelper {
         }
 
         cleaned_string
-    }
-
-    /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
-    fn clean_name(name: &str) -> String {
-        // Decode URL-encoded characters to simplify processing.
-        let decoded_name = urlencoding::decode(name).unwrap_or_else(|_| name.into());
-
-        // Check if the name ends with ".htm" or ".html" and calculate the position to avoid deletion.
-        let avoid_deletion_position = if decoded_name.ends_with(".htm") || decoded_name.ends_with(".html") {
-            decoded_name.len().saturating_sub(4) // Position before ".htm" or ".html"
-        } else {
-            decoded_name.len() // Use the full length if not ending with ".htm" or ".html"
-        };
-        // Find the last occurrence of "/" or "%2F" that is not too close to the ".htm" extension.
-        let last_relevant_slash_position = decoded_name.rmatch_indices(&['/', '%']).find_map(|(index, _)| {
-            if index + 3 < avoid_deletion_position && decoded_name[index..].starts_with("%2F") {
-                Some(index)
-            } else if index + 1 < avoid_deletion_position && decoded_name[index..].starts_with("/") {
-                Some(index)
-            } else {
-                None
-            }
-        });
-        // If a relevant slash is found, slice the string from the character immediately following this slash.
-        let http_cleaned = match last_relevant_slash_position {
-            Some(index) => decoded_name
-                .get((index + if decoded_name[index..].starts_with("%2F") { 3 } else { 1 })..)
-                .unwrap_or(&decoded_name),
-            None => &decoded_name,
-        };
-
-        let http_cleaned = if http_cleaned.is_empty() || http_cleaned == ".html" || http_cleaned == ".htm" {
-            decoded_name.to_string()
-        } else {
-            http_cleaned.to_string()
-        };
-
-        // Remove extension
-        let cleaned_name = SourceFileType::clean_string_of_extension(&http_cleaned);
-
-        cleaned_name
-    }
-
-    /// Basic helper method which parses file into needed data for generating a BaseVectorResource
-    async fn parse_file_helper(
-        file_buffer: Vec<u8>,
-        file_name: String,
-        unstructured_api: UnstructuredAPI,
-    ) -> Result<(String, VRSourceReference, Vec<UnstructuredElement>), AgentError> {
-        let resource_id = ShinkaiFileParser::generate_data_hash(&file_buffer);
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
-        Ok((resource_id, source, elements))
     }
 
     /// Takes the provided elements and creates a description prompt ready to be used
