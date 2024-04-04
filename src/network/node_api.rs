@@ -6,6 +6,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIAvailableSharedItems;
 use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
@@ -538,6 +539,17 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/available_shared_items_open
+    let api_available_shared_items_open = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "available_shared_items_open")
+            .and(warp::post())
+            .and(warp::body::json::<APIAvailableSharedItems>())
+            .and_then(move |message: APIAvailableSharedItems| {
+                api_subscription_available_shared_items_open_handler(node_commands_sender.clone(), message)
+            })
+    };
+    
     // POST v1/my_subscriptions
     let my_subscriptions = {
         let node_commands_sender = node_commands_sender.clone();
@@ -637,6 +649,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(api_vec_fs_retrieve_vector_resource)
         .or(api_convert_files_and_save_to_folder)
         .or(api_available_shared_items)
+        .or(api_available_shared_items_open)
         .or(api_create_shareable_folder)
         .or(api_update_shareable_folder)
         .or(api_unshare_folder)
@@ -649,14 +662,15 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     warp::serve(routes).run(address).await;
 }
 
-async fn handle_node_command<T, U>(
+async fn handle_node_command<T, U, V>(
     node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
+    message: V,
     command: T,
 ) -> Result<impl warp::Reply, warp::reject::Rejection>
 where
-    T: FnOnce(Sender<NodeCommand>, ShinkaiMessage, Sender<Result<U, APIError>>) -> NodeCommand,
+    T: FnOnce(Sender<NodeCommand>, V, Sender<Result<U, APIError>>) -> NodeCommand,
     U: Serialize,
+    V: Serialize,
 {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -725,6 +739,21 @@ async fn api_subscription_available_shared_items_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItems {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_subscription_available_shared_items_open_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: APIAvailableSharedItems,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItemsOpen {
             msg: message,
             res: res_sender,
         },
