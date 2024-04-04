@@ -46,140 +46,6 @@ impl UnstructuredParser {
         }
     }
 
-    #[cfg(feature = "native-http")]
-    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    /// a ready-to-go BaseVectorResource
-    pub async fn process_elements_into_resource(
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        Self::process_elements_into_resource_with_custom_collection(
-            elements,
-            generator,
-            name,
-            desc,
-            source,
-            parsing_tags,
-            max_chunk_size,
-            ShinkaiFileParser::collect_texts_and_indices,
-            distribution_info,
-        )
-        .await
-    }
-
-    #[cfg(feature = "native-http")]
-    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    /// a ready-to-go BaseVectorResource.
-    pub fn process_elements_into_resource_blocking(
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        Self::process_elements_into_resource_blocking_with_custom_collection(
-            elements,
-            generator,
-            name,
-            desc,
-            source,
-            parsing_tags,
-            max_chunk_size,
-            ShinkaiFileParser::collect_texts_and_indices,
-            distribution_info,
-        )
-    }
-
-    #[cfg(feature = "native-http")]
-    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
-    pub async fn process_elements_into_resource_with_custom_collection(
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        // Group elements together before generating the doc
-
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
-            &text_groups,
-            generator.box_clone(),
-            31,
-            max_chunk_size,
-            collect_texts_and_indices,
-        )
-        .await?;
-
-        let mut resource = ShinkaiFileParser::process_new_doc_resource(
-            new_text_groups,
-            &*generator,
-            &name,
-            desc,
-            source,
-            parsing_tags,
-            None,
-        )
-        .await?;
-        resource.as_trait_object_mut().set_distribution_info(distribution_info);
-        Ok(resource)
-    }
-
-    #[cfg(feature = "native-http")]
-    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
-    pub fn process_elements_into_resource_blocking_with_custom_collection(
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        // Group elements together before generating the doc
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        let cloned_generator = generator.box_clone();
-
-        // Use block_on to run the async-based batched embedding generation logic
-        let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings_blocking(
-            &text_groups,
-            cloned_generator,
-            31,
-            max_chunk_size,
-            collect_texts_and_indices,
-        )?;
-
-        let mut resource = ShinkaiFileParser::process_new_doc_resource_blocking(
-            new_text_groups,
-            &*generator,
-            &name,
-            desc,
-            source,
-            parsing_tags,
-            None,
-        )?;
-
-        resource.as_trait_object_mut().set_distribution_info(distribution_info);
-        Ok(resource)
-    }
-
     /// Given a list of `UnstructuredElement`s, groups their text together into a hierarchy.
     /// Currently respects max_chunk_size, ensures all content in between title elements are sub-grouped,
     /// and skips over all uncategorized text.
@@ -353,5 +219,18 @@ impl UnstructuredParser {
         }
 
         result
+    }
+
+    /// Concatenate elements text up to a maximum size.
+    pub fn concatenate_elements_up_to_max_size(elements: &[UnstructuredElement], max_size: usize) -> String {
+        let mut desc = String::new();
+        for e in elements {
+            if desc.len() + e.text.len() + 1 > max_size {
+                break; // Stop appending if adding the next element would exceed max_size
+            }
+            desc.push_str(&e.text);
+            desc.push('\n'); // Add a line break after each element's text
+        }
+        desc.trim_end().to_string() // Trim any trailing space before returning
     }
 }

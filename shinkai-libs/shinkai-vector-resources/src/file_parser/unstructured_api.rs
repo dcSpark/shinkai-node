@@ -1,3 +1,4 @@
+use super::file_parser::ShinkaiFileParser;
 use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
@@ -54,14 +55,15 @@ impl UnstructuredAPI {
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse into groups of elements
+        // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
 
         // Cleans out the file extension from the file_name
         let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
 
-        UnstructuredParser::process_elements_into_resource_blocking(
-            elements,
+        ShinkaiFileParser::process_groups_into_resource_blocking(
+            text_groups,
             generator,
             cleaned_name,
             desc,
@@ -86,14 +88,15 @@ impl UnstructuredAPI {
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse into groups of elements
+        // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
 
         // Cleans out the file extension from the file_name
         let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
 
-        UnstructuredParser::process_elements_into_resource(
-            elements,
+        ShinkaiFileParser::process_groups_into_resource(
+            text_groups,
             generator,
             cleaned_name,
             desc,

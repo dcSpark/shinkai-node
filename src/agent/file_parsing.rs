@@ -63,7 +63,8 @@ impl JobManager {
                 "Failed to generate VR description after multiple attempts. Defaulting to text from first N nodes."
             );
 
-            let concat_text = ParsingHelper::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
+            let concat_text =
+                UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
             let desc = ParsingHelper::ending_stripper(&concat_text);
             Ok(desc)
         }
@@ -149,7 +150,7 @@ impl JobManager {
         if let Some(actual_agent) = agent {
             desc = Self::generate_description(&elements, actual_agent, max_node_size).await?;
         } else {
-            desc = ParsingHelper::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
+            desc = UnstructuredParser::concatenate_elements_up_to_max_size(&elements, max_node_size as usize);
         }
 
         ParsingHelper::parse_elements_into_resource(
@@ -172,19 +173,6 @@ impl ParsingHelper {
     /// Generates Blake3 hash of the input data.
     fn generate_data_hash_blake3(content: &[u8]) -> String {
         ShinkaiFileParser::generate_data_hash(content)
-    }
-
-    /// Concatenate elements text up to a maximum size.
-    pub fn concatenate_elements_up_to_max_size(elements: &[UnstructuredElement], max_size: usize) -> String {
-        let mut desc = String::new();
-        for e in elements {
-            if desc.len() + e.text.len() + 1 > max_size {
-                break; // Stop appending if adding the next element would exceed max_size
-            }
-            desc.push_str(&e.text);
-            desc.push('\n'); // Add a line break after each element's text
-        }
-        desc.trim_end().to_string() // Trim any trailing space before returning
     }
 
     ///  Processes the file buffer through Unstructured, our hierarchical structuring algo,
@@ -230,9 +218,10 @@ impl ParsingHelper {
         max_node_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_node_size);
         let name = Self::clean_name(&name);
-        let resource = UnstructuredParser::process_elements_into_resource(
-            elements,
+        let resource = ShinkaiFileParser::process_groups_into_resource(
+            text_groups,
             generator,
             name,
             desc,
@@ -398,64 +387,5 @@ impl ParsingHelper {
         }
 
         sentences.join(".")
-    }
-}
-
-impl ParsingHelper {
-    /// Parse CSV data from a buffer and attempt to automatically detect
-    /// headers.
-    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VRError> {
-        let mut reader = Reader::from_reader(Cursor::new(buffer));
-        let headers = reader
-            .headers()
-            .map_err(|_| VRError::FailedCSVParsing)?
-            .iter()
-            .map(String::from)
-            .collect::<Vec<String>>();
-
-        let likely_header = headers.iter().all(|s| {
-            let is_alphabetic = s.chars().all(|c| c.is_alphabetic() || c.is_whitespace());
-            let no_duplicates = headers.iter().filter(|&item| item == s).count() == 1;
-            let no_prohibited_chars = !s.contains(&['@', '#', '$', '%', '^', '&', '*'][..]);
-
-            is_alphabetic && no_duplicates && no_prohibited_chars
-        });
-
-        Self::parse_csv(&buffer, likely_header)
-    }
-
-    /// Parse CSV data from a buffer.
-    /// * `header` - A boolean indicating whether to prepend column headers to
-    ///   values.
-    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VRError> {
-        let mut reader = Reader::from_reader(Cursor::new(buffer));
-        let headers = if header {
-            reader
-                .headers()
-                .map_err(|_| VRError::FailedCSVParsing)?
-                .iter()
-                .map(String::from)
-                .collect::<Vec<String>>()
-        } else {
-            Vec::new()
-        };
-
-        let mut result = Vec::new();
-        for record in reader.records() {
-            let record = record.map_err(|_| VRError::FailedCSVParsing)?;
-            let row: Vec<String> = if header {
-                record
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| format!("{}: {}", headers[i], e))
-                    .collect()
-            } else {
-                record.iter().map(String::from).collect()
-            };
-            let row_string = row.join(", ");
-            result.push(row_string);
-        }
-
-        Ok(result)
     }
 }

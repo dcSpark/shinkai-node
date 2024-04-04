@@ -148,4 +148,189 @@ impl ShinkaiFileParser {
         let result = hasher.finalize();
         result.to_hex().to_string()
     }
+
+    #[cfg(feature = "native-http")]
+    /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource
+    pub async fn process_groups_into_resource(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+        distribution_info: DistributionInfo,
+    ) -> Result<BaseVectorResource, VRError> {
+        Self::process_groups_into_resource_with_custom_collection(
+            text_groups,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            max_chunk_size,
+            ShinkaiFileParser::collect_texts_and_indices,
+            distribution_info,
+        )
+        .await
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
+    pub fn process_groups_into_resource_blocking(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+        distribution_info: DistributionInfo,
+    ) -> Result<BaseVectorResource, VRError> {
+        Self::process_groups_into_resource_blocking_with_custom_collection(
+            text_groups,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            max_chunk_size,
+            ShinkaiFileParser::collect_texts_and_indices,
+            distribution_info,
+        )
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
+    /// Allows specifying a custom collection function.
+    pub async fn process_groups_into_resource_with_custom_collection(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        distribution_info: DistributionInfo,
+    ) -> Result<BaseVectorResource, VRError> {
+        let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
+            &text_groups,
+            generator.box_clone(),
+            31,
+            max_chunk_size,
+            collect_texts_and_indices,
+        )
+        .await?;
+
+        let mut resource = ShinkaiFileParser::process_new_doc_resource(
+            new_text_groups,
+            &*generator,
+            &name,
+            desc,
+            source,
+            parsing_tags,
+            None,
+        )
+        .await?;
+        resource.as_trait_object_mut().set_distribution_info(distribution_info);
+        Ok(resource)
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Processes an ordered list of `TextGroup`s into a
+    /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
+    pub fn process_groups_into_resource_blocking_with_custom_collection(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        distribution_info: DistributionInfo,
+    ) -> Result<BaseVectorResource, VRError> {
+        // Group elements together before generating the doc
+        let cloned_generator = generator.box_clone();
+
+        // Use block_on to run the async-based batched embedding generation logic
+        let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings_blocking(
+            &text_groups,
+            cloned_generator,
+            31,
+            max_chunk_size,
+            collect_texts_and_indices,
+        )?;
+
+        let mut resource = ShinkaiFileParser::process_new_doc_resource_blocking(
+            new_text_groups,
+            &*generator,
+            &name,
+            desc,
+            source,
+            parsing_tags,
+            None,
+        )?;
+
+        resource.as_trait_object_mut().set_distribution_info(distribution_info);
+        Ok(resource)
+    }
 }
+
+// /// Parse CSV data from a buffer and attempt to automatically detect
+// /// headers.
+// pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VRError> {
+//     let mut reader = Reader::from_reader(Cursor::new(buffer));
+//     let headers = reader
+//         .headers()
+//         .map_err(|_| VRError::FailedCSVParsing)?
+//         .iter()
+//         .map(String::from)
+//         .collect::<Vec<String>>();
+
+//     let likely_header = headers.iter().all(|s| {
+//         let is_alphabetic = s.chars().all(|c| c.is_alphabetic() || c.is_whitespace());
+//         let no_duplicates = headers.iter().filter(|&item| item == s).count() == 1;
+//         let no_prohibited_chars = !s.contains(&['@', '#', '$', '%', '^', '&', '*'][..]);
+
+//         is_alphabetic && no_duplicates && no_prohibited_chars
+//     });
+
+//     Self::parse_csv(&buffer, likely_header)
+// }
+
+// /// Parse CSV data from a buffer.
+// /// * `header` - A boolean indicating whether to prepend column headers to
+// ///   values.
+// pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VRError> {
+//     let mut reader = Reader::from_reader(Cursor::new(buffer));
+//     let headers = if header {
+//         reader
+//             .headers()
+//             .map_err(|_| VRError::FailedCSVParsing)?
+//             .iter()
+//             .map(String::from)
+//             .collect::<Vec<String>>()
+//     } else {
+//         Vec::new()
+//     };
+
+//     let mut result = Vec::new();
+//     for record in reader.records() {
+//         let record = record.map_err(|_| VRError::FailedCSVParsing)?;
+//         let row: Vec<String> = if header {
+//             record
+//                 .iter()
+//                 .enumerate()
+//                 .map(|(i, e)| format!("{}: {}", headers[i], e))
+//                 .collect()
+//         } else {
+//             record.iter().map(String::from).collect()
+//         };
+//         let row_string = row.join(", ");
+//         result.push(row_string);
+//     }
+
+//     Ok(result)
+// }
