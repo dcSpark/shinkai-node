@@ -54,7 +54,7 @@ impl UnstructuredAPI {
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of elements
+        // Parse into groups of elements
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
 
         // Cleans out the file extension from the file_name
@@ -86,7 +86,7 @@ impl UnstructuredAPI {
         max_chunk_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of elements
+        // Parse into groups of elements
         let elements = self.file_request(file_buffer, &file_name).await?;
 
         // Cleans out the file extension from the file_name

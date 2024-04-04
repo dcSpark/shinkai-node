@@ -8,11 +8,12 @@ use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::unstructured_api::{self, UnstructuredAPI};
+use shinkai_vector_resources::file_parser::unstructured_parser::UnstructuredParser;
+use shinkai_vector_resources::file_parser::unstructured_types::UnstructuredElement;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
-use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
-use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
-use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
@@ -170,7 +171,7 @@ pub struct ParsingHelper {}
 impl ParsingHelper {
     /// Generates Blake3 hash of the input data.
     fn generate_data_hash_blake3(content: &[u8]) -> String {
-        UnstructuredParser::generate_data_hash(content)
+        ShinkaiFileParser::generate_data_hash(content)
     }
 
     /// Concatenate elements text up to a maximum size.
@@ -317,7 +318,7 @@ impl ParsingHelper {
         file_name: String,
         unstructured_api: UnstructuredAPI,
     ) -> Result<(String, VRSourceReference, Vec<UnstructuredElement>), AgentError> {
-        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let resource_id = ShinkaiFileParser::generate_data_hash(&file_buffer);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
         let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
         Ok((resource_id, source, elements))

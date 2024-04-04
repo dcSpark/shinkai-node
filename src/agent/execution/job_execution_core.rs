@@ -18,10 +18,10 @@ use shinkai_message_primitives::{
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{
     DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSourceReference,
 };
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;

@@ -1,9 +1,9 @@
 use super::DistributionInfo;
+use crate::file_parser::unstructured_parser::UnstructuredParser;
 use crate::resource_errors::VRError;
 use crate::source::notary_source::{
     NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile, TLSNotaryProof,
 };
-use crate::unstructured::unstructured_parser::UnstructuredParser;
 use crate::vector_resource::VRPath;
 use chrono::{DateTime, Utc};
 use regex::Regex;
