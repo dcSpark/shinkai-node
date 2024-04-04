@@ -214,7 +214,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         if input_payload.streamer_node_name == self.node_name.clone().get_node_name_string() {
-            let subscription_manager = self.ext_subscription_manager.lock().await;
+            let mut subscription_manager = self.ext_subscription_manager.lock().await;
             // TODO: update. only feasible for root for now.
             let path = "/";
             let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
