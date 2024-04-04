@@ -795,6 +795,9 @@ async fn test_vector_fs_operations() {
         .is_err());
 
     // Prepare a writer for the 'unpacked' folder
+    let root_writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
     let unpack_writer = vector_fs
         .new_writer(default_test_profile(), unpack_path.clone(), default_test_profile())
         .unwrap();
