@@ -1,148 +1,113 @@
 use super::file_parser_types::GroupedText;
+use super::unstructured_api::UnstructuredAPI;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::source::DistributionInfo;
+use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
+use crate::vector_resource::SourceFileReference;
 use crate::vector_resource::SourceFileType;
+use crate::vector_resource::SourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use blake3::Hasher;
+use futures::stream::SelectNextSome;
 use serde_json::Value as JsonValue;
 
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
-    #[async_recursion]
-    #[cfg(feature = "native-http")]
-    /// Recursively processes all text groups & their sub groups into DocumentResources
-    pub async fn process_new_doc_resource(
-        text_groups: Vec<GroupedText>,
+    pub async fn process_file_into_resource(
+        file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: &str,
+        file_name: String,
         desc: Option<String>,
-        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        resource_embedding: Option<Embedding>,
+        max_chunk_size: u64,
+        distribution_info: DistributionInfo,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, VRError> {
-        let name = ShinkaiFileParser::clean_name(&name);
-        let max_embedding_token_count = generator.model_type().max_input_token_count();
-        let resource_desc = Self::setup_resource_description(
-            desc,
-            &text_groups,
-            max_embedding_token_count,
-            max_embedding_token_count.checked_div(2).unwrap_or(100),
-        );
-        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
-        doc.set_embedding_model_used(generator.model_type());
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+        let mut text_groups = vec![];
 
-        // Sets the keywords
-        let keywords = Self::extract_keywords(&text_groups, 25);
-        doc.keywords_mut().set_keywords(keywords.clone());
-        doc.keywords_mut().update_keywords_embedding(generator).await?;
-        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
-        match resource_embedding {
-            Some(embedding) => doc.set_resource_embedding(embedding),
-            None => {
-                doc.update_resource_embedding(generator, None).await?;
-            }
-        }
-
-        // Add each text group as either Vector Resource Nodes,
-        // or data-holding Nodes depending on if each has any sub-groups
-        for grouped_text in &text_groups {
-            let (_, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
-            if has_sub_groups {
-                let new_doc = Self::process_new_doc_resource(
-                    grouped_text.sub_groups.clone(),
-                    generator,
-                    &new_name,
-                    None,
-                    source.clone(),
-                    parsing_tags,
-                    grouped_text.embedding.clone(),
-                )
+        // If local processing is available, use it. Otherwise, use the unstructured API.
+        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+            file_buffer.clone(),
+            file_name.clone(),
+            max_chunk_size,
+            source.clone(),
+        ) {
+            text_groups = groups;
+        } else {
+            text_groups = unstructured_api
+                .process_file_into_grouped_text(file_buffer, file_name.clone(), max_chunk_size)
                 .await?;
-                doc.append_vector_resource_node_auto(new_doc, metadata)?;
-            } else {
-                if grouped_text.text.len() <= 2 {
-                    continue;
-                }
-                if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
-                } else {
-                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
-                }
-            }
         }
 
-        Ok(BaseVectorResource::Document(doc))
+        // Cleans out the file extension from the file_name
+        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+
+        ShinkaiFileParser::process_groups_into_resource(
+            text_groups,
+            generator,
+            cleaned_name,
+            desc,
+            source,
+            parsing_tags,
+            max_chunk_size,
+            distribution_info,
+        )
+        .await
     }
 
-    #[cfg(feature = "native-http")]
-    /// Recursively processes all text groups & their sub groups into DocumentResources
-    pub fn process_new_doc_resource_blocking(
-        text_groups: Vec<GroupedText>,
+    pub fn process_file_into_resource_blocking(
+        file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: &str,
+        file_name: String,
         desc: Option<String>,
-        source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        resource_embedding: Option<Embedding>,
+        max_chunk_size: u64,
+        distribution_info: DistributionInfo,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, VRError> {
-        let name = ShinkaiFileParser::clean_name(&name);
-        let max_embedding_token_count = generator.model_type().max_input_token_count();
-        let resource_desc = Self::setup_resource_description(
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+        let mut text_groups = vec![];
+
+        // If local processing is available, use it. Otherwise, use the unstructured API.
+        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+            file_buffer.clone(),
+            file_name.clone(),
+            max_chunk_size,
+            source.clone(),
+        ) {
+            text_groups = groups;
+        } else {
+            // Since this is a blocking variant, we assume `process_file_into_grouped_text_blocking` exists
+            // or a similar synchronous method is available in `unstructured_api`.
+            text_groups = unstructured_api.process_file_into_grouped_text_blocking(
+                file_buffer,
+                file_name.clone(),
+                max_chunk_size,
+            )?;
+        }
+
+        // Cleans out the file extension from the file_name
+        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+
+        // Here, we switch to the blocking variant of `process_groups_into_resource`.
+        ShinkaiFileParser::process_groups_into_resource_blocking(
+            text_groups,
+            generator,
+            cleaned_name,
             desc,
-            &text_groups,
-            max_embedding_token_count,
-            max_embedding_token_count / 2,
-        );
-        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
-        doc.set_embedding_model_used(generator.model_type());
-
-        // Sets the keywords and generates a keyword embedding
-        let keywords = Self::extract_keywords(&text_groups, 25);
-        doc.keywords_mut().set_keywords(keywords.clone());
-        doc.keywords_mut().update_keywords_embedding_blocking(generator)?;
-        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
-        match resource_embedding {
-            Some(embedding) => doc.set_resource_embedding(embedding),
-            None => {
-                doc.update_resource_embedding_blocking(generator, None)?;
-            }
-        }
-
-        for grouped_text in &text_groups {
-            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
-            if has_sub_groups {
-                let new_doc = Self::process_new_doc_resource_blocking(
-                    grouped_text.sub_groups.clone(),
-                    generator,
-                    &new_name,
-                    None,
-                    source.clone(),
-                    parsing_tags,
-                    grouped_text.embedding.clone(),
-                )?;
-                doc.append_vector_resource_node_auto(new_doc, metadata);
-            } else {
-                if grouped_text.text.len() <= 2 {
-                    continue;
-                }
-                if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
-                } else {
-                    let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
-                }
-            }
-        }
-
-        Ok(BaseVectorResource::Document(doc))
+            source,
+            parsing_tags,
+            max_chunk_size,
+            distribution_info,
+        )
     }
 
     #[cfg(feature = "native-http")]
@@ -219,7 +184,7 @@ impl ShinkaiFileParser {
         )
         .await?;
 
-        let mut resource = ShinkaiFileParser::process_new_doc_resource(
+        let mut resource = ShinkaiFileParser::process_new_doc_resource_with_embeddings_already_generated(
             new_text_groups,
             &*generator,
             &name,
@@ -259,7 +224,7 @@ impl ShinkaiFileParser {
             collect_texts_and_indices,
         )?;
 
-        let mut resource = ShinkaiFileParser::process_new_doc_resource_blocking(
+        let mut resource = ShinkaiFileParser::process_new_doc_resource_blocking_with_embeddings_already_generated(
             new_text_groups,
             &*generator,
             &name,
@@ -271,6 +236,138 @@ impl ShinkaiFileParser {
 
         resource.as_trait_object_mut().set_distribution_info(distribution_info);
         Ok(resource)
+    }
+
+    #[async_recursion]
+    #[cfg(feature = "native-http")]
+    /// Recursively processes all text groups & their sub groups into DocumentResources.
+    /// This method assumes your text groups already have embeddings generated for them.
+    async fn process_new_doc_resource_with_embeddings_already_generated(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        resource_embedding: Option<Embedding>,
+    ) -> Result<BaseVectorResource, VRError> {
+        let name = ShinkaiFileParser::clean_name(&name);
+        let max_embedding_token_count = generator.model_type().max_input_token_count();
+        let resource_desc = Self::setup_resource_description(
+            desc,
+            &text_groups,
+            max_embedding_token_count,
+            max_embedding_token_count.checked_div(2).unwrap_or(100),
+        );
+        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
+        doc.set_embedding_model_used(generator.model_type());
+
+        // Sets the keywords
+        let keywords = Self::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding(generator).await?;
+        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
+        match resource_embedding {
+            Some(embedding) => doc.set_resource_embedding(embedding),
+            None => {
+                doc.update_resource_embedding(generator, None).await?;
+            }
+        }
+
+        // Add each text group as either Vector Resource Nodes,
+        // or data-holding Nodes depending on if each has any sub-groups
+        for grouped_text in &text_groups {
+            let (_, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            if has_sub_groups {
+                let new_doc = Self::process_new_doc_resource_with_embeddings_already_generated(
+                    grouped_text.sub_groups.clone(),
+                    generator,
+                    &new_name,
+                    None,
+                    source.clone(),
+                    parsing_tags,
+                    grouped_text.embedding.clone(),
+                )
+                .await?;
+                doc.append_vector_resource_node_auto(new_doc, metadata)?;
+            } else {
+                if grouped_text.text.len() <= 2 {
+                    continue;
+                }
+                if let Some(embedding) = &grouped_text.embedding {
+                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
+                } else {
+                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
+                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
+                }
+            }
+        }
+
+        Ok(BaseVectorResource::Document(doc))
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Recursively processes all text groups & their sub groups into DocumentResources.
+    /// This method assumes your text groups already have embeddings generated for them.
+    fn process_new_doc_resource_blocking_with_embeddings_already_generated(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<String>,
+        source: VRSourceReference,
+        parsing_tags: &Vec<DataTag>,
+        resource_embedding: Option<Embedding>,
+    ) -> Result<BaseVectorResource, VRError> {
+        let name = ShinkaiFileParser::clean_name(&name);
+        let max_embedding_token_count = generator.model_type().max_input_token_count();
+        let resource_desc = Self::setup_resource_description(
+            desc,
+            &text_groups,
+            max_embedding_token_count,
+            max_embedding_token_count / 2,
+        );
+        let mut doc = DocumentVectorResource::new_empty(&name, resource_desc.as_deref(), source.clone(), true);
+        doc.set_embedding_model_used(generator.model_type());
+
+        // Sets the keywords and generates a keyword embedding
+        let keywords = Self::extract_keywords(&text_groups, 25);
+        doc.keywords_mut().set_keywords(keywords.clone());
+        doc.keywords_mut().update_keywords_embedding_blocking(generator)?;
+        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
+        match resource_embedding {
+            Some(embedding) => doc.set_resource_embedding(embedding),
+            None => {
+                doc.update_resource_embedding_blocking(generator, None)?;
+            }
+        }
+
+        for grouped_text in &text_groups {
+            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            if has_sub_groups {
+                let new_doc = Self::process_new_doc_resource_blocking_with_embeddings_already_generated(
+                    grouped_text.sub_groups.clone(),
+                    generator,
+                    &new_name,
+                    None,
+                    source.clone(),
+                    parsing_tags,
+                    grouped_text.embedding.clone(),
+                )?;
+                doc.append_vector_resource_node_auto(new_doc, metadata);
+            } else {
+                if grouped_text.text.len() <= 2 {
+                    continue;
+                }
+                if let Some(embedding) = &grouped_text.embedding {
+                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
+                } else {
+                    let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
+                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
+                }
+            }
+        }
+
+        Ok(BaseVectorResource::Document(doc))
     }
 
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
@@ -378,6 +475,36 @@ impl ShinkaiFileParser {
         hasher.update(buffer);
         let result = hasher.finalize();
         result.to_hex().to_string()
+    }
+
+    /// Attempts to process a file into a list of GroupedTexts using local processing
+    /// implemented in Rust directly without relying on external services.
+    /// If local processing is not available for provided source, then returns Err.
+    pub fn local_process_file_into_grouped_text(
+        file_buffer: Vec<u8>,
+        file_name: String,
+        max_chunk_size: u64,
+        source: VRSourceReference,
+    ) -> Result<Vec<GroupedText>, VRError> {
+        let source_base = source;
+
+        match source_base {
+            VRSourceReference::None => Err(VRError::UnsupportedFileType(file_name.to_string())),
+            VRSourceReference::Standard(source) => match source {
+                SourceReference::Other(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
+                SourceReference::FileRef(file_source) => match file_source.file_type {
+                    SourceFileType::Document(_)
+                    | SourceFileType::Image(_)
+                    | SourceFileType::Code(_)
+                    | SourceFileType::ConfigFileType(_)
+                    | SourceFileType::Video(_)
+                    | SourceFileType::Audio(_)
+                    | SourceFileType::Shinkai(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
+                },
+                SourceReference::ExternalURI(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
+            },
+            VRSourceReference::Notarized(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
+        }
     }
 }
 

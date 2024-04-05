@@ -1,4 +1,5 @@
 use super::file_parser::ShinkaiFileParser;
+use super::file_parser_types::GroupedText;
 use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
@@ -41,73 +42,36 @@ impl UnstructuredAPI {
         }
     }
 
-    /// Makes a blocking request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
-    pub fn process_file_blocking(
-        &self,
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        file_name: String,
-        desc: Option<String>,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-
-        // Parse into Unstructured elements, and then into text_groups
-        let elements = self.file_request_blocking(file_buffer, &file_name)?;
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-
-        // Cleans out the file extension from the file_name
-        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
-
-        ShinkaiFileParser::process_groups_into_resource_blocking(
-            text_groups,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_chunk_size,
-            distribution_info,
-        )
-    }
-
     /// Makes an async request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
-    pub async fn process_file(
+    /// and then processing the returned results into a list of GroupedText
+    pub async fn process_file_into_grouped_text(
         &self,
         file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
         file_name: String,
-        desc: Option<String>,
-        parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-
+    ) -> Result<Vec<GroupedText>, VRError> {
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-
-        // Cleans out the file extension from the file_name
-        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
-
-        ShinkaiFileParser::process_groups_into_resource(
-            text_groups,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
+        Ok(UnstructuredParser::hierarchical_group_elements_text(
+            &elements,
             max_chunk_size,
-            distribution_info,
-        )
-        .await
+        ))
+    }
+
+    /// Makes an blocking request to process a file in a buffer to Unstructured server,
+    /// and then processing the returned results into a list of GroupedText
+    pub fn process_file_into_grouped_text_blocking(
+        &self,
+        file_buffer: Vec<u8>,
+        file_name: String,
+        max_chunk_size: u64,
+    ) -> Result<Vec<GroupedText>, VRError> {
+        // Parse into Unstructured elements, and then into text_groups
+        let elements = self.file_request_blocking(file_buffer, &file_name)?;
+        Ok(UnstructuredParser::hierarchical_group_elements_text(
+            &elements,
+            max_chunk_size,
+        ))
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of

@@ -40,6 +40,7 @@ pub enum VRError {
     UnsupportedVRPackVersion(String),
     InvalidSimplifiedFSEntryType(String),
     VRPackEmbeddingModelError(String),
+    UnsupportedFileType(String),
 }
 
 impl fmt::Display for VRError {
@@ -92,6 +93,7 @@ impl fmt::Display for VRError {
             VRError::UnsupportedVRPackVersion(ref s) => write!(f, "Unsupported VRPack version: {}", s),
             VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
             VRError::VRPackEmbeddingModelError(ref s) => write!(f, "Embedding Model Error: {}", s),
+            VRError::UnsupportedFileType(ref s) => write!(f, "Unsupported file type: {}", s),
         }
     }
 }
