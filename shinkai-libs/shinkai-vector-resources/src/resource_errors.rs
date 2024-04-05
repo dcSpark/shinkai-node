@@ -22,7 +22,7 @@ pub enum VRError {
     ContentIsNonMatchingType,
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
-    CouldNotDetectFileType(String),
+    FileTypeNotSupported(String),
     InvalidReferenceString(String),
     InvalidDateTimeString(String),
     LockAcquisitionFailed(String),
@@ -69,8 +69,8 @@ impl fmt::Display for VRError {
             VRError::FailedParsingUnstructedAPIJSON(ref s) => {
                 write!(f, "Failed to parse Unstructed API response json: {}", s)
             }
-            VRError::CouldNotDetectFileType(ref s) => {
-                write!(f, "Could not detect file type from file name: {}", s)
+            VRError::FileTypeNotSupported(ref s) => {
+                write!(f, "File type not supported: {}", s)
             }
             VRError::InvalidReferenceString(ref s) => {
                 write!(f, "Vector Resource reference string is invalid: {}", s)

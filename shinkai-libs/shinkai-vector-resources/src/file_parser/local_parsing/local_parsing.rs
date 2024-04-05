@@ -1,45 +1,46 @@
-use super::file_parser::ShinkaiFileParser;
-use super::file_parser_types::GroupedText;
-use super::unstructured_api::UnstructuredAPI;
-use crate::data_tags::DataTag;
-use crate::embedding_generator::EmbeddingGenerator;
-use crate::embeddings::Embedding;
+use super::json_parsing::*;
+use crate::file_parser::file_parser_types::TextGroup;
 use crate::resource_errors::VRError;
-use crate::source::DistributionInfo;
-use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
-use crate::vector_resource::SourceFileReference;
+use crate::vector_resource::DocumentFileType;
 use crate::vector_resource::SourceFileType;
 use crate::vector_resource::SourceReference;
-use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
-use blake3::Hasher;
-use futures::stream::SelectNextSome;
-use serde_json::Value as JsonValue;
 
-impl ShinkaiFileParser {
-    /// Attempts to process a file into a list of GroupedTexts using local processing
+pub struct LocalFileParser {}
+
+impl LocalFileParser {
+    /// Attempts to process a file into a list of TextGroups using local processing logic
     /// implemented in Rust directly without relying on external services.
-    /// If local processing is not available for provided source, then returns Err.
-    pub fn local_process_file_into_grouped_text(
+    /// If local processing is not available for the provided source, then returns Err.
+    pub fn process_file_into_grouped_text(
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
-    ) -> Result<Vec<GroupedText>, VRError> {
+    ) -> Result<Vec<TextGroup>, VRError> {
         let source_base = source;
 
-        match source_base {
+        match &source_base {
             VRSourceReference::None => Err(VRError::UnsupportedFileType(file_name.to_string())),
             VRSourceReference::Standard(source) => match source {
                 SourceReference::Other(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
-                SourceReference::FileRef(file_source) => match file_source.file_type {
-                    SourceFileType::Document(_)
-                    | SourceFileType::Image(_)
+                SourceReference::FileRef(file_source) => match file_source.clone().file_type {
+                    SourceFileType::Image(_)
                     | SourceFileType::Code(_)
                     | SourceFileType::ConfigFileType(_)
                     | SourceFileType::Video(_)
                     | SourceFileType::Audio(_)
                     | SourceFileType::Shinkai(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
+                    SourceFileType::Document(doc) => match doc {
+                        DocumentFileType::Json => LocalFileParser::process_json_file(
+                            file_buffer,
+                            file_name,
+                            max_node_text_size,
+                            source_base.clone(),
+                        ),
+                        // DocumentFileType::Csv => Self::process_csv_file(file_buffer, file_name, max_node_text_size),
+                        _ => Err(VRError::UnsupportedFileType(file_name.to_string())),
+                    },
                 },
                 SourceReference::ExternalURI(_) => Err(VRError::UnsupportedFileType(file_name.to_string())),
             },

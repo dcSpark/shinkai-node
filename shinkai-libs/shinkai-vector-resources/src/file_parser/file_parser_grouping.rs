@@ -1,5 +1,5 @@
 use super::file_parser::ShinkaiFileParser;
-use super::file_parser_types::GroupedText;
+use super::file_parser_types::TextGroup;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 impl ShinkaiFileParser {
     /// Recursive function to collect all texts from the text groups and their subgroups
     pub fn collect_texts_and_indices(
-        text_groups: &[GroupedText],
+        text_groups: &[TextGroup],
         texts: &mut Vec<String>,
         indices: &mut Vec<(Vec<usize>, usize)>,
         max_node_text_size: u64,
@@ -42,7 +42,7 @@ impl ShinkaiFileParser {
 
     /// Recursive function to assign the generated embeddings back to the text groups and their subgroups
     fn assign_embeddings(
-        text_groups: &mut [GroupedText],
+        text_groups: &mut [TextGroup],
         embeddings: &mut Vec<Embedding>,
         indices: &[(Vec<usize>, usize)],
     ) {
@@ -62,12 +62,12 @@ impl ShinkaiFileParser {
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
     pub async fn generate_text_group_embeddings(
-        text_groups: &Vec<GroupedText>,
+        text_groups: &Vec<TextGroup>,
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VRError> {
+        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+    ) -> Result<Vec<TextGroup>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
@@ -135,12 +135,12 @@ impl ShinkaiFileParser {
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
     pub fn generate_text_group_embeddings_blocking(
-        text_groups: &Vec<GroupedText>,
+        text_groups: &Vec<TextGroup>,
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VRError> {
+        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+    ) -> Result<Vec<TextGroup>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
@@ -182,7 +182,7 @@ impl ShinkaiFileParser {
     }
 
     /// Helper method for processing a grouped text for process_new_doc_resource
-    pub fn process_grouped_text(grouped_text: &GroupedText) -> (String, Option<HashMap<String, String>>, bool, String) {
+    pub fn process_grouped_text(grouped_text: &TextGroup) -> (String, Option<HashMap<String, String>>, bool, String) {
         let has_sub_groups = !grouped_text.sub_groups.is_empty();
         let new_name = grouped_text.text.clone();
         let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
@@ -192,9 +192,9 @@ impl ShinkaiFileParser {
     }
     /// Internal method used to push into correct group for hierarchical grouping
     pub fn push_group_to_appropriate_parent(
-        group: GroupedText,
-        title_group: &mut Option<GroupedText>,
-        groups: &mut Vec<GroupedText>,
+        group: TextGroup,
+        title_group: &mut Option<TextGroup>,
+        groups: &mut Vec<TextGroup>,
     ) {
         if group.text.len() <= 2 {
             return;
@@ -237,8 +237,8 @@ impl ShinkaiFileParser {
 
     /// Extracts the most important keywords from all Groups/Sub-groups
     /// using the RAKE algorithm.
-    pub fn extract_keywords(groups: &Vec<GroupedText>, num: u64) -> Vec<String> {
-        // Extract all the text out of all the GroupedText and its subgroups and combine them together into a single string
+    pub fn extract_keywords(groups: &Vec<TextGroup>, num: u64) -> Vec<String> {
+        // Extract all the text out of all the TextGroup and its subgroups and combine them together into a single string
         let text = Self::extract_all_text_from_groups(groups);
 
         // Create a new KeyPhraseExtractor with a maximum of num keywords
@@ -252,7 +252,7 @@ impl ShinkaiFileParser {
     }
 
     /// Extracts all  text from the list of groups and any sub-groups inside
-    fn extract_all_text_from_groups(group: &Vec<GroupedText>) -> String {
+    fn extract_all_text_from_groups(group: &Vec<TextGroup>) -> String {
         group
             .iter()
             .map(|element| {
@@ -267,7 +267,7 @@ impl ShinkaiFileParser {
     }
 
     /// Concatenate  text up to a maximum size.
-    pub fn concatenate_groups_up_to_max_size(elements: &Vec<GroupedText>, max_size: usize) -> String {
+    pub fn concatenate_groups_up_to_max_size(elements: &Vec<TextGroup>, max_size: usize) -> String {
         let mut desc = String::new();
         for e in elements {
             if desc.len() + e.text.len() + 1 > max_size {

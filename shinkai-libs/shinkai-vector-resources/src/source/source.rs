@@ -386,18 +386,42 @@ impl SourceFileType {
             re.captures(file_name)
                 .and_then(|cap| cap.get(1))
                 .map(|m| m.as_str())
-                .ok_or_else(|| VRError::CouldNotDetectFileType(file_name.to_string()))?
+                .ok_or_else(|| VRError::FileTypeNotSupported(file_name.to_string()))?
         };
 
-        if let Ok(img_type) = ImageFileType::from_str(extension) {
-            return Ok(SourceFileType::Image(img_type));
+        match extension {
+            ext => {
+                if let Ok(doc_type) = DocumentFileType::from_str(ext) {
+                    return Ok(SourceFileType::Document(doc_type));
+                }
+                if let Ok(code_type) = CodeFileType::from_str(ext) {
+                    return Ok(SourceFileType::Code(code_type));
+                }
+                // Config support will be added once we implement parsers for them all
+                if let Ok(config_type) = ConfigFileType::from_str(ext) {
+                    // return Ok(SourceFileType::ConfigFileType(config_type));
+                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+                }
+                if let Ok(shinkai_type) = ShinkaiFileType::from_str(ext) {
+                    return Ok(SourceFileType::Shinkai(shinkai_type));
+                }
+                // Video/audio/image support will come in the future by first converting to text.
+                if let Ok(video_type) = VideoFileType::from_str(ext) {
+                    // return Ok(SourceFileType::Video(video_type));
+                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+                }
+                if let Ok(audio_type) = AudioFileType::from_str(ext) {
+                    // return Ok(SourceFileType::Audio(audio_type));
+                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+                }
+                if let Ok(img_type) = ImageFileType::from_str(ext) {
+                    // return Ok(SourceFileType::Image(img_type));
+                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+                }
+            }
         }
 
-        if let Ok(doc_type) = DocumentFileType::from_str(extension) {
-            return Ok(SourceFileType::Document(doc_type));
-        }
-
-        return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
+        Err(VRError::FileTypeNotSupported(file_name.to_string()))
     }
 
     /// Clones and cleans the input string of its file extension at the end, if it exists.
@@ -503,7 +527,6 @@ pub enum DocumentFileType {
     Pptx,
     Xml,
     Json,
-    Yaml,
     Ps,
     Tex,
     Latex,
@@ -534,7 +557,6 @@ impl fmt::Display for DocumentFileType {
                 DocumentFileType::Pptx => "pptx",
                 DocumentFileType::Xml => "xml",
                 DocumentFileType::Json => "json",
-                DocumentFileType::Yaml => "yaml",
                 DocumentFileType::Ps => "ps",
                 DocumentFileType::Tex => "tex",
                 DocumentFileType::Latex => "latex",
@@ -567,7 +589,6 @@ impl FromStr for DocumentFileType {
             "pptx" => Ok(DocumentFileType::Pptx),
             "xml" => Ok(DocumentFileType::Xml),
             "json" => Ok(DocumentFileType::Json),
-            "yaml" => Ok(DocumentFileType::Yaml),
             "ps" => Ok(DocumentFileType::Ps),
             "tex" => Ok(DocumentFileType::Tex),
             "latex" => Ok(DocumentFileType::Latex),
@@ -651,6 +672,7 @@ impl FromStr for CodeFileType {
 pub enum ConfigFileType {
     Toml,
     Ini,
+    Yaml,
     Eslint,
     Prettier,
     Webpack,
@@ -668,6 +690,7 @@ impl fmt::Display for ConfigFileType {
                 ConfigFileType::Toml => "toml",
                 ConfigFileType::Ini => "ini",
                 ConfigFileType::Eslint => ".eslintrc",
+                ConfigFileType::Yaml => "yaml",
                 ConfigFileType::Prettier => ".prettierrc",
                 ConfigFileType::Webpack => "webpack.config.js",
                 ConfigFileType::Dockerfile => "Dockerfile",
@@ -683,6 +706,7 @@ impl FromStr for ConfigFileType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "yaml" => Ok(ConfigFileType::Yaml),
             "toml" => Ok(ConfigFileType::Toml),
             "ini" => Ok(ConfigFileType::Ini),
             ".eslintrc" => Ok(ConfigFileType::Eslint),
@@ -829,9 +853,9 @@ impl FromStr for VideoFileType {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ShinkaiFileType {
-    ShinkaiJobExtension,
-    ShinkaiVectorResource,
-    ShinkaiResourceRouter,
+    ShinkaiJobKai,
+    ShinkaiVRKai,
+    ShinkaiVRPack,
     Other(String),
 }
 
@@ -841,9 +865,9 @@ impl fmt::Display for ShinkaiFileType {
             f,
             "{}",
             match self {
-                ShinkaiFileType::ShinkaiJobExtension => "jobkai",
-                ShinkaiFileType::ShinkaiVectorResource => "vrkai",
-                ShinkaiFileType::ShinkaiResourceRouter => "routerkai",
+                ShinkaiFileType::ShinkaiJobKai => "jobkai",
+                ShinkaiFileType::ShinkaiVRKai => "vrkai",
+                ShinkaiFileType::ShinkaiVRPack => "vrpack",
                 ShinkaiFileType::Other(s) => s.as_str(),
             }
         )
@@ -855,9 +879,9 @@ impl FromStr for ShinkaiFileType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "jobkai" => Ok(ShinkaiFileType::ShinkaiJobExtension),
-            "vrkai" => Ok(ShinkaiFileType::ShinkaiVectorResource),
-            "routerkai" => Ok(ShinkaiFileType::ShinkaiResourceRouter),
+            "jobkai" => Ok(ShinkaiFileType::ShinkaiJobKai),
+            "vrkai" => Ok(ShinkaiFileType::ShinkaiVRKai),
+            "vrpack" => Ok(ShinkaiFileType::ShinkaiVRPack),
             _ => Err(()),
         }
     }

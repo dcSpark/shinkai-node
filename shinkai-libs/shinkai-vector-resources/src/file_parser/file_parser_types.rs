@@ -4,16 +4,16 @@ use serde::Deserialize;
 /// An intermediary type in between `UnstructuredElement`s and
 /// `Embedding`s/`Node`s
 #[derive(Debug, Clone, PartialEq)]
-pub struct GroupedText {
+pub struct TextGroup {
     pub text: String,
     pub page_numbers: Vec<u32>,
-    pub sub_groups: Vec<GroupedText>,
+    pub sub_groups: Vec<TextGroup>,
     pub embedding: Option<Embedding>,
 }
 
-impl GroupedText {
+impl TextGroup {
     pub fn new() -> Self {
-        GroupedText {
+        TextGroup {
             text: String::new(),
             page_numbers: Vec::new(),
             sub_groups: Vec::new(),
@@ -21,7 +21,7 @@ impl GroupedText {
         }
     }
 
-    /// Prepares a string to be used to generate an Embedding for this GroupedText.
+    /// Prepares a string to be used to generate an Embedding for this TextGroup.
     /// Extracts most prevalent keywords from all sub-groups and appends them to
     /// the end of the groups actual text.
     pub fn format_text_for_embedding(&self, max_node_text_size: u64) -> String {
@@ -29,7 +29,7 @@ impl GroupedText {
         let base_string = &self.text;
         let pre_keyword_length = base_string.len();
 
-        // Extract keywords from the GroupedText and its sub-groups
+        // Extract keywords from the TextGroup and its sub-groups
         let keywords: Vec<String> = ShinkaiFileParser::extract_keywords(&vec![self.clone()], 1);
 
         for keyword in keywords {
@@ -43,7 +43,7 @@ impl GroupedText {
         format!("{} Keywords: {}", base_string, keyword_string.trim_start_matches(", "))
     }
 
-    /// Pushes data into this GroupedText
+    /// Pushes data into this TextGroup
     pub fn push_data(&mut self, text: &str, page_number: Option<u32>) {
         if !self.text.is_empty() {
             self.text.push(' ');
@@ -57,8 +57,8 @@ impl GroupedText {
         }
     }
 
-    /// Pushes a sub-group into this GroupedText
-    pub fn push_sub_group(&mut self, sub_group: GroupedText) {
+    /// Pushes a sub-group into this TextGroup
+    pub fn push_sub_group(&mut self, sub_group: TextGroup) {
         self.sub_groups.push(sub_group);
     }
 

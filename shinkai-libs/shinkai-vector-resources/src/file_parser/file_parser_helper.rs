@@ -1,5 +1,5 @@
 use super::file_parser::ShinkaiFileParser;
-use super::file_parser_types::GroupedText;
+use super::file_parser_types::TextGroup;
 use super::unstructured_api::UnstructuredAPI;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
@@ -61,7 +61,7 @@ impl ShinkaiFileParser {
     /// Helper function that processes groups into a list of descriptions.
     /// Only takes the top level Group text, does not traverse deeper.
     pub fn process_groups_into_descriptions_list(
-        groups: &Vec<GroupedText>,
+        groups: &Vec<TextGroup>,
         max_size: usize,
         max_node_text_size: usize,
     ) -> Vec<String> {
@@ -92,7 +92,7 @@ impl ShinkaiFileParser {
     /// Processes groups into a single description string.
     /// Only takes the top level Group text, does not traverse deeper.
     pub fn process_groups_into_description(
-        groups: &Vec<GroupedText>,
+        groups: &Vec<TextGroup>,
         max_size: usize,
         max_node_text_size: usize,
     ) -> String {
@@ -103,7 +103,7 @@ impl ShinkaiFileParser {
     /// Helper method for setting a description if none provided for process_new_doc_resource
     pub fn _setup_resource_description(
         desc: Option<String>,
-        text_groups: &Vec<GroupedText>,
+        text_groups: &Vec<TextGroup>,
         max_size: usize,
         max_node_text_size: usize,
     ) -> Option<String> {

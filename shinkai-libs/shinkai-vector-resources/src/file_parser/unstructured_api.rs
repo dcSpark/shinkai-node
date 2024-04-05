@@ -1,5 +1,5 @@
 use super::file_parser::ShinkaiFileParser;
-use super::file_parser_types::GroupedText;
+use super::file_parser_types::TextGroup;
 use super::html_content_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
@@ -43,13 +43,13 @@ impl UnstructuredAPI {
     }
 
     /// Makes an async request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a list of GroupedText
+    /// and then processing the returned results into a list of TextGroup
     pub async fn process_file_into_grouped_text(
         &self,
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
-    ) -> Result<Vec<GroupedText>, VRError> {
+    ) -> Result<Vec<TextGroup>, VRError> {
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
         Ok(UnstructuredParser::hierarchical_group_elements_text(
@@ -59,13 +59,13 @@ impl UnstructuredAPI {
     }
 
     /// Makes an blocking request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a list of GroupedText
+    /// and then processing the returned results into a list of TextGroup
     pub fn process_file_into_grouped_text_blocking(
         &self,
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
-    ) -> Result<Vec<GroupedText>, VRError> {
+    ) -> Result<Vec<TextGroup>, VRError> {
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
         Ok(UnstructuredParser::hierarchical_group_elements_text(

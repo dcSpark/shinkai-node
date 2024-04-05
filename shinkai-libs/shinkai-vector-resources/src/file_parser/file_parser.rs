@@ -1,4 +1,5 @@
-use super::file_parser_types::GroupedText;
+use super::file_parser_types::TextGroup;
+use super::local_parsing::LocalFileParser;
 use super::unstructured_api::UnstructuredAPI;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
@@ -89,18 +90,18 @@ impl ShinkaiFileParser {
         )
     }
 
-    /// Processes the input file into a list of `GroupedText` with no embedding generated yet.
+    /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub async fn process_file_into_text_groups(
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<Vec<GroupedText>, VRError> {
+    ) -> Result<Vec<TextGroup>, VRError> {
         let mut text_groups = vec![];
 
         // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+        if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
             file_buffer.clone(),
             file_name.clone(),
             max_node_text_size,
@@ -115,18 +116,18 @@ impl ShinkaiFileParser {
         Ok(text_groups)
     }
 
-    /// Processes the input file into a list of `GroupedText` with no embedding generated yet.
+    /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub fn process_file_into_text_groups_blocking(
         file_buffer: Vec<u8>,
         file_name: String,
         max_node_text_size: u64,
         source: VRSourceReference,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<Vec<GroupedText>, VRError> {
+    ) -> Result<Vec<TextGroup>, VRError> {
         let mut text_groups = vec![];
 
         // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+        if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
             file_buffer.clone(),
             file_name.clone(),
             max_node_text_size,
@@ -147,7 +148,7 @@ impl ShinkaiFileParser {
     #[cfg(feature = "native-http")]
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource
     pub async fn process_groups_into_resource(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
@@ -173,7 +174,7 @@ impl ShinkaiFileParser {
     #[cfg(feature = "native-http")]
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
     pub fn process_groups_into_resource_blocking(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
@@ -199,14 +200,14 @@ impl ShinkaiFileParser {
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
     /// Allows specifying a custom collection function.
     pub async fn process_groups_into_resource_with_custom_collection(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
@@ -236,14 +237,14 @@ impl ShinkaiFileParser {
     /// Processes an ordered list of `TextGroup`s into a
     /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
     pub fn process_groups_into_resource_blocking_with_custom_collection(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
@@ -277,7 +278,7 @@ impl ShinkaiFileParser {
     /// Recursively processes all text groups & their sub groups into DocumentResources.
     /// This method assumes your text groups already have embeddings generated for them.
     async fn process_new_doc_resource_with_embeddings_already_generated(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<String>,
@@ -344,7 +345,7 @@ impl ShinkaiFileParser {
     /// Recursively processes all text groups & their sub groups into DocumentResources.
     /// This method assumes your text groups already have embeddings generated for them.
     fn process_new_doc_resource_blocking_with_embeddings_already_generated(
-        text_groups: Vec<GroupedText>,
+        text_groups: Vec<TextGroup>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<String>,

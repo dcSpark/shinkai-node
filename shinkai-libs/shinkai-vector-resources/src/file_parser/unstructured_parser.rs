@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::file_parser::ShinkaiFileParser;
-use super::file_parser_types::GroupedText;
+use super::file_parser_types::TextGroup;
 use super::unstructured_types::{ElementType, UnstructuredElement};
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
@@ -52,11 +52,11 @@ impl UnstructuredParser {
     pub fn hierarchical_group_elements_text(
         elements: &Vec<UnstructuredElement>,
         max_node_text_size: u64,
-    ) -> Vec<GroupedText> {
+    ) -> Vec<TextGroup> {
         let max_node_text_size = max_node_text_size as usize;
         let mut groups = Vec::new();
-        let mut current_group = GroupedText::new();
-        let mut current_title_group: Option<GroupedText> = None;
+        let mut current_group = TextGroup::new();
+        let mut current_title_group: Option<TextGroup> = None;
 
         // Step 1: Remove duplicate titles to cleanup elements
         let elements = Self::remove_duplicate_title_elements(elements);
@@ -95,7 +95,7 @@ impl UnstructuredParser {
                         &mut current_title_group,
                         &mut groups,
                     );
-                    current_group = GroupedText::new();
+                    current_group = TextGroup::new();
                 }
 
                 // If the current element text is larger than max_node_text_size,
@@ -103,7 +103,7 @@ impl UnstructuredParser {
                 if element_text.len() > max_node_text_size {
                     let chunks = ShinkaiFileParser::split_into_chunks(&element_text, max_node_text_size);
                     for chunk in chunks {
-                        let mut new_group = GroupedText::new();
+                        let mut new_group = TextGroup::new();
                         new_group.push_data(&chunk, element.metadata.page_number);
                         ShinkaiFileParser::push_group_to_appropriate_parent(
                             new_group,
@@ -130,15 +130,15 @@ impl UnstructuredParser {
                     );
                 } else if let Some(title_group) = current_title_group.as_mut() {
                     if element_text.len() > 12 {
-                        // If the current group only contains the title text and is > 12 len, add a default GroupedText that holds the title's text
+                        // If the current group only contains the title text and is > 12 len, add a default TextGroup that holds the title's text
                         // This both pre-populates the sub-group field, and allows for the title to be found in a search
                         // as a RetrievedNode to the LLM which can be useful in some content.
-                        let mut new_grouped_text = GroupedText::new();
+                        let mut new_grouped_text = TextGroup::new();
                         new_grouped_text.push_data(&title_group.text, None);
                         title_group.sub_groups.push(new_grouped_text);
                     }
                 }
-                current_group = GroupedText::new();
+                current_group = TextGroup::new();
 
                 // Push the existing title group to groups
                 if let Some(title_group) = current_title_group.take() {
@@ -148,7 +148,7 @@ impl UnstructuredParser {
                 }
 
                 // Start a new title group
-                current_title_group = Some(GroupedText::new());
+                current_title_group = Some(TextGroup::new());
                 if let Some(title_group) = current_title_group.as_mut() {
                     title_group.push_data(&element_text, element.metadata.page_number);
                 }

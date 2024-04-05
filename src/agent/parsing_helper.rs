@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::file_parser::file_parser_types::GroupedText;
+use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use shinkai_vector_resources::file_parser::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::file_parser::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::file_parser::unstructured_types::UnstructuredElement;
@@ -23,9 +23,9 @@ use std::io::Cursor;
 pub struct ParsingHelper {}
 
 impl ParsingHelper {
-    /// Given a list of GroupedText, generates a description using the Agent's LLM
+    /// Given a list of TextGroup, generates a description using the Agent's LLM
     pub async fn generate_description(
-        text_groups: &Vec<GroupedText>,
+        text_groups: &Vec<TextGroup>,
         agent: SerializedAgent,
         max_node_text_size: u64,
     ) -> Result<String, AgentError> {
