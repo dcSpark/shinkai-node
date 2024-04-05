@@ -911,11 +911,9 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
-        // TODO: Decide how frontend relays distribution info so it can be properly added
-        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
         let mut dist_files = vec![];
         for file in files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, None);
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
             dist_files.push((file.0, file.1, distribution_info));
         }
 

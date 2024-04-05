@@ -315,6 +315,7 @@ pub struct APIVecFsRetrievePathSimplifiedJson {
 pub struct APIConvertFilesAndSaveToFolder {
     pub path: String,
     pub file_inbox: String,
+    pub file_datetime: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
