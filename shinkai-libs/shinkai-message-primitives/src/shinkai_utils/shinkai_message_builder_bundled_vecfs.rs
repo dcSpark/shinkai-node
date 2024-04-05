@@ -1,10 +1,7 @@
 use crate::{
     schemas::shinkai_subscription_req::SubscriptionPayment,
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APISubscribeToSharedFolder,
-        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
-        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
-        SubscriptionGenericResponse, SubscriptionResponseStatus,
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse, SubscriptionResponseStatus
     },
 };
 use ed25519_dalek::SigningKey;
@@ -294,6 +291,29 @@ impl ShinkaiMessageBuilder {
         Self::create_vecfs_message(
             payload,
             MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    pub fn subscriptions_create_share_folder(
+        payload: APICreateShareableFolder,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::CreateShareableFolder,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
