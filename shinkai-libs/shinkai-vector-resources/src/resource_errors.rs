@@ -22,7 +22,7 @@ pub enum VRError {
     ContentIsNonMatchingType,
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
-    CouldNotDetectFileType(String),
+    FileTypeNotSupported(String),
     InvalidReferenceString(String),
     InvalidDateTimeString(String),
     LockAcquisitionFailed(String),
@@ -40,6 +40,7 @@ pub enum VRError {
     UnsupportedVRPackVersion(String),
     InvalidSimplifiedFSEntryType(String),
     VRPackEmbeddingModelError(String),
+    UnsupportedFileType(String),
 }
 
 impl fmt::Display for VRError {
@@ -68,8 +69,8 @@ impl fmt::Display for VRError {
             VRError::FailedParsingUnstructedAPIJSON(ref s) => {
                 write!(f, "Failed to parse Unstructed API response json: {}", s)
             }
-            VRError::CouldNotDetectFileType(ref s) => {
-                write!(f, "Could not detect file type from file name: {}", s)
+            VRError::FileTypeNotSupported(ref s) => {
+                write!(f, "File type not supported: {}", s)
             }
             VRError::InvalidReferenceString(ref s) => {
                 write!(f, "Vector Resource reference string is invalid: {}", s)
@@ -92,6 +93,7 @@ impl fmt::Display for VRError {
             VRError::UnsupportedVRPackVersion(ref s) => write!(f, "Unsupported VRPack version: {}", s),
             VRError::InvalidSimplifiedFSEntryType(ref s) => write!(f, "Failed to convert SimplifiedFSEntry at path: {}", s),
             VRError::VRPackEmbeddingModelError(ref s) => write!(f, "Embedding Model Error: {}", s),
+            VRError::UnsupportedFileType(ref s) => write!(f, "Unsupported file type: {}", s),
         }
     }
 }

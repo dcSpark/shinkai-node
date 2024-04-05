@@ -18,7 +18,7 @@ use shinkai_message_primitives::{
     shinkai_utils::signatures::clone_signature_secret_key,
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;

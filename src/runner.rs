@@ -28,7 +28,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;

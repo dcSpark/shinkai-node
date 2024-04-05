@@ -10,8 +10,8 @@ mod tests {
     use shinkai_node::agent::providers::LLMProvider;
     use shinkai_node::agent::{
         execution::job_prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
-        file_parsing::ParsingHelper,
         job_manager::JobManager,
+        parsing_helper::ParsingHelper,
     };
     use tokio;
 

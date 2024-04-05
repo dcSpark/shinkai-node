@@ -20,8 +20,8 @@ use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueMa
 use shinkai_node::db::{ShinkaiDB, Topic};
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::{Duration, Instant};
@@ -151,7 +151,10 @@ async fn test_process_job_queue_concurrency() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None).await.unwrap();
+    let mut job_queue =
+        JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
+            .await
+            .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency
@@ -269,7 +272,10 @@ async fn test_sequential_process_for_same_job_id() {
 
     let db_weak = Arc::downgrade(&db);
     let vector_fs_weak = Arc::downgrade(&vector_fs);
-    let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None).await.unwrap();
+    let mut job_queue =
+        JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
+            .await
+            .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
 
     // Start processing the queue with concurrency

@@ -1,11 +1,7 @@
-use super::html_content_parsing::extract_core_content;
+use super::file_parser_types::TextGroup;
+use super::local_parsing::html_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
-use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
-use crate::source::{distribution, VRSourceReference};
-use crate::vector_resource::SourceFileType;
-use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
-use distribution::DistributionInfo;
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
@@ -40,71 +36,41 @@ impl UnstructuredAPI {
         }
     }
 
-    /// Makes a blocking request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf`
-    pub fn process_file_blocking(
-        &self,
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        file_name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of elements
-        let elements = self.file_request_blocking(file_buffer, &file_name)?;
-
-        // Cleans out the file extension from the file_name
-        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
-
-        UnstructuredParser::process_elements_into_resource_blocking(
-            elements,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_chunk_size,
-            distribution_info,
-        )
-    }
-
+    #[cfg(feature = "native-http")]
     /// Makes an async request to process a file in a buffer to Unstructured server,
-    /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires file_name to include the extension ie. `*.pdf`
-    pub async fn process_file(
+    /// and then processing the returned results into a list of TextGroup
+    pub async fn process_file_into_grouped_text(
         &self,
         file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
         file_name: String,
-        desc: Option<String>,
-        source: VRSourceReference,
-        parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
-        distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of elements
+        max_node_text_size: u64,
+    ) -> Result<Vec<TextGroup>, VRError> {
+        // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
-
-        // Cleans out the file extension from the file_name
-        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
-
-        UnstructuredParser::process_elements_into_resource(
-            elements,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_chunk_size,
-            distribution_info,
-        )
-        .await
+        Ok(UnstructuredParser::hierarchical_group_elements_text(
+            &elements,
+            max_node_text_size,
+        ))
     }
 
+    #[cfg(feature = "native-http")]
+    /// Makes an blocking request to process a file in a buffer to Unstructured server,
+    /// and then processing the returned results into a list of TextGroup
+    pub fn process_file_into_grouped_text_blocking(
+        &self,
+        file_buffer: Vec<u8>,
+        file_name: String,
+        max_node_text_size: u64,
+    ) -> Result<Vec<TextGroup>, VRError> {
+        // Parse into Unstructured elements, and then into text_groups
+        let elements = self.file_request_blocking(file_buffer, &file_name)?;
+        Ok(UnstructuredParser::hierarchical_group_elements_text(
+            &elements,
+            max_node_text_size,
+        ))
+    }
+
+    #[cfg(feature = "native-http")]
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
     pub fn file_request_blocking(
@@ -140,6 +106,7 @@ impl UnstructuredAPI {
         Ok(elements)
     }
 
+    #[cfg(feature = "native-http")]
     /// Makes an async request to process a file in a buffer into a list of UnstructuredElements
     pub async fn file_request(
         &self,
@@ -164,6 +131,7 @@ impl UnstructuredAPI {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Internal method that makes the actual file request
     async fn send_file_request(
         &self,

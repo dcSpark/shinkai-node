@@ -1,6 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_node::agent::file_parsing::ParsingHelper;
+use shinkai_node::agent::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
@@ -9,12 +9,13 @@ use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{
     DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
 };
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResource, VectorResourceCore,
@@ -64,16 +65,18 @@ pub async fn get_shinkai_intro_doc_async(
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
 
+    let unstructured = UnstructuredAPI::new_default();
+
     let desc = "An initial introduction to the Shinkai Network.";
-    let resource = ParsingHelper::parse_file_into_resource(
+    let resource = ShinkaiFileParser::process_file_into_resource(
         buffer.clone(),
         generator,
         "shinkai_intro.pdf".to_string(),
         Some(desc.to_string()),
         data_tags,
         500,
-        UnstructuredAPI::new_default(),
         DistributionInfo::new_empty(),
+        unstructured,
     )
     .await
     .unwrap();

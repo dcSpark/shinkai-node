@@ -1,7 +1,7 @@
 use super::job_prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
-use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::Job;
+use crate::agent::parsing_helper::ParsingHelper;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
