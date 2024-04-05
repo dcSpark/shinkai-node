@@ -47,13 +47,13 @@ impl UnstructuredParser {
     }
 
     /// Given a list of `UnstructuredElement`s, groups their text together into a hierarchy.
-    /// Currently respects max_chunk_size, ensures all content in between title elements are sub-grouped,
+    /// Currently respects max_node_text_size, ensures all content in between title elements are sub-grouped,
     /// and skips over all uncategorized text.
     pub fn hierarchical_group_elements_text(
         elements: &Vec<UnstructuredElement>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
     ) -> Vec<GroupedText> {
-        let max_chunk_size = max_chunk_size as usize;
+        let max_node_text_size = max_node_text_size as usize;
         let mut groups = Vec::new();
         let mut current_group = GroupedText::new();
         let mut current_title_group: Option<GroupedText> = None;
@@ -65,7 +65,7 @@ impl UnstructuredParser {
         let mut elements_iter = elements.iter().peekable();
         while let Some(element) = elements_iter.peek() {
             if element.element_type == ElementType::Title
-                && current_group.text.len() + element.text.len() < max_chunk_size
+                && current_group.text.len() + element.text.len() < max_node_text_size
                 && element.text.len() > 2
             {
                 current_group.push_data(&element.text, element.metadata.page_number);
@@ -87,9 +87,9 @@ impl UnstructuredParser {
             }
 
             if element.element_type != ElementType::Title {
-                // If adding the current element text would exceed the max_chunk_size,
+                // If adding the current element text would exceed the max_node_text_size,
                 // push the current group to title group or groups and start a new group
-                if current_group.text.len() + element_text.len() > max_chunk_size {
+                if current_group.text.len() + element_text.len() > max_node_text_size {
                     ShinkaiFileParser::push_group_to_appropriate_parent(
                         current_group,
                         &mut current_title_group,
@@ -98,10 +98,10 @@ impl UnstructuredParser {
                     current_group = GroupedText::new();
                 }
 
-                // If the current element text is larger than max_chunk_size,
+                // If the current element text is larger than max_node_text_size,
                 // split it into chunks and add them to title group or groups
-                if element_text.len() > max_chunk_size {
-                    let chunks = ShinkaiFileParser::split_into_chunks(&element_text, max_chunk_size);
+                if element_text.len() > max_node_text_size {
+                    let chunks = ShinkaiFileParser::split_into_chunks(&element_text, max_node_text_size);
                     for chunk in chunks {
                         let mut new_group = GroupedText::new();
                         new_group.push_data(&chunk, element.metadata.page_number);

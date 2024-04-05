@@ -27,7 +27,7 @@ impl ParsingHelper {
     pub async fn generate_description(
         text_groups: &Vec<GroupedText>,
         agent: SerializedAgent,
-        max_node_size: u64,
+        max_node_text_size: u64,
     ) -> Result<String, AgentError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 3000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
@@ -68,8 +68,8 @@ impl ParsingHelper {
 
             let desc = ShinkaiFileParser::process_groups_into_description(
                 &text_groups,
-                max_node_size as usize,
-                max_node_size.checked_div(2).unwrap_or(100) as usize,
+                max_node_text_size as usize,
+                max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );
             let desc = ParsingHelper::ending_stripper(&desc);
             Ok(desc)
@@ -80,33 +80,35 @@ impl ParsingHelper {
     ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
     ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
     /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
-    pub async fn parse_file_into_resource_gen_desc(
+    pub async fn process_file_into_resource_gen_desc(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         parsing_tags: &Vec<DataTag>,
         agent: Option<SerializedAgent>,
-        max_node_size: u64,
+        max_node_text_size: u64,
         unstructured_api: UnstructuredAPI,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, AgentError> {
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-
-        // Parse into Unstructured elements, and then into text_groups
-        let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_node_size);
-
-        // Cleans out the file extension from the file_name
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+        let text_groups = ShinkaiFileParser::process_file_into_text_groups(
+            file_buffer,
+            file_name,
+            max_node_text_size,
+            source.clone(),
+            unstructured_api,
+        )
+        .await?;
 
         let mut desc = String::new();
         if let Some(actual_agent) = agent {
-            desc = Self::generate_description(&text_groups, actual_agent, max_node_size).await?;
+            desc = Self::generate_description(&text_groups, actual_agent, max_node_text_size).await?;
         } else {
             desc = ShinkaiFileParser::process_groups_into_description(
                 &text_groups,
-                max_node_size as usize,
-                max_node_size.checked_div(2).unwrap_or(100) as usize,
+                max_node_text_size as usize,
+                max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );
         }
 
@@ -117,7 +119,7 @@ impl ParsingHelper {
             Some(desc),
             source,
             parsing_tags,
-            max_node_size,
+            max_node_text_size,
             distribution_info,
         )
         .await?)
@@ -160,13 +162,13 @@ impl ParsingHelper {
                 &format!("Processing file: {}", filename),
             );
 
-            let resource = ParsingHelper::parse_file_into_resource_gen_desc(
+            let resource = ParsingHelper::process_file_into_resource_gen_desc(
                 file.1.clone(),
                 generator,
                 filename.clone(),
                 &vec![],
                 agent.clone(),
-                400,
+                (generator.model_type().max_input_token_count() - 20) as u64,
                 unstructured_api.clone(),
                 file.2.clone(),
             )

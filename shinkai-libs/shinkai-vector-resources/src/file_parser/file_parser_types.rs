@@ -24,7 +24,7 @@ impl GroupedText {
     /// Prepares a string to be used to generate an Embedding for this GroupedText.
     /// Extracts most prevalent keywords from all sub-groups and appends them to
     /// the end of the groups actual text.
-    pub fn format_text_for_embedding(&self, max_chunk_size: u64) -> String {
+    pub fn format_text_for_embedding(&self, max_node_text_size: u64) -> String {
         let mut keyword_string = String::new();
         let base_string = &self.text;
         let pre_keyword_length = base_string.len();
@@ -33,7 +33,7 @@ impl GroupedText {
         let keywords: Vec<String> = ShinkaiFileParser::extract_keywords(&vec![self.clone()], 1);
 
         for keyword in keywords {
-            if pre_keyword_length + keyword_string.len() + keyword.len() <= max_chunk_size as usize {
+            if pre_keyword_length + keyword_string.len() + keyword.len() <= max_node_text_size as usize {
                 keyword_string = format!("{}, {}", keyword_string, keyword);
             } else {
                 break;

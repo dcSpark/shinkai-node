@@ -20,35 +20,27 @@ use serde_json::Value as JsonValue;
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
+    /// Processes the input file into a BaseVectorResource.
     pub async fn process_file_into_resource(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         distribution_info: DistributionInfo,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, VRError> {
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let mut text_groups = vec![];
-
-        // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = Self::local_process_file_into_grouped_text(
-            file_buffer.clone(),
-            file_name.clone(),
-            max_chunk_size,
-            source.clone(),
-        ) {
-            text_groups = groups;
-        } else {
-            text_groups = unstructured_api
-                .process_file_into_grouped_text(file_buffer, file_name.clone(), max_chunk_size)
-                .await?;
-        }
-
-        // Cleans out the file extension from the file_name
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+        let text_groups = Self::process_file_into_text_groups(
+            file_buffer,
+            file_name,
+            max_node_text_size,
+            source.clone(),
+            unstructured_api,
+        )
+        .await?;
 
         ShinkaiFileParser::process_groups_into_resource(
             text_groups,
@@ -57,45 +49,32 @@ impl ShinkaiFileParser {
             desc,
             source,
             parsing_tags,
-            max_chunk_size,
+            max_node_text_size,
             distribution_info,
         )
         .await
     }
 
+    /// Processes the input file into a BaseVectorResource.
     pub fn process_file_into_resource_blocking(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         file_name: String,
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         distribution_info: DistributionInfo,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, VRError> {
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let mut text_groups = vec![];
-
-        // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = Self::local_process_file_into_grouped_text(
-            file_buffer.clone(),
-            file_name.clone(),
-            max_chunk_size,
-            source.clone(),
-        ) {
-            text_groups = groups;
-        } else {
-            // Since this is a blocking variant, we assume `process_file_into_grouped_text_blocking` exists
-            // or a similar synchronous method is available in `unstructured_api`.
-            text_groups = unstructured_api.process_file_into_grouped_text_blocking(
-                file_buffer,
-                file_name.clone(),
-                max_chunk_size,
-            )?;
-        }
-
-        // Cleans out the file extension from the file_name
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+        let text_groups = ShinkaiFileParser::process_file_into_text_groups_blocking(
+            file_buffer,
+            file_name,
+            max_node_text_size,
+            source.clone(),
+            unstructured_api,
+        )?;
 
         // Here, we switch to the blocking variant of `process_groups_into_resource`.
         ShinkaiFileParser::process_groups_into_resource_blocking(
@@ -105,9 +84,64 @@ impl ShinkaiFileParser {
             desc,
             source,
             parsing_tags,
-            max_chunk_size,
+            max_node_text_size,
             distribution_info,
         )
+    }
+
+    /// Processes the input file into a list of `GroupedText` with no embedding generated yet.
+    pub async fn process_file_into_text_groups(
+        file_buffer: Vec<u8>,
+        file_name: String,
+        max_node_text_size: u64,
+        source: VRSourceReference,
+        unstructured_api: UnstructuredAPI,
+    ) -> Result<Vec<GroupedText>, VRError> {
+        let mut text_groups = vec![];
+
+        // If local processing is available, use it. Otherwise, use the unstructured API.
+        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+            file_buffer.clone(),
+            file_name.clone(),
+            max_node_text_size,
+            source.clone(),
+        ) {
+            text_groups = groups;
+        } else {
+            text_groups = unstructured_api
+                .process_file_into_grouped_text(file_buffer, file_name.clone(), max_node_text_size)
+                .await?;
+        }
+        Ok(text_groups)
+    }
+
+    /// Processes the input file into a list of `GroupedText` with no embedding generated yet.
+    pub fn process_file_into_text_groups_blocking(
+        file_buffer: Vec<u8>,
+        file_name: String,
+        max_node_text_size: u64,
+        source: VRSourceReference,
+        unstructured_api: UnstructuredAPI,
+    ) -> Result<Vec<GroupedText>, VRError> {
+        let mut text_groups = vec![];
+
+        // If local processing is available, use it. Otherwise, use the unstructured API.
+        if let Ok(groups) = Self::local_process_file_into_grouped_text(
+            file_buffer.clone(),
+            file_name.clone(),
+            max_node_text_size,
+            source.clone(),
+        ) {
+            text_groups = groups;
+        } else {
+            // Assuming `process_file_into_grouped_text_blocking` is a synchronous version of `process_file_into_grouped_text`
+            text_groups = unstructured_api.process_file_into_grouped_text_blocking(
+                file_buffer,
+                file_name.clone(),
+                max_node_text_size,
+            )?;
+        }
+        Ok(text_groups)
     }
 
     #[cfg(feature = "native-http")]
@@ -119,7 +153,7 @@ impl ShinkaiFileParser {
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_groups_into_resource_with_custom_collection(
@@ -129,7 +163,7 @@ impl ShinkaiFileParser {
             desc,
             source,
             parsing_tags,
-            max_chunk_size,
+            max_node_text_size,
             ShinkaiFileParser::collect_texts_and_indices,
             distribution_info,
         )
@@ -145,7 +179,7 @@ impl ShinkaiFileParser {
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_groups_into_resource_blocking_with_custom_collection(
@@ -155,7 +189,7 @@ impl ShinkaiFileParser {
             desc,
             source,
             parsing_tags,
-            max_chunk_size,
+            max_node_text_size,
             ShinkaiFileParser::collect_texts_and_indices,
             distribution_info,
         )
@@ -171,7 +205,7 @@ impl ShinkaiFileParser {
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
@@ -179,7 +213,7 @@ impl ShinkaiFileParser {
             &text_groups,
             generator.box_clone(),
             31,
-            max_chunk_size,
+            max_node_text_size,
             collect_texts_and_indices,
         )
         .await?;
@@ -208,7 +242,7 @@ impl ShinkaiFileParser {
         desc: Option<String>,
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
@@ -220,7 +254,7 @@ impl ShinkaiFileParser {
             &text_groups,
             cloned_generator,
             31,
-            max_chunk_size,
+            max_node_text_size,
             collect_texts_and_indices,
         )?;
 
@@ -416,7 +450,7 @@ impl ShinkaiFileParser {
     pub fn process_groups_into_descriptions_list(
         groups: &Vec<GroupedText>,
         max_size: usize,
-        max_node_size: usize,
+        max_node_text_size: usize,
     ) -> Vec<String> {
         let mut descriptions = Vec::new();
         let mut description = String::new();
@@ -424,7 +458,7 @@ impl ShinkaiFileParser {
 
         for group in groups {
             let element_text = &group.text;
-            if description.len() + element_text.len() > max_node_size {
+            if description.len() + element_text.len() > max_node_text_size {
                 descriptions.push(description.clone());
                 total_size += description.len();
                 description.clear();
@@ -444,8 +478,12 @@ impl ShinkaiFileParser {
 
     /// Processes groups into a single description string.
     /// Only takes the top level Group text, does not traverse deeper.
-    pub fn process_groups_into_description(groups: &Vec<GroupedText>, max_size: usize, max_node_size: usize) -> String {
-        let descriptions = Self::process_groups_into_descriptions_list(groups, max_size, max_node_size);
+    pub fn process_groups_into_description(
+        groups: &Vec<GroupedText>,
+        max_size: usize,
+        max_node_text_size: usize,
+    ) -> String {
+        let descriptions = Self::process_groups_into_descriptions_list(groups, max_size, max_node_text_size);
         descriptions.join(" ")
     }
 
@@ -454,7 +492,7 @@ impl ShinkaiFileParser {
         desc: Option<String>,
         text_groups: &Vec<GroupedText>,
         max_size: usize,
-        max_node_size: usize,
+        max_node_text_size: usize,
     ) -> Option<String> {
         if let Some(description) = desc {
             Some(description.to_string())
@@ -462,7 +500,7 @@ impl ShinkaiFileParser {
             Some(Self::process_groups_into_description(
                 text_groups,
                 max_size,
-                max_node_size,
+                max_node_text_size,
             ))
         } else {
             None
@@ -483,7 +521,7 @@ impl ShinkaiFileParser {
     pub fn local_process_file_into_grouped_text(
         file_buffer: Vec<u8>,
         file_name: String,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
         source: VRSourceReference,
     ) -> Result<Vec<GroupedText>, VRError> {
         let source_base = source;

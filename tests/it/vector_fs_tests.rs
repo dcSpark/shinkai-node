@@ -9,6 +9,7 @@ use shinkai_node::vector_fs::vector_fs_writer::VFSWriter;
 use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector_fs_error::VectorFSError};
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
@@ -67,18 +68,18 @@ pub async fn get_shinkai_intro_doc_async(
     let unstructured = UnstructuredAPI::new_default();
 
     let desc = "An initial introduction to the Shinkai Network.";
-    let resource = unstructured
-        .process_file(
-            buffer.clone(),
-            generator,
-            "shinkai_intro.pdf".to_string(),
-            Some(desc.to_string()),
-            data_tags,
-            500,
-            DistributionInfo::new_empty(),
-        )
-        .await
-        .unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer.clone(),
+        generator,
+        "shinkai_intro.pdf".to_string(),
+        Some(desc.to_string()),
+        data_tags,
+        500,
+        DistributionInfo::new_empty(),
+        unstructured,
+    )
+    .await
+    .unwrap();
 
     let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
     let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);

@@ -48,13 +48,13 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         file_name: String,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
     ) -> Result<Vec<GroupedText>, VRError> {
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request(file_buffer, &file_name).await?;
         Ok(UnstructuredParser::hierarchical_group_elements_text(
             &elements,
-            max_chunk_size,
+            max_node_text_size,
         ))
     }
 
@@ -64,13 +64,13 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         file_name: String,
-        max_chunk_size: u64,
+        max_node_text_size: u64,
     ) -> Result<Vec<GroupedText>, VRError> {
         // Parse into Unstructured elements, and then into text_groups
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
         Ok(UnstructuredParser::hierarchical_group_elements_text(
             &elements,
-            max_chunk_size,
+            max_node_text_size,
         ))
     }
 
