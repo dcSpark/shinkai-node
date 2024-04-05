@@ -5237,6 +5237,7 @@ dependencies = [
  "libsodium-sys-stable",
  "multipart",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "rocksdb",
  "serde",

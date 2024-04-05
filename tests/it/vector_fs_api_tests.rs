@@ -1,6 +1,7 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
+use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
@@ -288,6 +289,7 @@ fn vector_fs_api_tests() {
                 let payload = APIConvertFilesAndSaveToFolder {
                     path: "/test_folder".to_string(),
                     file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    file_datetime: Some(Utc.ymd(2024, 2, 1).and_hms(0, 0, 0)),
                 };
 
                 let msg = generate_message_with_payload(
@@ -357,9 +359,7 @@ fn vector_fs_api_tests() {
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(file_path)
-                    .map_err(|_| VRError::FailedPDFParsing)
-                    .unwrap();
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
@@ -391,6 +391,7 @@ fn vector_fs_api_tests() {
                 let payload = APIConvertFilesAndSaveToFolder {
                     path: "/test_folder".to_string(),
                     file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    file_datetime: Some(Utc.ymd(2024, 2, 1).and_hms(0, 0, 0)),
                 };
 
                 let msg = generate_message_with_payload(
