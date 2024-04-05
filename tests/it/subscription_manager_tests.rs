@@ -51,6 +51,7 @@ fn setup() {
     let _ = fs::remove_dir_all(&path);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_message_with_payload<T: ToString>(
     payload: T,
     schema: MessageSchemaType,
@@ -152,7 +153,6 @@ async fn show_available_shared_items(
         streamer_profile_name: streamer_profile_name.to_string(),
     };
 
-    eprintln!("recipient subidentity: {}", streamer_profile_name);
     let msg = generate_message_with_payload(
         serde_json::to_string(&payload).unwrap(),
         MessageSchemaType::AvailableSharedItems,
