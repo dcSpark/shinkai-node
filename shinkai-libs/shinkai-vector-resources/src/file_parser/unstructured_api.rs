@@ -1,13 +1,7 @@
-use super::file_parser::ShinkaiFileParser;
 use super::file_parser_types::TextGroup;
-use super::html_content_parsing::extract_core_content;
+use super::local_parsing::html_parsing::extract_core_content;
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
-use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
-use crate::source::{distribution, TextChunkingStrategy, VRSourceReference};
-use crate::vector_resource::SourceFileType;
-use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
-use distribution::DistributionInfo;
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]
@@ -42,6 +36,7 @@ impl UnstructuredAPI {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a list of TextGroup
     pub async fn process_file_into_grouped_text(
@@ -58,6 +53,7 @@ impl UnstructuredAPI {
         ))
     }
 
+    #[cfg(feature = "native-http")]
     /// Makes an blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a list of TextGroup
     pub fn process_file_into_grouped_text_blocking(
@@ -74,6 +70,7 @@ impl UnstructuredAPI {
         ))
     }
 
+    #[cfg(feature = "native-http")]
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
     pub fn file_request_blocking(
@@ -109,6 +106,7 @@ impl UnstructuredAPI {
         Ok(elements)
     }
 
+    #[cfg(feature = "native-http")]
     /// Makes an async request to process a file in a buffer into a list of UnstructuredElements
     pub async fn file_request(
         &self,
@@ -133,6 +131,7 @@ impl UnstructuredAPI {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Internal method that makes the actual file request
     async fn send_file_request(
         &self,

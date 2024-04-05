@@ -1,20 +1,7 @@
 use super::file_parser::ShinkaiFileParser;
 use super::file_parser_types::TextGroup;
-use super::unstructured_api::UnstructuredAPI;
-use crate::data_tags::DataTag;
-use crate::embedding_generator::EmbeddingGenerator;
-use crate::embeddings::Embedding;
-use crate::resource_errors::VRError;
-use crate::source::DistributionInfo;
-use crate::source::TextChunkingStrategy;
-use crate::source::VRSourceReference;
-use crate::vector_resource::SourceFileReference;
 use crate::vector_resource::SourceFileType;
-use crate::vector_resource::SourceReference;
-use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 use blake3::Hasher;
-use futures::stream::SelectNextSome;
-use serde_json::Value as JsonValue;
 
 impl ShinkaiFileParser {
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)

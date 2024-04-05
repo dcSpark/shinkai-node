@@ -1,5 +1,6 @@
 use super::file_parser_types::TextGroup;
 use super::local_parsing::LocalFileParser;
+#[cfg(feature = "native-http")]
 use super::unstructured_api::UnstructuredAPI;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
@@ -8,19 +9,14 @@ use crate::resource_errors::VRError;
 use crate::source::DistributionInfo;
 use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
-use crate::vector_resource::SourceFileReference;
-use crate::vector_resource::SourceFileType;
-use crate::vector_resource::SourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
-use blake3::Hasher;
-use futures::stream::SelectNextSome;
-use serde_json::Value as JsonValue;
 
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
+    #[cfg(feature = "native-http")]
     /// Processes the input file into a BaseVectorResource.
     pub async fn process_file_into_resource(
         file_buffer: Vec<u8>,
@@ -56,6 +52,7 @@ impl ShinkaiFileParser {
         .await
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes the input file into a BaseVectorResource.
     pub fn process_file_into_resource_blocking(
         file_buffer: Vec<u8>,
@@ -90,6 +87,7 @@ impl ShinkaiFileParser {
         )
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub async fn process_file_into_text_groups(
         file_buffer: Vec<u8>,
@@ -116,6 +114,7 @@ impl ShinkaiFileParser {
         Ok(text_groups)
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub fn process_file_into_text_groups_blocking(
         file_buffer: Vec<u8>,
