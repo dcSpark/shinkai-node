@@ -1,6 +1,7 @@
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
 use std::collections::HashMap;
@@ -315,7 +316,7 @@ pub struct APIVecFsRetrievePathSimplifiedJson {
 pub struct APIConvertFilesAndSaveToFolder {
     pub path: String,
     pub file_inbox: String,
-    pub file_datetime: Option<String>,
+    pub file_datetime: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

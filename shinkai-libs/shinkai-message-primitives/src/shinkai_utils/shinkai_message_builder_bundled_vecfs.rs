@@ -1,7 +1,10 @@
 use crate::{
     schemas::shinkai_subscription_req::SubscriptionPayment,
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse, SubscriptionResponseStatus
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder,
+        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
+        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
+        SubscriptionGenericResponse, SubscriptionResponseStatus,
     },
 };
 use ed25519_dalek::SigningKey;
@@ -192,6 +195,7 @@ impl ShinkaiMessageBuilder {
     pub fn vecfs_create_items(
         destination_path: &str,
         file_inbox: &str,
+        file_datetime: Option<&str>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -200,9 +204,18 @@ impl ShinkaiMessageBuilder {
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
+        // Note: upgrade from the deprecated methods
+        let file_datetime_option = file_datetime.and_then(|dt| dt.parse::<i64>().ok()).map(|dt| {
+            chrono::DateTime::<chrono::Utc>::from_utc(
+                chrono::NaiveDateTime::from_timestamp_opt(dt, 0)
+                    .unwrap_or_else(|| chrono::NaiveDateTime::from_timestamp(0, 0)),
+                chrono::Utc,
+            )
+        });
         let payload = APIConvertFilesAndSaveToFolder {
             path: destination_path.to_string(),
             file_inbox: file_inbox.to_string(),
+            file_datetime: file_datetime_option,
         };
 
         Self::create_vecfs_message(
