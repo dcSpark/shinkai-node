@@ -17,7 +17,7 @@ export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 # export EMBEDDINGS_SERVER_URL="http://localhost:9081"
-export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/"
+export EMBEDDINGS_SERVER_URL="https://public.shinkai.com/x-em"
 export UNSTRUCTURED_SERVER_URL="http://localhost:8000"
 
 export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"

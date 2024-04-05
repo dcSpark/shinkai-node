@@ -238,6 +238,11 @@ impl FilesystemSynchronizer {
         folder_to_watch: &PathBuf,
     ) -> Result<(), PostRequestError> {
         for (file_path, modified_time) in files {
+            // Skip uploading if the file is named .DS_Store
+            if file_path.file_name().map_or(false, |name| name == ".DS_Store") {
+                continue;
+            }
+            
             let file_data = std::fs::read(&file_path)
                 .map_err(|_| PostRequestError::FSFolderNotFound("Failed to read file data".into()))?;
             let filename = file_path
@@ -251,11 +256,10 @@ impl FilesystemSynchronizer {
             let destination_dir = destination_path.join(relative_path.parent().unwrap_or_else(|| Path::new("")));
             let destination_str = destination_dir.to_string_lossy();
 
-            let creation_datetime_str = Self::creation_datetime_extraction(&file_path)
-                .map_err(|e| {
-                    eprintln!("Failed to extract creation datetime: {:?}", e);
-                    PostRequestError::Unknown("Failed to extract creation datetime".into())
-                });
+            let creation_datetime_str = Self::creation_datetime_extraction(&file_path).map_err(|e| {
+                eprintln!("Failed to extract creation datetime: {:?}", e);
+                PostRequestError::Unknown("Failed to extract creation datetime".into())
+            });
 
             let upload_result = shinkai_manager_for_sync
                 .upload_file(&file_data, filename, &destination_str, creation_datetime_str?)
@@ -362,22 +366,22 @@ impl FilesystemSynchronizer {
         .await
     }
 
-/// ### Documentation: File Creation Datetime Extraction
-/// #### Overview
-/// The `creation_datetime_extraction` function is designed to determine the creation datetime of a file by examining both 
-/// the file's metadata and its name (or its parent folder's name). This is particularly useful in scenarios where file metadata
-/// might not be reliable or when files are named according to their creation dates. The function aims to use the oldest
-/// available datetime between the file's name, parent folder's name, and metadata.
-///
-/// #### How It Works
-/// 1. **Extract Datetime from Filename or Parent Folder**: The function first attempts to extract a datetime from the 
-/// file's name or its parent folder's name using the `extract_datetime_from_path` helper function. This extraction relies
-/// on a predefined format (currently `YYYYMMDD`).
-/// 2. **File Metadata Datetime**: Independently, the function retrieves the file's creation datetime from its metadata.
-/// 3. **Choosing the Oldest Datetime**: If both datetimes (from the filename/parent and metadata) are available, the function 
-/// compares them and selects the oldest. If only one source of datetime is available, that datetime is used. If neither source 
-/// provides a valid datetime, the function returns an error indicating the failure to extract or calculate the file creation datetime.
-///
+    /// ### Documentation: File Creation Datetime Extraction
+    /// #### Overview
+    /// The `creation_datetime_extraction` function is designed to determine the creation datetime of a file by examining both
+    /// the file's metadata and its name (or its parent folder's name). This is particularly useful in scenarios where file metadata
+    /// might not be reliable or when files are named according to their creation dates. The function aims to use the oldest
+    /// available datetime between the file's name, parent folder's name, and metadata.
+    ///
+    /// #### How It Works
+    /// 1. **Extract Datetime from Filename or Parent Folder**: The function first attempts to extract a datetime from the
+    /// file's name or its parent folder's name using the `extract_datetime_from_path` helper function. This extraction relies
+    /// on a predefined format (currently `YYYYMMDD`).
+    /// 2. **File Metadata Datetime**: Independently, the function retrieves the file's creation datetime from its metadata.
+    /// 3. **Choosing the Oldest Datetime**: If both datetimes (from the filename/parent and metadata) are available, the function
+    /// compares them and selects the oldest. If only one source of datetime is available, that datetime is used. If neither source
+    /// provides a valid datetime, the function returns an error indicating the failure to extract or calculate the file creation datetime.
+    ///
     pub fn creation_datetime_extraction(file_path: &PathBuf) -> Result<Option<String>, PostRequestError> {
         // Attempt to extract datetime from the filename or its parent folder
         let datetime_from_name_or_parent = Self::extract_datetime_from_path(file_path)
@@ -390,14 +394,19 @@ impl FilesystemSynchronizer {
                 // If both datetime are available, choose the filename's datetime if valid, else choose the oldest
                 let datetime: chrono::DateTime<chrono::Utc> = metadata_datetime.into();
                 let metadata_datetime_str = datetime.to_rfc3339();
-                Ok(Some(Self::choose_oldest_datetime(&datetime_str, &metadata_datetime_str)))
-            },
+                Ok(Some(Self::choose_oldest_datetime(
+                    &datetime_str,
+                    &metadata_datetime_str,
+                )))
+            }
             (Some(datetime_str), None) => Ok(Some(datetime_str)),
             (None, Some(metadata_datetime)) => {
                 let datetime: chrono::DateTime<chrono::Utc> = metadata_datetime.into();
                 Ok(Some(datetime.to_rfc3339()))
-            },
-            (None, None) => Err(PostRequestError::Unknown("Failed to extract or calculate file creation datetime".into())),
+            }
+            (None, None) => Err(PostRequestError::Unknown(
+                "Failed to extract or calculate file creation datetime".into(),
+            )),
         }
     }
 
@@ -423,9 +432,15 @@ impl FilesystemSynchronizer {
     }
 
     pub fn choose_oldest_datetime(datetime1: &str, datetime2: &str) -> String {
-        let dt1 = chrono::DateTime::parse_from_rfc3339(datetime1).unwrap_or_else(|_| chrono::DateTime::from(chrono::Utc::now()));
-        let dt2 = chrono::DateTime::parse_from_rfc3339(datetime2).unwrap_or_else(|_| chrono::DateTime::from(chrono::Utc::now()));
+        let dt1 = chrono::DateTime::parse_from_rfc3339(datetime1)
+            .unwrap_or_else(|_| chrono::DateTime::from(chrono::Utc::now()));
+        let dt2 = chrono::DateTime::parse_from_rfc3339(datetime2)
+            .unwrap_or_else(|_| chrono::DateTime::from(chrono::Utc::now()));
 
-        if dt1 < dt2 { datetime1.to_string() } else { datetime2.to_string() }
+        if dt1 < dt2 {
+            datetime1.to_string()
+        } else {
+            datetime2.to_string()
+        }
     }
 }

@@ -1105,14 +1105,22 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         destination_path: String,
         file_inbox: String,
+        file_datetime_iso8601: Option<String>,
         sender: ShinkaiNameString,
         sender_subidentity: ShinkaiNameString,
         receiver: ShinkaiNameString,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
+        let file_datetime_option = file_datetime_iso8601.and_then(|dt| {
+            chrono::DateTime::parse_from_rfc3339(&dt)
+                .map(|parsed_dt| parsed_dt.with_timezone(&chrono::Utc))
+                .ok()
+        });
+
         let create_items_info = APIConvertFilesAndSaveToFolder {
             path: destination_path,
             file_inbox,
+            file_datetime: file_datetime_option,
         };
         let body = serde_json::to_string(&create_items_info).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let schema = MessageSchemaType::ConvertFilesAndSaveToFolder.to_str().to_string();
