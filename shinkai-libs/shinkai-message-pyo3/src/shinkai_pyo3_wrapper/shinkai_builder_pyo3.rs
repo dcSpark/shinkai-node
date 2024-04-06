@@ -1613,11 +1613,19 @@ impl PyShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
+        file_datetime_iso8601: Option<String>,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
+            let file_datetime_option = file_datetime_iso8601.and_then(|dt| {
+                chrono::DateTime::parse_from_rfc3339(&dt)
+                    .map(|parsed_dt| parsed_dt.with_timezone(&chrono::Utc))
+                    .ok()
+            });
+
             let payload = APIConvertFilesAndSaveToFolder {
                 path: destination_path,
-                file_inbox: file_inbox,
+                file_inbox,
+                file_datetime: file_datetime_option,
             };
 
             let body = match serde_json::to_string(&payload) {

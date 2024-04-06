@@ -121,6 +121,7 @@ impl ShinkaiManagerForSync {
         file_data: &[u8],
         filename: &str,
         destination: &str,
+        file_datetime: Option<String>,
     ) -> Result<(), PostRequestError> {
         let destination = if destination.starts_with("./") {
             &destination[1..] // Skip the first character and use the rest of the string
@@ -187,6 +188,7 @@ impl ShinkaiManagerForSync {
         let shinkai_message = ShinkaiMessageBuilder::vecfs_create_items(
             destination,
             &hash_of_aes_encryption_key_hex(symmetrical_sk),
+            file_datetime.as_deref(),
             self.my_encryption_secret_key.clone(),
             self.my_signature_secret_key.clone(),
             self.receiver_public_key,

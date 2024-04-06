@@ -3,7 +3,7 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -465,6 +465,7 @@ async fn upload_file(
     let payload = APIConvertFilesAndSaveToFolder {
         path: folder_name.to_string(),
         file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
+        file_datetime: Some(Utc.ymd(2024, 2, 1).and_hms(0, 0, 0)),
     };
 
     let msg = generate_message_with_payload(
