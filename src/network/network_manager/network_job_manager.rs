@@ -525,8 +525,8 @@ impl NetworkJobManager {
             }
 
             // Create all folders up and until the parent folder
-            let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
-            let result = vector_fs_lock.create_new_folder_auto(&writer, parent_vr_path.clone());
+            // let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
+            // let result = vector_fs_lock.create_new_folder_auto(&writer, destination_vr_path.clone());
 
             // Unpack the VRPack
             let parent_writer = vector_fs_lock
