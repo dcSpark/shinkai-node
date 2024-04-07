@@ -532,7 +532,7 @@ impl NetworkJobManager {
             let parent_writer = vector_fs_lock
                 .new_writer(
                     local_subscriber.clone(),
-                    parent_vr_path.clone(),
+                    destination_vr_path.clone(),
                     local_subscriber.clone(),
                 )
                 .unwrap();
