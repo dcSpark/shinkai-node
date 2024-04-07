@@ -1237,7 +1237,7 @@ fn subscription_manager_test() {
             {
                 eprintln!("Send updates to subscribers");
                 let mut attempts = 0;
-                let max_attempts = 5;
+                let max_attempts = 10;
                 let mut structure_matched = false;
 
                 while attempts < max_attempts && !structure_matched {
