@@ -286,12 +286,20 @@ pub async fn initialize_node() -> Result<
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_server = tokio::spawn(async move {
-        node_api::run_api(
+        if let Err(e) = node_api::run_api(
             node_commands_sender,
             api_listen_address,
             global_identity_name.clone().to_string(),
         )
-        .await;
+        .await
+        {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("API server failed to start: {}", e),
+            );
+            panic!("API server failed to start: {}", e);
+        }
     });
 
     let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
