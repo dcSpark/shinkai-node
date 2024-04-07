@@ -22,11 +22,12 @@ pub fn decrypt_exported_keys(encrypted_body: &str, passphrase: &str) -> Result<S
         let ciphertext = decode(ciphertext_hex).map_err(|_| "Failed to decode ciphertext")?;
 
         let mut key = vec![0u8; 32];
+        let passphrase_cstr = std::ffi::CString::new(passphrase).expect("Passphrase conversion failed");
 
         let pwhash_result = crypto_pwhash(
             key.as_mut_ptr(),
             key.len() as u64,
-            passphrase.as_ptr() as *const i8,
+            passphrase_cstr.as_ptr(),
             passphrase.len() as u64,
             salt.as_ptr(),
             crypto_pwhash_OPSLIMIT_INTERACTIVE as u64,

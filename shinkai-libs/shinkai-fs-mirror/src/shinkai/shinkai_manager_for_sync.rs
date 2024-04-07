@@ -123,6 +123,8 @@ impl ShinkaiManagerForSync {
         destination: &str,
         file_datetime: Option<String>,
     ) -> Result<(), PostRequestError> {
+        let start_time = std::time::Instant::now(); // Start timing
+
         let destination = if destination.starts_with("./") {
             &destination[1..] // Skip the first character and use the rest of the string
         } else {
@@ -207,6 +209,9 @@ impl ShinkaiManagerForSync {
         )
         .await
         .map_err(|e| PostRequestError::RequestFailed(format!("Convert File HTTP request failed with err: {:?}", e)))?;
+
+        let elapsed_time = start_time.elapsed(); // End timing
+        eprintln!("File upload and processing completed in: {:?}", elapsed_time); // Log the elapsed time
 
         Ok(())
     }
