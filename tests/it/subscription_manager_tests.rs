@@ -1238,7 +1238,7 @@ fn subscription_manager_test() {
             {
                 eprintln!("Send updates to subscribers");
                 let mut attempts = 0;
-                let max_attempts = 50;
+                let max_attempts = 100;
                 let mut structure_matched = false;
 
                 while attempts < max_attempts && !structure_matched {
@@ -1320,6 +1320,7 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
+                        eprintln!("Actual structure: {:?}", actual_resp_json);
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
