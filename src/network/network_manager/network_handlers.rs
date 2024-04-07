@@ -134,19 +134,6 @@ pub async fn handle_based_on_message_content_and_encryption(
             Ok(())
         }
         (_, EncryptionStatus::NotCurrentlyEncrypted) => {
-            // Save to db
-            {
-                eprintln!("{} > Saving to db", receiver_address);
-                Node::save_to_db(
-                    false,
-                    &message,
-                    clone_static_secret_key(&my_encryption_secret_key),
-                    maybe_db.clone(),
-                    maybe_identity_manager.clone(),
-                )
-                .await?;
-            }
-
             handle_network_message_cases(
                 message,
                 sender_encryption_pk,
@@ -254,19 +241,6 @@ pub async fn handle_default_encryption(
     match decrypted_message_result {
         Ok(decrypted_message) => {
             eprintln!("{} > Successfully decrypted message outer layer", receiver_address);
-            // save to db
-            {
-                eprintln!("{} > Saving to db", receiver_address);
-                Node::save_to_db(
-                    false,
-                    &decrypted_message,
-                    clone_static_secret_key(&my_encryption_secret_key),
-                    maybe_db.clone(),
-                    maybe_identity_manager.clone(),
-                )
-                .await?;
-            }
-
             let message = decrypted_message.get_message_content();
             match message {
                 Ok(message_content) => {
@@ -337,12 +311,20 @@ pub async fn handle_network_message_cases(
         "{} > Got message from {:?}. Processing and sending ACK",
         receiver_address, unsafe_sender_address
     );
-    {
-        eprintln!("{} > Saving to db", receiver_address);
+
+    // Logic to handle if messages needs to be saved to disk
+    let should_save = match message.get_message_content_schema() {
+        Ok(MessageSchemaType::TextContent) => true,
+        Ok(MessageSchemaType::JobMessageSchema) => true,
+        Ok(MessageSchemaType::SubscribeToSharedFolderResponse) => true,
+        _ => false,
+    };
+
+    if should_save {
         Node::save_to_db(
             false,
             &message,
-            clone_static_secret_key(my_encryption_secret_key),
+            clone_static_secret_key(&my_encryption_secret_key),
             maybe_db.clone(),
             maybe_identity_manager.clone(),
         )
@@ -467,7 +449,7 @@ pub async fn handle_network_message_cases(
                 }
                 MessageSchemaType::SubscribeToSharedFolder => {
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
-                    let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    // let receiver = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     let content = message.get_message_content().unwrap_or("".to_string());
                     eprintln!(
                         "SubscribeToSharedFolder Node {}: Handling SubscribeToSharedFolder from: {}",
@@ -548,7 +530,7 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::SubscribeToSharedFolderResponse => {
-                    eprintln!("Message from: {:?}", message);
+                    eprintln!("SubscribeToSharedFolderResponse Node Message from: {:?}", message);
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     let requester_node_name = requester.get_node_name_string();
                     let requester_profile_name = requester.get_profile_name_string();
@@ -720,26 +702,26 @@ pub async fn handle_network_message_cases(
                                                     item_tree,
                                                     requester_node,
                                                     requester_profile_name,
-                                                    symmetric_key
+                                                    symmetric_key,
                                                 )
                                                 .await;
                                             eprintln!("subscriber_current_state_response result: {:?}", result);
                                         }
                                         Err(e) => {
-                                            println!("Failed to deserialize inner JSON string to FSEntryTree: {}", e);
+                                            eprintln!("Failed to deserialize inner JSON string to FSEntryTree: {}", e);
                                         }
                                     }
                                 } else {
-                                    println!("'folder_state' not found in metadata.");
+                                    eprintln!("'folder_state' not found in metadata.");
                                     // Handle the case where 'folder_state' is missing in metadata
                                 }
                             } else {
-                                println!("Metadata is missing.");
+                                eprintln!("Metadata is missing.");
                                 // Handle the case where metadata is missing
                             }
                         }
                         Err(e) => {
-                            println!("Failed to deserialize outer JSON string to String (potential double-encoding issue): {}", e);
+                            eprintln!("Failed to deserialize outer JSON string to String (potential double-encoding issue): {}", e);
                         }
                     }
 
