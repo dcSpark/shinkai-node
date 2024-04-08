@@ -2,9 +2,8 @@ use crate::{
     db::ShinkaiDB,
     managers::IdentityManager,
     network::{
-        node_error::NodeError,
         subscription_manager::{
-            external_subscriber_manager::{self, ExternalSubscriberManager, SharedFolderInfo},
+            external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
             fs_entry_tree::FSEntryTree,
             my_subscription_manager::MySubscriptionsManager,
         },
@@ -15,26 +14,26 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     schemas::{
         shinkai_name::{ShinkaiName, ShinkaiNameError},
-        shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId},
+        shinkai_subscription::SubscriptionId,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_error::ShinkaiMessageError,
         shinkai_message_extension::EncryptionStatus,
         shinkai_message_schemas::{
             APISubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
         },
     },
     shinkai_utils::{
-        encryption::{clone_static_secret_key, encryption_public_key_to_string},
+        encryption::clone_static_secret_key,
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
 };
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
-use tonic::metadata;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::network_job_manager_error::NetworkJobQueueError;
@@ -44,6 +43,7 @@ pub enum PingPong {
     Pong,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_based_on_message_content_and_encryption(
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
@@ -106,7 +106,7 @@ pub async fn handle_based_on_message_content_and_encryption(
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Debug,
-                &format!("{} > Content encrypted", receiver_address),
+                &format!("{} {} > Content encrypted", my_node_profile_name, receiver_address),
             );
             handle_network_message_cases(
                 message,
@@ -144,12 +144,17 @@ pub async fn handle_based_on_message_content_and_encryption(
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Debug,
-                &format!("{} > ACK from {:?}", receiver_address, unsafe_sender_address),
+                &format!("{} {} > ACK from {:?}", my_node_profile_name, receiver_address, unsafe_sender_address),
             );
             // Currently, we are not saving ACKs received to the DB.
             Ok(())
         }
         (_, EncryptionStatus::NotCurrentlyEncrypted) => {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("{} {} > Not currently encrypted", my_node_profile_name, receiver_address),
+            );
             handle_network_message_cases(
                 message,
                 sender_encryption_pk,
@@ -173,7 +178,11 @@ pub async fn handle_based_on_message_content_and_encryption(
 // All the new helper functions here:
 pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result<ShinkaiMessage> {
     ShinkaiMessage::decode_message_result(bytes.to_vec()).map_err(|_| {
-        println!("{} > Failed to decode message.", receiver_address);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Error,
+            &format!("{} > Failed to decode message.", receiver_address),
+        );
         io::Error::new(io::ErrorKind::Other, "Failed to decode message")
     })
 }
@@ -211,6 +220,7 @@ pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &Shi
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_ping(
     sender_address: SocketAddr,
     sender_encryption_pk: x25519_dalek::PublicKey,
@@ -238,6 +248,7 @@ pub async fn handle_ping(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_default_encryption(
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
@@ -253,10 +264,10 @@ pub async fn handle_default_encryption(
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
-    let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
+    let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            eprintln!("{} > Successfully decrypted message outer layer", receiver_address);
+            eprintln!("{} {} > Successfully decrypted message outer layer", my_node_profile_name, receiver_address);
             let message = decrypted_message.get_message_content();
             match message {
                 Ok(message_content) => {
@@ -283,8 +294,17 @@ pub async fn handle_default_encryption(
                 Err(_) => {
                     // Note(Nico): if we can't decrypt the inner content (it's okay). We still send an ACK
                     // it is most likely meant for a profile which we don't have the encryption secret key for.
+                    Node::save_to_db(
+                        false,
+                        &decrypted_message,
+                        clone_static_secret_key(my_encryption_secret_key),
+                        maybe_db.clone(),
+                        maybe_identity_manager.clone(),
+                    )
+                    .await?;
+
                     let _ = send_ack(
-                        (sender_address.clone(), sender_profile_name.clone()),
+                        (sender_address, sender_profile_name.clone()),
                         clone_static_secret_key(my_encryption_secret_key),
                         clone_signature_secret_key(my_signature_secret_key),
                         sender_encryption_pk,
@@ -308,6 +328,7 @@ pub async fn handle_default_encryption(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_network_message_cases(
     message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
@@ -329,18 +350,22 @@ pub async fn handle_network_message_cases(
     );
 
     // Logic to handle if messages needs to be saved to disk
-    let should_save = match message.get_message_content_schema() {
-        Ok(MessageSchemaType::TextContent) => true,
-        Ok(MessageSchemaType::JobMessageSchema) => true,
-        Ok(MessageSchemaType::SubscribeToSharedFolderResponse) => true,
-        _ => false,
-    };
+    let schema_result = message.get_message_content_schema();
+    let should_save = matches!(
+        schema_result,
+        Ok(MessageSchemaType::TextContent)
+            | Ok(MessageSchemaType::JobMessageSchema)
+            | Ok(MessageSchemaType::SubscribeToSharedFolderResponse)
+    ) || matches!(
+        schema_result,
+        Err(ShinkaiMessageError::InvalidMessageSchemaType(err)) if err == "Message data is encrypted"
+    );
 
     if should_save {
         Node::save_to_db(
             false,
             &message,
-            clone_static_secret_key(&my_encryption_secret_key),
+            clone_static_secret_key(my_encryption_secret_key),
             maybe_db.clone(),
             maybe_identity_manager.clone(),
         )
@@ -384,7 +409,6 @@ pub async fn handle_network_message_cases(
                     }
 
                     // 1.5- extract info from the original message
-                    
 
                     let request_node_name = requester.get_node_name_string();
                     let request_profile_name = requester.get_profile_name_string().unwrap_or("".to_string());
@@ -395,8 +419,8 @@ pub async fn handle_network_message_cases(
                     // Send message back with response
                     let msg = ShinkaiMessageBuilder::vecfs_available_shared_items_response(
                         response,
-                        clone_static_secret_key(&my_encryption_secret_key),
-                        clone_signature_secret_key(&my_signature_secret_key),
+                        clone_static_secret_key(my_encryption_secret_key),
+                        clone_signature_secret_key(my_signature_secret_key),
                         sender_encryption_pk,
                         my_node_profile_name.to_string(),
                         receiver.get_profile_name_string().unwrap_or("".to_string()),
@@ -408,7 +432,7 @@ pub async fn handle_network_message_cases(
                     // 3.- Send message back with response
                     Node::send(
                         msg,
-                        Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
+                        Arc::new(clone_static_secret_key(my_encryption_secret_key)),
                         (sender_address, request_node_name),
                         maybe_db,
                         maybe_identity_manager,
@@ -422,9 +446,11 @@ pub async fn handle_network_message_cases(
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
-                        &format!("{} AvailableSharedItemsResponse from: {:?}", receiver_address, requester),
+                        &format!(
+                            "{} AvailableSharedItemsResponse from: {:?}",
+                            receiver_address, requester
+                        ),
                     );
-                    let request_node_name = requester.get_node_name_string();
 
                     // 2.- extract response from the message
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -519,8 +545,8 @@ pub async fn handle_network_message_cases(
                                     let msg = ShinkaiMessageBuilder::p2p_subscription_generic_response(
                                         response,
                                         MessageSchemaType::SubscribeToSharedFolderResponse,
-                                        clone_static_secret_key(&my_encryption_secret_key),
-                                        clone_signature_secret_key(&my_signature_secret_key),
+                                        clone_static_secret_key(my_encryption_secret_key),
+                                        clone_signature_secret_key(my_signature_secret_key),
                                         sender_encryption_pk,
                                         my_node_profile_name.to_string(),
                                         subscription_request.streamer_profile_name,
@@ -531,7 +557,7 @@ pub async fn handle_network_message_cases(
 
                                     Node::send(
                                         msg,
-                                        Arc::new(clone_static_secret_key(&my_encryption_secret_key)),
+                                        Arc::new(clone_static_secret_key(my_encryption_secret_key)),
                                         (sender_address, requester.get_node_name_string()),
                                         maybe_db,
                                         maybe_identity_manager,
@@ -576,9 +602,9 @@ pub async fn handle_network_message_cases(
                             receiver_address, requester, receiver
                         ),
                     );
-                    
+
                     let requester_profile_name = requester.get_profile_name_string();
-                    let content = message.get_message_content().unwrap_or("".to_string());                    
+                    let content = message.get_message_content().unwrap_or("".to_string());
                     let receiver_profile = receiver.get_profile_name_string().unwrap_or("".to_string());
 
                     match serde_json::from_str::<SubscriptionGenericResponse>(&content) {
@@ -645,7 +671,7 @@ pub async fn handle_network_message_cases(
                             receiver_address, streamer_node_with_profile, requester_node_with_profile
                         ),
                     );
-                    
+
                     let streamer_node = streamer_node_with_profile.extract_node();
                     let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();
                     let requester_node = requester_node_with_profile.extract_node();
@@ -724,7 +750,7 @@ pub async fn handle_network_message_cases(
                     );
 
                     let streamer_node = streamer_node_with_profile.extract_node();
-                    let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();                    
+                    let streamer_profile_name = streamer_node_with_profile.get_profile_name_string().unwrap();
                     let requester_node = requester_node_with_profile.extract_node();
                     let requester_profile_name = requester_node_with_profile.get_profile_name_string().unwrap();
                     let item_tree_json_content = message.get_message_content().unwrap_or("".to_string());
@@ -763,7 +789,7 @@ pub async fn handle_network_message_cases(
                                             );
                                             let external_subscriber_manager =
                                                 external_subscription_manager.lock().await;
-                                            let result = external_subscriber_manager
+                                            let _ = external_subscriber_manager
                                                 .subscriber_current_state_response(
                                                     subscription_unique_id.get_unique_id().to_string(),
                                                     item_tree,
@@ -801,11 +827,7 @@ pub async fn handle_network_message_cases(
                                     // Handle the case where 'folder_state' is missing in metadata
                                 }
                             } else {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    "Metadata is missing",
-                                );
+                                shinkai_log(ShinkaiLogOption::Network, ShinkaiLogLevel::Error, "Metadata is missing");
                                 // Handle the case where metadata is missing
                             }
                         }
@@ -842,7 +864,7 @@ pub async fn handle_network_message_cases(
     }
 
     send_ack(
-        (sender_address.clone(), sender_profile_name.clone()),
+        (sender_address, sender_profile_name.clone()),
         clone_static_secret_key(my_encryption_secret_key),
         clone_signature_secret_key(my_signature_secret_key),
         sender_encryption_pk,
@@ -856,6 +878,7 @@ pub async fn handle_network_message_cases(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send_ack(
     peer: (SocketAddr, ShinkaiNameString),
     encryption_secret_key: EncryptionStaticKey, // not important for ping pong
@@ -865,8 +888,8 @@ pub async fn send_ack(
     receiver: ShinkaiNameString,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-    external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    _: Arc<Mutex<MySubscriptionsManager>>,
+    _: Arc<Mutex<ExternalSubscriberManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -897,6 +920,7 @@ pub struct PublicKeyInfo {
     pub encryption_public_key: x25519_dalek::PublicKey,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn ping_pong(
     peer: (SocketAddr, ShinkaiNameString),
     ping_or_pong: PingPong,
