@@ -725,8 +725,6 @@ impl VectorFS {
     pub fn extract_vrpack_in_folder(&mut self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {
         // Construct the base path for the VRPack extraction
         let vec_fs_base_path = writer.path.clone();
-        let mut vec_fs_folder_path = writer.path.clone();
-        vec_fs_folder_path.push(vrpack.name.clone());
 
         // Check if an entry already exists at vec_fs_base_path
         if self
@@ -739,7 +737,7 @@ impl VectorFS {
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
 
         for (vrkai, path) in vrkais_with_paths {
-            let parent_folder_path = vec_fs_folder_path.append_path_cloned(&path.parent_path());
+            let parent_folder_path = vec_fs_base_path.append_path_cloned(&path.parent_path());
             let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self)?;
             // Create the folders
             self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())?;
