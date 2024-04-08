@@ -710,6 +710,12 @@ impl VectorFS {
             }
         }
 
+        // Save the FSInternals into the FSDB
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+        let mut write_batch = writer.new_write_batch()?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
+
         Ok(())
     }
 
