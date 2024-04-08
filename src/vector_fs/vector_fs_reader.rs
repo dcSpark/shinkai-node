@@ -218,12 +218,6 @@ impl VectorFS {
                         )?;
                     }
 
-                    // // Record the folder's merkle hash in the hashmap instead of setting it immediately
-                    // println!(
-                    //     "Inserting {} as {}",
-                    //     inner_path.to_string(),
-                    //     folder.merkle_hash.to_string()
-                    // );
                     folder_merkle_hash_map.insert(inner_path.clone(), folder.merkle_hash.to_string());
                 }
                 FSEntry::Item(item) => {

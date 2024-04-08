@@ -467,6 +467,8 @@ impl ExternalSubscriberManager {
                 let vr_path_shared_folder = VRPath::from_string(&shared_folder)
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
+                println!("Shared folder path: {}", vr_path_shared_folder);
+
                 // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
                 let subscription_id = subscription_with_tree.subscription.subscription_id.clone();
                 shinkai_log(
