@@ -156,11 +156,7 @@ fn node_agent_registration() {
         );
 
         let node1_handler = tokio::spawn(async move {
-            shinkai_log(
-                ShinkaiLogOption::Tests,
-                ShinkaiLogLevel::Debug,
-                &format!("Starting Node 1"),
-            );
+            shinkai_log(ShinkaiLogOption::Tests, ShinkaiLogLevel::Debug, "Starting Node 1");
             let _ = node1.await.lock().await.start().await;
         });
 
@@ -170,7 +166,7 @@ fn node_agent_registration() {
             shinkai_log(
                 ShinkaiLogOption::Tests,
                 ShinkaiLogLevel::Debug,
-                &format!("\n\nRegistration of an Admin Profile"),
+                "\n\nRegistration of an Admin Profile",
             );
 
             {
@@ -242,7 +238,7 @@ fn node_agent_registration() {
                     let msg = ShinkaiMessageBuilder::get_last_messages_from_inbox(
                         clone_static_secret_key(&node1_profile_encryption_sk),
                         clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk.clone(),
+                        node1_encryption_pk,
                         inbox_name.to_string(),
                         10,
                         None,
@@ -282,16 +278,16 @@ fn node_agent_registration() {
             }
             {
                 // Check Profile inboxes (to confirm job's there)
-                let full_profile = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+                let full_profile = format!("{}/{}", node1_identity_name, node1_subidentity_name);
 
                 let msg = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     full_profile.clone().to_string(),
-                    node1_subidentity_name.clone().to_string(),
-                    node1_identity_name.clone().to_string(),
-                    node1_identity_name.clone().to_string(),
+                    node1_subidentity_name.to_string(),
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string(),
                 )
                 .unwrap();
 
@@ -312,7 +308,7 @@ fn node_agent_registration() {
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name,
                     node1_subidentity_name,
@@ -333,9 +329,9 @@ fn node_agent_registration() {
                     let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                         clone_static_secret_key(&node1_profile_encryption_sk),
                         clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk.clone(),
+                        node1_encryption_pk,
                         inbox_name.to_string(),
-                        3,
+                        4,
                         None,
                         "".to_string(),
                         sender.clone(),
@@ -349,30 +345,36 @@ fn node_agent_registration() {
                         .unwrap();
                     node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                     // eprintln!("*** node2_last_messages: {:?}", node2_last_messages);
-                    if node2_last_messages.len() >= 3 {
+                    if node2_last_messages.len() >= 4 {
                         break;
                     }
 
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
 
+                eprintln!("### node2_last_messages: {:?}", node2_last_messages);
                 let shinkai_message_content_agent = node2_last_messages[2].get_message_content().unwrap();
                 let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
                 assert_eq!(message_content_agent.content, message.to_string());
-                assert!(node2_last_messages.len() == 3);
+                assert!(node2_last_messages.len() == 4);
 
                 let shinkai_message_content_user = node2_last_messages[0].get_message_content().unwrap();
                 let prev_message_content_user: JobMessage =
                     serde_json::from_str(&shinkai_message_content_user).unwrap();
 
                 let offset = node2_last_messages[1].calculate_message_hash_for_pagination();
+                eprintln!("### offset: {:?}", offset);
+                eprintln!(
+                    "### message used for offset: {:?}",
+                    node2_last_messages[1].get_message_content().unwrap()
+                );
                 let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     inbox_name.to_string(),
-                    4,
+                    5,
                     Some(offset.clone()),
                     "".to_string(),
                     sender.clone(),
@@ -400,15 +402,15 @@ fn node_agent_registration() {
                 let read_msg = ShinkaiMessageBuilder::read_up_to_time(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     inbox_name.to_string(),
                     offset,
                     "".to_string(),
                     sender,
-                    node1_identity_name.clone().to_string(),
+                    node1_identity_name.to_string(),
                 )
                 .unwrap();
-                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                let (res2_sender, _) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::APIMarkAsReadUpTo {
                         msg: read_msg,
@@ -425,13 +427,13 @@ fn node_agent_registration() {
                 let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     inbox_name.to_string(),
-                    3,
+                    4,
                     None,
                     "".to_string(),
                     sender.clone(),
-                    node1_identity_name.clone().to_string(),
+                    node1_identity_name.to_string(),
                 )
                 .unwrap();
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -449,31 +451,33 @@ fn node_agent_registration() {
                     node2_last_messages.len()
                 );
 
-                assert!(node2_last_messages.len() == 1);
+                // Note(Nico): the backend was modified to do more repeats when chaining so the mocky endpoint returns the same message twice hence
+                // this odd result
+                assert!(node2_last_messages.len() == 2);
             }
             {
                 // Send a scheduled message
-                let message = "scheduled message".to_string();
-                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
-                let future_time_2_secs = ShinkaiStringTime::generate_time_in_future_with_secs(2);
+                // let message = "scheduled message".to_string();
+                // let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                // let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
+                // let future_time_2_secs = ShinkaiStringTime::generate_time_in_future_with_secs(2);
 
-                let msg = ShinkaiMessageBuilder::new(
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
-                )
-                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-                .external_metadata_with_schedule(node1_identity_name.clone().to_string(), sender, future_time_2_secs)
-                .message_raw_content(message.clone())
-                .internal_metadata_with_inbox(
-                    "".to_string(),
-                    "".to_string(),
-                    inbox_name.to_string(),
-                    EncryptionMethod::None,
-                    None,
-                )
-                .build();
+                // let msg = ShinkaiMessageBuilder::new(
+                //     clone_static_secret_key(&node1_profile_encryption_sk),
+                //     clone_signature_secret_key(&node1_profile_identity_sk),
+                //     node1_encryption_pk,
+                // )
+                // .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                // .external_metadata_with_schedule(node1_identity_name.to_string(), sender, future_time_2_secs)
+                // .message_raw_content(message.clone())
+                // .internal_metadata_with_inbox(
+                //     "".to_string(),
+                //     "".to_string(),
+                //     inbox_name.to_string(),
+                //     EncryptionMethod::None,
+                //     None,
+                // )
+                // .build();
 
                 abort_handler.abort();
             }

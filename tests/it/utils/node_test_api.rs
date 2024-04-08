@@ -3,7 +3,6 @@ use core::panic;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
@@ -19,6 +18,7 @@ use shinkai_node::schemas::smart_inbox::SmartInbox;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn api_registration_device_node_profile_main(
     node_commands_sender: Sender<NodeCommand>,
     node_profile_name: &str,
@@ -87,6 +87,7 @@ pub async fn api_registration_device_node_profile_main(
 
         // tokio::time::sleep(Duration::from_secs(1)).await;
 
+        #[allow(clippy::type_complexity)]        
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Result<Vec<Identity>, APIError>>,
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
@@ -133,7 +134,7 @@ pub async fn api_registration_profile_node(
         let msg = ShinkaiMessageBuilder::request_code_registration(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk.clone(),
+            node_encryption_pk,
             permissions,
             code_type,
             "main".to_string().clone(),
@@ -203,6 +204,7 @@ pub async fn api_registration_profile_node(
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
+        #[allow(clippy::type_complexity)]
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
             async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
@@ -221,11 +223,8 @@ pub async fn api_registration_profile_node(
             "Node has 1 subidentity"
         );
         eprintln!(
-            "{}",
-            format!(
-                "{} subidentity: {:?}",
-                node_profile_name, node2_all_subidentities[0].full_identity_name
-            )
+            "{} subidentity: {:?}",
+            node_profile_name, node2_all_subidentities[0].full_identity_name
         );
         assert_eq!(
             node2_all_subidentities[identities_number - 1].full_identity_name,
@@ -290,6 +289,7 @@ pub async fn api_try_re_register_profile_node(
         },
     }
 
+    #[allow(clippy::type_complexity)]
     let (res1_all_subidentities_sender, res1_all_subidentities_receiver): (
         async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
         async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
@@ -342,6 +342,7 @@ pub async fn api_agent_registration(
         eprintln!("code_message: {:?}", node_agent_registration);
         tokio::time::sleep(Duration::from_secs(1)).await;
 
+        #[allow(clippy::type_complexity)]
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Result<Vec<Identity>, APIError>>,
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
@@ -442,10 +443,11 @@ pub async fn api_create_job(
 
         assert!(node_job_creation.is_ok(), "Job was created");
 
-        return node_job_creation.unwrap();
+        node_job_creation.unwrap()
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn api_message_job(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
@@ -490,6 +492,7 @@ pub async fn api_message_job(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn api_initial_registration_with_no_code_for_device(
     node_commands_sender: Sender<NodeCommand>,
     node_profile_name: &str,
@@ -548,6 +551,7 @@ pub async fn api_initial_registration_with_no_code_for_device(
         Err(e) => panic!("Registration code error: {:?}", e),
     }
 
+    #[allow(clippy::type_complexity)]
     let (res_all_subidentities_sender, res_all_subidentities_receiver): (
         async_channel::Sender<Result<Vec<Identity>, APIError>>,
         async_channel::Receiver<Result<Vec<Identity>, APIError>>,
@@ -563,12 +567,9 @@ pub async fn api_initial_registration_with_no_code_for_device(
 
     assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
     eprintln!(
-        "{}",
-        format!(
-            "{} subidentity: {:?}",
-            node_profile_name,
-            node2_all_subidentities[0].get_full_identity_name()
-        )
+        "{} subidentity: {:?}",
+        node_profile_name,
+        node2_all_subidentities[0].get_full_identity_name()
     );
     assert_eq!(
         node2_all_subidentities[1].get_full_identity_name(),
@@ -610,7 +611,7 @@ pub async fn api_get_all_inboxes_from_profile(
         let node_job_message = res_message_job_receiver.recv().await.unwrap();
         eprintln!("get all inboxes: {:?}", node_job_message);
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
-        return node_job_message.unwrap();
+        node_job_message.unwrap()
     }
 }
 
@@ -658,6 +659,6 @@ pub async fn api_get_all_smart_inboxes_from_profile(
             .unwrap();
         let node_job_message = res_message_job_receiver.recv().await.unwrap();
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
-        return node_job_message.unwrap();
+        node_job_message.unwrap()
     }
 }
