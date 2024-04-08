@@ -1,6 +1,8 @@
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
+#[cfg(feature = "native-http")]
+use async_recursion::async_recursion;
 use async_trait::async_trait;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
@@ -19,7 +21,6 @@ use std::time::Duration;
 lazy_static! {
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
 }
-const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
 #[async_trait]
@@ -231,6 +232,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
+    #[async_recursion]
     #[cfg(feature = "native-http")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
     pub async fn generate_embedding_tei(
@@ -262,7 +264,11 @@ impl RemoteEmbeddingGenerator {
         let max_retries = 3;
         let mut retry_count = 0;
         let response = loop {
-            match request.try_clone().unwrap().send().await {
+            let cloned_request = match request.try_clone() {
+                Some(req) => req,
+                None => return Err(VRError::RequestFailed("Failed to clone request for retry".into())),
+            };
+            match cloned_request.send().await {
                 Ok(response) => break response,
                 Err(err) => {
                     if retry_count < max_retries {
@@ -308,11 +314,42 @@ impl RemoteEmbeddingGenerator {
                 ))),
             }
         } else {
-            // Handle non-successful HTTP responses (e.g., server error)
-            Err(VRError::RequestFailed(format!(
-                "HTTP request failed with status: {}",
-                response.status()
-            )))
+            // Check specifically for a 413 status code (Payload Too Large)
+            if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+                if let Some(max_size) = input_strings.iter().map(|s| s.len()).max() {
+                    // A way to exit the recursion worst case
+                    if max_size <= 100 {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                            response.status()
+                        )));
+                    }
+                    // Shortens any strings which are too long
+                    let shortened_max_size = if max_size > 100 { max_size - 100 } else { 100 };
+                    let shortened_input_strings: Vec<String> = input_strings
+                        .iter()
+                        .map(|s| {
+                            if s.len() > shortened_max_size {
+                                s.chars().take(shortened_max_size).collect()
+                            } else {
+                                s.clone()
+                            }
+                        })
+                        .collect();
+                    return self.generate_embedding_tei(shortened_input_strings, ids).await;
+                } else {
+                    return Err(VRError::RequestFailed(format!(
+                        "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                        response.status()
+                    )));
+                }
+            } else {
+                // Handle other non-successful HTTP responses (e.g., server error)
+                Err(VRError::RequestFailed(format!(
+                    "HTTP request failed with status: {}",
+                    response.status()
+                )))
+            }
         }
     }
 
@@ -350,7 +387,11 @@ impl RemoteEmbeddingGenerator {
         let max_retries = 3;
         let mut retry_count = 0;
         let response = loop {
-            match request.try_clone().unwrap().send() {
+            let cloned_request = match request.try_clone() {
+                Some(req) => req,
+                None => return Err(VRError::RequestFailed("Failed to clone request for retry".into())),
+            };
+            match cloned_request.send() {
                 Ok(response) => break response,
                 Err(err) => {
                     if retry_count < max_retries {
