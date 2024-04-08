@@ -23,10 +23,10 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use std::result::Result::Ok;
+use std::sync::Arc;
 use std::sync::Weak;
-use std::time::{Duration, Instant};
-use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::sync::{mpsc, Mutex, Semaphore};
+use std::time::Duration;
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
@@ -210,14 +210,12 @@ async fn test_process_job_queue_concurrency() {
     let long_running_task_result = tokio::time::timeout(timeout_duration, long_running_task).await;
 
     // Check the results of the tasks
-    match job_queue_handler_result {
-        Ok(_) => (),
-        Err(_) => (),
+    if job_queue_handler_result.is_err() {
+        // Handle the error case if necessary
     }
 
-    match long_running_task_result {
-        Ok(_) => (),
-        Err(_) => (),
+    if long_running_task_result.is_err() {
+        // Handle the error case if necessary
     }
 }
 
@@ -328,14 +326,13 @@ async fn test_sequential_process_for_same_job_id() {
     let long_running_task_result = tokio::time::timeout(timeout_duration, long_running_task).await;
 
     // Check the results of the tasks
-    match job_queue_handler_result {
-        Ok(_) => (),
-        Err(_) => (),
+    // Check the results of the tasks
+    if job_queue_handler_result.is_err() {
+        // Handle the error case if necessary
     }
 
-    match long_running_task_result {
-        Ok(_) => (),
-        Err(_) => (),
+    if long_running_task_result.is_err() {
+        // Handle the error case if necessary
     }
 
     let _ = db.lock().await;
