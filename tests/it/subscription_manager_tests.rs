@@ -15,8 +15,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
@@ -40,6 +39,8 @@ use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use crate::it::utils::node_test_api::api_get_all_smart_inboxes_from_profile;
 
 use super::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
@@ -80,6 +81,70 @@ fn generate_message_with_payload<T: ToString>(
         .build()
         .unwrap();
     message
+}
+
+// Function to recursively check if the actual response contains the expected structure
+fn check_structure(actual: &serde_json::Value, expected: &serde_json::Value) -> bool {
+    if let (Some(actual_folders), Some(expected_folders)) = (actual["child_folders"].as_array(), expected["child_folders"].as_array()) {
+        if actual_folders.len() != expected_folders.len() {
+            return false;
+        }
+        for (actual_folder, expected_folder) in actual_folders.iter().zip(expected_folders.iter()) {
+            if !check_folder(actual_folder, expected_folder) {
+                return false;
+            }
+        }
+    } else {
+        return false;
+    }
+    true
+}
+
+fn check_folder(actual_folder: &serde_json::Value, expected_folder: &serde_json::Value) -> bool {
+    let actual_name = actual_folder["name"].as_str().unwrap_or("Unknown Folder");
+    let expected_name = expected_folder["name"].as_str().unwrap_or("Unknown Folder");
+    if actual_name != expected_name {
+        return false;
+    }
+
+    let actual_path = actual_folder["path"].as_str().unwrap_or("Unknown Path");
+    let expected_path = expected_folder["path"].as_str().unwrap_or("Unknown Path");
+    if actual_path != expected_path {
+        return false;
+    }
+
+    let empty_vec = vec![];
+    let actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&empty_vec);
+    let expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&empty_vec);
+    if actual_subfolders.len() != expected_subfolders.len() {
+        return false;
+    }
+    for (actual_subfolder, expected_subfolder) in actual_subfolders.iter().zip(expected_subfolders.iter()) {
+        if !check_folder(actual_subfolder, expected_subfolder) {
+            return false;
+        }
+    }
+
+    let actual_items = actual_folder["child_items"].as_array().unwrap_or(&empty_vec);
+    let expected_items = expected_folder["child_items"].as_array().unwrap_or(&empty_vec);
+    if actual_items.len() != expected_items.len() {
+        return false;
+    }
+    for (actual_item, expected_item) in actual_items.iter().zip(expected_items.iter()) {
+        let actual_item_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
+        let expected_item_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
+        if actual_item_name != expected_item_name {
+            return false;
+        }
+
+        let actual_item_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
+        let expected_item_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
+        if actual_item_path != expected_item_path {
+            return false;
+        }
+    }
+
+    true
 }
 
 async fn fetch_last_messages(
@@ -517,14 +582,14 @@ fn subscription_manager_test() {
         let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
         let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-        let (node2_subidentity_sk, node2_subidentity_pk) = unsafe_deterministic_signature_keypair(101);
-        let (node2_subencryption_sk, node2_subencryption_pk) = unsafe_deterministic_encryption_keypair(101);
+        let (node2_profile_identity_sk, node2_profile_identity_pk) = unsafe_deterministic_signature_keypair(101);
+        let (node2_profile_encryption_sk, node2_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(101);
 
         let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
-        let node2_subencryption_sk_clone = node2_subencryption_sk.clone();
+        let node2_subencryption_sk_clone = node2_profile_encryption_sk.clone();
 
         let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
-        let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
+        let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_profile_identity_sk);
 
         let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
@@ -624,11 +689,11 @@ fn subscription_manager_test() {
 
         eprintln!(
             "Node 2 subidentity sk: {:?}",
-            signature_secret_key_to_string(clone_signature_secret_key(&node2_subidentity_sk))
+            signature_secret_key_to_string(clone_signature_secret_key(&node2_profile_identity_sk))
         );
         eprintln!(
             "Node 2 subidentity pk: {:?}",
-            signature_public_key_to_string(node2_subidentity_pk)
+            signature_public_key_to_string(node2_profile_identity_pk)
         );
 
         eprintln!(
@@ -646,7 +711,7 @@ fn subscription_manager_test() {
         );
         eprintln!(
             "Node 2 subencryption pk: {:?}",
-            encryption_public_key_to_string(node2_subencryption_pk)
+            encryption_public_key_to_string(node2_profile_encryption_pk)
         );
 
         eprintln!("Starting nodes");
@@ -698,7 +763,7 @@ fn subscription_manager_test() {
                     node2_identity_name,
                     node2_subencryption_sk_clone.clone(),
                     node2_encryption_pk,
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
                     1,
                 )
                 .await;
@@ -921,8 +986,8 @@ fn subscription_manager_test() {
                     None,
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),
-                    node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
                     node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
@@ -975,8 +1040,8 @@ fn subscription_manager_test() {
                     None,
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),
-                    node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
                     node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
@@ -1031,6 +1096,12 @@ fn subscription_manager_test() {
                                                 "children": {}
                                             }
                                         }
+                                    },
+                                    "shinkai_intro": {
+                                        "name": "shinkai_intro",
+                                        "path": "/shared_test_folder/shinkai_intro",
+                                        "last_modified": "2024-02-26T23:06:00.019065981+00:00",
+                                        "children": {}
                                     }
                                 }
                             },
@@ -1072,8 +1143,8 @@ fn subscription_manager_test() {
                     requirements,
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),
-                    node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
                     node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
@@ -1110,8 +1181,8 @@ fn subscription_manager_test() {
             }
             {
                 let msg = ShinkaiMessageBuilder::my_subscriptions(
-                    node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                    node2_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
                     node2_encryption_pk,
                     node2_identity_name.to_string().clone(),
                     node2_profile_name.to_string().clone(),
@@ -1172,34 +1243,143 @@ fn subscription_manager_test() {
             }
             {
                 eprintln!("Send updates to subscribers");
-                tokio::time::sleep(Duration::from_secs(10)).await;
-                
-                // TODO: check that node2 has the files from node1
-                eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+                let mut attempts = 0;
+                let max_attempts = 100;
+                let mut structure_matched = false;
 
-                let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
-                let msg = generate_message_with_payload(
-                    serde_json::to_string(&payload).unwrap(),
-                    MessageSchemaType::VecFsRetrievePathSimplifiedJson,
-                        node2_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node2_subidentity_sk),
+                while attempts < max_attempts && !structure_matched {
+                    
+                    eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+
+                    let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+                    let msg = generate_message_with_payload(
+                        serde_json::to_string(&payload).unwrap(),
+                        MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                        node2_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node2_profile_identity_sk),
                         node2_encryption_pk,
-                    &node2_identity_name.to_string().clone(),
-                    &node2_profile_name.to_string().clone(),
-                    node2_identity_name,
-                    "",
-                );
-            
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-            
-                // Send the command
-                node2_commands_sender
-                    .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                print_tree_simple(&resp);
+                        &node2_identity_name.to_string().clone(),
+                        &node2_profile_name.to_string().clone(),
+                        node2_identity_name,
+                        "",
+                    );
+
+                    // Prepare the response channel
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                    // Send the command
+                    node2_commands_sender
+                        .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                        .await
+                        .unwrap();
+                    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    // print_tree_simple(&resp);
+
+                    let expected_structure = serde_json::json!({
+                        "path": "/",
+                        "child_folders": [
+                            {
+                                "name": "shared_test_folder",
+                                "path": "/shared_test_folder",
+                                "child_folders": [
+                                    {
+                                        "name": "shared_test_folder",
+                                        "path": "/shared_test_folder/shared_test_folder",
+                                        "child_folders": [
+                                            {
+                                                "name": "shared_test_folder",
+                                                "path": "/shared_test_folder/shared_test_folder/shared_test_folder",
+                                                "child_folders": [
+                                                    {
+                                                        "name": "crypto",
+                                                        "path": "/shared_test_folder/shared_test_folder/shared_test_folder/crypto",
+                                                        "child_folders": [],
+                                                        "child_items": [
+                                                            {
+                                                                "name": "shinkai_intro",
+                                                                "path": "/shared_test_folder/shared_test_folder/shared_test_folder/crypto/shinkai_intro"
+                                                            }
+                                                        ]
+                                                    }
+                                                ],
+                                                "child_items": [
+                                                    {
+                                                        "name": "shinkai_intro",
+                                                        "path": "/shared_test_folder/shared_test_folder/shared_test_folder/shinkai_intro"
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "child_items": []
+                                    }
+                                ],
+                                "child_items": []
+                            }
+                        ],
+                        "child_items": []
+                    });
+
+                    let actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
+                    structure_matched = check_structure(&actual_resp_json, &expected_structure);
+                    if structure_matched {
+                        eprintln!("The actual folder structure matches the expected structure.");
+                        break;
+                    } else {
+                        eprintln!("The actual folder structure does not match the expected structure. Retrying...");
+                        eprintln!("Actual structure: {:?}", actual_resp_json);
+                    }
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+                assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+            }
+            {
+                eprintln!("Get All Inboxes for Profile Node1");
+                // TODO: modify to see your messages
+                // TODO: check that inboxes are being deleted after uploading a file and converting it
+                // let full_profile = format!("{}/{}", node1_identity_name.clone(), node1_profile_name.clone());
+                // let msg = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
+                //   clone_static_secret_key(&node1_profile_encryption_sk),
+                //   clone_signature_secret_key(&node1_profile_identity_sk),
+                //   node1_encryption_pk.clone(),
+                //   full_profile.clone().to_string(),
+                //   node1_profile_name.clone().to_string(),
+                //   node1_identity_name.clone().to_string(),
+                //   node1_identity_name.clone().to_string(),
+                // )
+                // .unwrap();
+
+                // let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                //   node1_commands_sender
+                //       .send(NodeCommand::APIGetAllInboxesForProfile { msg, res: res2_sender })
+                //       .await
+                //       .unwrap();
+                // let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                // eprintln!("node1_all_profiles: {:?}", node2_last_messages);
+
+                let inboxes = api_get_all_smart_inboxes_from_profile(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone(),
+                    node1_profile_name.clone(),
+                    node1_identity_name.clone(),
+                )
+                .await;
+                eprintln!("node1_all_profiles smart inboxes: {:?}", inboxes);
+
+                let inboxes = api_get_all_smart_inboxes_from_profile(
+                    node2_commands_sender.clone(),
+                    clone_static_secret_key(&node2_profile_encryption_sk),
+                    node2_encryption_pk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
+                    node2_identity_name.clone(),
+                    node2_profile_name.clone(),
+                    node2_identity_name.clone(),
+                )
+                .await;
+                eprintln!("node2_all_profiles smart inboxes: {:?}", inboxes);
             }
             {
                 // Dont forget to do this at the end
