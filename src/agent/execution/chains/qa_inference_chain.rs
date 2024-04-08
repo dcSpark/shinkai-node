@@ -12,6 +12,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -50,19 +51,28 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let (ret_nodes, summary_node_text) = JobManager::keyword_chained_job_scope_vector_search(
-            db.clone(),
-            vector_fs.clone(),
-            full_job.scope(),
-            query_text.clone(),
-            &user_profile,
-            generator.clone(),
-            20,
-        )
-        .await?;
+
+        // Vector Search if the scope isn't empty.
+        let scope_is_empty = full_job.scope().is_empty();
+        let mut ret_nodes: Vec<RetrievedNode> = vec![];
+        let mut summary_node_text = String::new();
+        if !scope_is_empty {
+            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
+                db.clone(),
+                vector_fs.clone(),
+                full_job.scope(),
+                query_text.clone(),
+                &user_profile,
+                generator.clone(),
+                20,
+            )
+            .await?;
+            ret_nodes = ret;
+            summary_node_text = summary;
+        }
 
         // Use the default prompt if not reached final iteration count, else use final prompt
-        let is_not_final = iteration_count < max_iterations && !full_job.scope.is_empty();
+        let is_not_final = iteration_count < max_iterations && !scope_is_empty;
         let filled_prompt = if is_not_final {
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),

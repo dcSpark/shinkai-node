@@ -94,7 +94,9 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
 
         // Add up to previous 10 step results from history
+        let mut step_history_is_empty = true;
         if let Some(step_history) = job_step_history {
+            step_history_is_empty = step_history.is_empty();
             prompt.add_step_history(step_history, 10, 98);
         }
 
@@ -144,6 +146,12 @@ impl JobPromptGenerator {
             100,
         );
 
+        let this_clause = if step_history_is_empty {
+            "When the user talks about `it` or `this`, they are referencing the content."
+        } else {
+            "When the user talks about `it` or `this`, they are referencing the previous message."
+        };
+
         // Tell the LLM about the previous search term (up to max 3 words to not confuse it) to avoid searching the same
         if let Some(mut prev_search) = prev_search_text {
             let words: Vec<&str> = prev_search.split_whitespace().collect();
@@ -175,7 +183,9 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
 
         // Add up to previous 10 step results from history
+        let mut step_history_is_empty = true;
         if let Some(step_history) = job_step_history {
+            step_history_is_empty = step_history.is_empty();
             prompt.add_step_history(step_history, 10, 98);
         }
 
@@ -196,28 +206,18 @@ impl JobPromptGenerator {
             );
         }
 
-        // TODO: Either re-introduce this or delete it after testing with more QA in practice.
-        // // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
-        // if !ret_nodes.is_empty() {
-        //     prompt.add_content(
-        //         "Here is a list of relevant new content provided for you to potentially use while answering:"
-        //             .to_string(),
-        //         SubPromptType::System,
-        //         97,
-        //     );
-        //     for node in ret_nodes {
-        //         if let Some(content) = node.format_for_prompt(3500) {
-        //             prompt.add_content(content, SubPromptType::System, 97);
-        //         }
-        //     }
-        // }
-
         let pre_task_text = format!("The user has asked: ");
         prompt.add_content(pre_task_text, SubPromptType::System, 99);
         prompt.add_content(job_task, SubPromptType::User, 100);
 
+        let this_clause = if step_history_is_empty {
+            "If the user talks about `it` or `this`, they are referencing the content."
+        } else {
+            "If the user talks about `it` or `this`, they are referencing the previous message."
+        };
+
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked:"),
+            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked:", this_clause),
             SubPromptType::System,
             98
         );

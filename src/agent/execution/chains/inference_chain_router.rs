@@ -67,8 +67,6 @@ impl JobManager {
                         2, // TODO: Make this configurable based on model capabilities
                     )
                     .await?;
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone());
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }
