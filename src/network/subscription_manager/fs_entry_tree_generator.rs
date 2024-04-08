@@ -63,7 +63,13 @@ impl FSEntryTreeGenerator {
                         root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
                     }
                     FSEntry::Item(fs_item) => {
-                        // If you need to handle items at the root level, adjust here
+                        let item_tree = FSEntryTree {
+                            name: fs_item.name.clone(),
+                            path: path.clone().to_string(),
+                            last_modified: fs_item.last_written_datetime,
+                            children: HashMap::new(), // Items do not have children
+                        };
+                        root_children.insert(fs_item.name.clone(), Arc::new(item_tree));
                     }
                     _ => {} // Handle FSEntry::Root if necessary
                 }
@@ -73,7 +79,7 @@ impl FSEntryTreeGenerator {
         // Construct the root of the tree
         let tree = FSEntryTree {
             name: "/".to_string(),
-            path: path,
+            path,
             last_modified: Utc::now(),
             children: root_children,
         };

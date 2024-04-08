@@ -161,6 +161,7 @@ impl NetworkJobManager {
         network_job_manager
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
@@ -302,7 +303,13 @@ impl NetworkJobManager {
                                             "Job processed successfully",
                                         );
                                     } // handle success case
-                                    Err(_) => {} // handle error case
+                                    Err(_) => {
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Error,
+                                            "Job processing failed",
+                                        );
+                                    } // handle error case
                                 }
                             }
                             Ok(None) => {}
@@ -316,7 +323,7 @@ impl NetworkJobManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = mem::replace(&mut handles, Vec::new());
+                let handles_to_join = mem::take(&mut handles);
                 futures::future::join_all(handles_to_join).await;
                 handles.clear();
 
@@ -338,6 +345,7 @@ impl NetworkJobManager {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
         db: Weak<Mutex<ShinkaiDB>>,
@@ -418,16 +426,17 @@ impl NetworkJobManager {
         Ok(network_job.receiver_address.to_string())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
         db: Weak<Mutex<ShinkaiDB>>,
         vector_fs: Weak<Mutex<VectorFS>>,
         my_node_profile_name: ShinkaiName,
-        my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SigningKey,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
-        external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        _: EncryptionStaticKey,
+        _: SigningKey,
+        _: Arc<Mutex<IdentityManager>>,
+        _: Arc<Mutex<MySubscriptionsManager>>,
+        _: Arc<Mutex<ExternalSubscriberManager>>,
     ) -> Result<(), NetworkJobQueueError> {
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -525,14 +534,14 @@ impl NetworkJobManager {
             }
 
             // Create all folders up and until the parent folder
-            let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
-            let result = vector_fs_lock.create_new_folder_auto(&writer, parent_vr_path.clone());
+            // let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
+            // let result = vector_fs_lock.create_new_folder_auto(&writer, destination_vr_path.clone());
 
             // Unpack the VRPack
             let parent_writer = vector_fs_lock
                 .new_writer(
                     local_subscriber.clone(),
-                    parent_vr_path.clone(),
+                    destination_vr_path.clone(),
                     local_subscriber.clone(),
                 )
                 .unwrap();
@@ -576,7 +585,7 @@ impl NetworkJobManager {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
+            &format!("{} {} > Got message from {:?}", my_node_profile_name, receiver_address, unsafe_sender_address),
         );
 
         // Extract and validate the message
