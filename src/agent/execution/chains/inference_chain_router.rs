@@ -52,6 +52,12 @@ impl JobManager {
         match chosen_chain {
             InferenceChain::QAChain => {
                 if let Some(agent) = agent_found {
+                    // TODO: Make this scaled based on model capabilities
+                    let qa_iteration_count = if full_job.scope.contains_significant_content() {
+                        3
+                    } else {
+                        2
+                    };
                     inference_response_content = JobManager::start_qa_inference_chain(
                         db,
                         vector_fs,
@@ -64,7 +70,7 @@ impl JobManager {
                         None,
                         None,
                         1,
-                        2, // TODO: Make this configurable based on model capabilities
+                        qa_iteration_count,
                     )
                     .await?;
                 } else {

@@ -60,6 +60,21 @@ impl JobScope {
             && self.network_folders.is_empty()
     }
 
+    /// Determines if the JobScope contains significant amount of content to justify
+    /// more advanced vector searching/more iterations in inference chains.
+    pub fn contains_significant_content(&self) -> bool {
+        let mut count = 0;
+
+        // Each VRKai and VectorFSItem counts as 1
+        count += self.local_vrkai.len() + self.vector_fs_items.len();
+
+        // Each VRPack and folder (both VectorFS and Network) counts as 5
+        count += (self.local_vrpack.len() + self.vector_fs_folders.len() + self.network_folders.len()) * 5;
+
+        // Check if the total count is >= 5
+        count >= 5
+    }
+
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
         let j = serde_json::to_string(self)?;
         Ok(j.into_bytes())
