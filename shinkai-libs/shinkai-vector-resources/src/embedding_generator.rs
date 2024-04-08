@@ -318,14 +318,14 @@ impl RemoteEmbeddingGenerator {
             if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
                 if let Some(max_size) = input_strings.iter().map(|s| s.len()).max() {
                     // A way to exit the recursion worst case
-                    if max_size <= 100 {
+                    if max_size <= 50 {
                         return Err(VRError::RequestFailed(format!(
                             "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
                             response.status()
                         )));
                     }
                     // Shortens any strings which are too long
-                    let shortened_max_size = if max_size > 100 { max_size - 100 } else { 100 };
+                    let shortened_max_size = if max_size > 50 { max_size - 50 } else { 50 };
                     let shortened_input_strings: Vec<String> = input_strings
                         .iter()
                         .map(|s| {
@@ -336,6 +336,7 @@ impl RemoteEmbeddingGenerator {
                             }
                         })
                         .collect();
+
                     return self.generate_embedding_tei(shortened_input_strings, ids).await;
                 } else {
                     return Err(VRError::RequestFailed(format!(

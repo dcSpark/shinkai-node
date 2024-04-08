@@ -33,26 +33,31 @@ impl EmbeddingModelType {
     }
 
     /// Returns the maximum allowed token count for an input string to be embedded, based on the embedding model
+
+    /// Returns the maximum allowed token count for an input string to be embedded, based on the embedding model
     pub fn max_input_token_count(&self) -> usize {
+        static CONTEXT_512: usize = 400;
+        static CONTEXT_8200: usize = 7800;
+
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => match model {
-                TextEmbeddingsInference::AllMiniLML6v2 => 400,
-                TextEmbeddingsInference::AllMiniLML12v2 => 400,
-                TextEmbeddingsInference::MultiQAMiniLML6 => 400,
-                TextEmbeddingsInference::BgeLargeEnv1_5 => 400,
-                TextEmbeddingsInference::BgeBaseEn1_5 => 400,
-                TextEmbeddingsInference::EmberV1 => 400,
-                TextEmbeddingsInference::GteLarge => 400,
-                TextEmbeddingsInference::GteBase => 400,
-                TextEmbeddingsInference::E5LargeV2 => 400,
-                TextEmbeddingsInference::BgeSmallEn1_5 => 400,
-                TextEmbeddingsInference::E5BaseV2 => 400,
-                TextEmbeddingsInference::MultilingualE5Large => 400,
-                TextEmbeddingsInference::NomicEmbedText1_5 => 7800,
-                TextEmbeddingsInference::Other(_) => 400,
+                TextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
+                TextEmbeddingsInference::AllMiniLML12v2 => CONTEXT_512,
+                TextEmbeddingsInference::MultiQAMiniLML6 => CONTEXT_512,
+                TextEmbeddingsInference::BgeLargeEnv1_5 => CONTEXT_512,
+                TextEmbeddingsInference::BgeBaseEn1_5 => CONTEXT_512,
+                TextEmbeddingsInference::EmberV1 => CONTEXT_512,
+                TextEmbeddingsInference::GteLarge => CONTEXT_512,
+                TextEmbeddingsInference::GteBase => CONTEXT_512,
+                TextEmbeddingsInference::E5LargeV2 => CONTEXT_512,
+                TextEmbeddingsInference::BgeSmallEn1_5 => CONTEXT_512,
+                TextEmbeddingsInference::E5BaseV2 => CONTEXT_512,
+                TextEmbeddingsInference::MultilingualE5Large => CONTEXT_512,
+                TextEmbeddingsInference::NomicEmbedText1_5 => CONTEXT_8200,
+                TextEmbeddingsInference::Other(_) => CONTEXT_512,
             },
             EmbeddingModelType::OpenAI(model) => match model {
-                OpenAIModelType::OpenAITextEmbeddingAda002 => 8190,
+                OpenAIModelType::OpenAITextEmbeddingAda002 => CONTEXT_8200,
             },
         }
     }
