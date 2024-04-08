@@ -496,6 +496,7 @@ impl NetworkJobManager {
         };
         let destination_vr_path =
             VRPath::from_string(&destination_path).map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
+        let parent_vr_path = destination_vr_path.parent_path();
 
         let local_subscriber = ShinkaiName::from_node_and_profile_names(
             subscription.subscriber_node.node_name,
@@ -518,7 +519,7 @@ impl NetworkJobManager {
                 .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
                 .is_ok();
 
-            let writer = vector_fs_lock
+            let destination_writer = vector_fs_lock
                 .new_writer(
                     local_subscriber.clone(),
                     destination_vr_path.clone(),
@@ -527,24 +528,17 @@ impl NetworkJobManager {
                 .unwrap();
 
             if path_already_exists {
-                let deletion_writer = writer
-                    .new_writer_copied_data(destination_vr_path.clone(), &mut vector_fs_lock)
-                    .unwrap();
-                vector_fs_lock.delete_folder(&deletion_writer)?;
+                vector_fs_lock.delete_folder(&destination_writer)?;
             }
 
-            // Create all folders up and until the parent folder
-            // let parent_vr_path = destination_vr_path.pop_cloned().pop_cloned();
-            // let result = vector_fs_lock.create_new_folder_auto(&writer, destination_vr_path.clone());
-
-            // Unpack the VRPack
             let parent_writer = vector_fs_lock
                 .new_writer(
                     local_subscriber.clone(),
-                    destination_vr_path.clone(),
+                    parent_vr_path.clone(),
                     local_subscriber.clone(),
                 )
                 .unwrap();
+
             let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);
 
             {
@@ -585,7 +579,10 @@ impl NetworkJobManager {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} {} > Got message from {:?}", my_node_profile_name, receiver_address, unsafe_sender_address),
+            &format!(
+                "{} {} > Got message from {:?}",
+                my_node_profile_name, receiver_address, unsafe_sender_address
+            ),
         );
 
         // Extract and validate the message

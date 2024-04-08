@@ -724,22 +724,21 @@ impl VectorFS {
     /// as the folder name which everything gets extracted into.
     pub fn extract_vrpack_in_folder(&mut self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {
         // Construct the base path for the VRPack extraction
-        let vec_fs_base_path = writer.path.clone();
-        let mut vec_fs_folder_path = writer.path.clone();
-        vec_fs_folder_path.push(vrpack.name.clone());
+        let base_path = writer.path.clone();
 
         // Check if an entry already exists at vec_fs_base_path
+        let unpack_destination_path = base_path.push_cloned(vrpack.name.to_string());
         if self
-            .validate_path_points_to_entry(vec_fs_base_path.clone(), &writer.profile)
+            .validate_path_points_to_entry(unpack_destination_path.clone(), &writer.profile)
             .is_ok()
         {
-            return Err(VectorFSError::CannotOverwriteFSEntry(vec_fs_base_path.clone()));
+            return Err(VectorFSError::CannotOverwriteFSEntry(unpack_destination_path.clone()));
         }
 
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
 
         for (vrkai, path) in vrkais_with_paths {
-            let parent_folder_path = vec_fs_folder_path.append_path_cloned(&path.parent_path());
+            let parent_folder_path = base_path.append_path_cloned(&path.parent_path());
             let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self)?;
             // Create the folders
             self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())?;

@@ -1275,7 +1275,7 @@ fn subscription_manager_test() {
                     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     // print_tree_simple(&resp);
 
-                    let expected_structure = serde_json::json!({
+                   let expected_structure = serde_json::json!({
                         "path": "/",
                         "child_folders": [
                             {
@@ -1283,37 +1283,23 @@ fn subscription_manager_test() {
                                 "path": "/shared_test_folder",
                                 "child_folders": [
                                     {
-                                        "name": "shared_test_folder",
-                                        "path": "/shared_test_folder/shared_test_folder",
-                                        "child_folders": [
+                                        "name": "crypto",
+                                        "path": "/shared_test_folder/crypto",
+                                        "child_folders": [],
+                                        "child_items": [
                                             {
-                                                "name": "shared_test_folder",
-                                                "path": "/shared_test_folder/shared_test_folder/shared_test_folder",
-                                                "child_folders": [
-                                                    {
-                                                        "name": "crypto",
-                                                        "path": "/shared_test_folder/shared_test_folder/shared_test_folder/crypto",
-                                                        "child_folders": [],
-                                                        "child_items": [
-                                                            {
-                                                                "name": "shinkai_intro",
-                                                                "path": "/shared_test_folder/shared_test_folder/shared_test_folder/crypto/shinkai_intro"
-                                                            }
-                                                        ]
-                                                    }
-                                                ],
-                                                "child_items": [
-                                                    {
-                                                        "name": "shinkai_intro",
-                                                        "path": "/shared_test_folder/shared_test_folder/shared_test_folder/shinkai_intro"
-                                                    }
-                                                ]
+                                                "name": "shinkai_intro",
+                                                "path": "/shared_test_folder/crypto/shinkai_intro"
                                             }
-                                        ],
-                                        "child_items": []
+                                        ]
                                     }
                                 ],
-                                "child_items": []
+                                "child_items": [
+                                    {
+                                        "name": "shinkai_intro",
+                                        "path": "/shared_test_folder/shinkai_intro"
+                                    }
+                                ]
                             }
                         ],
                         "child_items": []
