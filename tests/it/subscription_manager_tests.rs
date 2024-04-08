@@ -1096,6 +1096,12 @@ fn subscription_manager_test() {
                                                 "children": {}
                                             }
                                         }
+                                    },
+                                    "shinkai_intro": {
+                                        "name": "shinkai_intro",
+                                        "path": "/shared_test_folder/shinkai_intro",
+                                        "last_modified": "2024-02-26T23:06:00.019065981+00:00",
+                                        "children": {}
                                     }
                                 }
                             },
