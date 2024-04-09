@@ -172,6 +172,67 @@ impl RetrievedNode {
             None => String::new(),
         }
     }
+
+    /// Sets the proximity_group_id in the node's metadata.
+    pub fn set_proximity_group_id(&mut self, proximity_group_id: String) {
+        let metadata = self.node.metadata.get_or_insert_with(HashMap::new);
+        metadata.insert("proximity_group_id".to_string(), proximity_group_id);
+    }
+
+    /// Gets the proximity_group_id from the node's metadata if it exists.
+    pub fn get_proximity_group_id(&self) -> Option<&String> {
+        self.node.metadata.as_ref()?.get("proximity_group_id")
+    }
+
+    /// Removes the proximity_group_id from the node's metadata if it exists.
+    pub fn remove_proximity_group_id(&mut self) {
+        if let Some(metadata) = &mut self.node.metadata {
+            metadata.remove("proximity_group_id");
+            if metadata.is_empty() {
+                self.node.metadata = None;
+            }
+        }
+    }
+
+    /// Groups the given RetrievedNodes by their proximity_group_id.
+    /// Can only be used with nodes returned using `ResultsMode::ProximitySearch`, else errors.
+    pub fn group_proximity_results(nodes: &Vec<RetrievedNode>) -> Result<Vec<Vec<RetrievedNode>>, VRError> {
+        let mut grouped_results: Vec<Vec<RetrievedNode>> = Vec::new();
+        let mut current_group: Vec<RetrievedNode> = Vec::new();
+        let mut current_group_id: Option<String> = None;
+
+        for node in nodes {
+            match node.get_proximity_group_id() {
+                Some(group_id) => {
+                    if current_group_id.as_ref() == Some(group_id) {
+                        // Current node belongs to the current group
+                        current_group.push(node.clone());
+                    } else {
+                        // Current node starts a new group
+                        if !current_group.is_empty() {
+                            grouped_results.push(current_group);
+                            current_group = Vec::new();
+                        }
+                        current_group.push(node.clone());
+                        current_group_id = Some(group_id.clone());
+                    }
+                }
+                None => {
+                    // If the node does not have a proximity_group_id, return an error
+                    return Err(VRError::ResourceDoesNotSupportOrderedOperations(
+                        node.resource_header.reference_string(),
+                    ));
+                }
+            }
+        }
+
+        // Add the last group if it's not empty
+        if !current_group.is_empty() {
+            grouped_results.push(current_group);
+        }
+
+        Ok(grouped_results)
+    }
 }
 
 /// Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,
