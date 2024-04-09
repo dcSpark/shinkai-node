@@ -465,7 +465,7 @@ fn test_manual_resource_vector_search() {
         query_embedding1.clone(),
         100,
         TraversalMethod::Exhaustive,
-        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
@@ -474,11 +474,44 @@ fn test_manual_resource_vector_search() {
         query_embedding2.clone(),
         100,
         TraversalMethod::Exhaustive,
-        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_eq!(res.len(), 3);
+
+    // The nodes are already included in the first top results proximity, so this checks that there's no more.
+    let res = fruit_doc.vector_search_customized(
+        query_embedding2.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(2, 1))],
+        None,
+    );
+    assert_eq!(res.len(), 3);
+
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+
+    println!("\n\nFruit doc:");
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
+
+    // Check that proximity window works
+    let query_string = "Whats an apple?";
+    let query_embedding_fruit = generator.generate_embedding_default_blocking(query_string).unwrap();
+
+    let res = fruit_doc.vector_search_customized(
+        query_embedding_fruit.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 2))],
+        None,
+    );
+    for result in res {
+        println!("Result: {}", result.retrieval_path);
+    }
+    // assert_eq!(res.len(), 5);
+    assert!(1 == 2);
 
     // Check the metadata_index
     println!("Metdata index: {:?}", fruit_doc.metadata_index());

@@ -55,6 +55,8 @@ impl OrderedVectorResource for DocumentVectorResource {
     fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
 
+        println!("Proximity window: {}", proximity_window);
+
         // Check if id is within valid range
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));

@@ -87,30 +87,33 @@ pub trait VectorResourceSearch: VectorResourceCore {
             let ret_path = node.retrieval_path;
             let path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
+            let node_id = node.node.id.clone();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
-                        s.chars().take(25).collect::<String>() + "..."
+                        format!("{} - {}", node_id, s.chars().take(25).collect::<String>() + "...")
                     } else {
-                        s.to_string()
+                        format!("{} - {}", node_id, s.to_string())
                     }
                 }
                 NodeContent::Resource(resource) => {
                     if path_depth == 1 {
                         println!(" ");
                     }
+                    // Decide what to print for start
                     format!(
-                        "{} <Folder> - {} Nodes Held Inside",
+                        "{} - {} <Folder> - {} Nodes Held Inside",
+                        node_id,
                         resource.as_trait_object().name(),
                         resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    format!("{} <External Content>", external_content)
+                    format!("{} - {} <External Content>", node_id, external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    format!("{} <VRHeader>", header.reference_string())
+                    format!("{} - {} <VRHeader>", node_id, header.reference_string())
                 }
             };
             // Adding merkle hash if it exists to output string
@@ -353,18 +356,37 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         // Check if we need to adjust based on the ResultsMode
         if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
-            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
-                if let Some(first_result) = results.first() {
-                    if let Ok(new_results) =
-                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
-                    {
-                        results = new_results
+            if let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode {
+                let mut paths_checked = HashMap::new();
+                let mut new_results = Vec::new();
+                let mut iter = results.iter().cloned();
+
+                while new_results.len() < num_of_top_results as usize {
+                    if let Some(top_result) = iter.next() {
+                        // Check if the node has already been included, then skip
+                        if paths_checked.contains_key(&top_result.retrieval_path) {
+                            continue;
+                        }
+
+                        println!("Top result path: {}", top_result.retrieval_path);
+                        match self.proximity_retrieve_node_at_path(top_result.retrieval_path.clone(), proximity_window)
+                        {
+                            Ok(mut proximity_results) => {
+                                // Insert each retrieved node's path into the hashmap and append to new_results
+                                for proximity_result in &proximity_results {
+                                    paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                }
+
+                                new_results.append(&mut proximity_results);
+                            }
+                            Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
+                        }
                     } else {
-                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
-                        // then just return the single highest scored node as the failure case when using proximity search.
-                        results = vec![first_result.clone()]
+                        // Break the loop if there are no more results to process
+                        break;
                     }
                 }
+                results = new_results;
             }
         }
 
