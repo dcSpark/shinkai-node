@@ -100,7 +100,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         println!(" ");
                     }
                     format!(
-                        "{} <Folder> - {} Nodes Held Inside",
+                        "{} <Vector Resource> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
                         resource.as_trait_object().get_root_embeddings().len()
                     )

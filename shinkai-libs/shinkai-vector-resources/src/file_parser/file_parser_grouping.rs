@@ -190,6 +190,7 @@ impl ShinkaiFileParser {
         metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
     }
+
     /// Internal method used to push into correct group for hierarchical grouping
     pub fn push_group_to_appropriate_parent(
         group: TextGroup,
@@ -206,6 +207,7 @@ impl ShinkaiFileParser {
             groups.push(group);
         }
     }
+
     /// Splits a string into chunks at the nearest whitespace to a given size
     pub fn split_into_chunks(text: &str, chunk_size: usize) -> Vec<String> {
         let mut chunks = Vec::new();
@@ -266,7 +268,7 @@ impl ShinkaiFileParser {
             .join(" ")
     }
 
-    /// Concatenate  text up to a maximum size.
+    /// Concatenate text up to a maximum size.
     pub fn concatenate_groups_up_to_max_size(elements: &Vec<TextGroup>, max_size: usize) -> String {
         let mut desc = String::new();
         for e in elements {
