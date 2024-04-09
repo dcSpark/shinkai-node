@@ -6,7 +6,7 @@ use reqwest::multipart::{Form, Part};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use uuid::Uuid;
 
 use crate::db::db_cron_task::CronTask;

@@ -1,7 +1,7 @@
 use super::DistributionInfo;
+use crate::file_parser::unstructured_parser::UnstructuredParser;
 use crate::resource_errors::VRError;
 use crate::source::TextChunkingStrategy;
-use crate::unstructured::unstructured_parser::UnstructuredParser;
 use crate::vector_resource::{DocumentFileType, SourceFileType, VRPath};
 use chrono::{DateTime, Utc};
 use regex::Regex;

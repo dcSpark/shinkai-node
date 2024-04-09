@@ -1330,6 +1330,7 @@ mod tests {
         let sender_subidentity = "main".to_string();
         let receiver = ShinkaiNameString::from("@@receiver_node.shinkai");
         let receiver_subidentity = "main".to_string(); // Updated as per instruction
+        let datetime = "2023-07-02T20:53:34Z".to_string();
 
         // Call the function and check the result
         let result = ShinkaiMessageBuilderWrapper::vecfs_create_items(
@@ -1338,6 +1339,7 @@ mod tests {
             receiver_public_key_string.clone(),
             destination_path.clone(),
             file_inbox.clone(),
+            Some(datetime.clone()),
             sender.clone(),
             sender_subidentity.clone(),
             receiver.clone(),

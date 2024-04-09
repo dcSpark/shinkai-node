@@ -28,7 +28,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
@@ -286,12 +286,20 @@ pub async fn initialize_node() -> Result<
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_server = tokio::spawn(async move {
-        node_api::run_api(
+        if let Err(e) = node_api::run_api(
             node_commands_sender,
             api_listen_address,
             global_identity_name.clone().to_string(),
         )
-        .await;
+        .await
+        {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("API server failed to start: {}", e),
+            );
+            panic!("API server failed to start: {}", e);
+        }
     });
 
     let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());

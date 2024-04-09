@@ -18,7 +18,7 @@ pub fn default_vector_resource_doc() -> DocumentVectorResource {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSourceReference::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com"),
         true,
     );
 
@@ -44,12 +44,12 @@ pub fn default_vector_resource_doc() -> DocumentVectorResource {
 
 fn default_vr_kai() -> VRKai {
     let resource = BaseVectorResource::Document(default_vector_resource_doc());
-    VRKai::new(resource, None, None)
+    VRKai::new(resource, None)
 }
 
 fn default_vr_pack() -> VRPack {
     let vrkai = default_vr_kai();
-    let mut vrpack = VRPack::new_empty();
+    let mut vrpack = VRPack::new_empty("");
     vrpack.insert_vrkai(&vrkai, VRPath::root());
     vrpack
 }
@@ -195,7 +195,7 @@ fn test_manual_resource_vector_search() {
     let mut map_resource = MapVectorResource::new_empty(
         "Tech Facts",
         Some("A collection of facts about technology"),
-        VRSourceReference::new_uri_ref("veryrealtechfacts.com", None),
+        VRSourceReference::new_uri_ref("veryrealtechfacts.com"),
         true,
     );
 
@@ -226,7 +226,7 @@ fn test_manual_resource_vector_search() {
     let mut fruit_doc = DocumentVectorResource::new_empty(
         "Fruit Facts",
         Some("A collection of facts about fruits"),
-        VRSourceReference::new_uri_ref("ostensiblyrealfruitfacts.com", None),
+        VRSourceReference::new_uri_ref("ostensiblyrealfruitfacts.com"),
         true,
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -744,7 +744,7 @@ fn test_checking_embedding_similarity() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSourceReference::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com"),
         true,
     );
 
@@ -815,7 +815,7 @@ async fn test_embeddings_coherence() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSourceReference::new_uri_ref("animalwildlife.com", None),
+        VRSourceReference::new_uri_ref("animalwildlife.com"),
         true,
     );
 

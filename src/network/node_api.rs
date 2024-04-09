@@ -12,6 +12,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
+use tokio::net::TcpListener;
 use std::net::SocketAddr;
 use warp::Buf;
 use warp::Filter;
@@ -103,7 +104,11 @@ impl From<String> for APIError {
 
 impl warp::reject::Reject for APIError {}
 
-pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_name: String) {
+pub async fn run_api(
+    node_commands_sender: Sender<NodeCommand>,
+    address: SocketAddr,
+    node_name: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     shinkai_log(
         ShinkaiLogOption::API,
         ShinkaiLogLevel::Info,
@@ -549,7 +554,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                 api_subscription_available_shared_items_open_handler(node_commands_sender.clone(), message)
             })
     };
-    
+
     // POST v1/my_subscriptions
     let my_subscriptions = {
         let node_commands_sender = node_commands_sender.clone();
@@ -659,7 +664,20 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .with(log)
         .with(cors);
 
-    warp::serve(routes).run(address).await;
+    // Attempt to bind to the address before serving
+    let try_bind = TcpListener::bind(&address).await;
+
+    match try_bind {
+        Ok(_) => {
+            drop(try_bind);
+            warp::serve(routes).run(address).await;
+            Ok(())
+        }
+        Err(e) => {
+            // If binding fails, return an error
+            Err(Box::new(e))
+        }
+    }
 }
 
 async fn handle_node_command<T, U, V>(

@@ -164,6 +164,8 @@ pub struct FSFolder {
     pub last_written_datetime: DateTime<Utc>,
     /// Merkle hash comprised of all of the FSEntries within this folder
     pub merkle_hash: String,
+    // pub read_permission:
+    // pub write_permission:
 }
 
 impl FSFolder {

@@ -1,5 +1,8 @@
 use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::{agent::job_manager::JobManager, schemas::identity::Identity};
+use crate::{
+    agent::{job_manager::JobManager, parsing_helper::ParsingHelper},
+    schemas::identity::Identity,
+};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -182,13 +185,13 @@ impl Node {
             .generate_query_embedding_using_reader(input_payload.search, &reader)
             .await
             .unwrap();
-        let search_results = vector_fs.vector_search_fs_item(&reader, query_embedding, max_resources_to_search).unwrap();
+        let search_results = vector_fs
+            .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
+            .unwrap();
 
         let results: Vec<String> = search_results
             .into_iter()
-            .map(|res| {
-                res.path.to_string()
-            })
+            .map(|res| res.path.to_string())
             .take(max_results as usize)
             .collect();
 
@@ -911,16 +914,14 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
-        // TODO: Decide how frontend relays distribution info so it can be properly added
-        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
         let mut dist_files = vec![];
         for file in files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, None);
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
             dist_files.push((file.0, file.1, distribution_info));
         }
 
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais = JobManager::process_files_into_vrkai(
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(
             dist_files,
             &self.embedding_generator,
             None,

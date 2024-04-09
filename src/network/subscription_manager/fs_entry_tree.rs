@@ -45,6 +45,10 @@ impl FSEntryTree {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.name == "/" && self.path == "/" && self.children.is_empty()
+    }
+
     // Method to transform the tree into a visually pleasant JSON string
     pub fn to_pretty_json(&self) -> serde_json::Value {
         json!({

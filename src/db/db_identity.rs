@@ -89,8 +89,8 @@ impl ShinkaiDB {
                         let identity = StandardIdentity::new(
                             full_identity_name,
                             None,
-                            node_encryption_public_key.clone(),
-                            node_signature_public_key.clone(),
+                            node_encryption_public_key,
+                            node_signature_public_key,
                             Some(subidentity_encryption_public_key),
                             Some(subidentity_signature_public_key),
                             identity_type,
@@ -138,8 +138,8 @@ impl ShinkaiDB {
                         let identity = Identity::Standard(StandardIdentity::new(
                             full_identity_name,
                             None,
-                            node_encryption_public_key.clone(),
-                            node_signature_public_key.clone(),
+                            node_encryption_public_key,
+                            node_signature_public_key,
                             Some(subidentity_encryption_public_key),
                             Some(subidentity_signature_public_key),
                             identity_type,
@@ -221,12 +221,12 @@ impl ShinkaiDB {
             .profile_signature_public_key
             .as_ref()
             .map(signature_public_key_to_string_ref)
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_default();
         let sub_encryption_public_key = identity
             .profile_encryption_public_key
             .as_ref()
             .map(encryption_public_key_to_string_ref)
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_default();
 
         // Put the identity details into the column family with specific prefixes
         batch.put_cf(

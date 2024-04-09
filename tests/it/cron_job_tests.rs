@@ -22,7 +22,7 @@ mod tests {
         vector_fs::vector_fs::VectorFS,
     };
     use shinkai_vector_resources::{
-        embedding_generator::RemoteEmbeddingGenerator, unstructured::unstructured_api::UnstructuredAPI,
+        embedding_generator::RemoteEmbeddingGenerator, file_parser::unstructured_api::UnstructuredAPI,
     };
     use std::{env, sync::Weak};
     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
