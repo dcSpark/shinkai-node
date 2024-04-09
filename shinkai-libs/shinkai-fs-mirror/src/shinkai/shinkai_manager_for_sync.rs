@@ -131,11 +131,11 @@ impl ShinkaiManagerForSync {
             destination
         };
         
+        let timestamp = chrono::Utc::now().to_rfc3339(); // Get current time in ISO8601 format
+    
         eprintln!(
-            "Uploading file: {} to node address: {} with destination: {}",
-            filename,
-            self.node_address.clone(),
-            destination
+            "[{}] Uploading file: {} to node address: {} with destination: {}",
+            timestamp, filename, self.node_address.clone(), destination
         );
         let symmetrical_sk = random_aes_encryption_key();
 
