@@ -1,4 +1,6 @@
 pub mod shinkai_message_builder_wrapper;
+pub mod shinkai_message_builder_wrapper_vec;
+pub mod shinkai_message_builder_wrapper_subscription;
 pub mod shinkai_message_wrapper;
 pub mod shinkai_name_wrapper;
 pub mod inbox_name_wrapper;

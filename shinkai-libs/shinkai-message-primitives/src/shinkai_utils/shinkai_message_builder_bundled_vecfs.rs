@@ -1,10 +1,7 @@
 use crate::{
     schemas::shinkai_subscription_req::SubscriptionPayment,
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder,
-        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
-        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
-        SubscriptionGenericResponse, SubscriptionResponseStatus,
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
     },
 };
 use ed25519_dalek::SigningKey;
@@ -19,6 +16,8 @@ use crate::{
 use super::shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString};
 
 impl ShinkaiMessageBuilder {
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     fn create_vecfs_message(
         payload: impl Serialize,
         schema_type: MessageSchemaType,
@@ -47,6 +46,8 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_create_folder(
         folder_name: &str,
         path: &str,
@@ -76,6 +77,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_move_folder(
         origin_path: &str,
         destination_path: &str,
@@ -105,6 +108,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_copy_folder(
         origin_path: &str,
         destination_path: &str,
@@ -134,6 +139,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_move_item(
         origin_path: &str,
         destination_path: &str,
@@ -163,6 +170,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_copy_item(
         origin_path: &str,
         destination_path: &str,
@@ -192,6 +201,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_create_items(
         destination_path: &str,
         file_inbox: &str,
@@ -229,6 +240,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_retrieve_resource(
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -254,6 +267,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_retrieve_path_simplified(
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -279,6 +294,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_retrieve_vector_search_simplified(
         search: &str,
         path: Option<&str>,
@@ -312,6 +329,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn subscriptions_create_share_folder(
         payload: APICreateShareableFolder,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -337,6 +356,8 @@ impl ShinkaiMessageBuilder {
 
     // TODO: to be able to manage an error as well
     // for that we need a new struct to manage the resp and error
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_available_shared_items_response(
         results: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -360,6 +381,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_available_shared_items(
         path: Option<String>,
         streamer_node_name: String,
@@ -391,6 +414,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
         requirements: SubscriptionPayment,
@@ -424,6 +449,41 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn vecfs_unsubscribe_to_shared_folder(
+        shared_folder: String,
+        streamer_node: String,
+        streamer_profile: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIUnsubscribeToSharedFolder {
+            path: shared_folder,
+            streamer_node_name: streamer_node,
+            streamer_profile_name: streamer_profile,
+        };
+
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::UnsubscribeToSharedFolder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_request_share_current_shared_folder_state(
         shared_folder_path: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -447,6 +507,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_share_current_shared_folder_state(
         tree_item_response: SubscriptionGenericResponse,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -470,6 +532,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn my_subscriptions(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -493,6 +557,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn p2p_subscription_generic_response(
         response: SubscriptionGenericResponse,
         schema_type: MessageSchemaType,

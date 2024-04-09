@@ -2325,6 +2325,426 @@ export class ShinkaiMessageBuilderWrapper {
         }
     }
     /**
+    * @param {any} payload_create_shareable_folder
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscriptions_create_share_folder(payload_create_shareable_folder, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred9_0;
+        let deferred9_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscriptions_create_share_folder(retptr, addHeapObject(payload_create_shareable_folder), ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr8 = r0;
+            var len8 = r1;
+            if (r3) {
+                ptr8 = 0; len8 = 0;
+                throw takeObject(r2);
+            }
+            deferred9_0 = ptr8;
+            deferred9_1 = len8;
+            return getStringFromWasm0(ptr8, len8);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred9_0, deferred9_1, 1);
+        }
+    }
+    /**
+    * @param {string} shared_folder
+    * @param {any} requirements
+    * @param {string} streamer_node
+    * @param {string} streamer_profile
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static vecfs_subscribe_to_shared_folder(shared_folder, requirements, streamer_node, streamer_profile, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred12_0;
+        let deferred12_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(shared_folder, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(streamer_node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(streamer_profile, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            const ptr7 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len7 = WASM_VECTOR_LEN;
+            const ptr8 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len8 = WASM_VECTOR_LEN;
+            const ptr9 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len9 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_vecfs_subscribe_to_shared_folder(retptr, ptr0, len0, addHeapObject(requirements), ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr11 = r0;
+            var len11 = r1;
+            if (r3) {
+                ptr11 = 0; len11 = 0;
+                throw takeObject(r2);
+            }
+            deferred12_0 = ptr11;
+            deferred12_1 = len11;
+            return getStringFromWasm0(ptr11, len11);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred12_0, deferred12_1, 1);
+        }
+    }
+    /**
+    * @param {string} shared_folder
+    * @param {string} streamer_node
+    * @param {string} streamer_profile
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscription_unsubscribe_to_shared_folder(shared_folder, streamer_node, streamer_profile, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred12_0;
+        let deferred12_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(shared_folder, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(streamer_node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(streamer_profile, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            const ptr7 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len7 = WASM_VECTOR_LEN;
+            const ptr8 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len8 = WASM_VECTOR_LEN;
+            const ptr9 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len9 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_unsubscribe_to_shared_folder(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr11 = r0;
+            var len11 = r1;
+            if (r3) {
+                ptr11 = 0; len11 = 0;
+                throw takeObject(r2);
+            }
+            deferred12_0 = ptr11;
+            deferred12_1 = len11;
+            return getStringFromWasm0(ptr11, len11);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred12_0, deferred12_1, 1);
+        }
+    }
+    /**
+    * @param {string} results
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscription_available_shared_items_response(results, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred10_0;
+        let deferred10_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(results, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            const ptr7 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len7 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_available_shared_items_response(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr9 = r0;
+            var len9 = r1;
+            if (r3) {
+                ptr9 = 0; len9 = 0;
+                throw takeObject(r2);
+            }
+            deferred10_0 = ptr9;
+            deferred10_1 = len9;
+            return getStringFromWasm0(ptr9, len9);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred10_0, deferred10_1, 1);
+        }
+    }
+    /**
+    * @param {string | undefined} path
+    * @param {string} streamer_node_name
+    * @param {string} streamer_profile_name
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscription_available_shared_items(path, streamer_node_name, streamer_profile_name, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred12_0;
+        let deferred12_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            var ptr0 = isLikeNone(path) ? 0 : passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(streamer_node_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(streamer_profile_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            const ptr7 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len7 = WASM_VECTOR_LEN;
+            const ptr8 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len8 = WASM_VECTOR_LEN;
+            const ptr9 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len9 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_available_shared_items(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr11 = r0;
+            var len11 = r1;
+            if (r3) {
+                ptr11 = 0; len11 = 0;
+                throw takeObject(r2);
+            }
+            deferred12_0 = ptr11;
+            deferred12_1 = len11;
+            return getStringFromWasm0(ptr11, len11);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred12_0, deferred12_1, 1);
+        }
+    }
+    /**
+    * @param {string} shared_folder_path
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscription_request_share_current_shared_folder_state(shared_folder_path, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred10_0;
+        let deferred10_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(shared_folder_path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            const ptr7 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len7 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_request_share_current_shared_folder_state(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr9 = r0;
+            var len9 = r1;
+            if (r3) {
+                ptr9 = 0; len9 = 0;
+                throw takeObject(r2);
+            }
+            deferred10_0 = ptr9;
+            deferred10_1 = len9;
+            return getStringFromWasm0(ptr9, len9);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred10_0, deferred10_1, 1);
+        }
+    }
+    /**
+    * @param {any} tree_item_response
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_profile
+    * @param {string} node_receiver
+    * @param {string} node_receiver_profile
+    * @returns {string}
+    */
+    static subscription_share_current_shared_folder_state(tree_item_response, my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_profile, node_receiver, node_receiver_profile) {
+        let deferred9_0;
+        let deferred9_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(sender_profile, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(node_receiver_profile, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_share_current_shared_folder_state(retptr, addHeapObject(tree_item_response), ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr8 = r0;
+            var len8 = r1;
+            if (r3) {
+                ptr8 = 0; len8 = 0;
+                throw takeObject(r2);
+            }
+            deferred9_0 = ptr8;
+            deferred9_1 = len8;
+            return getStringFromWasm0(ptr8, len8);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred9_0, deferred9_1, 1);
+        }
+    }
+    /**
+    * @param {string} my_encryption_secret_key
+    * @param {string} my_signature_secret_key
+    * @param {string} receiver_public_key
+    * @param {string} sender
+    * @param {string} sender_subidentity
+    * @param {string} node_receiver
+    * @param {string} node_receiver_subidentity
+    * @returns {string}
+    */
+    static subscription_my_subscriptions(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, sender_subidentity, node_receiver, node_receiver_subidentity) {
+        let deferred9_0;
+        let deferred9_1;
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(my_signature_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ptr2 = passStringToWasm0(receiver_public_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len2 = WASM_VECTOR_LEN;
+            const ptr3 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len3 = WASM_VECTOR_LEN;
+            const ptr4 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len4 = WASM_VECTOR_LEN;
+            const ptr5 = passStringToWasm0(node_receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(node_receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len6 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_subscription_my_subscriptions(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            var r2 = getInt32Memory0()[retptr / 4 + 2];
+            var r3 = getInt32Memory0()[retptr / 4 + 3];
+            var ptr8 = r0;
+            var len8 = r1;
+            if (r3) {
+                ptr8 = 0; len8 = 0;
+                throw takeObject(r2);
+            }
+            deferred9_0 = ptr8;
+            deferred9_1 = len8;
+            return getStringFromWasm0(ptr8, len8);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            wasm.__wbindgen_free(deferred9_0, deferred9_1, 1);
+        }
+    }
+    /**
     * @param {string} my_encryption_secret_key
     * @param {string} my_signature_secret_key
     * @param {string} receiver_public_key
@@ -2600,15 +3020,16 @@ export class ShinkaiMessageBuilderWrapper {
     * @param {string} receiver_public_key
     * @param {string} destination_path
     * @param {string} file_inbox
+    * @param {string | undefined} file_datetime_iso8601
     * @param {string} sender
     * @param {string} sender_subidentity
     * @param {string} receiver
     * @param {string} receiver_subidentity
     * @returns {string}
     */
-    static vecfs_create_items(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, destination_path, file_inbox, sender, sender_subidentity, receiver, receiver_subidentity) {
-        let deferred11_0;
-        let deferred11_1;
+    static vecfs_create_items(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, destination_path, file_inbox, file_datetime_iso8601, sender, sender_subidentity, receiver, receiver_subidentity) {
+        let deferred12_0;
+        let deferred12_1;
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             const ptr0 = passStringToWasm0(my_encryption_secret_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -2621,31 +3042,33 @@ export class ShinkaiMessageBuilderWrapper {
             const len3 = WASM_VECTOR_LEN;
             const ptr4 = passStringToWasm0(file_inbox, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len4 = WASM_VECTOR_LEN;
-            const ptr5 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len5 = WASM_VECTOR_LEN;
-            const ptr6 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var ptr5 = isLikeNone(file_datetime_iso8601) ? 0 : passStringToWasm0(file_datetime_iso8601, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var len5 = WASM_VECTOR_LEN;
+            const ptr6 = passStringToWasm0(sender, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len6 = WASM_VECTOR_LEN;
-            const ptr7 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr7 = passStringToWasm0(sender_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len7 = WASM_VECTOR_LEN;
-            const ptr8 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const ptr8 = passStringToWasm0(receiver, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len8 = WASM_VECTOR_LEN;
-            wasm.shinkaimessagebuilderwrapper_vecfs_create_items(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8);
+            const ptr9 = passStringToWasm0(receiver_subidentity, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len9 = WASM_VECTOR_LEN;
+            wasm.shinkaimessagebuilderwrapper_vecfs_create_items(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             var r3 = getInt32Memory0()[retptr / 4 + 3];
-            var ptr10 = r0;
-            var len10 = r1;
+            var ptr11 = r0;
+            var len11 = r1;
             if (r3) {
-                ptr10 = 0; len10 = 0;
+                ptr11 = 0; len11 = 0;
                 throw takeObject(r2);
             }
-            deferred11_0 = ptr10;
-            deferred11_1 = len10;
-            return getStringFromWasm0(ptr10, len10);
+            deferred12_0 = ptr11;
+            deferred12_1 = len11;
+            return getStringFromWasm0(ptr11, len11);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            wasm.__wbindgen_free(deferred11_0, deferred11_1, 1);
+            wasm.__wbindgen_free(deferred12_0, deferred12_1, 1);
         }
     }
     /**
@@ -3211,15 +3634,15 @@ export class ShinkaiNameWrapper {
     /**
     * @returns {any}
     */
-    get get_node_name() {
-        const ret = wasm.shinkainamewrapper_get_node_name(this.__wbg_ptr);
+    get get_node_name_string() {
+        const ret = wasm.shinkainamewrapper_get_node_name_string(this.__wbg_ptr);
         return takeObject(ret);
     }
     /**
     * @returns {any}
     */
-    get get_profile_name() {
-        const ret = wasm.shinkainamewrapper_get_profile_name(this.__wbg_ptr);
+    get get_profile_name_string() {
+        const ret = wasm.shinkainamewrapper_get_profile_name_string(this.__wbg_ptr);
         return takeObject(ret);
     }
     /**
@@ -3545,24 +3968,24 @@ export function __wbindgen_in(arg0, arg1) {
     return ret;
 };
 
-export function __wbindgen_string_new(arg0, arg1) {
-    const ret = getStringFromWasm0(arg0, arg1);
-    return addHeapObject(ret);
-};
-
 export function __wbindgen_object_clone_ref(arg0) {
     const ret = getObject(arg0);
     return addHeapObject(ret);
 };
 
-export function __wbindgen_number_new(arg0) {
-    const ret = arg0;
+export function __wbindgen_string_new(arg0, arg1) {
+    const ret = getStringFromWasm0(arg0, arg1);
     return addHeapObject(ret);
 };
 
 export function __wbindgen_jsval_loose_eq(arg0, arg1) {
     const ret = getObject(arg0) == getObject(arg1);
     return ret;
+};
+
+export function __wbindgen_number_new(arg0) {
+    const ret = arg0;
+    return addHeapObject(ret);
 };
 
 export function __wbg_getwithrefkey_5e6d9547403deab8(arg0, arg1) {
