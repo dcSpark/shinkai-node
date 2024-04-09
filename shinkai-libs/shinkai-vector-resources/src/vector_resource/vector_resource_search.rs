@@ -373,12 +373,16 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         match self.proximity_retrieve_node_at_path(top_result.retrieval_path.clone(), proximity_window)
                         {
                             Ok(mut proximity_results) => {
-                                // Insert each retrieved node's path into the hashmap and append to new_results
-                                for proximity_result in &proximity_results {
-                                    paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                let mut non_duplicates = vec![];
+                                for proximity_result in &mut proximity_results {
+                                    if !paths_checked.contains_key(&proximity_result.retrieval_path) {
+                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                        proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                        non_duplicates.push(proximity_result.clone());
+                                    }
                                 }
 
-                                new_results.append(&mut proximity_results);
+                                new_results.append(&mut non_duplicates);
                                 new_top_results_added += 1;
                             }
                             Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
