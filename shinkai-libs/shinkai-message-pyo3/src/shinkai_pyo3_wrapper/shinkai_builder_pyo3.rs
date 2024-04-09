@@ -1,19 +1,26 @@
 use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
+use crate::shinkai_pyo3_utils::pyo3_subscription::PyPaymentOption;
 
 use super::{
     encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
     shinkai_message_pyo3::PyShinkaiMessage,
 };
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
+use pyo3::{prelude::*, pyclass, PyResult};
+use shinkai_message_primitives::schemas::shinkai_subscription_req::{
+    FolderSubscription, PaymentOption, SubscriptionPayment,
+};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    APIAvailableSharedItems, APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder,
+};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
-        APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder,
-        APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson,
-        IdentityPermissions, JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest,
-        RegistrationCodeType,
+        APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMessagesFromInboxRequest,
+        APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
+        APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+        APIVecFsRetrieveVectorSearchSimplifiedJson, IdentityPermissions, JobCreationInfo, JobMessage,
+        MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
     },
     shinkai_utils::{
         encryption::{
@@ -24,8 +31,6 @@ use shinkai_message_primitives::{
         signatures::{signature_public_key_to_string, string_to_signature_secret_key},
     },
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 
 #[pyclass]
 pub struct PyShinkaiMessageBuilder {
@@ -36,7 +41,7 @@ pub struct PyShinkaiMessageBuilder {
 impl PyShinkaiMessageBuilder {
     #[new]
     #[pyo3(text_signature = "(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)")]
-    fn new(
+    pub fn new(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
@@ -53,7 +58,7 @@ impl PyShinkaiMessageBuilder {
         Ok(Self { inner: Some(inner) })
     }
 
-    fn body_encryption(&mut self, encryption: Py<PyEncryptionMethod>) -> PyResult<()> {
+    pub fn body_encryption(&mut self, encryption: Py<PyEncryptionMethod>) -> PyResult<()> {
         Python::with_gil(|py| {
             let encryption_ref = encryption.as_ref(py).borrow();
             if let Some(mut inner) = self.inner.take() {
@@ -66,7 +71,7 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    fn no_body_encryption(&mut self) -> PyResult<()> {
+    pub fn no_body_encryption(&mut self) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.no_body_encryption();
             self.inner = Some(new_inner);
@@ -76,7 +81,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn message_raw_content(&mut self, message_raw_content: String) -> PyResult<()> {
+    pub fn message_raw_content(&mut self, message_raw_content: String) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.message_raw_content(message_raw_content);
             self.inner = Some(new_inner);
@@ -86,7 +91,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn message_schema_type(&mut self, content: Py<PyMessageSchemaType>) -> PyResult<()> {
+    pub fn message_schema_type(&mut self, content: Py<PyMessageSchemaType>) -> PyResult<()> {
         Python::with_gil(|py| {
             let content_ref = content.as_ref(py).borrow();
             let rust_content = content_ref.inner.clone();
@@ -101,7 +106,7 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    fn internal_metadata(
+    pub fn internal_metadata(
         &mut self,
         sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
@@ -124,7 +129,7 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    fn internal_metadata_with_inbox(
+    pub fn internal_metadata_with_inbox(
         &mut self,
         sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
@@ -149,7 +154,7 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    fn internal_metadata_with_schema(
+    pub fn internal_metadata_with_schema(
         &mut self,
         sender_subidentity: ShinkaiNameString,
         recipient_subidentity: String,
@@ -177,7 +182,7 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    fn empty_encrypted_internal_metadata(&mut self) -> PyResult<()> {
+    pub fn empty_encrypted_internal_metadata(&mut self) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.empty_encrypted_internal_metadata();
             self.inner = Some(new_inner);
@@ -187,7 +192,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn empty_non_encrypted_internal_metadata(&mut self) -> PyResult<()> {
+    pub fn empty_non_encrypted_internal_metadata(&mut self) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.empty_non_encrypted_internal_metadata();
             self.inner = Some(new_inner);
@@ -197,7 +202,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata(&mut self, recipient: String, sender: String) -> PyResult<()> {
+    pub fn external_metadata(&mut self, recipient: String, sender: String) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.external_metadata(recipient, sender);
             self.inner = Some(new_inner);
@@ -207,7 +212,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_intra_sender(
+    pub fn external_metadata_with_intra_sender(
         &mut self,
         recipient: String,
         sender: String,
@@ -222,7 +227,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_other(&mut self, recipient: String, sender: String, other: String) -> PyResult<()> {
+    pub fn external_metadata_with_other(&mut self, recipient: String, sender: String, other: String) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.external_metadata_with_other(recipient, sender, other);
             self.inner = Some(new_inner);
@@ -232,7 +237,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_other_and_intra_sender(
+    pub fn external_metadata_with_other_and_intra_sender(
         &mut self,
         recipient: String,
         sender: String,
@@ -248,7 +253,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_schedule(
+    pub fn external_metadata_with_schedule(
         &mut self,
         recipient: String,
         sender: String,
@@ -263,7 +268,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn build(&mut self) -> PyResult<PyShinkaiMessage> {
+    pub fn build(&mut self) -> PyResult<PyShinkaiMessage> {
         if let Some(inner) = self.inner.take() {
             match inner.build() {
                 Ok(shinkai_message) => {
@@ -277,7 +282,7 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn build_to_string(&mut self) -> PyResult<String> {
+    pub fn build_to_string(&mut self) -> PyResult<String> {
         if let Some(inner) = self.inner.take() {
             match inner.build() {
                 Ok(shinkai_message) => {
@@ -593,6 +598,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn initial_registration_with_no_code_for_device(
         my_device_encryption_sk: String,
         my_device_signature_sk: String,
@@ -734,6 +740,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -791,6 +798,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn get_last_unread_messages_from_inbox(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -848,6 +856,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn request_add_agent(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -903,6 +912,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn read_up_to_time(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -955,6 +965,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn create_files_inbox_with_sym_key(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -1135,6 +1146,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     fn job_creation(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1208,6 +1220,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn job_message(
         job_id: String,
         content: String,
@@ -1343,6 +1356,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_create_folder(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1395,6 +1409,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_move_folder(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1447,6 +1462,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_copy_folder(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1499,6 +1515,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_move_item(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1551,6 +1568,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_copy_item(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1603,6 +1621,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_create_items(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1663,6 +1682,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_retrieve_resource(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1674,7 +1694,7 @@ impl PyShinkaiMessageBuilder {
         receiver_subidentity: String,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
-            let payload = APIVecFSRetrieveVectorResource { path: path };
+            let payload = APIVecFSRetrieveVectorResource { path };
 
             let body = match serde_json::to_string(&payload) {
                 Ok(body) => body,
@@ -1711,6 +1731,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_retrieve_path_simplified(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1722,7 +1743,7 @@ impl PyShinkaiMessageBuilder {
         receiver_subidentity: String,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
-            let payload = APIVecFsRetrievePathSimplifiedJson { path: path };
+            let payload = APIVecFsRetrievePathSimplifiedJson { path };
 
             let body = match serde_json::to_string(&payload) {
                 Ok(body) => body,
@@ -1759,6 +1780,7 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
     pub fn vecfs_retrieve_vector_search_simplified(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -1774,10 +1796,10 @@ impl PyShinkaiMessageBuilder {
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let payload = APIVecFsRetrieveVectorSearchSimplifiedJson {
-                search: search,
-                path: path,
-                max_results: max_results,
-                max_files_to_scan: max_files_to_scan,
+                search,
+                path,
+                max_results,
+                max_files_to_scan,
             };
 
             let body = match serde_json::to_string(&payload) {
@@ -1808,6 +1830,358 @@ impl PyShinkaiMessageBuilder {
                 sender_subidentity,
                 receiver,
                 receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (
+    my_encryption_secret_key,
+    my_signature_secret_key,
+    receiver_public_key,
+    path,
+    is_free,
+    sender,
+    sender_subidentity,
+    receiver,
+    receiver_subidentity,
+    minimum_token_delegation = None,
+    minimum_time_delegated_hours = None,
+    monthly_payment_usd = None,
+    monthly_payment_kai_tokens = None
+))]
+    pub fn subscriptions_create_share_folder(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        path: String,
+        is_free: bool,
+        sender: String,
+        sender_subidentity: ShinkaiNameString,
+        receiver: String,
+        receiver_subidentity: String,
+        minimum_token_delegation: Option<u64>,
+        minimum_time_delegated_hours: Option<u64>,
+        monthly_payment_usd: Option<f64>,
+        monthly_payment_kai_tokens: Option<u64>,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APICreateShareableFolder {
+                path,
+                subscription_req: FolderSubscription {
+                    minimum_token_delegation,
+                    minimum_time_delegated_hours,
+                    monthly_payment: match (monthly_payment_usd, monthly_payment_kai_tokens) {
+                        (Some(usd), None) => Some(PaymentOption::USD(usd)),
+                        (None, Some(tokens)) => Some(PaymentOption::KAITokens(tokens)),
+                        (None, None) => None,
+                        _ => {
+                            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                                "Invalid monthly payment options",
+                            ))
+                        }
+                    },
+                    is_free,
+                },
+            };
+
+            let body = serde_json::to_string(&payload)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+
+            let schema = Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::CreateShareableFolder,
+                },
+            )
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Failed to create message schema"))?;
+
+            PyShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                receiver,
+                receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[staticmethod]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (
+        my_encryption_secret_key,
+        my_signature_secret_key,
+        receiver_public_key,
+        results,
+        sender,
+        sender_subidentity,
+        node_receiver,
+        node_receiver_subidentity
+    ))]
+    pub fn vecfs_available_shared_items_response(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        results: String,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::AvailableSharedItemsResponse,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                results,
+                sender,
+                sender_subidentity,
+                node_receiver,
+                node_receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    pub fn vecfs_available_shared_items(
+        streamer_node_name: String,
+        streamer_profile_name: String,
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+        path: Option<String>,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIAvailableSharedItems {
+                path: path.unwrap_or_else(|| "/".to_string()),
+                streamer_node_name,
+                streamer_profile_name,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::AvailableSharedItems,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                node_receiver,
+                node_receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    pub fn vecfs_subscribe_to_shared_folder(
+        shared_folder: String,
+        requirements_free: bool,
+        streamer_node: String,
+        streamer_profile: String,
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+        requirements_direct_delegation: bool,
+        requirements_payment: Option<String>,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let requirements = if requirements_free {
+                SubscriptionPayment::Free
+            } else if requirements_direct_delegation {
+                SubscriptionPayment::DirectDelegation
+            } else if let Some(payment) = requirements_payment {
+                SubscriptionPayment::Payment(payment)
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid subscription payment requirements",
+                ));
+            };
+
+            let payload = APISubscribeToSharedFolder {
+                path: shared_folder,
+                streamer_node_name: streamer_node,
+                streamer_profile_name: streamer_profile,
+                payment: requirements,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::SubscribeToSharedFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                node_receiver,
+                node_receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    pub fn vecfs_unsubscribe_to_shared_folder(
+        shared_folder: String,
+        streamer_node: String,
+        streamer_profile: String,
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let payload = APIUnsubscribeToSharedFolder {
+                path: shared_folder,
+                streamer_node_name: streamer_node,
+                streamer_profile_name: streamer_profile,
+            };
+
+            let body = match serde_json::to_string(&payload) {
+                Ok(body) => body,
+                Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
+            };
+
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::UnsubscribeToSharedFolder,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                body,
+                sender,
+                sender_subidentity,
+                node_receiver,
+                node_receiver_subidentity,
+                "".to_string(),
+                schema,
+            )
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    pub fn my_subscriptions(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::MySubscriptions,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            Self::create_custom_shinkai_message_to_node(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+                "".to_string(),
+                sender,
+                sender_subidentity,
+                node_receiver,
+                node_receiver_subidentity,
                 "".to_string(),
                 schema,
             )
