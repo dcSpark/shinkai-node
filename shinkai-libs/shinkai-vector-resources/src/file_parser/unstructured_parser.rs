@@ -55,7 +55,7 @@ impl UnstructuredParser {
     ) -> Vec<TextGroup> {
         let max_node_text_size = max_node_text_size as usize;
         let mut groups = Vec::new();
-        let mut current_group = TextGroup::new();
+        let mut current_group = TextGroup::new_empty();
         let mut current_title_group: Option<TextGroup> = None;
 
         // Step 1: Remove duplicate titles to cleanup elements
@@ -95,7 +95,7 @@ impl UnstructuredParser {
                         &mut current_title_group,
                         &mut groups,
                     );
-                    current_group = TextGroup::new();
+                    current_group = TextGroup::new_empty();
                 }
 
                 // If the current element text is larger than max_node_text_size,
@@ -103,7 +103,7 @@ impl UnstructuredParser {
                 if element_text.len() > max_node_text_size {
                     let chunks = ShinkaiFileParser::split_into_chunks(&element_text, max_node_text_size);
                     for chunk in chunks {
-                        let mut new_group = TextGroup::new();
+                        let mut new_group = TextGroup::new_empty();
                         new_group.push_data(&chunk, element.metadata.page_number);
                         ShinkaiFileParser::push_group_to_appropriate_parent(
                             new_group,
@@ -133,12 +133,12 @@ impl UnstructuredParser {
                         // If the current group only contains the title text and is > 12 len, add a default TextGroup that holds the title's text
                         // This both pre-populates the sub-group field, and allows for the title to be found in a search
                         // as a RetrievedNode to the LLM which can be useful in some content.
-                        let mut new_grouped_text = TextGroup::new();
+                        let mut new_grouped_text = TextGroup::new_empty();
                         new_grouped_text.push_data(&title_group.text, None);
                         title_group.sub_groups.push(new_grouped_text);
                     }
                 }
-                current_group = TextGroup::new();
+                current_group = TextGroup::new_empty();
 
                 // Push the existing title group to groups
                 if let Some(title_group) = current_title_group.take() {
@@ -148,7 +148,7 @@ impl UnstructuredParser {
                 }
 
                 // Start a new title group
-                current_title_group = Some(TextGroup::new());
+                current_title_group = Some(TextGroup::new_empty());
                 if let Some(title_group) = current_title_group.as_mut() {
                     title_group.push_data(&element_text, element.metadata.page_number);
                 }
