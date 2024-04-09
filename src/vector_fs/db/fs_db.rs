@@ -47,7 +47,8 @@ impl VectorFSDB {
         // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
         db_opts.set_enable_blob_files(true);
         db_opts.set_min_blob_size(1024 * 100); // 100kb
-        db_opts.set_max_total_wal_size(1 << 30); // 1GB
+        db_opts.set_max_total_wal_size(1 << 20 * 100); // 100MB
+        // db_opts.set_max_total_wal_size(1 << 30); // 1GB
         db_opts.set_blob_compression_type(DBCompressionType::Lz4);
 
 
@@ -73,7 +74,8 @@ impl VectorFSDB {
             cf_opts.create_missing_column_families(true);
             cf_opts.set_enable_blob_files(true);
             cf_opts.set_min_blob_size(1024 * 100); // 100kb
-            cf_opts.set_max_total_wal_size(1 << 30); // 1GB
+            // cf_opts.set_max_total_wal_size(1 << 30); // 1GB
+            db_opts.set_max_total_wal_size(1 << 20 * 100); // 100MB
             cf_opts.set_blob_compression_type(DBCompressionType::Lz4);
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
             cfs.push(cf_desc);

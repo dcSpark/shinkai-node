@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -560,6 +560,7 @@ impl NetworkJobManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_message_internode(
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,

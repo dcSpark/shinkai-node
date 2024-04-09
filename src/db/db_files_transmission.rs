@@ -182,6 +182,42 @@ impl ShinkaiDB {
         Ok(filenames)
     }
 
+    /// Removes an inbox and all its associated files.
+    pub fn remove_inbox(&mut self, hex_blake3_hash: &str) -> Result<(), ShinkaiDBError> {
+        let encrypted_inbox_id = Self::hex_blake3_to_half_hash(hex_blake3_hash);
+
+        // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox
+        let prefix = format!("encyptedinbox_{}_", encrypted_inbox_id);
+
+        // Get the name of the encrypted inbox from the 'inbox' topic
+        let cf_inbox =
+            self.db
+                .cf_handle(Topic::TempFilesInbox.as_str())
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
+                    Topic::TempFilesInbox.as_str().to_string(),
+                ))?;
+
+        // Get an iterator over the column family with a prefix search to find all associated files
+        let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
+
+        // Start a write batch to delete all files in the inbox
+        let mut batch = WriteBatch::default();
+        for item in iter {
+            match item {
+                Ok((key, _)) => {
+                    // Since delete_cf does not return a result, we cannot use `?` here.
+                    batch.delete_cf(cf_inbox, key); // Error handling might need to be adjusted if delete_cf can fail.
+                }
+                Err(_) => return Err(ShinkaiDBError::FailedFetchingValue),
+            }
+        }
+
+        // Commit the write batch to delete all files
+        self.db.write(batch).map_err(|_| ShinkaiDBError::FailedFetchingValue)?;
+
+        Ok(())
+    }
+
     pub fn get_file_from_inbox(&self, hex_blake3_hash: String, file_name: String) -> Result<Vec<u8>, ShinkaiDBError> {
         let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
 

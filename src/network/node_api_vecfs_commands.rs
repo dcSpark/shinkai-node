@@ -916,7 +916,7 @@ impl Node {
 
         let mut dist_files = vec![];
         for file in files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime);
             dist_files.push((file.0, file.1, distribution_info));
         }
 
@@ -950,6 +950,25 @@ impl Node {
             let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
             success_messages.push(success_message);
         }
+
+        {
+            // remove inbox
+            let mut db_lock = self.db.lock().await;
+            match db_lock.remove_inbox(&input_payload.file_inbox) {
+                Ok(files) => files,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("{}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        }
+
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())
