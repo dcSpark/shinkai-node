@@ -16,6 +16,9 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_source_file_map(source_file_map)?;
 
+        // Log the size of the value
+        eprintln!("Saving source map with size: {} bytes", bytes.len());
+
         // Insert into the "SourceFileMaps" column family
         batch.pb_put_cf(cf, db_key, &bytes);
 

@@ -123,7 +123,10 @@ impl ShinkaiDB {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
-        cf_opts.set_log_level(LogLevel::Debug);
+        
+        // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
+        cf_opts.set_enable_blob_files(true);
+        cf_opts.set_min_blob_size(1024 * 100);
 
         cf_opts.set_allow_concurrent_memtable_write(true);
         cf_opts.set_enable_write_thread_adaptive_yield(true);
@@ -132,7 +135,6 @@ impl ShinkaiDB {
         cf_opts.set_min_write_buffer_number_to_merge(1);
         cf_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
         cf_opts.increase_parallelism(std::cmp::max(1, num_cpus::get() as i32 / 2));
-        cf_opts.enable_statistics();
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
         let cache_size = 64 * 1024 * 1024; // 64 MB for Block Cache
@@ -149,6 +151,11 @@ impl ShinkaiDB {
 
         if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
             cf_opts.set_db_log_dir("./rocksdb_logs");
+            cf_opts.enable_statistics();
+        }
+
+        if std::env::var("ROCKSDB_LOG_LEVEL").unwrap_or_default() == "debug" {
+            cf_opts.set_log_level(LogLevel::Debug);
         }
 
         cf_opts
