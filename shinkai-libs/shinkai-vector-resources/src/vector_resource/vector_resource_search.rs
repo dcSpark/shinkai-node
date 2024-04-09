@@ -369,7 +369,6 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             continue;
                         }
 
-                        println!("Top result path: {}", top_result.retrieval_path);
                         match self.proximity_retrieve_node_at_path(top_result.retrieval_path.clone(), proximity_window)
                         {
                             Ok(mut proximity_results) => {

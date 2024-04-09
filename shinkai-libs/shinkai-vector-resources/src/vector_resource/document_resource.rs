@@ -52,10 +52,12 @@ impl OrderedVectorResource for DocumentVectorResource {
 
     /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth.
     /// Returns the nodes in its default ordering as determined by the internal VR struct.
-    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError> {
+    fn get_node_and_embedding_proximity(
+        &self,
+        id: String,
+        proximity_window: u64,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
-
-        println!("Proximity window: {}", proximity_window);
 
         // Check if id is within valid range
         if id == 0 || id > self.node_count {
@@ -75,14 +77,16 @@ impl OrderedVectorResource for DocumentVectorResource {
         };
 
         // Acquire all nodes
-        let mut nodes = Vec::new();
+        let mut nodes_and_embeddings = Vec::new();
         for id in start_id..=end_id {
             if let Ok(node) = self.get_root_node(id.to_string()) {
-                nodes.push(node);
+                if let Ok(embedding) = self.get_root_embedding(id.to_string()) {
+                    nodes_and_embeddings.push((node, embedding));
+                }
             }
         }
 
-        Ok(nodes)
+        Ok(nodes_and_embeddings)
     }
 }
 

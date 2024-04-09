@@ -383,13 +383,7 @@ pub trait VectorResourceCore: Send + Sync {
                         // If returning proximity, then try to coerce into an OrderedVectorResource and perform proximity get
                         if let Some(prox_window) = proximity_window {
                             if let Ok(ord_res) = resource.as_ordered_vector_resource() {
-                                // TODO: Eventually update get_node_and_proximity to also return their embeddings.
-                                // Technically not important, because for now we only use the embedding for non-proximity methods.
-                                let new_ret_nodes = ord_res.get_node_and_proximity(id.clone(), prox_window)?;
-                                retrieved_nodes = new_ret_nodes
-                                    .iter()
-                                    .map(|ret_node| (ret_node.clone(), embedding.clone()))
-                                    .collect();
+                                retrieved_nodes = ord_res.get_node_and_embedding_proximity(id.clone(), prox_window)?;
                             } else {
                                 return Err(VRError::ResourceDoesNotSupportOrderedOperations(
                                     resource.as_trait_object().reference_string(),
@@ -412,11 +406,7 @@ pub trait VectorResourceCore: Send + Sync {
             // If returning proximity, then try to coerce into an OrderedVectorResource and perform proximity get
             if let Some(prox_window) = proximity_window {
                 if let Ok(ord_res) = self.as_ordered_vector_resource() {
-                    let new_ret_nodes = ord_res.get_node_and_proximity(node.id.clone(), prox_window)?;
-                    retrieved_nodes = new_ret_nodes
-                        .iter()
-                        .map(|ret_node| (ret_node.clone(), embedding.clone()))
-                        .collect();
+                    retrieved_nodes = ord_res.get_node_and_embedding_proximity(node.id.clone(), prox_window)?;
                 } else {
                     return Err(VRError::ResourceDoesNotSupportOrderedOperations(
                         self.reference_string(),
@@ -438,26 +428,6 @@ pub trait VectorResourceCore: Send + Sync {
             ));
         }
         Ok(final_nodes)
-    }
-
-    /// Fetches a node and proximity window nodes around it at the root level of the VR.
-    /// TODO: Fetch the actual embeddings, instead of creating placeholder.
-    fn root_fetch_node_and_proximity(
-        &self,
-        resource: &BaseVectorResource,
-        id: String,
-        proximity_window: u64,
-    ) -> Result<Vec<(Node, Embedding)>, VRError> {
-        if let Ok(ord_res) = resource.as_ordered_vector_resource() {
-            let new_ret_nodes = ord_res.get_node_and_proximity(id.clone(), proximity_window)?;
-            // TODO: Fix this later. The current implementation does not fetch embeddings, uses a placeholder.
-            let embeddings = vec![Embedding::new_empty(); new_ret_nodes.len()];
-            Ok(new_ret_nodes.into_iter().zip(embeddings.into_iter()).collect())
-        } else {
-            Err(VRError::ResourceDoesNotSupportOrderedOperations(
-                resource.as_trait_object().reference_string(),
-            ))
-        }
     }
 
     /// Boolean check to see if a node exists at a given path
