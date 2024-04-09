@@ -359,9 +359,10 @@ pub trait VectorResourceSearch: VectorResourceCore {
             if let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode {
                 let mut paths_checked = HashMap::new();
                 let mut new_results = Vec::new();
+                let mut new_top_results_added = 0;
                 let mut iter = results.iter().cloned();
 
-                while new_results.len() < num_of_top_results as usize {
+                while new_top_results_added < num_of_top_results as usize {
                     if let Some(top_result) = iter.next() {
                         // Check if the node has already been included, then skip
                         if paths_checked.contains_key(&top_result.retrieval_path) {
@@ -378,11 +379,12 @@ pub trait VectorResourceSearch: VectorResourceCore {
                                 }
 
                                 new_results.append(&mut proximity_results);
+                                new_top_results_added += 1;
                             }
                             Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
                         }
                     } else {
-                        // Break the loop if there are no more results to process
+                        // Break the loop if there are no more top results to process
                         break;
                     }
                 }
