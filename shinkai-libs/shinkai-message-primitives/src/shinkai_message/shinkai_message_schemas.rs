@@ -46,6 +46,7 @@ pub enum MessageSchemaType {
     UnshareFolder,
     ConvertFilesAndSaveToFolder,
     SubscribeToSharedFolder,
+    UnsubscribeToSharedFolder,
     SubscribeToSharedFolderResponse,
     MySubscriptions,
     SubscriptionRequiresTreeUpdate,
@@ -90,6 +91,7 @@ impl MessageSchemaType {
             "UnshareFolder" => Some(Self::UnshareFolder),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
             "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
+            "UnsubscribeToSharedFolder" => Some(Self::UnsubscribeToSharedFolder),
             "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
             "MySubscriptions" => Some(Self::MySubscriptions),
             "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
@@ -134,6 +136,7 @@ impl MessageSchemaType {
             Self::UnshareFolder => "UnshareFolder",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
             Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
+            Self::UnsubscribeToSharedFolder => "UnsubscribeToSharedFolder",
             Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
             Self::MySubscriptions => "MySubscriptions",
             Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
@@ -400,6 +403,13 @@ pub struct APISubscribeToSharedFolder {
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
     pub payment: SubscriptionPayment,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIUnsubscribeToSharedFolder {
+    pub path: String,
+    pub streamer_node_name: String,
+    pub streamer_profile_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -1878,7 +1878,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.4.5"
+version = "0.6.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_wasm"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",

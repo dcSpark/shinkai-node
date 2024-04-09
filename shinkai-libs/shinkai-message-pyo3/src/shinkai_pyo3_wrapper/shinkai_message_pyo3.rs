@@ -6,7 +6,7 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::EncryptionMethod,
 };
 
-use crate::shinkai_pyo3_utils::{pyo3_job_scope::PyJobScope, pyo3_agent_llm_interface::PyAgentLLMInterface, pyo3_serialized_agent::PySerializedAgent, pyo3_shinkai_name::PyShinkaiName};
+use crate::shinkai_pyo3_utils::{pyo3_agent_llm_interface::PyAgentLLMInterface, pyo3_job_scope::PyJobScope, pyo3_serialized_agent::PySerializedAgent, pyo3_shinkai_name::PyShinkaiName, pyo3_subscription::{PyFolderSubscription, PyPaymentOption}};
 use super::{shinkai_builder_pyo3::PyShinkaiMessageBuilder, encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType};
 
 #[pymodule]
@@ -21,6 +21,8 @@ fn shinkai_message_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PySerializedAgent>()?;
     m.add_class::<PyShinkaiName>()?;
     m.add_class::<PyMessageSchemaType>()?;
+    m.add_class::<PyFolderSubscription>()?;
+    m.add_class::<PyPaymentOption>()?;
     // Add any other classes or functions you want to expose to Python here
     Ok(())
 }

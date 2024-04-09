@@ -7,7 +7,7 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::EncryptionMethod,
 };
 use wasm_bindgen::prelude::*;
-use web_sys::console;
+// use web_sys::console;
 
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
