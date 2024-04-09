@@ -21,23 +21,6 @@ impl LocalFileParser {
         Ok(text_groups)
     }
 
-    /// Splits the text into a list of sentences.
-    pub fn process_into_sentences(text: String) -> Vec<String> {
-        let punctuation_marks = [',', '.', ';', '-', '&', '(', '{', '<', '"', '\'', '`'];
-        text.split("\n")
-            .filter(|line| line.trim().len() > 1) // Filter out lines that are empty or have only a single character after trimming
-            .flat_map(|s| {
-                let s = s.trim();
-                let s = if !punctuation_marks.iter().any(|&mark| s.ends_with(mark)) {
-                    format!("{}.", s)
-                } else {
-                    s.to_string()
-                };
-                s.split(". ").map(|s| s.trim().to_string()).collect::<Vec<String>>()
-            })
-            .collect()
-    }
-
     /// Build a non-hierarchical list of TextGroups using the sentences
     pub fn process_into_text_groups(text_lines: Vec<String>, max_node_text_size: u64) -> Vec<TextGroup> {
         let mut text_groups = Vec::new();
@@ -72,5 +55,64 @@ impl LocalFileParser {
         }
 
         text_groups
+    }
+
+    /// Given a piece of text, split it into a list of sentences, doing its best to respect punctuation
+    /// and taking into account English-based exceptions.
+    pub fn process_into_sentences(text: String) -> Vec<String> {
+        let punctuation_marks = [',', '.', ';', '-', '&', '(', '{', '<', '"', '\'', '`'];
+        text.split("\n")
+            .filter(|line| !line.trim().is_empty() && line.trim().len() > 1) // Filter out empty or nearly empty lines
+            .flat_map(|line| {
+                let trimmed_line = line.trim();
+                // Ensure each line ends with a punctuation mark, defaulting to '.'
+                let line_with_ending = if punctuation_marks.iter().any(|&mark| trimmed_line.ends_with(mark)) {
+                    trimmed_line.to_string()
+                } else {
+                    format!("{}.", trimmed_line)
+                };
+
+                Self::split_line_into_sentences(&line_with_ending)
+            })
+            .collect()
+    }
+
+    /// Splits a single line into sentences, considering common exceptions for English.
+    fn split_line_into_sentences(line: &str) -> Vec<String> {
+        let mut sentences = Vec::new();
+        let mut start = 0;
+
+        // Expanded list of exceptions in lowercase
+        let exceptions = [
+            " mr.", " mrs.", " ms.", " dr.", " prof.", " gen.", " rep.", " sen.", " jr.", " sr.", " ave.", " blvd.",
+            " st.", " rd.", " ln.", " ter.", " ct.", " pl.", " p.o.", " a.m.", " p.m.", " cm.", " kg.", " lb.", " oz.",
+            " ft.", " in.", " mi.", " b.a.", " m.a.", " ph.d.", " m.d.", " b.sc.", " m.sc.", " inc.", " ltd.", " co.",
+            " corp.", " llc.", " plc.", " et al.", " e.g.", " i.e.", " vs.", " viz.", " approx.", " dept.", " div.",
+            " est.",
+        ];
+
+        for (index, _) in line.match_indices(". ") {
+            let potential_end = index + 1; // Position after the period
+            let sentence = &line[start..potential_end]; // Extract sentence up to and including the period
+
+            // Convert the end of the sentence to lowercase for case-insensitive comparison
+            let sentence_end_lc = sentence.to_lowercase();
+
+            // Check if the sentence ends with an exception and not actually the end of a sentence
+            if exceptions.iter().any(|&exc| sentence_end_lc.ends_with(exc)) {
+                continue; // Skip splitting here, it's an exception
+            }
+
+            // If it's a valid end of a sentence, push it to the sentences vector
+            sentences.push(sentence.trim().to_string());
+            start = potential_end + 1; // Move start to after the space following the period
+        }
+
+        // Add any remaining part of the line as the last sentence
+        if start < line.len() {
+            sentences.push(line[start..].trim().to_string());
+        }
+
+        sentences
     }
 }
