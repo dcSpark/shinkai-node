@@ -52,11 +52,11 @@ pub trait VectorResourceCore: Send + Sync {
     fn data_tag_index(&self) -> &DataTagIndex;
     fn metadata_index(&self) -> &MetadataIndex;
     /// Retrieves an Embedding given its id, at the root level depth.
-    fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
+    fn get_root_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
     fn get_root_embeddings(&self) -> Vec<Embedding>;
     /// Retrieves a copy of a Node given its id, at the root level depth.
-    fn get_node(&self, id: String) -> Result<Node, VRError>;
+    fn get_root_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_root_nodes(&self) -> Vec<Node>;
     /// Returns the merkle root of the Vector Resource (if it is not None).
@@ -119,17 +119,22 @@ pub trait VectorResourceCore: Send + Sync {
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+    fn insert_root_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
         self.insert_node_dt_specified(id, node, embedding, None)
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth).
-    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+    fn replace_root_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+    ) -> Result<(Node, Embedding), VRError> {
         self.replace_node_dt_specified(id, node, embedding, None)
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth).
-    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+    fn remove_root_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
         self.remove_node_dt_specified(id, None)
     }
 
@@ -359,8 +364,8 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
         // Fetch the node at root depth directly, then iterate through the rest
-        let mut node = self.get_node(path.path_ids[0].clone())?;
-        let mut embedding = self.get_embedding(path.path_ids[0].clone())?;
+        let mut node = self.get_root_node(path.path_ids[0].clone())?;
+        let mut embedding = self.get_root_embedding(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header();
         let mut retrieved_nodes = Vec::new();
 
@@ -392,8 +397,8 @@ pub trait VectorResourceCore: Send + Sync {
                             }
                         }
                     }
-                    embedding = resource_obj.get_embedding(id.clone())?;
-                    node = resource_obj.get_node(id.clone())?;
+                    embedding = resource_obj.get_root_embedding(id.clone())?;
+                    node = resource_obj.get_root_node(id.clone())?;
                 }
                 // If we hit a non VR-holding node before the end of the path, then the path is invalid
                 _ => {
@@ -644,8 +649,8 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
 
-        let first_node = self.get_node(path.path_ids[0].clone())?;
-        let first_embedding = self.get_embedding(path.path_ids[0].clone())?;
+        let first_node = self.get_root_node(path.path_ids[0].clone())?;
+        let first_embedding = self.get_root_embedding(path.path_ids[0].clone())?;
         let mut deconstructed_nodes = vec![(path.path_ids[0].clone(), first_node, first_embedding)];
 
         for id in path.path_ids.iter().skip(1) {

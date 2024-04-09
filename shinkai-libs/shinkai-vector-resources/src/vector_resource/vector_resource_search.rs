@@ -428,7 +428,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             // If SyntacticVectorSearch is in traversal_options, fetch nodes with matching data tags
             let ids = self._syntactic_search_id_fetch(&data_tag_names);
             for id in ids {
-                if let Ok(embedding) = self.get_embedding(id) {
+                if let Ok(embedding) = self.get_root_embedding(id) {
                     embeddings_to_score.push(embedding);
                 }
             }
@@ -489,7 +489,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
-            if let Ok(node) = self.get_node(id.clone()) {
+            if let Ok(node) = self.get_root_node(id.clone()) {
                 // Perform validations based on Filter Mode
                 let filter_mode = traversal_options.get_set_filter_mode_option();
                 if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {
