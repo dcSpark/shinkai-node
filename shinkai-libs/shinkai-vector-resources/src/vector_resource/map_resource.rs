@@ -276,6 +276,7 @@ impl VectorResourceCore for MapVectorResource {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError> {
         let id = VRPath::clean_string(&id);
         let current_datetime = if let Some(dt) = new_written_datetime {
@@ -289,7 +290,7 @@ impl VectorResourceCore for MapVectorResource {
         new_node.id = id.clone();
         new_node.set_last_written(current_datetime);
         // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             new_node.update_merkle_hash()?;
         }
 
@@ -317,7 +318,7 @@ impl VectorResourceCore for MapVectorResource {
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
 
@@ -329,6 +330,7 @@ impl VectorResourceCore for MapVectorResource {
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError> {
         let current_datetime = if let Some(dt) = new_written_datetime {
             dt
@@ -341,7 +343,7 @@ impl VectorResourceCore for MapVectorResource {
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
 
@@ -352,12 +354,14 @@ impl VectorResourceCore for MapVectorResource {
     fn remove_root_nodes_dt_specified(
         &mut self,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<Vec<(Node, Embedding)>, VRError> {
         let ids: Vec<String> = self.nodes.keys().cloned().collect();
         let mut results = vec![];
 
         for id in ids {
-            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone())?;
+            let result =
+                self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone(), update_merkle_hashes)?;
             results.push(result);
         }
 
@@ -453,7 +457,7 @@ impl MapVectorResource {
         let node_content = NodeContent::Resource(resource.clone());
         let new_internal_node = Node::from_node_content(key.to_string(), node_content, metadata.clone(), tag_names);
 
-        self.insert_node_at_path(parent_path, key.to_string(), new_internal_node, embedding)
+        self.insert_node_at_path(parent_path, key.to_string(), new_internal_node, embedding, true)
     }
 
     /// Inserts a new node (with a BaseVectorResource) using the resource's included embedding
@@ -495,7 +499,7 @@ impl MapVectorResource {
         let node_content = NodeContent::Text(text_value);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
 
-        self.insert_node_at_path(parent_path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding, true)
     }
 
     /// Inserts a new node (with ExternalContent) at the specified key in the Map resource root.
@@ -524,7 +528,7 @@ impl MapVectorResource {
         let node_content = NodeContent::ExternalContent(external_content);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), Vec::new());
 
-        self.insert_node_at_path(parent_path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding, true)
     }
 
     /// Inserts a new node (with VRHeader) at the specified key in the Map resource root.
@@ -553,7 +557,7 @@ impl MapVectorResource {
         let node_content = NodeContent::VRHeader(vr_header);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
 
-        self.insert_node_at_path(parent_path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding, true)
     }
 
     /// Insert a new node and associated embeddings to the Map resource
@@ -596,7 +600,7 @@ impl MapVectorResource {
 
         if let Some(key) = path.path_ids.last() {
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), tag_names);
-            self.replace_node_at_path(path, new_node, embedding.clone())
+            self.replace_node_at_path(path, new_node, embedding.clone(), true)
         } else {
             Err(VRError::InvalidVRPath(path.clone()))
         }
@@ -632,7 +636,7 @@ impl MapVectorResource {
         if let Some(key) = path.path_ids.last() {
             let node_content = NodeContent::Text(new_text);
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
-            self.replace_node_at_path(path, new_node, embedding)
+            self.replace_node_at_path(path, new_node, embedding.clone(), true)
         } else {
             Err(VRError::InvalidVRPath(path.clone()))
         }
@@ -663,7 +667,7 @@ impl MapVectorResource {
 
         if let Some(key) = path.path_ids.last() {
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), Vec::new());
-            self.replace_node_at_path(path, new_node, embedding.clone())
+            self.replace_node_at_path(path, new_node, embedding.clone(), true)
         } else {
             Err(VRError::InvalidVRPath(path.clone()))
         }
@@ -695,7 +699,7 @@ impl MapVectorResource {
 
         if let Some(key) = path.path_ids.last() {
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
-            self.replace_node_at_path(path, new_node, embedding.clone())
+            self.replace_node_at_path(path, new_node, embedding.clone(), true)
         } else {
             Err(VRError::InvalidVRPath(path.clone())) // Replace with your actual error
         }

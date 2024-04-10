@@ -1146,14 +1146,16 @@ impl VectorFS {
     ) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals(&writer.profile)?;
         let path = writer.path.push_cloned(node_id);
-        Ok(internals.fs_core_resource.remove_node_at_path(path)?)
+        Ok(internals.fs_core_resource.remove_node_at_path(path, true)?)
     }
 
     /// Internal method used to remove the node at path. Applies only in memory.
     /// Errors if no node exists at path.
     fn _remove_node_from_core_resource(&mut self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals(&writer.profile)?;
-        let result = internals.fs_core_resource.remove_node_at_path(writer.path.clone())?;
+        let result = internals
+            .fs_core_resource
+            .remove_node_at_path(writer.path.clone(), true)?;
         Ok(result)
     }
 

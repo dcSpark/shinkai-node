@@ -79,17 +79,20 @@ pub trait VectorResourceCore: Send + Sync {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError>;
     /// Remove a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
     fn remove_node_dt_specified(
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError>;
     /// Removes all Nodes/Embeddings at the root level depth. If no new written datetime is provided, generates now.
     fn remove_root_nodes_dt_specified(
         &mut self,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<Vec<(Node, Embedding)>, VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
@@ -125,17 +128,17 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth).
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
-        self.replace_node_dt_specified(id, node, embedding, None)
+        self.replace_node_dt_specified(id, node, embedding, None, true)
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth).
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
-        self.remove_node_dt_specified(id, None)
+        self.remove_node_dt_specified(id, None, true)
     }
 
     /// Removes all Nodes/Embeddings at the root level depth.
     fn remove_root_nodes(&mut self) -> Result<Vec<(Node, Embedding)>, VRError> {
-        self.remove_root_nodes_dt_specified(None)
+        self.remove_root_nodes_dt_specified(None, true)
     }
 
     /// Retrieves all Nodes and their corresponding Embeddings at the root level depth of the Vector Resource.
@@ -432,7 +435,7 @@ pub trait VectorResourceCore: Send + Sync {
         update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         let current_time = ShinkaiTime::generate_time_now();
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone(), update_merkle_hashes)?;
 
         // Update last written time for all nodes
         for node in deconstructed_nodes.iter_mut() {
@@ -448,15 +451,15 @@ pub trait VectorResourceCore: Send + Sync {
 
         let (node_key, node, embedding) =
             self._rebuild_deconstructed_nodes(deconstructed_nodes, update_merkle_hashes)?;
-        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time), update_merkle_hashes)?;
         Ok(())
     }
 
     /// Removes a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
     /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    fn remove_node_at_path(&mut self, path: VRPath) -> Result<(Node, Embedding), VRError> {
+    fn remove_node_at_path(&mut self, path: VRPath, update_merkle_hashes: bool) -> Result<(Node, Embedding), VRError> {
         let current_time = ShinkaiTime::generate_time_now();
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone(), update_merkle_hashes)?;
         let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
 
         // Update last written time for all nodes
@@ -467,11 +470,12 @@ pub trait VectorResourceCore: Send + Sync {
 
         // Rebuild the nodes after removing the target node
         if !deconstructed_nodes.is_empty() {
-            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
-            self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+            let (node_key, node, embedding) =
+                self._rebuild_deconstructed_nodes(deconstructed_nodes, update_merkle_hashes)?;
+            self.replace_node_dt_specified(node_key, node, embedding, Some(current_time), update_merkle_hashes)?;
         } else {
             // Else remove the node directly if deleting at the root level
-            self.remove_node_dt_specified(removed_node.0, Some(current_time))?;
+            self.remove_node_dt_specified(removed_node.0, Some(current_time), update_merkle_hashes)?;
         }
 
         Ok((removed_node.1, removed_node.2))
@@ -484,10 +488,11 @@ pub trait VectorResourceCore: Send + Sync {
         path: VRPath,
         new_node: Node,
         new_embedding: Embedding,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError> {
         let current_time = ShinkaiTime::generate_time_now();
         // Remove the node at the end of the deconstructed nodes
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone(), update_merkle_hashes)?;
         deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
 
         // Insert the new node at the end of the deconstructed nodes
@@ -501,8 +506,10 @@ pub trait VectorResourceCore: Send + Sync {
             }
 
             // Rebuild the nodes after replacing the node
-            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
-            let result = self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+            let (node_key, node, embedding) =
+                self._rebuild_deconstructed_nodes(deconstructed_nodes, update_merkle_hashes)?;
+            let result =
+                self.replace_node_dt_specified(node_key, node, embedding, Some(current_time), update_merkle_hashes)?;
 
             Ok(result)
         } else {
@@ -518,6 +525,7 @@ pub trait VectorResourceCore: Send + Sync {
         node_to_insert_id: String,
         node_to_insert: Node,
         node_to_insert_embedding: Embedding,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         let current_time = ShinkaiTime::generate_time_now();
         // If inserting at root, just do it directly
@@ -527,12 +535,12 @@ pub trait VectorResourceCore: Send + Sync {
                 node_to_insert,
                 node_to_insert_embedding,
                 Some(current_time),
-                true,
+                update_merkle_hashes,
             )?;
             return Ok(());
         }
         // Insert the new node at the end of the deconstructed nodes
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(parent_path.clone())?;
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(parent_path.clone(), update_merkle_hashes)?;
         deconstructed_nodes.push((node_to_insert_id, node_to_insert, node_to_insert_embedding));
 
         // Update last written time for all nodes
@@ -542,8 +550,9 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         // Rebuild the nodes after inserting the new node
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
-        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
+        let (node_key, node, embedding) =
+            self._rebuild_deconstructed_nodes(deconstructed_nodes, update_merkle_hashes)?;
+        self.replace_node_dt_specified(node_key, node, embedding, Some(current_time), update_merkle_hashes)?;
         Ok(())
     }
 
@@ -554,6 +563,7 @@ pub trait VectorResourceCore: Send + Sync {
         parent_path: VRPath,
         new_node: Node,
         new_embedding: Embedding,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         // If the path is root, then immediately insert into self at root path.
         // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
@@ -564,6 +574,7 @@ pub trait VectorResourceCore: Send + Sync {
                 ord_resource.new_push_node_id(),
                 new_node,
                 new_embedding,
+                update_merkle_hashes,
             );
         } else {
             // Get the resource node at parent_path
@@ -575,6 +586,7 @@ pub trait VectorResourceCore: Send + Sync {
                     ord_resource.new_push_node_id(),
                     new_node,
                     new_embedding,
+                    update_merkle_hashes,
                 );
             }
             return Err(VRError::InvalidVRPath(parent_path.clone()));
@@ -583,12 +595,16 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Pops a node underneath the provided parent_path if the resource held there implements OrderedVectorResource trait.
     /// If the parent_path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    fn pop_node_at_path(&mut self, parent_path: VRPath) -> Result<(Node, Embedding), VRError> {
+    fn pop_node_at_path(
+        &mut self,
+        parent_path: VRPath,
+        update_merkle_hashes: bool,
+    ) -> Result<(Node, Embedding), VRError> {
         // If the path is root, then immediately pop from self at root path to avoid error.
         if parent_path.is_empty() {
             let ord_resource = self.as_ordered_vector_resource_mut()?;
             let node_path = parent_path.push_cloned(ord_resource.last_node_id());
-            return self.remove_node_at_path(node_path);
+            return self.remove_node_at_path(node_path, update_merkle_hashes);
         } else {
             // Get the resource node at parent_path
             let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
@@ -596,7 +612,7 @@ pub trait VectorResourceCore: Send + Sync {
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
                 let ord_resource = resource.as_ordered_vector_resource_mut()?;
                 let node_path = parent_path.push_cloned(ord_resource.last_node_id());
-                self.remove_node_at_path(node_path.clone())
+                self.remove_node_at_path(node_path.clone(), update_merkle_hashes)
             } else {
                 Err(VRError::InvalidVRPath(parent_path.clone()))
             }
@@ -605,7 +621,11 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Internal method. Given a path, pops out each node along the path in order
     /// and returned as a list, including its original key and embedding.
-    fn _deconstruct_nodes_along_path(&mut self, path: VRPath) -> Result<Vec<(String, Node, Embedding)>, VRError> {
+    fn _deconstruct_nodes_along_path(
+        &mut self,
+        path: VRPath,
+        update_merkle_hashes: bool,
+    ) -> Result<Vec<(String, Node, Embedding)>, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
@@ -621,9 +641,11 @@ pub trait VectorResourceCore: Send + Sync {
             let (_node_key, ref mut node, ref mut _embedding) = last_mut;
             match &mut node.content {
                 NodeContent::Resource(resource) => {
-                    let (removed_node, removed_embedding) = resource
-                        .as_trait_object_mut()
-                        .remove_node_dt_specified(id.to_string(), None)?;
+                    let (removed_node, removed_embedding) = resource.as_trait_object_mut().remove_node_dt_specified(
+                        id.to_string(),
+                        None,
+                        update_merkle_hashes,
+                    )?;
                     deconstructed_nodes.push((id.clone(), removed_node, removed_embedding));
                 }
                 _ => {

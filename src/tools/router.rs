@@ -400,7 +400,7 @@ impl ToolRouter {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         self.routing_resource.print_all_nodes_exhaustive(None, false, false);
         println!("Tool key: {}", key);
-        self.routing_resource.remove_node_dt_specified(key, None)?;
+        self.routing_resource.remove_node_dt_specified(key, None, true)?;
         Ok(())
     }
 

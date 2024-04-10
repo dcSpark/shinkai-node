@@ -191,7 +191,7 @@ impl VRPack {
 
         self.resource
             .as_trait_object_mut()
-            .insert_node_at_path(parent_path, resource_name, node, embedding)?;
+            .insert_node_at_path(parent_path, resource_name, node, embedding, true)?;
 
         // Add the embedding model used to the hashmap
         let model = vrkai.resource.as_trait_object().embedding_model_used();
@@ -222,6 +222,7 @@ impl VRPack {
             folder_name.to_string(),
             node,
             embedding,
+            true,
         )?;
 
         self.folder_count += 1;
@@ -247,7 +248,7 @@ impl VRPack {
 
     /// Removes a node (VRKai or folder) from the VRPack at the specified path.
     pub fn remove_at_path(&mut self, path: VRPath) -> Result<(), VRError> {
-        let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path)?;
+        let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path, true)?;
         match removed_node.0.content {
             NodeContent::Text(vrkai_base64) => {
                 // Decrease the embedding model count in the hashmap
