@@ -6,7 +6,6 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -52,7 +51,7 @@ impl VectorFS {
 
         // Initialize the VectorFS
         let default_embedding_model = embedding_generator.model_type().clone();
-        let mut vector_fs = Self {
+        let vector_fs = Self {
             internals_map,
             db: fs_db,
             embedding_generator,
@@ -97,13 +96,13 @@ impl VectorFS {
 
     /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
     /// VFSWriter can then be used to perform write actions at the specified path.
-    pub fn new_writer(
-        &mut self,
+    pub async fn new_writer(
+        &self,
         requester_name: ShinkaiName,
         path: VRPath,
         profile: ShinkaiName,
     ) -> Result<VFSWriter, VectorFSError> {
-        VFSWriter::new(requester_name, path, self, profile)
+        VFSWriter::new(requester_name, path, self, profile).await
     }
 
     /// Initializes a new profile and inserts it into the internals_map
@@ -116,7 +115,8 @@ impl VectorFS {
     ) -> Result<(), VectorFSError> {
         self._validate_node_action_permission(requester_name, &format!("Failed initializing profile {}.", profile))?;
         self.db
-            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)?;
+            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)
+            .await?;
         let internals = self.db.get_profile_fs_internals(&profile)?;
 
         // Acquire a write lock to modify internals_map

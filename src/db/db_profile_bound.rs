@@ -7,7 +7,7 @@ use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 /// base interface, however fully profile-bounded. In other words
 /// all puts add the profile name as a prefix to all keys.
 pub struct ProfileBoundWriteBatch {
-    pub operations: Vec<TransactionOperation>,
+    pub operations: Vec<TransactionOperation>, // TODO: Should it be RwLock?
     pub profile_name: String,
 }
 

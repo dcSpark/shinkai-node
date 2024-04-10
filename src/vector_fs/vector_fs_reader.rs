@@ -51,6 +51,7 @@ impl VFSReader {
         // Validate read permissions to ensure requester_name has rights
         vector_fs
             .validate_read_access_for_paths(profile.clone(), requester_name.clone(), vec![path.clone()])
+            .await
             .map_err(|_| {
                 VectorFSError::InvalidReaderPermission(requester_name.clone(), profile.clone(), path.clone())
             })?;
@@ -74,14 +75,14 @@ impl VFSReader {
 
     /// Generates a VFSReader using the same requester_name/profile held in self.
     /// Read permissions are verified before the VFSReader is produced.
-    pub async fn new_reader_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSReader, VectorFSError> {
+    pub async fn new_reader_copied_data(&self, path: VRPath, vector_fs: &VectorFS) -> Result<VFSReader, VectorFSError> {
         VFSReader::new(self.requester_name.clone(), path, vector_fs, self.profile.clone()).await
     }
 
     /// Generates a VFSWriter using the same requester_name/profile held in self.
     /// Write permissions are verified before the VFSWriter is produced.
-    pub fn new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
-        VFSWriter::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
+    pub async fn new_writer_copied_data(&self, path: VRPath, vector_fs: &VectorFS) -> Result<VFSWriter, VectorFSError> {
+        VFSWriter::new(self.requester_name.clone(), path, vector_fs, self.profile.clone()).await
     }
 
     /// Serialize the PathPermission struct into a JSON string
@@ -98,13 +99,13 @@ impl VFSReader {
 impl VectorFS {
     /// Retrieves a simplified JSON String representation of the FSEntry at the reader's path in the VectorFS.
     /// This is the representation that should be sent to frontends to visualize the VectorFS.
-    pub async fn retrieve_fs_path_simplified_json(&mut self, reader: &VFSReader) -> Result<String, VectorFSError> {
+    pub async fn retrieve_fs_path_simplified_json(&self, reader: &VFSReader) -> Result<String, VectorFSError> {
         let entry = self.retrieve_fs_entry(reader).await?;
         return entry.to_json_simplified();
     }
 
     /// Retrieves the FSEntry for the reader's path in the VectorFS.
-    pub async fn retrieve_fs_entry(&mut self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
+    pub async fn retrieve_fs_entry(&self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
         let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
 
         // Create FSRoot directly if path is root
@@ -136,20 +137,20 @@ impl VectorFS {
 
     /// Attempts to retrieve a VectorResource from inside an FSItem at the path specified in reader. If an FSItem/VectorResource is not saved
     /// at this path, an error will be returned.
-    pub async fn retrieve_vector_resource(&mut self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
+    pub async fn retrieve_vector_resource(&self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
         self.db.get_resource_by_fs_item(&fs_item, &reader.profile)
     }
 
     /// Attempts to retrieve the SourceFileMap from inside an FSItem at the path specified in reader. If this path does not currently exist, or
     /// a source_file is not saved at this path, then an error is returned.
-    pub async fn retrieve_source_file_map(&mut self, reader: &VFSReader) -> Result<SourceFileMap, VectorFSError> {
+    pub async fn retrieve_source_file_map(&self, reader: &VFSReader) -> Result<SourceFileMap, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
         self.db.get_source_file_map_by_fs_item(&fs_item, &reader.profile)
     }
 
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
-    pub async fn retrieve_vrkai(&mut self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
+    pub async fn retrieve_vrkai(&self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
         let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
         let sfm = self.retrieve_source_file_map(reader).await.ok();
@@ -158,7 +159,7 @@ impl VectorFS {
     }
 
     /// Attempts to retrieve a VRPack from the path specified in reader (errors if entry at path is not a folder or root).
-    pub async fn retrieve_vrpack(&mut self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
+    pub async fn retrieve_vrpack(&self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
         let fs_entry = self.retrieve_fs_entry(reader).await?;
         let vec_fs_base_path_parent = reader.path.pop_cloned();
         let default_root_name = format!("{}-root", reader.profile.to_string());
@@ -172,7 +173,7 @@ impl VectorFS {
             entry: &FSEntry,
             vrpack: &mut VRPack,
             current_path: VRPath,
-            vector_fs: &mut VectorFS,
+            vector_fs: &VectorFS,
             reader: &VFSReader,
             vec_fs_base_path: VRPath,
             folder_merkle_hash_map: &mut std::collections::HashMap<VRPath, String>,
@@ -257,7 +258,7 @@ impl VectorFS {
     /// Attempts to retrieve a VectorResource from inside an FSItem within the folder specified at reader path.
     /// If a VectorResource is not saved at this path, an error will be returned.
     pub async fn retrieve_vector_resource_in_folder(
-        &mut self,
+        &self,
         reader: &VFSReader,
         item_name: String,
     ) -> Result<BaseVectorResource, VectorFSError> {
@@ -269,7 +270,7 @@ impl VectorFS {
     /// If this path does not currently exist, or a source_file is not saved at this path,
     /// then an error is returned.
     pub async fn retrieve_source_file_map_in_folder(
-        &mut self,
+        &self,
         reader: &VFSReader,
         item_name: String,
     ) -> Result<SourceFileMap, VectorFSError> {
@@ -279,7 +280,7 @@ impl VectorFS {
 
     /// Attempts to retrieve a VRKai from inside an FSItem within the folder specified at reader path.
     /// If a VectorResource is not saved at this path, an error will be returned.
-    pub async fn retrieve_vrkai_in_folder(&mut self, reader: &VFSReader, item_name: String) -> Result<VRKai, VectorFSError> {
+    pub async fn retrieve_vrkai_in_folder(&self, reader: &VFSReader, item_name: String) -> Result<VRKai, VectorFSError> {
         let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self).await?;
         self.retrieve_vrkai(&new_reader).await
     }

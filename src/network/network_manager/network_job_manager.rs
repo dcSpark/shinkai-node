@@ -176,7 +176,7 @@ impl NetworkJobManager {
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
                 Weak<Mutex<ShinkaiDB>>,                // db
-                Weak<VectorFS>,                 // vector_fs
+                Weak<VectorFS>,                        // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
                 SigningKey,                            // my_signature_secret_key
@@ -505,8 +505,7 @@ impl NetworkJobManager {
 
         // Check if the folder already exists. For now, we delete the folder and recreate it
         {
-            let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
-            let mut vector_fs_lock = maybe_vector_fs.lock().await;
+            let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
 
             // If we're syncing into a different folder name, then update vr_pack name to match
             if let Ok(path_id) = destination_vr_path.last_path_id() {
@@ -517,6 +516,7 @@ impl NetworkJobManager {
 
             let path_already_exists = vector_fs_lock
                 .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
+                .await
                 .is_ok();
 
             let destination_writer = vector_fs_lock
@@ -525,10 +525,11 @@ impl NetworkJobManager {
                     destination_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
             if path_already_exists {
-                vector_fs_lock.delete_folder(&destination_writer)?;
+                vector_fs_lock.delete_folder(&destination_writer).await?;
             }
 
             let parent_writer = vector_fs_lock
@@ -537,6 +538,7 @@ impl NetworkJobManager {
                     parent_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
             let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);

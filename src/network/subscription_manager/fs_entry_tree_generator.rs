@@ -10,7 +10,6 @@ use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::{Arc, Weak};
-use tokio::sync::Mutex;
 
 pub struct FSEntryTreeGenerator {}
 
@@ -28,7 +27,6 @@ impl FSEntryTreeGenerator {
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
             "VectorFS instance is not available".to_string(),
         ))?;
-        let mut vector_fs = vector_fs.lock().await;
 
         // Create Reader and find paths with read permissions
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -41,8 +39,11 @@ impl FSEntryTreeGenerator {
                 vr_path,
                 full_origin_profile_subidentity.clone(),
             )
+            .await
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let shared_folders = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
+        let shared_folders = vector_fs
+            .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+            .await?;
         eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
@@ -54,8 +55,8 @@ impl FSEntryTreeGenerator {
                 full_requester_profile_subidentity.clone(),
                 path.clone(),
                 full_origin_profile_subidentity.clone(),
-            ) {
-                let fs_entry = vector_fs.retrieve_fs_entry(&reader)?;
+            ).await {
+                let fs_entry = vector_fs.retrieve_fs_entry(&reader).await?;
 
                 match fs_entry {
                     FSEntry::Folder(fs_folder) => {

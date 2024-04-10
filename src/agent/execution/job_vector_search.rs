@@ -186,11 +186,11 @@ impl JobManager {
 
         // Folder deep vector search
         {
-            let mut vec_fs = vector_fs.lock().await;
+            // let mut vec_fs = vector_fs;
             for folder in &job_scope.vector_fs_folders {
-                let reader = vec_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone())?;
+                let reader = vector_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone()).await?;
 
-                let ret_fs_nodes = vec_fs
+                let ret_fs_nodes = vector_fs
                     .deep_vector_search(&reader, query_text.clone(), 10, num_of_results)
                     .await?;
 

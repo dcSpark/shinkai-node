@@ -1,30 +1,21 @@
 use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::{
-    agent::{job_manager::JobManager, parsing_helper::ParsingHelper},
-    schemas::identity::Identity,
-};
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
+use crate::{agent::parsing_helper::ParsingHelper, schemas::identity::Identity};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
-            APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-            APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
+            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
             APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems,
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            MessageSchemaType,
         },
     },
 };
-use shinkai_vector_resources::{
-    source::DistributionInfo,
-    vector_resource::{BaseVectorResource, VRPath},
-};
-use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
+use shinkai_vector_resources::{source::DistributionInfo, vector_resource::VRPath};
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -84,7 +75,6 @@ impl Node {
                 return Ok(());
             }
         };
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -97,7 +87,10 @@ impl Node {
                 return Ok(());
             }
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = self
+            .vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -111,7 +104,7 @@ impl Node {
             }
         };
 
-        let result = vector_fs.retrieve_fs_path_simplified_json(&reader);
+        let result = self.vector_fs.retrieve_fs_path_simplified_json(&reader).await;
         let result = match result {
             Ok(result) => result,
             Err(e) => {
@@ -148,7 +141,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match input_payload.path {
             Some(path) => match VRPath::from_string(&path) {
                 Ok(path) => path,
@@ -164,7 +156,10 @@ impl Node {
             },
             None => VRPath::root(),
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = self
+            .vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -181,12 +176,15 @@ impl Node {
         let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
         let max_results = input_payload.max_results.unwrap_or(100) as u64;
 
-        let query_embedding = vector_fs
+        let query_embedding = self
+            .vector_fs
             .generate_query_embedding_using_reader(input_payload.search, &reader)
             .await
             .unwrap();
-        let search_results = vector_fs
+        let search_results = self
+            .vector_fs
             .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
+            .await
             .unwrap();
 
         let results: Vec<String> = search_results
@@ -219,7 +217,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match input_payload.path {
             Some(path) => match VRPath::from_string(&path) {
                 Ok(path) => path,
@@ -235,7 +232,10 @@ impl Node {
             },
             None => VRPath::root(),
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = self
+            .vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -251,7 +251,8 @@ impl Node {
 
         let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
         let max_results = input_payload.max_results.unwrap_or(100) as u64;
-        let search_results = match vector_fs
+        let search_results = match self
+            .vector_fs
             .deep_vector_search(
                 &reader,
                 input_payload.search.clone(),
@@ -311,7 +312,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -325,7 +325,11 @@ impl Node {
             }
         };
 
-        let writer = match vector_fs.new_writer(requester_name.clone(), vr_path, requester_name.clone()) {
+        let writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), vr_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -338,7 +342,11 @@ impl Node {
             }
         };
 
-        match vector_fs.create_new_folder(&writer, &input_payload.folder_name) {
+        match self
+            .vector_fs
+            .create_new_folder(&writer, &input_payload.folder_name)
+            .await
+        {
             Ok(_) => {
                 let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -375,7 +383,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let folder_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -401,7 +408,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -414,7 +425,7 @@ impl Node {
             }
         };
 
-        match vector_fs.move_folder(&orig_writer, destination_path) {
+        match self.vector_fs.move_folder(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -451,7 +462,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let folder_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -478,7 +488,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -491,7 +505,7 @@ impl Node {
             }
         };
 
-        match vector_fs.copy_folder(&orig_writer, destination_path) {
+        match self.vector_fs.copy_folder(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Folder copied successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -528,7 +542,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -542,7 +555,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -555,7 +572,7 @@ impl Node {
             }
         };
 
-        match vector_fs.delete_item(&orig_writer) {
+        match self.vector_fs.delete_item(&orig_writer).await {
             Ok(_) => {
                 let success_message = format!("Item successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -592,7 +609,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -606,7 +622,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -619,7 +639,7 @@ impl Node {
             }
         };
 
-        match vector_fs.delete_folder(&orig_writer) {
+        match self.vector_fs.delete_folder(&orig_writer).await {
             Ok(_) => {
                 let success_message = format!("Folder successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -656,7 +676,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -683,7 +702,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -696,7 +719,7 @@ impl Node {
             }
         };
 
-        match vector_fs.move_item(&orig_writer, destination_path) {
+        match self.vector_fs.move_item(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -733,7 +756,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -759,7 +781,11 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match self
+            .vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -772,7 +798,7 @@ impl Node {
             }
         };
 
-        match vector_fs.copy_item(&orig_writer, destination_path) {
+        match self.vector_fs.copy_item(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -808,7 +834,6 @@ impl Node {
                 return Ok(());
             }
         };
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -821,7 +846,10 @@ impl Node {
                 return Ok(());
             }
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = self
+            .vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -835,7 +863,7 @@ impl Node {
             }
         };
 
-        let result = vector_fs.retrieve_vector_resource(&reader);
+        let result = self.vector_fs.retrieve_vector_resource(&reader).await;
         let result = match result {
             Ok(result) => result,
             Err(e) => {
@@ -931,12 +959,14 @@ impl Node {
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();
-        let mut vector_fs = self.vector_fs.lock().await;
         for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+            let writer = self
+                .vector_fs
+                .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+                .await?;
 
-            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
+            if let Err(e) = self.vector_fs.save_vrkai_in_folder(&writer, vrkai).await {
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -968,7 +998,6 @@ impl Node {
                 }
             }
         }
-
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())

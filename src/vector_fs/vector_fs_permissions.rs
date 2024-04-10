@@ -1,6 +1,9 @@
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{json, Result as JsonResult};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
-use std::{collections::HashMap, fmt::Write};
+use std::{collections::HashMap, fmt::Write, thread, time::Duration};
+use tokio::sync::{RwLock, RwLockReadGuard};
 
 use super::{
     vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader, vector_fs_writer::VFSWriter,
@@ -73,25 +76,117 @@ pub enum WhitelistPermission {
 /// Struct holding the VectorFS' permissions for a given profile.
 /// Note we store the PathPermissions as json strings internally to support efficient
 /// permission checking during VectorFS vector searches.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct PermissionsIndex {
     /// Map which defines the kind of read and write permission per path in the VectorFS
-    pub fs_permissions: HashMap<VRPath, String>,
+    pub fs_permissions: RwLock<HashMap<VRPath, String>>,
     /// ShinkaiName of the profile this permissions index is for.
     pub profile_name: ShinkaiName,
 }
 
+impl Clone for PermissionsIndex {
+    fn clone(&self) -> Self {
+        loop {
+            match self.fs_permissions.try_read() {
+                Ok(fs_permissions_guard) => {
+                    let cloned_fs_permissions = fs_permissions_guard.clone();
+                    drop(fs_permissions_guard); // Explicitly drop the guard to release the lock
+                    return PermissionsIndex {
+                        fs_permissions: RwLock::new(cloned_fs_permissions),
+                        profile_name: self.profile_name.clone(),
+                    };
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            }
+        }
+    }
+}
+
+impl Serialize for PermissionsIndex {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        loop {
+            match self.fs_permissions.try_read() {
+                Ok(fs_permissions_guard) => {
+                    let data = json!({
+                        "fs_permissions": *fs_permissions_guard,
+                        "profile_name": self.profile_name,
+                    });
+                    return data.serialize(serializer);
+                }
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct PermissionsIndexHelper {
+    fs_permissions: HashMap<VRPath, String>,
+    profile_name: ShinkaiName,
+}
+
+impl<'de> Deserialize<'de> for PermissionsIndex {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize into the helper struct
+        let helper = PermissionsIndexHelper::deserialize(deserializer)?;
+        // Construct PermissionsIndex from the helper
+        Ok(PermissionsIndex {
+            fs_permissions: RwLock::new(helper.fs_permissions),
+            profile_name: helper.profile_name,
+        })
+    }
+}
+
+impl PartialEq for PermissionsIndex {
+    fn eq(&self, other: &Self) -> bool {
+        // First, check if the profile names are equal. If not, return false immediately.
+        if self.profile_name != other.profile_name {
+            return false;
+        }
+
+        // Attempt to acquire read locks on both self and other fs_permissions.
+        // Use a loop for retrying every 2ms indefinitely until successful.
+        let self_fs_permissions = loop {
+            match self.fs_permissions.try_read() {
+                Ok(lock) => break lock,
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(2)),
+            }
+        };
+
+        let other_fs_permissions = loop {
+            match other.fs_permissions.try_read() {
+                Ok(lock) => break lock,
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(2)),
+            }
+        };
+
+        // Now that we have both locks, we can compare the HashMaps directly.
+        *self_fs_permissions == *other_fs_permissions
+    }
+}
+
 impl PermissionsIndex {
     /// Creates a new PermissionsIndex struct
-    pub fn new(profile_name: ShinkaiName) -> Self {
-        let mut index = Self {
-            fs_permissions: HashMap::new(),
+    pub async fn new(profile_name: ShinkaiName) -> Self {
+        let index = Self {
+            fs_permissions: RwLock::new(HashMap::new()),
             profile_name,
         };
         // Set permissions for the FS root to be private by default (only for profile owner).
         // This unwrap is safe due to hard coded values.
         index
             .insert_path_permission(VRPath::new(), ReadPermission::Private, WritePermission::Private)
+            .await
             .unwrap();
         index
     }
@@ -99,18 +194,33 @@ impl PermissionsIndex {
     /// Creates a new PermissionsIndex using an input hashmap and profile.
     pub fn from_hashmap(profile_name: ShinkaiName, json_permissions: HashMap<VRPath, String>) -> Self {
         let mut index = Self {
-            fs_permissions: json_permissions,
+            fs_permissions: RwLock::new(json_permissions),
             profile_name,
         };
 
         index
     }
 
+    // /// We can't use serde:Serialize because of the RwLock, so we need to manually serialize the struct.
+    // pub async fn serialize_async(&self) -> JsonResult<String> {
+    //     // Acquire the lock asynchronously
+    //     let fs_permissions = self.fs_permissions.read().await;
+
+    //     // Directly construct a serde_json::Value that represents the PermissionsIndex data
+    //     let to_serialize = json!({
+    //         "fs_permissions": *fs_permissions,
+    //         "profile_name": self.profile_name,
+    //     });
+
+    //     // Serialize the serde_json::Value to a String
+    //     serde_json::to_string(&to_serialize)
+    // }
+
     /// Prepares a copy of the internal permissions hashmap to be used in a Vector Search, by appending
     /// a json serialized reader at a hardcoded key. which is very unlikely to be used normally.
-    pub fn export_permissions_hashmap_with_reader(&self, reader: &VFSReader) -> HashMap<VRPath, String> {
-        // Convert values to json
-        let mut hashmap: HashMap<VRPath, String> = self.fs_permissions.clone();
+    pub async fn export_permissions_hashmap_with_reader(&self, reader: &VFSReader) -> HashMap<VRPath, String> {
+        // Asynchronously acquire a read lock and then clone the HashMap
+        let mut hashmap = self.fs_permissions.read().await.clone();
 
         // Add reader at a hard-coded path that can't be used by the VecFS normally
         if let Ok(json) = reader.to_json() {
@@ -130,8 +240,10 @@ impl PermissionsIndex {
     }
 
     /// Retrieves the PathPermission for a given path.
-    pub fn get_path_permission(&self, path: &VRPath) -> Result<PathPermission, VectorFSError> {
-        self.fs_permissions
+    pub async fn get_path_permission(&self, path: &VRPath) -> Result<PathPermission, VectorFSError> {
+        let permissions_map: RwLockReadGuard<HashMap<VRPath, String>> = self.fs_permissions.read().await;
+
+        permissions_map
             .get(path)
             .map(|json| PathPermission::from_json(json))
             .transpose()?
@@ -141,14 +253,15 @@ impl PermissionsIndex {
     /// Inserts a path permission into the fs_permissions map. Note, this will overwrite the old read/write permissions
     /// for the path if they exist. The Whitelist for the path are preserved always in this method,
     /// even when neither read/write are still set as Whitelist.
-    pub fn insert_path_permission(
-        &mut self,
+    pub async fn insert_path_permission(
+        &self,
         path: VRPath,
         read_permission: ReadPermission,
         write_permission: WritePermission,
     ) -> Result<(), VectorFSError> {
-        let whitelist = self
-            .fs_permissions
+        // Acquire a read lock to access the current permissions
+        let mut fs_permissions = self.fs_permissions.write().await;
+        let whitelist = fs_permissions
             .get(&path)
             .and_then(|json| PathPermission::from_json(json).ok())
             .map_or_else(HashMap::new, |perm| perm.whitelist);
@@ -158,17 +271,28 @@ impl PermissionsIndex {
             write_permission,
             whitelist,
         };
-        self.fs_permissions.insert(path.clone(), path_perm.to_json()?);
+        fs_permissions.insert(path.clone(), path_perm.to_json()?);
         Ok(())
     }
 
     /// Copies the path permissions from the origin_path to the destination_path.
     /// Note, this will overwrite any old permission at the destination_path.
-    pub fn copy_path_permission(&mut self, origin_path: VRPath, destination_path: VRPath) -> Result<(), VectorFSError> {
-        if let Some(origin_permission_json) = self.fs_permissions.get(&origin_path) {
-            let origin_permission = PathPermission::from_json(&origin_permission_json.clone())?;
-            self.fs_permissions
-                .insert(destination_path, origin_permission.to_json()?);
+    pub async fn copy_path_permission(
+        &self,
+        origin_path: VRPath,
+        destination_path: VRPath,
+    ) -> Result<(), VectorFSError> {
+        // Clone the origin permission JSON string while holding a read lock
+        let origin_permission_json = {
+            let fs_permissions = self.fs_permissions.read().await;
+            fs_permissions.get(&origin_path).cloned()
+        };
+
+        // Now that the read lock is dropped, proceed with acquiring a write lock
+        if let Some(origin_permission_json) = origin_permission_json {
+            let origin_permission = PathPermission::from_json(&origin_permission_json)?;
+            let mut fs_permissions_write = self.fs_permissions.write().await;
+            fs_permissions_write.insert(destination_path, origin_permission.to_json()?);
             Ok(())
         } else {
             Err(VectorFSError::NoPermissionEntryAtPath(origin_path))
@@ -177,31 +301,56 @@ impl PermissionsIndex {
 
     /// Internal method which removes a permission from the fs_permissions map.
     /// Should only be used by VectorFS when deleting FSEntries entirely.
-    pub fn remove_path_permission(&mut self, path: VRPath) {
-        self.fs_permissions.remove(&path);
+    pub async fn remove_path_permission(&self, path: VRPath) {
+        let mut fs_permissions = self.fs_permissions.write().await;
+        fs_permissions.remove(&path);
     }
 
     /// Inserts the WhitelistPermission for a ShinkaiName to the whitelist for a given path.
-    pub fn insert_to_whitelist(
-        &mut self,
+    pub async fn insert_to_whitelist(
+        &self,
         path: VRPath,
         name: ShinkaiName,
         whitelist_perm: WhitelistPermission,
     ) -> Result<(), VectorFSError> {
-        if let Some(mut path_permission_json) = self.fs_permissions.get_mut(&path) {
-            let mut path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+        // Acquire a write lock to modify the permissions
+        let mut fs_permissions = self.fs_permissions.write().await;
+
+        // Check if the path exists and clone the JSON string if it does
+        if let Some(path_permission_json) = fs_permissions.get(&path).cloned() {
+            // Deserialize the JSON string into a PathPermission object
+            let mut path_permission = PathPermission::from_json(&path_permission_json)?;
+
+            // Insert the new whitelist permission
             path_permission.whitelist.insert(name, whitelist_perm);
-            *path_permission_json = path_permission.to_json()?;
+
+            // Serialize the updated PathPermission object back into a JSON string
+            let updated_json = path_permission.to_json()?;
+
+            // Update the entry in the map
+            fs_permissions.insert(path, updated_json);
         }
         Ok(())
     }
 
     /// Removes a ShinkaiName from the whitelist for a given path.
-    pub fn remove_from_whitelist(&mut self, path: VRPath, name: ShinkaiName) -> Result<(), VectorFSError> {
-        if let Some(mut path_permission_json) = self.fs_permissions.get_mut(&path) {
-            let mut path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+    pub async fn remove_from_whitelist(&self, path: VRPath, name: ShinkaiName) -> Result<(), VectorFSError> {
+        // Acquire a write lock to modify the permissions
+        let mut fs_permissions = self.fs_permissions.write().await;
+
+        // Check if the path exists and clone the JSON string if it does
+        if let Some(path_permission_json) = fs_permissions.get(&path).cloned() {
+            // Deserialize the JSON string into a PathPermission object
+            let mut path_permission = PathPermission::from_json(&path_permission_json)?;
+
+            // Remove the ShinkaiName from the whitelist
             path_permission.whitelist.remove(&name);
-            *path_permission_json = path_permission.to_json()?;
+
+            // Serialize the updated PathPermission object back into a JSON string
+            let updated_json = path_permission.to_json()?;
+
+            // Update the entry in the map
+            fs_permissions.insert(path, updated_json);
         }
         Ok(())
     }
@@ -212,54 +361,76 @@ impl PermissionsIndex {
         let mut path = path.clone();
 
         loop {
-            if let Some(path_permission_json) = self.fs_permissions.get(&path) {
-                let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+            // Acquire a read lock to access the permissions
+            match self.fs_permissions.try_read() {
+                Ok(fs_permissions) => {
+                    {
+                        let path_permission_json = fs_permissions.get(&path).cloned();
+                        // Explicitly drop the lock here
+                        drop(fs_permissions);
 
-                // Global profile owner check
-                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
-                    return Ok(());
-                }
+                        if let Some(json) = path_permission_json {
+                            let path_permission = PathPermission::from_json(&json)?;
 
-                // Otherwise check specific permission
-                match &path_permission.read_permission {
-                    // If Public, then reading is always allowed
-                    ReadPermission::Public => return Ok(()),
-                    // If private, then reading is allowed for the specific profile that owns the VectorFS
-                    ReadPermission::Private => {
-                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
-                            return Ok(());
-                        } else {
-                            return Err(VectorFSError::InvalidReadPermission(
-                                requester_name.clone(),
-                                path.clone(),
-                            ));
-                        }
-                    }
-                    // If node profiles permission, then reading is allowed to specified profiles in the same node
-                    ReadPermission::NodeProfiles(profiles) => {
-                        if profiles.iter().any(|profile| {
-                            profile.node_name == self.profile_name.node_name
-                                && requester_name.profile_name == profile.profile_name
-                        }) {
-                            return Ok(());
-                        } else {
-                            return Err(VectorFSError::InvalidReadPermission(
-                                requester_name.clone(),
-                                path.clone(),
-                            ));
-                        }
-                    }
-                    // If Whitelist, checks if the current path permission has the WhitelistPermission for the user. If not, then recursively checks above
-                    // directories (if they are also whitelisted) to see if the WhitelistPermission can be found there, until a non-whitelisted
-                    // directory is found (returns false), or the WhitelistPermission is found for the requester.
-                    ReadPermission::Whitelist => {
-                        if let Some(whitelist_permission) = path_permission.get_whitelist_permission(requester_name) {
-                            if matches!(
-                                whitelist_permission,
-                                WhitelistPermission::Read | WhitelistPermission::ReadWrite
-                            ) {
+                            // Global profile owner check
+                            if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
                                 return Ok(());
-                            } else {
+                            }
+
+                            // Otherwise check specific permission
+                            match &path_permission.read_permission {
+                                // If Public, then reading is always allowed
+                                ReadPermission::Public => return Ok(()),
+                                // If private, then reading is allowed for the specific profile that owns the VectorFS
+                                ReadPermission::Private => {
+                                    if requester_name.get_profile_name_string()
+                                        == self.profile_name.get_profile_name_string()
+                                    {
+                                        return Ok(());
+                                    } else {
+                                        return Err(VectorFSError::InvalidReadPermission(
+                                            requester_name.clone(),
+                                            path.clone(),
+                                        ));
+                                    }
+                                }
+                                // If node profiles permission, then reading is allowed to specified profiles in the same node
+                                ReadPermission::NodeProfiles(profiles) => {
+                                    if profiles.iter().any(|profile| {
+                                        profile.node_name == self.profile_name.node_name
+                                            && requester_name.profile_name == profile.profile_name
+                                    }) {
+                                        return Ok(());
+                                    } else {
+                                        return Err(VectorFSError::InvalidReadPermission(
+                                            requester_name.clone(),
+                                            path.clone(),
+                                        ));
+                                    }
+                                }
+                                // If Whitelist, checks if the current path permission has the WhitelistPermission for the user. If not, then recursively checks above
+                                // directories (if they are also whitelisted) to see if the WhitelistPermission can be found there, until a non-whitelisted
+                                // directory is found (returns false), or the WhitelistPermission is found for the requester.
+                                ReadPermission::Whitelist => {
+                                    if let Some(whitelist_permission) =
+                                        path_permission.get_whitelist_permission(requester_name)
+                                    {
+                                        if matches!(
+                                            whitelist_permission,
+                                            WhitelistPermission::Read | WhitelistPermission::ReadWrite
+                                        ) {
+                                            return Ok(());
+                                        } else {
+                                            return Err(VectorFSError::InvalidReadPermission(
+                                                requester_name.clone(),
+                                                path.clone(),
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                            // If we've gone through the whole path and no WhitelistPermission is found, then return false
+                            if path.pop().is_none() {
                                 return Err(VectorFSError::InvalidReadPermission(
                                     requester_name.clone(),
                                     path.clone(),
@@ -268,13 +439,10 @@ impl PermissionsIndex {
                         }
                     }
                 }
-            }
-            // If we've gone through the whole path and no WhitelistPermission is found, then return false
-            if path.pop().is_none() {
-                return Err(VectorFSError::InvalidReadPermission(
-                    requester_name.clone(),
-                    path.clone(),
-                ));
+                Err(_) => {
+                    // Sleep for 2ms before retrying
+                    thread::sleep(Duration::from_millis(2));
+                }
             }
         }
     }
@@ -285,79 +453,99 @@ impl PermissionsIndex {
         let mut path = path.clone();
 
         loop {
-            if let Some(path_permission_json) = self.fs_permissions.get(&path) {
-                let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
+            // Attempt to acquire a read lock to access the permissions
+            match self.fs_permissions.try_read() {
+                Ok(fs_permissions) => {
+                    {
+                        let path_permission_json = fs_permissions.get(&path).cloned();
+                        // Explicitly drop the lock here
+                        drop(fs_permissions);
 
-                // Global profile owner check
-                if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
-                    return Ok(());
-                }
+                        if let Some(path_permission_json) = path_permission_json {
+                            let path_permission = PathPermission::from_json(&path_permission_json.clone())?;
 
-                // Otherwise check specific permission
-                match &path_permission.write_permission {
-                    // If private, then writing is allowed for the specific profile that owns the VectorFS
-                    WritePermission::Private => {
-                        if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
-                            return Ok(());
-                        } else {
-                            return Err(VectorFSError::InvalidWritePermission(
-                                requester_name.clone(),
-                                path.clone(),
-                            ));
-                        }
-                    }
-                    // If node profiles permission, then writing is allowed to specified profiles in the same node
-                    WritePermission::NodeProfiles(profiles) => {
-                        if profiles.iter().any(|profile| {
-                            profile.node_name == self.profile_name.node_name
-                                && requester_name.profile_name == profile.profile_name
-                        }) {
-                        } else {
-                            return Err(VectorFSError::InvalidWritePermission(
-                                requester_name.clone(),
-                                path.clone(),
-                            ));
-                        }
-                    }
-                    // If Whitelist, checks if the current path permission has the WhitelistPermission for the user. If not, then recursively checks above
-                    // directories (if they are also whitelisted) to see if the WhitelistPermission can be found there, until a non-whitelisted
-                    // directory is found (returns false), or the WhitelistPermission is found for the requester.
-                    WritePermission::Whitelist => {
-                        if let Some(whitelist_permission) = path_permission.whitelist.get(requester_name) {
-                            if matches!(
-                                whitelist_permission,
-                                WhitelistPermission::Write | WhitelistPermission::ReadWrite
-                            ) {
-                            } else {
-                                return Err(VectorFSError::InvalidWritePermission(
-                                    requester_name.clone(),
-                                    path.clone(),
-                                ));
+                            // Global profile owner check
+                            if requester_name.get_profile_name_string() == self.profile_name.get_profile_name_string() {
+                                return Ok(());
+                            }
+
+                            // Otherwise check specific permission
+                            match &path_permission.write_permission {
+                                // If private, then writing is allowed for the specific profile that owns the VectorFS
+                                WritePermission::Private => {
+                                    if requester_name.get_profile_name_string()
+                                        == self.profile_name.get_profile_name_string()
+                                    {
+                                        return Ok(());
+                                    } else {
+                                        return Err(VectorFSError::InvalidWritePermission(
+                                            requester_name.clone(),
+                                            path.clone(),
+                                        ));
+                                    }
+                                }
+                                // If node profiles permission, then writing is allowed to specified profiles in the same node
+                                WritePermission::NodeProfiles(profiles) => {
+                                    if profiles.iter().any(|profile| {
+                                        profile.node_name == self.profile_name.node_name
+                                            && requester_name.profile_name == profile.profile_name
+                                    }) {
+                                    } else {
+                                        return Err(VectorFSError::InvalidWritePermission(
+                                            requester_name.clone(),
+                                            path.clone(),
+                                        ));
+                                    }
+                                }
+                                // If Whitelist, checks if the current path permission has the WhitelistPermission for the user. If not, then recursively checks above
+                                // directories (if they are also whitelisted) to see if the WhitelistPermission can be found there, until a non-whitelisted
+                                // directory is found (returns false), or the WhitelistPermission is found for the requester.
+                                WritePermission::Whitelist => {
+                                    if let Some(whitelist_permission) = path_permission.whitelist.get(requester_name) {
+                                        if matches!(
+                                            whitelist_permission,
+                                            WhitelistPermission::Write | WhitelistPermission::ReadWrite
+                                        ) {
+                                        } else {
+                                            return Err(VectorFSError::InvalidWritePermission(
+                                                requester_name.clone(),
+                                                path.clone(),
+                                            ));
+                                        }
+                                    }
+                                }
                             }
                         }
+                        // If we've gone through the whole path and no WhitelistPermission is found, then return false
+                        if path.pop().is_none() {
+                            return Err(VectorFSError::InvalidWritePermission(
+                                requester_name.clone(),
+                                path.clone(),
+                            ));
+                        }
                     }
                 }
-            }
-            // If we've gone through the whole path and no WhitelistPermission is found, then return false
-            if path.pop().is_none() {
-                return Err(VectorFSError::InvalidWritePermission(
-                    requester_name.clone(),
-                    path.clone(),
-                ));
+                Err(_) => {
+                    // Sleep for 2ms before retrying
+                    thread::sleep(Duration::from_millis(2));
+                }
             }
         }
     }
 
     /// Finds all paths that have one of the specified type of read permissions, starting from a given path.
-    pub fn find_paths_with_read_permissions(
+    pub async fn find_paths_with_read_permissions(
         &self,
         starting_path: VRPath,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
         let mut paths_with_permissions = Vec::new();
 
+        // Acquire a read lock to access the fs_permissions hashmap
+        let fs_permissions = self.fs_permissions.read().await;
+
         // Iterate through the fs_permissions hashmap
-        for (path, permission_json) in self.fs_permissions.iter() {
+        for (path, permission_json) in fs_permissions.iter() {
             // Check if the current path is a descendant of the starting path
             if starting_path.is_descendant_path(path) {
                 match PathPermission::from_json(permission_json) {
@@ -375,15 +563,18 @@ impl PermissionsIndex {
     }
 
     /// Finds all paths that have one of the specified type of write permissions, starting from a given path.
-    pub fn find_paths_with_write_permissions(
+    pub async fn find_paths_with_write_permissions(
         &self,
         starting_path: VRPath,
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
         let mut paths_with_permissions = Vec::new();
 
+        // Acquire a read lock to access the fs_permissions hashmap
+        let fs_permissions = self.fs_permissions.read().await;
+
         // Iterate through the fs_permissions hashmap
-        for (path, permission_json) in self.fs_permissions.iter() {
+        for (path, permission_json) in fs_permissions.iter() {
             // Check if the current path is a descendant of the starting path
             if starting_path.is_ancestor_path(path) {
                 match PathPermission::from_json(permission_json) {
@@ -404,14 +595,14 @@ impl PermissionsIndex {
 impl VectorFS {
     /// Validates read access for a given `ShinkaiName` across multiple `VRPath`s in a profile's VectorFS.
     /// Returns `Ok(())` if all paths are valid for reading by the given name, or an error indicating the first one that it found which did not pass.
-    pub fn validate_read_access_for_paths(
+    pub async fn validate_read_access_for_paths(
         &self,
         profile_name: ShinkaiName,
         name_to_check: ShinkaiName,
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
             if fs_internals
                 .permissions_index
                 .validate_read_access(&name_to_check, &path)
@@ -425,14 +616,14 @@ impl VectorFS {
 
     /// Validates write access for a given `ShinkaiName` across multiple `VRPath`s in a profile's VectorFS.
     /// Returns `Ok(())` if all paths are valid for writing by the given name, or an error indicating the first one that it found which did not pass.
-    pub fn validate_write_access_for_paths(
+    pub async fn validate_write_access_for_paths(
         &self,
         profile_name: ShinkaiName,
         name_to_check: ShinkaiName,
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
             if fs_internals
                 .permissions_index
                 .validate_write_access(&name_to_check, &path)
@@ -445,7 +636,7 @@ impl VectorFS {
     }
 
     /// Retrieves the PathPermission for each path in a list, returning a list of tuples containing the VRPath and its corresponding PathPermission.
-    pub fn get_path_permission_for_paths(
+    pub async fn get_path_permission_for_paths(
         &self,
         profile_name: ShinkaiName,
         paths: Vec<VRPath>,
@@ -453,8 +644,8 @@ impl VectorFS {
         let mut path_permissions = Vec::new();
 
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name)?;
-            match fs_internals.permissions_index.get_path_permission(&path) {
+            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
+            match fs_internals.permissions_index.get_path_permission(&path).await {
                 Ok(permission) => path_permissions.push((path, permission)),
                 Err(e) => return Err(e),
             }
@@ -464,45 +655,49 @@ impl VectorFS {
     }
 
     /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
-    pub fn find_paths_with_read_permissions(
+    pub async fn find_paths_with_read_permissions(
         &self,
         reader: &VFSReader,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
         fs_internals
             .permissions_index
             .find_paths_with_read_permissions(reader.path.clone(), read_permissions_to_find)
+            .await
     }
 
     /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
-    pub fn find_paths_with_write_permissions(
+    pub async fn find_paths_with_write_permissions(
         &self,
         reader: &VFSReader,
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
         fs_internals
             .permissions_index
             .find_paths_with_write_permissions(reader.path.clone(), write_permissions_to_find)
+            .await
     }
 
     /// Sets the read/write permissions for the FSEntry at the writer's path (overwrites).
     /// This action is only allowed to be performed by the profile owner.
     /// No remove_path_permission is implemented, as all FSEntries must have a path permission.
-    pub fn set_path_permission(
-        &mut self,
+    pub async fn set_path_permission(
+        &self,
         writer: &VFSWriter,
         read_permission: ReadPermission,
         write_permission: WritePermission,
     ) -> Result<(), VectorFSError> {
-        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+        // Example of acquiring a write lock if internals_map is wrapped in an RwLock
+        let internals_map = self.internals_map.write().await;
+
+        if let Some(fs_internals) = internals_map.get(&writer.profile) {
             if writer.requester_name == writer.profile {
-                fs_internals.permissions_index.insert_path_permission(
-                    writer.path.clone(),
-                    read_permission,
-                    write_permission,
-                )?;
+                fs_internals
+                    .permissions_index
+                    .insert_path_permission(writer.path.clone(), read_permission, write_permission)
+                    .await?;
                 self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(
@@ -516,19 +711,23 @@ impl VectorFS {
 
     /// Inserts a ShinkaiName into the Whitelist permissions list for the FSEntry at the writer's path (overwrites).
     /// This action is only allowed to be performed by the profile owner.
-    pub fn set_whitelist_permission(
-        &mut self,
+    pub async fn set_whitelist_permission(
+        &self,
         writer: &VFSWriter,
         name_to_whitelist: ShinkaiName,
         whitelist_perm: WhitelistPermission,
     ) -> Result<(), VectorFSError> {
-        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+        // Acquire a write lock on internals_map to ensure thread-safe access
+        let internals_map = self.internals_map.write().await;
+
+        if let Some(fs_internals) = internals_map.get(&writer.profile) {
             if writer.requester_name == writer.profile {
-                fs_internals.permissions_index.insert_to_whitelist(
-                    writer.path.clone(),
-                    name_to_whitelist,
-                    whitelist_perm,
-                )?;
+                // Ensure the operation on permissions_index is awaited if it's an async operation
+                fs_internals
+                    .permissions_index
+                    .insert_to_whitelist(writer.path.clone(), name_to_whitelist, whitelist_perm)
+                    .await?;
+                // Assuming save_profile_fs_internals is an async operation, ensure it's awaited
                 self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(
@@ -542,16 +741,22 @@ impl VectorFS {
 
     /// Removes a ShinkaiName from the Whitelist permissions list for the FSEntry at the writer's path.
     /// This action is only allowed to be performed by the profile owner.
-    pub fn remove_whitelist_permission(
-        &mut self,
+    pub async fn remove_whitelist_permission(
+        &self,
         writer: &VFSWriter,
         name_to_remove: ShinkaiName,
     ) -> Result<(), VectorFSError> {
-        if let Some(fs_internals) = self.internals_map.get_mut(&writer.profile) {
+        // Acquire a write lock on internals_map to ensure thread-safe access
+        let mut internals_map = self.internals_map.write().await;
+
+        if let Some(fs_internals) = internals_map.get_mut(&writer.profile) {
             if writer.requester_name == writer.profile {
+                // Perform the removal operation, ensuring it's awaited if it's an async operation
                 fs_internals
                     .permissions_index
-                    .remove_from_whitelist(writer.path.clone(), name_to_remove)?;
+                    .remove_from_whitelist(writer.path.clone(), name_to_remove)
+                    .await?;
+                // Assuming save_profile_fs_internals is an async operation, ensure it's awaited
                 self.db.save_profile_fs_internals(fs_internals, &writer.profile)?;
             } else {
                 return Err(VectorFSError::InvalidWritePermission(

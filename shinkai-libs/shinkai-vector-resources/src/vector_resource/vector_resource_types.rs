@@ -204,7 +204,7 @@ impl Node {
             last_written_datetime: current_time,
             merkle_hash: None,
         };
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -234,7 +234,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -294,7 +294,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -325,7 +325,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
