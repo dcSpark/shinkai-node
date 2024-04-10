@@ -9,7 +9,9 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
+use shinkai_vector_resources::vector_resource::{
+    BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption, VRHeader,
+};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -175,15 +177,33 @@ impl JobManager {
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let mut retrieved_nodes = Vec::new();
+        let proximity_window_size = 1;
+        let num_of_results = num_of_results * proximity_window_size * 3;
+        let mut retrieved_node_groups = Vec::new();
+
+        let deep_traversal_options = vec![
+            TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
+            TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1)),
+        ];
 
         // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
             let mut vr_pack_results = entry
                 .vrpack
-                .dynamic_deep_vector_search(query_text.clone(), 20, num_of_results, generator.clone())
+                .dynamic_deep_vector_search_customized(
+                    query_text.clone(),
+                    100,
+                    &vec![],
+                    None,
+                    num_of_results,
+                    TraversalMethod::Exhaustive,
+                    &deep_traversal_options,
+                    generator,
+                )
                 .await?;
-            retrieved_nodes.append(&mut vr_pack_results);
+
+            let groups = RetrievedNode::group_proximity_results(&mut vr_pack_results)?;
+            retrieved_node_groups.append(&mut groups);
         }
 
         // Folder deep vector search
@@ -192,13 +212,19 @@ impl JobManager {
             for folder in &job_scope.vector_fs_folders {
                 let reader = vec_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone())?;
 
-                let ret_fs_nodes = vec_fs
-                    .deep_vector_search(&reader, query_text.clone(), 10, num_of_results)
+                let mut results = vec_fs
+                    .deep_vector_search_customized(
+                        &reader,
+                        query_text.clone(),
+                        50,
+                        num_of_results,
+                        deep_traversal_options,
+                    )
                     .await?;
 
-                for fs_node in ret_fs_nodes {
-                    retrieved_nodes.push(fs_node.resource_retrieved_node);
-                }
+                let groups = RetrievedNode::group_proximity_results(&mut results)?;
+
+                retrieved_node_groups.append(&mut groups);
             }
         }
 
