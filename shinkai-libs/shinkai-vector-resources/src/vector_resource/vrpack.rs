@@ -702,20 +702,9 @@ impl VRPack {
     /// Note: Intended for internal use only (used by VectorFS).
     /// Sets the Merkle hash of a folder node at the specified path.
     pub fn _set_folder_merkle_hash(&mut self, path: VRPath, merkle_hash: String) -> Result<(), VRError> {
-        self.resource.as_trait_object_mut().mutate_node_at_path(
-            path,
-            &mut |node: &mut Node, _embedding: &mut Embedding| {
-                if let NodeContent::Resource(resource) = &mut node.content {
-                    resource
-                        .as_trait_object_mut()
-                        .set_merkle_root(merkle_hash.clone())
-                        .map_err(|_| VRError::InvalidNodeType("Expected a folder node".to_string()))?;
-                    Ok(())
-                } else {
-                    Err(VRError::InvalidNodeType("Expected a folder node".to_string()))
-                }
-            },
-            false,
-        )
+        self.resource
+            .as_trait_object_mut()
+            ._set_resource_merkle_hash_at_path(path, merkle_hash)?;
+        Ok(())
     }
 }

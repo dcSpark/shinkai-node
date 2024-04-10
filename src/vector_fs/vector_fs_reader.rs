@@ -251,6 +251,8 @@ impl VectorFS {
             vrpack._set_folder_merkle_hash(path.clone(), merkle_hash.clone())?;
         }
 
+        vrpack.resource.as_trait_object_mut().update_merkle_root()?;
+
         Ok(vrpack)
     }
 

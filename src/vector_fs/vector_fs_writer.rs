@@ -767,8 +767,47 @@ impl VectorFS {
             }
         }
 
+        // Sets the Merkle hashes for a collection of folders.
         println!("Folder merkle hashmap: {:?}", folder_merkle_hash_map);
+        self._set_folders_merkle_hashes(
+            &writer,
+            folder_merkle_hash_map
+                .iter()
+                .map(|(path, hash)| (path.clone(), hash.clone()))
+                .collect(),
+        )?;
 
+        // / TODO: Use mutate at path to call update_merkle_root at the base path to propagate all merkle hash updates
+        // / include update merkle hash true to update ancestors automatically.
+        Ok(())
+    }
+
+    /// Internal method which sets the merkle hashes of folders in the VectorFS
+    /// without updating any other folder merkle hashes.
+    fn _set_folders_merkle_hashes(
+        &mut self,
+        writer: &VFSWriter,
+        folder_paths_with_hashes: Vec<(VRPath, String)>,
+    ) -> Result<(), VectorFSError> {
+        {
+            // Fetch the profile's file system internals
+            let internals = self.get_profile_fs_internals(&writer.profile)?;
+
+            // Iterate over each folder path and its corresponding Merkle hash
+            for (folder_path, merkle_hash) in folder_paths_with_hashes {
+                // Use the core resource to set the Merkle hash at the specified path
+                internals
+                    .fs_core_resource
+                    ._set_resource_merkle_hash_at_path(folder_path, merkle_hash)
+                    .map_err(|e| VectorFSError::from(e))?; // Convert VRError to VectorFSError as needed
+            }
+        }
+
+        // Finally saving the profile fs internals
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile)?;
+        let mut write_batch = writer.new_write_batch()?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
         Ok(())
     }
 
