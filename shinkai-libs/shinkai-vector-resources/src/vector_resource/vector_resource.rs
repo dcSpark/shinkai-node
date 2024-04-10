@@ -692,16 +692,36 @@ pub trait VectorResourceCore: Send + Sync {
             path,
             &mut |node: &mut Node, _embedding: &mut Embedding| {
                 if let NodeContent::Resource(resource) = &mut node.content {
-                    resource
-                        .as_trait_object_mut()
-                        .set_merkle_root(merkle_hash.clone())
-                        .map_err(|_| VRError::InvalidNodeType("Expected a folder node".to_string()))?;
+                    resource.as_trait_object_mut().set_merkle_root(merkle_hash.clone())?;
                     Ok(())
                 } else {
                     Err(VRError::InvalidNodeType("Expected a folder node".to_string()))
                 }
             },
             false,
+        )
+    }
+
+    /// Note: Intended for internal use only (used by VectorFS).
+    /// Updates the Merkle root of a Resource node at the specified path.
+    fn _update_resource_merkle_hash_at_path(
+        &mut self,
+        path: VRPath,
+        update_ancestor_merkle_hashes: bool,
+    ) -> Result<(), VRError> {
+        self.mutate_node_at_path(
+            path,
+            &mut |node: &mut Node, _embedding: &mut Embedding| {
+                if let NodeContent::Resource(resource) = &mut node.content {
+                    resource.as_trait_object_mut().update_merkle_root()?;
+                    Ok(())
+                } else {
+                    Err(VRError::InvalidNodeType(
+                        "Cannot update merkle root of a non-Resource node".to_string(),
+                    ))
+                }
+            },
+            update_ancestor_merkle_hashes,
         )
     }
 }

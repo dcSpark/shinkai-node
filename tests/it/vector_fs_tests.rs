@@ -851,33 +851,29 @@ async fn test_vector_fs_operations() {
     println!("\n\nNew VRPack:");
     new_vrpack.print_internal_structure(None);
 
-    assert!(1 == 2);
+    let mut old_vrpack_map = old_vrpack_contents
+        .into_iter()
+        .map(|(vrkai, path)| (path, vrkai))
+        .collect::<HashMap<_, _>>();
 
-    old_vrpack_contents.sort_by(|a, b| {
-        a.0.resource
-            .as_trait_object()
-            .reference_string()
-            .cmp(&b.0.resource.as_trait_object().reference_string())
-    });
+    for (new_vrkai, new_path) in new_vrpack_contents {
+        if let Some(old_vrkai) = old_vrpack_map.remove(&new_path) {
+            assert_eq!(
+                old_vrkai.resource.as_trait_object().reference_string(),
+                new_vrkai.resource.as_trait_object().reference_string(),
+                "Mismatch for path: {}",
+                new_path
+            );
+        } else {
+            panic!("New path not found in old VRPack contents: {}", new_path);
+        }
+    }
 
-    new_vrpack_contents.sort_by(|a, b| {
-        a.0.resource
-            .as_trait_object()
-            .reference_string()
-            .cmp(&b.0.resource.as_trait_object().reference_string())
-    });
-
-    // for oc in &old_vrpack_contents {
-    //     for nc in &new_vrpack_contents {
-    //         println!("old: {}", oc.1);
-    //         println!("new: {}", nc.1);
-    //         // assert_eq!(oc.1, nc.1);
-    //         // assert_eq!(
-    //         //     oc.0.resource.as_trait_object().reference_string(),
-    //         //     nc.0.resource.as_trait_object().reference_string()
-    //         // );
-    //     }
-    // }
+    assert!(
+        old_vrpack_map.is_empty(),
+        "Not all old VRPack contents were found in new: {:?}",
+        old_vrpack_map.keys().collect::<Vec<_>>()
+    );
 
     // Cleanup after vrpack tests
     let deletion_writer = unpack_writer

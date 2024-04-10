@@ -775,19 +775,21 @@ impl VectorFS {
                 .iter()
                 .map(|(path, hash)| (path.clone(), hash.clone()))
                 .collect(),
+            base_path.clone(),
         )?;
 
-        // / TODO: Use mutate at path to call update_merkle_root at the base path to propagate all merkle hash updates
-        // / include update merkle hash true to update ancestors automatically.
         Ok(())
     }
 
     /// Internal method which sets the merkle hashes of folders in the VectorFS
-    /// without updating any other folder merkle hashes.
+    /// without updating any other folder merkle hashes during setting.
+    /// Then once done setting all merkle hashes, updates the merkle hashes of all folders
+    /// from base_path and upwards.
     fn _set_folders_merkle_hashes(
         &mut self,
         writer: &VFSWriter,
         folder_paths_with_hashes: Vec<(VRPath, String)>,
+        base_path: VRPath,
     ) -> Result<(), VectorFSError> {
         {
             // Fetch the profile's file system internals
@@ -801,6 +803,11 @@ impl VectorFS {
                     ._set_resource_merkle_hash_at_path(folder_path, merkle_hash)
                     .map_err(|e| VectorFSError::from(e))?; // Convert VRError to VectorFSError as needed
             }
+
+            // Once done with merkle hash updates, update the merkle hashes of all folders from base_path and upwards.
+            internals
+                .fs_core_resource
+                ._update_resource_merkle_hash_at_path(base_path, true)?;
         }
 
         // Finally saving the profile fs internals
