@@ -19,8 +19,17 @@ impl VectorFSDB {
         // Log the size of the value
         eprintln!("Saving resource with size: {} bytes", bytes.len());
 
+        // Measure the time it takes to execute pb_put_cf
+        let start_time = std::time::Instant::now();
+
         // Insert into the "VectorResources" column family
         batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
+
+        // Log the duration
+        eprintln!(
+            "pb_put_cf executed in: {:?} seconds",
+            start_time.elapsed().as_secs_f32()
+        );
 
         Ok(())
     }

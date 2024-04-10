@@ -126,7 +126,8 @@ impl ShinkaiDB {
         
         // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
         cf_opts.set_enable_blob_files(true);
-        cf_opts.set_min_blob_size(1024 * 100);
+        cf_opts.set_min_blob_size(1024 * 100); // 100kb
+        cf_opts.set_max_total_wal_size(250 * 1024 * 1024); // 250MB
 
         cf_opts.set_allow_concurrent_memtable_write(true);
         cf_opts.set_enable_write_thread_adaptive_yield(true);

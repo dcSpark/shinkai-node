@@ -1,15 +1,13 @@
 use rocksdb::{AsColumnFamilyRef, ColumnFamily, DBIteratorWithThreadMode, IteratorMode, WriteBatch, DB};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-
-use crate::vector_fs::vector_fs_error::VectorFSError;
-
+use crate::vector_fs::{db::fs_db::TransactionOperation, vector_fs_error::VectorFSError};
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 
 /// A struct that wraps rocksdb::WriteBatch and offers the same
 /// base interface, however fully profile-bounded. In other words
 /// all puts add the profile name as a prefix to all keys.
 pub struct ProfileBoundWriteBatch {
-    pub write_batch: rocksdb::WriteBatch,
+    pub operations: Vec<TransactionOperation>,
     pub profile_name: String,
 }
 
@@ -19,10 +17,10 @@ impl ProfileBoundWriteBatch {
         // Also validates that the name includes a profile
         let profile_name = ShinkaiDB::get_profile_name_string(profile)?;
         // Create write batch
-        let write_batch = rocksdb::WriteBatch::default();
+        let operations = Vec::new();
         Ok(Self {
-            write_batch,
             profile_name,
+            operations
         })
     }
 
@@ -31,30 +29,28 @@ impl ProfileBoundWriteBatch {
         // Also validates that the name includes a profile
         match ShinkaiDB::get_profile_name_string(profile) {
             Ok(profile_name) => {
-                // Create write batch
-                let write_batch = rocksdb::WriteBatch::default();
                 Ok(Self {
-                    write_batch,
+                    operations: Vec::new(), // Initialize the operations vector
                     profile_name,
                 })
-            }
-            Err(e) => Err(VectorFSError::FailedCreatingProfileBoundWriteBatch(profile.to_string())),
+            },
+            Err(_) => Err(VectorFSError::FailedCreatingProfileBoundWriteBatch(profile.to_string())),
         }
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.
-    pub fn pb_put_cf<V>(&mut self, cf: &impl AsColumnFamilyRef, key: &str, value: V)
+    pub fn pb_put_cf<V>(&mut self, _cf: &impl AsColumnFamilyRef, key: &str, value: V)
     where
         V: AsRef<[u8]>,
     {
         let new_key = self.gen_pb_key(key);
-        self.write_batch.put_cf(cf, new_key.as_bytes(), value);
+        self.operations.push(TransactionOperation::Write(new_key, value.as_ref().to_vec()));
     }
 
     /// Removes the value inside of the key (profile-bound) at the provided column family.
-    pub fn pb_delete_cf(&mut self, cf: &impl AsColumnFamilyRef, key: &str) {
+    pub fn pb_delete_cf(&mut self, _cf: &impl AsColumnFamilyRef, key: &str) {
         let new_key = self.gen_pb_key(key);
-        self.write_batch.delete_cf(cf, new_key.as_bytes());
+        self.operations.push(TransactionOperation::Delete(new_key));
     }
 
     /// Given an input key, generates the profile bound key using the internal profile.
@@ -191,7 +187,8 @@ impl ShinkaiDB {
 
     /// Profile-bound saves the WriteBatch to the database
     pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
-        self.write(pb_batch.write_batch)
+        // self.write(pb_batch.write_batch)
+        unimplemented!()
     }
 
     /// Validates if the key has the provided profile name properly prepended to it

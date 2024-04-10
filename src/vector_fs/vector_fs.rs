@@ -67,13 +67,14 @@ impl VectorFS {
 
     /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
     /// Simply creates a barebones struct to be used to satisfy required types.
-    pub fn new_empty() -> Self {
-        Self {
+    pub fn new_empty() -> Result<Self, VectorFSError> {
+        let db = VectorFSDB::new_empty()?;
+        Ok(Self {
             internals_map: HashMap::new(),
-            db: VectorFSDB::new_empty(),
+            db,
             embedding_generator: RemoteEmbeddingGenerator::new_default(),
             node_name: ShinkaiName::from_node_name("@@node1.shinkai".to_string()).unwrap(),
-        }
+        })
     }
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
