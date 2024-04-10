@@ -278,8 +278,8 @@ impl VectorFS {
         ))
     }
 
-    /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
-    /// in the internals_map.
+    /// Attempts to fetch a copy of the profile VectorFSInternals (from memory)
+    /// in the internals_map. ANY MUTATION DOESN'T PROPAGATE.
     pub async fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
         let internals_map = self.internals_map.read().await;
         let internals = internals_map

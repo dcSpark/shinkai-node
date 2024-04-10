@@ -2,7 +2,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
-use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::DistributionInfo;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSourceReference,
@@ -263,7 +263,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 

@@ -478,7 +478,9 @@ impl ExternalSubscriberManager {
                 let streamer = subscription_id.extract_streamer_node_with_profile()?;
                 let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
 
-                let reader = vector_fs_inst.new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone()).await?;
+                let reader = vector_fs_inst
+                    .new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())
+                    .await?;
                 let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).await.unwrap();
 
                 if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
@@ -826,7 +828,9 @@ impl ExternalSubscriberManager {
                 )
                 .await
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public]).await?;
+            let results = vector_fs
+                .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                .await?;
             eprintln!("available_shared_folders> results: {:?}", results);
 
             // Use the new function to filter results to only include top-level folders
@@ -908,7 +912,9 @@ impl ExternalSubscriberManager {
             ))?;
 
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let result = vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path]).await?;
+        let result = vector_fs
+            .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])
+            .await?;
 
         // Checks that the permission is valid (Whitelist or Public)
         for (_, path_permission) in &result {
@@ -949,15 +955,18 @@ impl ExternalSubscriberManager {
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path.clone(),
-                requester_shinkai_identity.clone(),
-            ).await?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path.clone(),
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Retrieve the current write permissions for the path
-            let permissions_vector =
-                vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()]).await?;
+            let permissions_vector = vector_fs
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -968,11 +977,9 @@ impl ExternalSubscriberManager {
             let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Set the read permissions to Public while reusing the write permissions
-            let result = vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Public,
-                current_permissions.write_permission,
-            ).await;
+            let result = vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Public, current_permissions.write_permission)
+                .await;
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -1028,7 +1035,8 @@ impl ExternalSubscriberManager {
 
             // Retrieve the current permissions for the path
             let permissions_vector = vector_fs
-                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?]).await?;
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -1039,18 +1047,18 @@ impl ExternalSubscriberManager {
             let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Create a writer for the path
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path,
-                requester_shinkai_identity.clone(),
-            ).await?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path,
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Set the read permissions to Private while reusing the write permissions using update_permissions_recursively
-            vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Private,
-                current_permissions.write_permission,
-            ).await?;
+            vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Private, current_permissions.write_permission)
+                .await?;
         }
         {
             // Assuming we have validated the admin and permissions, we proceed to update the DB

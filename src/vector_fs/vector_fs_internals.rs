@@ -1,21 +1,14 @@
 use super::{
-    vector_fs_error::VectorFSError,
     vector_fs_permissions::PermissionsIndex,
     vector_fs_types::{LastReadIndex, SubscriptionsIndex},
 };
-use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
-use chrono::{DateTime, Utc};
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     embeddings::Embedding,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
-    resource_errors::VRError,
     source::DistributionInfo,
-    vector_resource::{
-        BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSourceReference, VectorResource,
-        VectorResourceCore,
-    },
+    vector_resource::{MapVectorResource, VRSourceReference, VectorResourceCore},
 };
 use std::collections::HashMap;
 
