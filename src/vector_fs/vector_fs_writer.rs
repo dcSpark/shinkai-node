@@ -982,6 +982,7 @@ impl VectorFS {
                 new_vr_header_node,
                 new_node_embedding,
                 Some(current_datetime),
+                true,
             )?;
 
             // Update the resource's keywords. If no keywords, copy all, else random replace a few
@@ -1004,7 +1005,7 @@ impl VectorFS {
             if vr_header.resource_embedding_model_used == internals.default_embedding_model() {
                 internals
                     .fs_core_resource
-                    .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
+                    .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;
                 // Update last read of the new FSItem
                 internals.last_read_index.update_path_last_read(
                     new_node_path.clone(),
@@ -1068,6 +1069,7 @@ impl VectorFS {
                 new_node.clone(),
                 embedding.clone(),
                 None,
+                true,
             )?;
             // Update last read of the new FSFolder
             internals.last_read_index.update_path_last_read(
@@ -1094,6 +1096,7 @@ impl VectorFS {
                 new_node,
                 embedding.clone(),
                 None,
+                true,
             )?;
 
             // If new resource has keywords, and none in target copy all, else random replace a few
@@ -1116,7 +1119,7 @@ impl VectorFS {
 
         internals
             .fs_core_resource
-            .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
+            .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;
         // Update last read of the new FSFolder
         internals.last_read_index.update_path_last_read(
             new_node_path.clone(),

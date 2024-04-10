@@ -70,6 +70,7 @@ pub trait VectorResourceCore: Send + Sync {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError>;
     /// Replace a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
     fn replace_node_dt_specified(
@@ -119,7 +120,7 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
-        self.insert_node_dt_specified(id, node, embedding, None)
+        self.insert_node_dt_specified(id, node, embedding, None, true)
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth).
@@ -428,6 +429,7 @@ pub trait VectorResourceCore: Send + Sync {
         &mut self,
         path: VRPath,
         mutator: &mut dyn Fn(&mut Node, &mut Embedding) -> Result<(), VRError>,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
@@ -444,7 +446,8 @@ pub trait VectorResourceCore: Send + Sync {
             mutator(node, embedding)?;
         }
 
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        let (node_key, node, embedding) =
+            self._rebuild_deconstructed_nodes(deconstructed_nodes, update_merkle_hashes)?;
         self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
@@ -464,7 +467,7 @@ pub trait VectorResourceCore: Send + Sync {
 
         // Rebuild the nodes after removing the target node
         if !deconstructed_nodes.is_empty() {
-            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
             self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         } else {
             // Else remove the node directly if deleting at the root level
@@ -498,7 +501,7 @@ pub trait VectorResourceCore: Send + Sync {
             }
 
             // Rebuild the nodes after replacing the node
-            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
             let result = self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
 
             Ok(result)
@@ -524,6 +527,7 @@ pub trait VectorResourceCore: Send + Sync {
                 node_to_insert,
                 node_to_insert_embedding,
                 Some(current_time),
+                true,
             )?;
             return Ok(());
         }
@@ -538,7 +542,7 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         // Rebuild the nodes after inserting the new node
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes, true)?;
         self.replace_node_dt_specified(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
@@ -638,6 +642,7 @@ pub trait VectorResourceCore: Send + Sync {
     fn _rebuild_deconstructed_nodes(
         &mut self,
         mut deconstructed_nodes: Vec<(String, Node, Embedding)>,
+        update_merkle_hashes: bool,
     ) -> Result<(String, Node, Embedding), VRError> {
         let mut current_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(VRPath::new()))?;
         for (id, mut node, embedding) in deconstructed_nodes.into_iter().rev() {
@@ -649,6 +654,7 @@ pub trait VectorResourceCore: Send + Sync {
                     current_node.1,
                     current_node.2,
                     Some(current_node_last_written),
+                    update_merkle_hashes,
                 )?;
                 current_node = (id, node, embedding);
             }

@@ -779,12 +779,18 @@ async fn test_vector_fs_operations() {
             &mut vector_fs,
         )
         .unwrap();
+
+    println!("\n\n\nVectorFS:");
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
     let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
 
+    println!("\n\n\nVRPack:");
     vrpack
         .resource
         .as_trait_object()
         .print_all_nodes_exhaustive(None, true, false);
+    assert!(1 == 2);
 
     let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
 

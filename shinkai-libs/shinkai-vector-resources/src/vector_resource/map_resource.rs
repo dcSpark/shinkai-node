@@ -73,6 +73,11 @@ impl VectorResourceCore for MapVectorResource {
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a valid Blake3 hash.
     fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError> {
         // Validate the hash format
+        println!(
+            "Updating Merkle Root From: {:?} -> {}",
+            self.merkle_root.clone(),
+            merkle_hash
+        );
         if blake3::Hash::from_hex(&merkle_hash).is_ok() {
             self.merkle_root = Some(merkle_hash);
             Ok(())
@@ -228,6 +233,7 @@ impl VectorResourceCore for MapVectorResource {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         let current_datetime = if let Some(dt) = new_written_datetime {
             dt
@@ -243,7 +249,7 @@ impl VectorResourceCore for MapVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
         // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             updated_node.update_merkle_hash()?;
         }
 
@@ -257,7 +263,7 @@ impl VectorResourceCore for MapVectorResource {
 
         self.set_last_written_datetime(current_datetime);
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
         Ok(())

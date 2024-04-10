@@ -692,6 +692,7 @@ impl VRPack {
                     Err(VRError::InvalidNodeType("Expected a folder node".to_string()))
                 }
             },
+            false,
         )
     }
 }
