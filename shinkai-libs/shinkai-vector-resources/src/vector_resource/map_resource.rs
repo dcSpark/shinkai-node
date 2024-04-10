@@ -73,11 +73,6 @@ impl VectorResourceCore for MapVectorResource {
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a valid Blake3 hash.
     fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError> {
         // Validate the hash format
-        println!(
-            "Updating Merkle Root From: {:?} -> {}",
-            self.merkle_root.clone(),
-            merkle_hash
-        );
         if blake3::Hash::from_hex(&merkle_hash).is_ok() {
             self.merkle_root = Some(merkle_hash);
             Ok(())

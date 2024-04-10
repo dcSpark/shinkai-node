@@ -786,11 +786,7 @@ async fn test_vector_fs_operations() {
     let vrpack = vector_fs.retrieve_vrpack(&reader).unwrap();
 
     println!("\n\n\nVRPack:");
-    vrpack
-        .resource
-        .as_trait_object()
-        .print_all_nodes_exhaustive(None, true, false);
-    assert!(1 == 2);
+    vrpack.print_internal_structure(None);
 
     let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
 
@@ -843,7 +839,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::root().push_cloned("new_root_folder".to_string()),
+            VRPath::from_string("/unpacked/new_root_folder").unwrap(),
             &mut vector_fs,
         )
         .unwrap();
@@ -854,6 +850,8 @@ async fn test_vector_fs_operations() {
     old_vrpack.print_internal_structure(None);
     println!("\n\nNew VRPack:");
     new_vrpack.print_internal_structure(None);
+
+    assert!(1 == 2);
 
     old_vrpack_contents.sort_by(|a, b| {
         a.0.resource

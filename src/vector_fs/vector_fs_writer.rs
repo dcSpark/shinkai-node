@@ -573,8 +573,10 @@ impl VectorFS {
     }
 
     /// Automatically creates new FSFolders along the given path that do not exist, including the final path id (aka. don't supply an FSItem's path, use its parent path).
-    pub fn create_new_folder_auto(&mut self, writer: &VFSWriter, path: VRPath) -> Result<(), VectorFSError> {
+    /// Returns a Vec<VRPath> containing the paths of the newly created folders.
+    pub fn create_new_folder_auto(&mut self, writer: &VFSWriter, path: VRPath) -> Result<Vec<VRPath>, VectorFSError> {
         let mut current_path = VRPath::root();
+        let mut created_folders = Vec::new();
         for segment in path.path_ids {
             current_path.push(segment.clone());
             if self
@@ -583,9 +585,10 @@ impl VectorFS {
             {
                 let new_writer = writer.new_writer_copied_data(current_path.pop_cloned(), self)?;
                 self.create_new_folder(&new_writer, &segment)?;
+                created_folders.push(current_path.clone());
             }
         }
-        Ok(())
+        Ok(created_folders)
     }
 
     /// Creates a new FSFolder underneath the writer's path. Errors if the path in `writer` does not exist.
@@ -736,15 +739,35 @@ impl VectorFS {
         }
 
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
+        let mut folder_merkle_hash_map: HashMap<VRPath, String> = HashMap::new();
 
         for (vrkai, path) in vrkais_with_paths {
             let parent_folder_path = base_path.append_path_cloned(&path.parent_path());
             let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self)?;
             // Create the folders
-            self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())?;
+            let new_folders = self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())?;
             // Save the VRKai in its final location
             self.save_vrkai_in_folder(&parent_folder_writer, vrkai)?;
+
+            // Now update the folder merkle hash map
+            for full_folder_path in new_folders {
+                // Remove the base path from the full folder path
+                let mut folder_path = full_folder_path.clone();
+                for _ in base_path.path_ids.iter() {
+                    folder_path.front_pop();
+                }
+                // Skip if empty
+                if folder_path.path_ids.is_empty() {
+                    continue;
+                }
+                if folder_merkle_hash_map.get(&folder_path).is_none() {
+                    let merkle_hash = vrpack.get_folder_merkle_hash(folder_path.clone())?;
+                    folder_merkle_hash_map.insert(full_folder_path, merkle_hash);
+                }
+            }
         }
+
+        println!("Folder merkle hashmap: {:?}", folder_merkle_hash_map);
 
         Ok(())
     }

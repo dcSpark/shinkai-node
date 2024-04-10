@@ -181,17 +181,27 @@ impl VRPack {
     }
 
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
-    pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
+    pub fn insert_vrkai(
+        &mut self,
+        vrkai: &VRKai,
+        parent_path: VRPath,
+        update_merkle_hashes: bool,
+    ) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();
         let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
         let metadata = None;
         let enc_vrkai = vrkai.encode_as_base64()?;
         let mut node = Node::new_text(resource_name.clone(), enc_vrkai, metadata, &vec![]);
+        // We always take the merkle root of the resource, no matter what
         node.merkle_hash = Some(vrkai.resource.as_trait_object().get_merkle_root()?);
 
-        self.resource
-            .as_trait_object_mut()
-            .insert_node_at_path(parent_path, resource_name, node, embedding, true)?;
+        self.resource.as_trait_object_mut().insert_node_at_path(
+            parent_path,
+            resource_name,
+            node,
+            embedding,
+            update_merkle_hashes,
+        )?;
 
         // Add the embedding model used to the hashmap
         let model = vrkai.resource.as_trait_object().embedding_model_used();
@@ -244,6 +254,18 @@ impl VRPack {
     pub fn get_vrkai(&self, path: VRPath) -> Result<VRKai, VRError> {
         let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
         Self::parse_node_to_vrkai(&node.node)
+    }
+
+    /// Fetches the merkle hash of the folder at the specified path.
+    pub fn get_folder_merkle_hash(&self, path: VRPath) -> Result<String, VRError> {
+        let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
+        match node.node.content {
+            NodeContent::Resource(resource) => Ok(resource.as_trait_object().get_merkle_root()?),
+            _ => Err(VRError::InvalidNodeType(format!(
+                "Node is not a folder: {} ",
+                path.format_to_string()
+            ))),
+        }
     }
 
     /// Removes a node (VRKai or folder) from the VRPack at the specified path.
