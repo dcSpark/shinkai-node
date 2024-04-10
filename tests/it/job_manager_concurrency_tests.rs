@@ -114,7 +114,7 @@ async fn test_process_job_queue_concurrency() {
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
-                              vector_fs: Weak<Mutex<VectorFS>>,
+                              vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -233,7 +233,7 @@ async fn test_sequential_process_for_same_job_id() {
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
-                              vector_fs: Weak<Mutex<VectorFS>>,
+                              vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {

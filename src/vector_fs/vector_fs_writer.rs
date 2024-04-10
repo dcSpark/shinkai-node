@@ -4,17 +4,14 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
-use log::kv::source;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::source::{DistributionInfo, DistributionOrigin, SourceFileMap};
+use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType, VRKai, VRPack};
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    vector_resource::{
-        BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSourceReference, VectorResourceCore,
-    },
+    vector_resource::{BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSourceReference},
 };
 use std::collections::HashMap;
 
@@ -32,7 +29,7 @@ impl VFSWriter {
     pub fn new(
         requester_name: ShinkaiName,
         path: VRPath,
-        vector_fs: &mut VectorFS,
+        vector_fs: &VectorFS,
         profile: ShinkaiName,
     ) -> Result<Self, VectorFSError> {
         let writer = VFSWriter {

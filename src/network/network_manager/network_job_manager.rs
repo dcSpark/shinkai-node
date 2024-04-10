@@ -83,7 +83,7 @@ pub struct NetworkJobManager {
 impl NetworkJobManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -164,7 +164,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -176,7 +176,7 @@ impl NetworkJobManager {
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
                 Weak<Mutex<ShinkaiDB>>,                // db
-                Weak<Mutex<VectorFS>>,                 // vector_fs
+                Weak<VectorFS>,                 // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
                 SigningKey,                            // my_signature_secret_key
@@ -349,7 +349,7 @@ impl NetworkJobManager {
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -430,7 +430,7 @@ impl NetworkJobManager {
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         _: EncryptionStaticKey,
         _: SigningKey,

@@ -17,7 +17,7 @@ pub struct FSEntryTreeGenerator {}
 impl FSEntryTreeGenerator {
     /// Builds an FSEntryTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         full_origin_profile_subidentity: ShinkaiName,
         full_requester_profile_subidentity: ShinkaiName,
         path: String,

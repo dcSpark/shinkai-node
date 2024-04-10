@@ -39,7 +39,7 @@ pub struct JobManager {
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
     // The Node's VectorFS
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub vector_fs: Weak<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -52,7 +52,7 @@ impl JobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Self {
@@ -135,7 +135,7 @@ impl JobManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -143,7 +143,7 @@ impl JobManager {
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
+                Weak<VectorFS>,
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,

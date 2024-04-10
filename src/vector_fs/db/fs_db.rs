@@ -46,7 +46,6 @@ pub struct VectorFSDB {
 impl VectorFSDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
         let mut db_opts = Options::default();
-        let txn_db_options = TransactionDBOptions::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
         // if we want to enable compression
@@ -55,8 +54,6 @@ impl VectorFSDB {
         // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
         db_opts.set_enable_blob_files(true);
         db_opts.set_min_blob_size(1024 * 100); // 100kb
-        db_opts.set_max_total_wal_size(250 * 1024 * 1024); // 250MB
-                                                           // db_opts.set_max_total_wal_size(1 << 30); // 1GB - maybe this should be the default value
         db_opts.set_blob_compression_type(DBCompressionType::Lz4);
 
         let cf_names = if Path::new(db_path).exists() {
@@ -81,8 +78,6 @@ impl VectorFSDB {
             cf_opts.create_missing_column_families(true);
             cf_opts.set_enable_blob_files(true);
             cf_opts.set_min_blob_size(1024 * 100); // 100kb
-                                                   // cf_opts.set_max_total_wal_size(1 << 30); // 1GB
-            db_opts.set_max_total_wal_size(250 * 1024 * 1024); // 250MB
             cf_opts.set_blob_compression_type(DBCompressionType::Lz4);
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
             cfs.push(cf_desc);
@@ -104,17 +99,17 @@ impl VectorFSDB {
             .map(char::from)
             .collect();
         let db_path = format!("db_tests/empty_vector_fs_db_{}", random_string);
-    
+
         // Set up default options for the database
         let mut db_opts = Options::default();
         db_opts.create_if_missing(true); // Ensure the database is created if it does not exist
-    
+
         // Open an OptimisticTransactionDB with the specified options
         let db = OptimisticTransactionDB::<SingleThreaded>::open(&db_opts, &db_path)?;
-    
+
         Ok(Self { db, path: db_path })
     }
-    
+
     /// Fetches the ColumnFamily handle.
     pub fn get_cf_handle(&self, topic: FSTopic) -> Result<&ColumnFamily, VectorFSError> {
         Ok(self

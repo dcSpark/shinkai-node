@@ -67,7 +67,7 @@ pub struct SharedFolderInfo {
 
 pub struct ExternalSubscriberManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -89,7 +89,7 @@ pub struct ExternalSubscriberManager {
 impl ExternalSubscriberManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -227,7 +227,7 @@ impl ExternalSubscriberManager {
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -380,7 +380,7 @@ impl ExternalSubscriberManager {
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -562,7 +562,7 @@ impl ExternalSubscriberManager {
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -574,7 +574,7 @@ impl ExternalSubscriberManager {
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
+                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 EncryptionStaticKey,
