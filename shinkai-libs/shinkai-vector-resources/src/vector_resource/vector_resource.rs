@@ -429,7 +429,6 @@ pub trait VectorResourceCore: Send + Sync {
         path: VRPath,
         mutator: &mut dyn Fn(&mut Node, &mut Embedding) -> Result<(), VRError>,
     ) -> Result<(), VRError> {
-        eprintln!("Mutating node at path: {:?}", path);
         let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
 

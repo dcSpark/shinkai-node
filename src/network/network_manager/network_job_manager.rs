@@ -541,10 +541,10 @@ impl NetworkJobManager {
                 .await
                 .unwrap();
 
-            let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);
+            let _ = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
 
             {
-                // debug. print current files
+                // // debug. print current files
                 // eprintln!("debug current files");
                 // // let root_path = VRPath::root();
                 // let root_path = VRPath::from_string("/").unwrap();
@@ -552,9 +552,9 @@ impl NetworkJobManager {
                 //     local_subscriber.clone(),
                 //     root_path.clone(),
                 //     local_subscriber.clone(),
-                // );
+                // ).await;
                 // let reader = reader.unwrap();
-                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
                 // eprintln!("Current files: {:?}", result);
             }
         }
