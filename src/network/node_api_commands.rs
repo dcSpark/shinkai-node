@@ -735,16 +735,14 @@ impl Node {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
-        let mut vfs = self.vector_fs.lock().await;
-        vfs.initialize_new_profiles(
+        self.vector_fs.initialize_new_profiles(
             &self.node_name,
             profile_list,
             self.embedding_generator.model_type.clone(),
             NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
-        )?;
+        ).await?;
 
         std::mem::drop(db);
-        std::mem::drop(vfs);
 
         match result {
             Ok(success) => {

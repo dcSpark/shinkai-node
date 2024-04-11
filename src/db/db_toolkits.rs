@@ -12,15 +12,11 @@ use std::collections::HashMap;
 
 impl ShinkaiDB {
     /// Prepares the `JSToolkit` for saving into the ShinkaiDB.
-    fn _prepare_toolkit(
-        &self,
-        toolkit: &JSToolkit,
-        profile: &ShinkaiName,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
+    fn _prepare_toolkit(&self, toolkit: &JSToolkit, profile: &ShinkaiName) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = toolkit.to_json()?;
         let bytes = json.as_bytes().to_vec(); // Clone the bytes here
-        let cf = self.get_cf_handle(Topic::Toolkits)?;
+        let cf = Topic::Toolkits.as_str();
         Ok((bytes, cf))
     }
 
@@ -29,11 +25,11 @@ impl ShinkaiDB {
         &self,
         toolkit_map: &InstalledJSToolkitMap,
         profile: &ShinkaiName,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
+    ) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = toolkit_map.to_json()?;
         let bytes = json.as_bytes().to_vec(); // Clone the bytes here
-        let cf = self.get_cf_handle(Topic::Toolkits)?;
+        let cf = Topic::Toolkits.as_str();
         Ok((bytes, cf))
     }
 
@@ -44,6 +40,10 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let (bytes, cf) = self._prepare_profile_toolkit_map(toolkit_map, profile)?;
+        let cf = self
+            .db
+            .cf_handle(cf)
+            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
         self.pb_put_cf(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes, profile)?;
         Ok(())
     }
@@ -209,8 +209,7 @@ impl ShinkaiDB {
             let value_opt = header_values.get(&header.header());
             if let Some(value) = value_opt {
                 let bytes = value.to_string().as_bytes().to_vec(); // Clone the bytes here
-                let cf = self.get_cf_handle(Topic::Toolkits)?;
-                pb_batch.pb_put_cf(cf, &header.shinkai_db_key(&toolkit_name), &bytes);
+                pb_batch.pb_put_cf(Topic::Toolkits.as_str(), &header.shinkai_db_key(toolkit_name), &bytes);
             } else {
                 return Err(ToolError::JSToolkitHeaderValidationFailed(format!(
                     "Not all required header values have been provided while setting for toolkit: {}",

@@ -1,19 +1,22 @@
 use super::vector_fs_internals::VectorFSInternals;
+use super::vector_fs_permissions::PermissionsIndex;
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
 use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
+use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore, VectorResourceSearch};
+use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
+use tokio::sync::RwLock;
 
 /// Struct that wraps all functionality of the VectorFS.
 /// Of note, internals_map holds a hashmap of the VectorFSInternals
 /// for all profiles on the node.
 pub struct VectorFS {
     pub node_name: ShinkaiName,
-    pub internals_map: HashMap<ShinkaiName, VectorFSInternals>,
+    pub internals_map: RwLock<HashMap<ShinkaiName, VectorFSInternals>>,
     pub db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
@@ -25,7 +28,7 @@ impl VectorFS {
     /// Initializes the VectorFS struct. If no existing VectorFS exists in the VectorFSDB, then initializes from scratch.
     /// Otherwise reads from the FSDB. Requires supplying list of profiles setup in the node.
     /// Auto-initializes new profiles, setting their default embedding model to be based on the supplied embedding_generator.
-    pub fn new(
+    pub async fn new(
         embedding_generator: RemoteEmbeddingGenerator,
         supported_embedding_models: Vec<EmbeddingModelType>,
         profile_list: Vec<ShinkaiName>,
@@ -45,9 +48,11 @@ impl VectorFS {
             }
         }
 
+        let internals_map = RwLock::new(internals_map);
+
         // Initialize the VectorFS
         let default_embedding_model = embedding_generator.model_type().clone();
-        let mut vector_fs = Self {
+        let vector_fs = Self {
             internals_map,
             db: fs_db,
             embedding_generator,
@@ -55,52 +60,55 @@ impl VectorFS {
         };
 
         // Initialize any new profiles which don't already exist in the VectorFS
-        vector_fs.initialize_new_profiles(
-            &node_name,
-            profile_list,
-            default_embedding_model,
-            supported_embedding_models,
-        )?;
+        vector_fs
+            .initialize_new_profiles(
+                &node_name,
+                profile_list,
+                default_embedding_model,
+                supported_embedding_models,
+            )
+            .await?;
 
         Ok(vector_fs)
     }
 
     /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
     /// Simply creates a barebones struct to be used to satisfy required types.
-    pub fn new_empty() -> Self {
-        Self {
-            internals_map: HashMap::new(),
-            db: VectorFSDB::new_empty(),
+    pub fn new_empty() -> Result<Self, VectorFSError> {
+        let db = VectorFSDB::new_empty()?;
+        Ok(Self {
+            internals_map: RwLock::new(HashMap::new()),
+            db,
             embedding_generator: RemoteEmbeddingGenerator::new_default(),
             node_name: ShinkaiName::from_node_name("@@node1.shinkai".to_string()).unwrap(),
-        }
+        })
     }
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
     /// VFSReader can then be used to perform read actions at the specified path.
-    pub fn new_reader(
-        &mut self,
+    pub async fn new_reader(
+        &self,
         requester_name: ShinkaiName,
         path: VRPath,
         profile: ShinkaiName,
     ) -> Result<VFSReader, VectorFSError> {
-        VFSReader::new(requester_name, path, self, profile)
+        VFSReader::new(requester_name, path, self, profile).await
     }
 
     /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
     /// VFSWriter can then be used to perform write actions at the specified path.
-    pub fn new_writer(
-        &mut self,
+    pub async fn new_writer(
+        &self,
         requester_name: ShinkaiName,
         path: VRPath,
         profile: ShinkaiName,
     ) -> Result<VFSWriter, VectorFSError> {
-        VFSWriter::new(requester_name, path, self, profile)
+        VFSWriter::new(requester_name, path, self, profile).await
     }
 
     /// Initializes a new profile and inserts it into the internals_map
-    pub fn initialize_profile(
-        &mut self,
+    pub async fn initialize_profile(
+        &self,
         requester_name: &ShinkaiName,
         profile: ShinkaiName,
         default_embedding_model: EmbeddingModelType,
@@ -108,36 +116,51 @@ impl VectorFS {
     ) -> Result<(), VectorFSError> {
         self._validate_node_action_permission(requester_name, &format!("Failed initializing profile {}.", profile))?;
         self.db
-            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)?;
+            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)
+            .await?;
         let internals = self.db.get_profile_fs_internals(&profile)?;
-        self.internals_map.insert(profile, internals);
+
+        // Acquire a write lock to modify internals_map
+        let mut internals_map = self.internals_map.write().await;
+        internals_map.insert(profile, internals);
         Ok(())
     }
 
     /// Checks the input profile_list and initializes a new profile for any which are not already set up in the VectorFS.
-    pub fn initialize_new_profiles(
-        &mut self,
+    pub async fn initialize_new_profiles(
+        &self,
         requester_name: &ShinkaiName,
         profile_list: Vec<ShinkaiName>,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
+        // Acquire a read lock for checking existing profiles
+        let mut internals_map_read = self.internals_map.read().await;
+
         for profile in profile_list {
-            if !self.internals_map.contains_key(&profile) {
+            if !internals_map_read.contains_key(&profile) {
+                // Drop the read lock before awaiting on the async initialize_profile
+                drop(internals_map_read);
+
+                // Since initialize_profile is async, await on it
                 self.initialize_profile(
                     requester_name,
-                    profile,
+                    profile.clone(), // Assuming clone is cheap for ShinkaiName
                     default_embedding_model.clone(),
                     supported_embedding_models.clone(),
-                )?;
+                )
+                .await?;
+
+                // Re-acquire the read lock for the next iteration
+                internals_map_read = self.internals_map.read().await;
             }
         }
         Ok(())
     }
 
     /// Reverts the internals of a profile to the last saved state in the database.
-    pub fn revert_internals_to_last_db_save(
-        &mut self,
+    pub async fn revert_internals_to_last_db_save(
+        &self,
         requester_name: &ShinkaiName,
         profile: &ShinkaiName,
     ) -> Result<(), VectorFSError> {
@@ -146,54 +169,79 @@ impl VectorFS {
             requester_name,
             profile,
             &format!("Failed reverting fs internals to last DB save for profile: {}", profile),
-        )?;
+        )
+        .await?;
 
         // Fetch the last saved state of the profile fs internals from the database
         let internals = self.db.get_profile_fs_internals(profile)?;
 
+        // Acquire a write lock asynchronously to modify internals_map
+        let mut internals_map = self.internals_map.write().await;
+
         // Overwrite the current state of the profile internals in the map with the fetched state
-        self.internals_map.insert(profile.clone(), internals);
+        internals_map.insert(profile.clone(), internals);
 
         Ok(())
     }
 
     /// Sets the supported embedding models for a specific profile
-    pub fn set_profile_supported_models(
-        &mut self,
+    pub async fn set_profile_supported_models(
+        &self,
         requester_name: &ShinkaiName,
         profile: &ShinkaiName,
         supported_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
         self._validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
-        if let Some(fs_internals) = self.internals_map.get_mut(profile) {
+
+        // Acquire a write lock asynchronously to modify internals_map
+        let mut internals_map = self.internals_map.write().await;
+
+        if let Some(fs_internals) = internals_map.get_mut(profile) {
             fs_internals.supported_embedding_models = supported_models;
+            // Assuming save_profile_fs_internals is async, you need to await it
             self.db.save_profile_fs_internals(fs_internals, profile)?;
         }
         Ok(())
     }
 
     /// Sets the supported embedding models for all profiles
-    pub fn set_all_profiles_supported_models(
-        &mut self,
+    pub async fn set_all_profiles_supported_models(
+        &self,
         requester_name: &ShinkaiName,
         supported_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
+        // Assuming _validate_node_action_permission is async, you need to await it
         self._validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
-        for profile in self.internals_map.keys().cloned().collect::<Vec<ShinkaiName>>() {
-            self.set_profile_supported_models(requester_name, &profile, supported_models.clone())?;
+
+        // Acquire a read lock to safely access the keys
+        let internals_map = self.internals_map.read().await;
+
+        // Collect the keys to avoid holding the lock while awaiting in the loop
+        let profiles = internals_map.keys().cloned().collect::<Vec<ShinkaiName>>();
+        drop(internals_map); // Explicitly drop the lock
+
+        // Iterate over profiles and set supported models for each
+        for profile in profiles {
+            // Since set_profile_supported_models is async, you need to await it
+            self.set_profile_supported_models(requester_name, &profile, supported_models.clone())
+                .await?;
         }
+
         Ok(())
     }
 
     /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType
     /// for the profile's VectorFS.
-    pub fn _get_embedding_generator(&self, profile: &ShinkaiName) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile)?;
+    pub async fn _get_embedding_generator(
+        &self,
+        profile: &ShinkaiName,
+    ) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
+        let internals = self.get_profile_fs_internals_read_only(profile).await?;
         let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
             &self.embedding_generator.api_url,
             self.embedding_generator.api_key.clone(),
         );
-        return Ok(generator);
+        Ok(generator)
     }
 
     /// Validates the permission for a node action for a given requester ShinkaiName. Internal method.
@@ -214,13 +262,13 @@ impl VectorFS {
 
     /// Validates the permission for a profile action for a given requester ShinkaiName. Internal method.
     /// In case of error, includes requester_name automatically together with your error message
-    pub fn _validate_profile_action_permission(
+    pub async fn _validate_profile_action_permission(
         &self,
         requester_name: &ShinkaiName,
         profile: &ShinkaiName,
         error_message: &str,
     ) -> Result<(), VectorFSError> {
-        if let Ok(_) = self.get_profile_fs_internals_read_only(profile) {
+        if let Ok(_) = self.get_profile_fs_internals_read_only(profile).await {
             if profile.profile_name == requester_name.profile_name {
                 return Ok(());
             }
@@ -231,30 +279,74 @@ impl VectorFS {
         ))
     }
 
-    /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
-    /// in the internals_map.
-    pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
-        // eprintln!("Getting profile fs internals for: {:?}", self.internals_map);
-        self.internals_map
+    /// Attempts to fetch a copy of the profile VectorFSInternals (from memory)
+    /// in the internals_map. ANY MUTATION DOESN'T PROPAGATE.
+    pub async fn get_profile_fs_internals_copy(
+        &self,
+        profile: &ShinkaiName,
+    ) -> Result<VectorFSInternals, VectorFSError> {
+        let internals_map = self.internals_map.read().await;
+        let internals = internals_map
+            .get(profile)
+            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))?
+            .clone();
+
+        Ok(internals)
+    }
+
+    /// Updates the fs_internals for a specific profile.
+    /// This function should be used with caution as it directly modifies the internals.
+    pub async fn _update_fs_internals(
+        &self,
+        profile: ShinkaiName,
+        new_internals: VectorFSInternals,
+    ) -> Result<(), VectorFSError> {
+        // Acquire a write lock to modify internals_map
+        let mut internals_map = self.internals_map.write().await;
+
+        // Update the internals for the specified profile
+        internals_map.insert(profile, new_internals);
+
+        Ok(())
+    }
+
+    /// Updates the last read path and time for a given profile.
+    pub async fn update_last_read_path(
+        &self,
+        profile: &ShinkaiName,
+        path: VRPath,
+        current_datetime: DateTime<Utc>,
+        requester_name: ShinkaiName,
+    ) -> Result<(), VectorFSError> {
+        let mut internals_map = self.internals_map.write().await;
+        let internals = internals_map
             .get_mut(profile)
-            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
+            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))?;
+
+        internals
+            .last_read_index
+            .update_path_last_read(path, current_datetime, requester_name);
+        Ok(())
     }
 
     /// Attempts to fetch an immutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map. Used for pure reads where no updates are needed.
-    pub fn get_profile_fs_internals_read_only(
+    pub async fn get_profile_fs_internals_read_only(
         &self,
         profile: &ShinkaiName,
-    ) -> Result<&VectorFSInternals, VectorFSError> {
-        // eprintln!("Getting profile fs internals for: {:?}", self.internals_map);
-        self.internals_map
+    ) -> Result<VectorFSInternals, VectorFSError> {
+        let internals_map = self.internals_map.read().await;
+        let internals = internals_map
             .get(profile)
-            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
+            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))?
+            .clone();
+
+        Ok(internals)
     }
 
     /// Prints the internal nodes (of the core VR) of a Profile's VectorFS
-    pub fn print_profile_vector_fs_resource(&self, profile: ShinkaiName) {
-        let internals = self.get_profile_fs_internals_read_only(&profile).unwrap();
+    pub async fn print_profile_vector_fs_resource(&self, profile: ShinkaiName) {
+        let internals = self.get_profile_fs_internals_read_only(&profile).await.unwrap();
         println!(
             "\n\n{}'s VectorFS Internal Resource Representation\n------------------------------------------------",
             profile.clone()

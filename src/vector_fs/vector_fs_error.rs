@@ -54,6 +54,7 @@ pub enum VectorFSError {
     DateTimeParseError(String),
     FailedGettingFSPathOfRetrievedNode(String),
     CannotMoveFolderIntoItself(VRPath),
+    LockAcquisitionFailed
 }
 
 impl fmt::Display for VectorFSError {
@@ -158,6 +159,7 @@ impl fmt::Display for VectorFSError {
             }
             VectorFSError::FailedGettingFSPathOfRetrievedNode(s) => write!(f, "While performing 2-tier 'deep' vector search, unable to get VectorFS path of the VR the retrieved node was from: {}", s),
             VectorFSError::CannotMoveFolderIntoItself(e) => write!(f, "Cannot move folder into itself at a deeper level: {}", e),
+            VectorFSError::LockAcquisitionFailed => write!(f, "Failed to acquire lock"),
         }
     }
 }

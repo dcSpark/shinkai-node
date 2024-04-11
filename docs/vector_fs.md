@@ -107,7 +107,7 @@ When a Shinkai Node is initialized, it orchestrates the setup of the Vector File
 ```rust
 pub struct Node {
     ...
-    pub vector_fs: Arc<Mutex<VectorFS>>
+    pub vector_fs: Arc<VectorFS>
 }
 ```
 

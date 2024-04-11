@@ -1,4 +1,3 @@
-use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
@@ -21,7 +20,7 @@ impl JobManager {
     /// but instead have a deep vector search performed on them via the VectorFS itself separately.
     pub async fn fetch_job_scope_direct_resources(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
@@ -32,11 +31,10 @@ impl JobManager {
             resources.push(local_entry.vrkai.resource.clone());
         }
 
-        let mut vec_fs = vector_fs.lock().await;
         for fs_item in &job_scope.vector_fs_items {
-            let reader = vec_fs.new_reader(profile.clone(), fs_item.path.clone(), profile.clone())?;
+            let reader = vector_fs.new_reader(profile.clone(), fs_item.path.clone(), profile.clone()).await?;
 
-            let ret_resource = vec_fs.retrieve_vector_resource(&reader)?;
+            let ret_resource = vector_fs.retrieve_vector_resource(&reader).await?;
             resources.push(ret_resource);
         }
 
@@ -48,7 +46,7 @@ impl JobManager {
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
     pub async fn keyword_chained_job_scope_vector_search(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query_text: String,
         user_profile: &ShinkaiName,
@@ -166,7 +164,7 @@ impl JobManager {
     /// RetrievedNode at the front of the returned list.
     pub async fn job_scope_vector_search(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query: Embedding,
         query_text: String,
@@ -188,11 +186,11 @@ impl JobManager {
 
         // Folder deep vector search
         {
-            let mut vec_fs = vector_fs.lock().await;
+            // let mut vec_fs = vector_fs;
             for folder in &job_scope.vector_fs_folders {
-                let reader = vec_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone())?;
+                let reader = vector_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone()).await?;
 
-                let ret_fs_nodes = vec_fs
+                let ret_fs_nodes = vector_fs
                     .deep_vector_search(&reader, query_text.clone(), 10, num_of_results)
                     .await?;
 

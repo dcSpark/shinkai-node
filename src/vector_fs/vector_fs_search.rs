@@ -67,7 +67,7 @@ impl VectorFS {
         input_query: String,
         profile: &ShinkaiName,
     ) -> Result<Embedding, VectorFSError> {
-        let generator = self._get_embedding_generator(profile)?;
+        let generator = self._get_embedding_generator(profile).await?;
         Ok(generator.generate_embedding_default(&input_query).await?)
     }
 
@@ -85,7 +85,7 @@ impl VectorFS {
     /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
     pub async fn deep_vector_search(
-        &mut self,
+        &self,
         reader: &VFSReader,
         query_text: String,
         num_of_resources_to_search_into: u64,
@@ -106,7 +106,7 @@ impl VectorFS {
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
     /// Allows specifying custom deep_traversal_options which are used when searching into the VRs themselves.
     pub async fn deep_vector_search_customized(
-        &mut self,
+        &self,
         reader: &VFSReader,
         query_text: String,
         num_of_resources_to_search_into: u64,
@@ -114,19 +114,21 @@ impl VectorFS {
         deep_traversal_options: Vec<TraversalOption>,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
         let query = self
-            .generate_query_embedding_using_reader(query_text.clone(), &reader)
+            .generate_query_embedding_using_reader(query_text.clone(), reader)
             .await?;
 
         let mut ret_nodes = Vec::new();
         let mut fs_path_hashmap = HashMap::new();
-        let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
+        let items = self
+            .vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)
+            .await?;
 
         for item in items {
-            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self) {
-                if let Ok(resource) = self.retrieve_vector_resource(&new_reader) {
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self).await {
+                if let Ok(resource) = self.retrieve_vector_resource(&new_reader).await {
                     fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
-                    let generator = self._get_embedding_generator(&reader.profile)?;
+                    let generator = self._get_embedding_generator(&reader.profile).await?;
                     let results = resource
                         .as_trait_object()
                         .dynamic_vector_search_customized(
@@ -154,16 +156,17 @@ impl VectorFS {
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved FSItems extracted from the VRHeader-holding nodes
-    pub fn vector_search_fs_item(
+    pub async fn vector_search_fs_item(
         &self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<FSItem>, VectorFSError> {
         println!("Starting vector search fs_item----------------------");
-        let ret_nodes =
-            self._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])?;
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        let ret_nodes = self
+            ._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
+            .await?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
 
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
@@ -186,19 +189,19 @@ impl VectorFS {
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved VRKai of the most similar FSItems.
     /// Ignores FSItem results which the requester_name does not have permission to read.
-    pub fn vector_search_vrkai(
-        &mut self,
+    pub async fn vector_search_vrkai(
+        &self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<VRKai>, VectorFSError> {
-        let items = self.vector_search_fs_item(reader, query, num_of_results)?;
+        let items = self.vector_search_fs_item(reader, query, num_of_results).await?;
         let mut results = vec![];
 
         // If all perms pass, push
         for item in items {
-            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
-                if let Ok(res) = self.retrieve_vrkai_in_folder(&new_reader, item.name()) {
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self).await {
+                if let Ok(res) = self.retrieve_vrkai_in_folder(&new_reader, item.name()).await {
                     results.push(res);
                 }
             }
@@ -209,19 +212,19 @@ impl VectorFS {
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved BaseVectorResources which are the most similar.
     /// Ignores FSItem (Vector Resource) results which the requester_name does not have permission to read.
-    pub fn vector_search_vector_resource(
+    pub async fn vector_search_vector_resource(
         &mut self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<BaseVectorResource>, VectorFSError> {
-        let items = self.vector_search_fs_item(reader, query, num_of_results)?;
+        let items = self.vector_search_fs_item(reader, query, num_of_results).await?;
         let mut results = vec![];
 
         // If all perms pass, push
         for item in items {
-            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
-                if let Ok(res) = self.retrieve_vector_resource_in_folder(&new_reader, item.name()) {
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self).await {
+                if let Ok(res) = self.retrieve_vector_resource_in_folder(&new_reader, item.name()).await {
                     results.push(res);
                 }
             }
@@ -232,19 +235,19 @@ impl VectorFS {
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved SourceFileMap which are the most similar.
     /// Ignores FSItem (SFM) results which the requester_name does not have permission to read.
-    pub fn vector_search_source_file_map(
-        &mut self,
+    pub async fn vector_search_source_file_map(
+        &self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<SourceFileMap>, VectorFSError> {
-        let items = self.vector_search_fs_item(reader, query, num_of_results)?;
+        let items = self.vector_search_fs_item(reader, query, num_of_results).await?;
         let mut results = vec![];
 
         // If all perms pass, push
         for item in items {
-            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self) {
-                if let Ok(res) = self.retrieve_source_file_map_in_folder(&new_reader, item.name()) {
+            if let Ok(new_reader) = reader.new_reader_copied_data(item.path.parent_path(), self).await {
+                if let Ok(res) = self.retrieve_source_file_map_in_folder(&new_reader, item.name()).await {
                     results.push(res);
                 }
             }
@@ -254,14 +257,15 @@ impl VectorFS {
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
     /// returning the retrieved VRHeaders extracted from the nodes
-    pub fn vector_search_vr_header(
+    pub async fn vector_search_vr_header(
         &self,
         reader: &VFSReader,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<VRHeader>, VectorFSError> {
-        let ret_nodes =
-            self._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])?;
+        let ret_nodes = self
+            ._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
+            .await?;
         let mut vr_headers = Vec::new();
 
         for node in ret_nodes {
@@ -277,7 +281,7 @@ impl VectorFS {
     /// the specified path in reader, returning the retrieved VRHeader nodes.
     /// Automatically inspects traversal_options to guarantee folder permissions, and any other must-have options
     /// are always respected.
-    fn _vector_search_core(
+    async fn _vector_search_core(
         &self,
         reader: &VFSReader,
         query: Embedding,
@@ -286,10 +290,11 @@ impl VectorFS {
         traversal_options: &Vec<TraversalOption>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile)?;
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
         let stringified_permissions_map = internals
             .permissions_index
-            .export_permissions_hashmap_with_reader(reader);
+            .export_permissions_hashmap_with_reader(reader)
+            .await;
 
         // Search without unique scoring (ie. hierarchical) because "folders" have no content/real embedding.
         // Also remove any set traversal limit, so we can enforce folder permission traversal limiting.
@@ -338,5 +343,7 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
     // Initialize the PermissionsIndex struct
     let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
 
-    perm_index.validate_read_access(&reader.requester_name, path).is_ok()
+    perm_index
+        .validate_read_access(&reader.requester_name, path)
+        .is_ok()
 }

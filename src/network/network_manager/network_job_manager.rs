@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -83,7 +83,7 @@ pub struct NetworkJobManager {
 impl NetworkJobManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -164,7 +164,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -176,7 +176,7 @@ impl NetworkJobManager {
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
                 Weak<Mutex<ShinkaiDB>>,                // db
-                Weak<Mutex<VectorFS>>,                 // vector_fs
+                Weak<VectorFS>,                        // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
                 SigningKey,                            // my_signature_secret_key
@@ -349,7 +349,7 @@ impl NetworkJobManager {
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -430,7 +430,7 @@ impl NetworkJobManager {
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         _: EncryptionStaticKey,
         _: SigningKey,
@@ -505,8 +505,7 @@ impl NetworkJobManager {
 
         // Check if the folder already exists. For now, we delete the folder and recreate it
         {
-            let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
-            let mut vector_fs_lock = maybe_vector_fs.lock().await;
+            let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
 
             // If we're syncing into a different folder name, then update vr_pack name to match
             if let Ok(path_id) = destination_vr_path.last_path_id() {
@@ -517,6 +516,7 @@ impl NetworkJobManager {
 
             let path_already_exists = vector_fs_lock
                 .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
+                .await
                 .is_ok();
 
             let destination_writer = vector_fs_lock
@@ -525,10 +525,11 @@ impl NetworkJobManager {
                     destination_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
             if path_already_exists {
-                vector_fs_lock.delete_folder(&destination_writer)?;
+                vector_fs_lock.delete_folder(&destination_writer).await?;
             }
 
             let parent_writer = vector_fs_lock
@@ -537,12 +538,13 @@ impl NetworkJobManager {
                     parent_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
-            let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);
+            let _ = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
 
             {
-                // debug. print current files
+                // // debug. print current files
                 // eprintln!("debug current files");
                 // // let root_path = VRPath::root();
                 // let root_path = VRPath::from_string("/").unwrap();
@@ -550,9 +552,9 @@ impl NetworkJobManager {
                 //     local_subscriber.clone(),
                 //     root_path.clone(),
                 //     local_subscriber.clone(),
-                // );
+                // ).await;
                 // let reader = reader.unwrap();
-                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
                 // eprintln!("Current files: {:?}", result);
             }
         }
@@ -560,6 +562,7 @@ impl NetworkJobManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_message_internode(
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,

@@ -82,7 +82,7 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-fn setup_default_vector_fs() -> VectorFS {
+async fn setup_default_vector_fs() -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
@@ -97,6 +97,7 @@ fn setup_default_vector_fs() -> VectorFS {
         &fs_db_path,
         node_name(),
     )
+    .await
     .unwrap()
 }
 
@@ -108,13 +109,13 @@ async fn test_process_job_queue_concurrency() {
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
     let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
-    let vector_fs = Arc::new(Mutex::new(setup_default_vector_fs()));
+    let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
-                              vector_fs: Weak<Mutex<VectorFS>>,
+                              vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -227,13 +228,13 @@ async fn test_sequential_process_for_same_job_id() {
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
     let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
-    let vector_fs = Arc::new(Mutex::new(setup_default_vector_fs()));
+    let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<Mutex<ShinkaiDB>>,
-                              vector_fs: Weak<Mutex<VectorFS>>,
+                              vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {

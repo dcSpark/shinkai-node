@@ -16,8 +16,19 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_source_file_map(source_file_map)?;
 
+        // Log the size of the value
+        eprintln!("Saving source map with size: {} bytes", bytes.len());
+
+        // Measure the time it takes to execute pb_put_cf
+        let start_time = std::time::Instant::now();
+
         // Insert into the "SourceFileMaps" column family
         batch.pb_put_cf(cf, db_key, &bytes);
+
+        eprintln!(
+            "pb_put_cf executed in: {:?} seconds",
+            start_time.elapsed().as_secs_f32()
+        );
 
         Ok(())
     }
@@ -26,11 +37,11 @@ impl VectorFSDB {
     fn _prepare_source_file_map(
         &self,
         source_file_map: &SourceFileMap,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = source_file_map.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "SourceFiles" column family
-        let cf = self.get_cf_handle(FSTopic::SourceFiles)?;
+        let cf = FSTopic::SourceFiles.as_str();
         Ok((bytes, cf))
     }
 
