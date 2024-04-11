@@ -172,19 +172,22 @@ impl JobManager {
         job_scope: &JobScope,
         query: Embedding,
         query_text: String,
-        num_of_results: u64,
+        num_of_top_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
+        // TODO: Make this dynamic based on LLM context window length
         let proximity_window_size = 1;
-        let num_of_results = num_of_results * proximity_window_size * 3;
+        let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
         let mut retrieved_node_groups = Vec::new();
 
+        // Setup vars used across searches
         let deep_traversal_options = vec![
             TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
-            TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1)),
+            TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(proximity_window_size, num_of_top_results)),
         ];
+        let num_of_resources_to_search_into = 50;
 
         // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
@@ -192,10 +195,10 @@ impl JobManager {
                 .vrpack
                 .dynamic_deep_vector_search_customized(
                     query_text.clone(),
-                    100,
+                    num_of_resources_to_search_into,
                     &vec![],
                     None,
-                    num_of_results,
+                    total_num_of_results,
                     TraversalMethod::Exhaustive,
                     &deep_traversal_options,
                     generator,
@@ -212,15 +215,18 @@ impl JobManager {
             for folder in &job_scope.vector_fs_folders {
                 let reader = vec_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone())?;
 
-                let mut results = vec_fs
+                let results = vec_fs
                     .deep_vector_search_customized(
                         &reader,
                         query_text.clone(),
-                        50,
-                        num_of_results,
+                        num_of_resources_to_search_into,
+                        total_num_of_results,
                         deep_traversal_options,
                     )
-                    .await?;
+                    .await?
+                    .iter()
+                    .map(|fs_node| fs_node.resource_retrieved_node)
+                    .collect();
 
                 let groups = RetrievedNode::group_proximity_results(&mut results)?;
 
