@@ -273,8 +273,7 @@ async fn test_vector_fs_saving_reading() {
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
         .await
         .unwrap();
-    eprintln!("item path: {:?}", item_path);
-    eprintln!("Reader created");
+    
     let ret_vrkai = vector_fs.retrieve_vrkai(&reader).await.unwrap();
     let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
     assert_eq!(ret_resource, resource);
@@ -560,7 +559,6 @@ async fn test_vector_fs_saving_reading() {
         .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
         .await
         .unwrap();
-    eprintln!("Res: {:?}", res);
     assert!(res.len() > 0);
 }
 

@@ -63,15 +63,12 @@ impl VFSReader {
         vector_fs
             .update_last_read_path(&profile, path.clone(), current_datetime, requester_name.clone())
             .await?;
-        eprintln!("Updated last read path");
 
         let mut write_batch = ProfileBoundWriteBatch::new_vfs_batch(&profile)?;
         vector_fs
             .db
             .wb_add_read_access_log(requester_name, &path, current_datetime, profile, &mut write_batch)?;
-        eprintln!("Added read access log");
         vector_fs.db.write_pb(write_batch)?;
-        eprintln!("Wrote read access log");
 
         Ok(reader)
     }

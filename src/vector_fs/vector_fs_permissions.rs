@@ -603,19 +603,15 @@ impl VectorFS {
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
-            eprintln!("Validating read access for path: {:?}", path);
             let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
-            eprintln!("Got fs_internals");
             if fs_internals
                 .permissions_index
                 .validate_read_access(&name_to_check, &path)
                 .is_err()
             {
-                eprintln!("Invalid read permission");
                 return Err(VectorFSError::InvalidReadPermission(name_to_check, path));
             }
         }
-        eprintln!("All paths have valid read permissions");
         Ok(())
     }
 
