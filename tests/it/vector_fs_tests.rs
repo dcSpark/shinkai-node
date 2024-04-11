@@ -177,27 +177,23 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs().await;
 
-    let fs_internals = vector_fs.get_profile_fs_internals(&default_test_profile()).await;
+    let fs_internals = vector_fs.get_profile_fs_internals_copy(&default_test_profile()).await;
     assert!(fs_internals.is_ok())
 }
 
 #[tokio::test]
 async fn test_vector_fs_saving_reading() {
     setup();
-    eprintln!("Running test_vector_fs_saving_reading");
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs().await;
-    eprintln!("VectorFS initialized");
 
     let path = VRPath::new();
     let writer = vector_fs
         .new_writer(default_test_profile(), path.clone(), default_test_profile())
         .await
         .unwrap();
-    eprintln!("Writer created");
     let folder_name = "first_folder";
     vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
-    eprintln!("Folder created printin db values");
     vector_fs.db.debug_print_all_columns();
     let writer = vector_fs
         .new_writer(
@@ -207,10 +203,8 @@ async fn test_vector_fs_saving_reading() {
         )
         .await
         .unwrap();
-    eprintln!("New writer for folder created");
     let folder_name_2 = "second_folder";
     vector_fs.create_new_folder(&writer, folder_name_2).await.unwrap();
-    eprintln!("Created folders");
 
     // Validate new folder path points to an entry at all (not empty), then specifically a folder, and finally not to an item.
     let folder_path = path.push_cloned(folder_name.to_string());
@@ -240,28 +234,8 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
 
-    eprintln!("Printing All Values of VR");
-    vector_fs.db.debug_print_all_columns();
-
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
-    eprintln!("Validating item path");
     let item_path = folder_path.push_cloned(resource.as_trait_object().name().to_string());
-    {
-        // debug
-        // Retrieve the Vector Resource & Source File Map from the db
-        // Test both retrieve interfaces
-        let reader = vector_fs
-            .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
-            .await
-            .unwrap();
-        eprintln!("item path: {:?}", item_path);
-        eprintln!("Reader created");
-        let ret_vrkai = vector_fs.retrieve_vrkai(&reader).await.unwrap();
-        let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
-        assert_eq!(ret_resource, resource);
-        assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
-        eprintln!("Retrieved VRKai");
-    }
 
     assert!(vector_fs
         .validate_path_points_to_entry(item_path.clone(), &writer.profile)

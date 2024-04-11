@@ -104,7 +104,7 @@ impl VectorFS {
     /// This is the representation that should be sent to frontends to visualize the VectorFS.
     pub async fn retrieve_fs_path_simplified_json(&self, reader: &VFSReader) -> Result<String, VectorFSError> {
         let entry = self.retrieve_fs_entry(reader).await?;
-        return entry.to_json_simplified();
+        entry.to_json_simplified()
     }
 
     /// Retrieves the FSEntry for the reader's path in the VectorFS.
@@ -155,12 +155,8 @@ impl VectorFS {
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
     pub async fn retrieve_vrkai(&self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        // eprintln!("fs_item: {:?}", fs_item);
-        eprintln!("fs_item exists {:?}", fs_item.name);
         let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
-        eprintln!("resource: {:?}", resource);
         let sfm = self.retrieve_source_file_map(reader).await.ok();
-        eprintln!("sfm: {:?}", sfm);
 
         Ok(VRKai::new(resource, sfm))
     }

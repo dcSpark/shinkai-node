@@ -114,7 +114,7 @@ impl VectorFS {
         deep_traversal_options: Vec<TraversalOption>,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
         let query = self
-            .generate_query_embedding_using_reader(query_text.clone(), &reader)
+            .generate_query_embedding_using_reader(query_text.clone(), reader)
             .await?;
 
         let mut ret_nodes = Vec::new();

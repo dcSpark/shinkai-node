@@ -1,4 +1,5 @@
 use super::vector_fs_internals::VectorFSInternals;
+use super::vector_fs_permissions::PermissionsIndex;
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
 use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
@@ -240,7 +241,7 @@ impl VectorFS {
             &self.embedding_generator.api_url,
             self.embedding_generator.api_key.clone(),
         );
-        return Ok(generator);
+        Ok(generator)
     }
 
     /// Validates the permission for a node action for a given requester ShinkaiName. Internal method.
@@ -280,7 +281,10 @@ impl VectorFS {
 
     /// Attempts to fetch a copy of the profile VectorFSInternals (from memory)
     /// in the internals_map. ANY MUTATION DOESN'T PROPAGATE.
-    pub async fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
+    pub async fn get_profile_fs_internals_copy(
+        &self,
+        profile: &ShinkaiName,
+    ) -> Result<VectorFSInternals, VectorFSError> {
         let internals_map = self.internals_map.read().await;
         let internals = internals_map
             .get(profile)
@@ -288,6 +292,22 @@ impl VectorFS {
             .clone();
 
         Ok(internals)
+    }
+
+    /// Updates the fs_internals for a specific profile.
+    /// This function should be used with caution as it directly modifies the internals.
+    pub async fn _update_fs_internals(
+        &self,
+        profile: ShinkaiName,
+        new_internals: VectorFSInternals,
+    ) -> Result<(), VectorFSError> {
+        // Acquire a write lock to modify internals_map
+        let mut internals_map = self.internals_map.write().await;
+
+        // Update the internals for the specified profile
+        internals_map.insert(profile, new_internals);
+
+        Ok(())
     }
 
     /// Updates the last read path and time for a given profile.

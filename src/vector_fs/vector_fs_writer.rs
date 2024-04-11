@@ -141,11 +141,12 @@ impl VectorFS {
         )
         .await?;
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .copy_path_permission(writer.path.clone(), destination_path.clone())
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
         // Determine and copy permissions from the parent of the new copied folder
@@ -154,7 +155,7 @@ impl VectorFS {
             (ReadPermission::Private, WritePermission::Private)
         } else {
             let parent_permissions = self
-                .get_profile_fs_internals(&writer.profile)
+                .get_profile_fs_internals_copy(&writer.profile)
                 .await?
                 .permissions_index
                 .get_path_permission(&parent_path)
@@ -169,11 +170,12 @@ impl VectorFS {
 
         // Set permissions for the new copied folder
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(destination_child_path.clone(), read_permission, write_permission)
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
         // Now we copy each of the folder's original child folders/items (nodes) and add them to their destination path
@@ -294,13 +296,14 @@ impl VectorFS {
         let ref_string = item_node.get_vr_header_content()?.reference_string();
 
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
-            internals.permissions_index.remove_path_permission(writer.path.clone());
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
+            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         let internals = self.get_profile_fs_internals_read_only(&writer.profile).await?;
         self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
         self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-        return Ok(write_batch);
+        Ok(write_batch)
     }
 
     /// Copies the FSItem from the writer's path into being held underneath the destination_path.
@@ -368,7 +371,7 @@ impl VectorFS {
             (ReadPermission::Private, WritePermission::Private)
         } else {
             let parent_permissions = self
-                .get_profile_fs_internals(&writer.profile)
+                .get_profile_fs_internals_copy(&writer.profile)
                 .await?
                 .permissions_index
                 .get_path_permission(&parent_path)
@@ -383,11 +386,12 @@ impl VectorFS {
 
         // Set permissions for the new copied item
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(new_item.path.clone(), read_permission, write_permission)
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
         // Save fs internals, new VR, and new SFM to the DB
@@ -463,7 +467,7 @@ impl VectorFS {
             (ReadPermission::Private, WritePermission::Private)
         } else {
             let parent_permissions = self
-                .get_profile_fs_internals(&writer.profile)
+                .get_profile_fs_internals_copy(&writer.profile)
                 .await?
                 .permissions_index
                 .get_path_permission(&destination_path)
@@ -478,13 +482,14 @@ impl VectorFS {
 
         // Set permissions for the new moved item
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(new_item.path.clone(), read_permission, write_permission)
                 .await?;
             // Remove the original item's permissions
-            internals.permissions_index.remove_path_permission(writer.path.clone());
+            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         Ok(new_item)
     }
@@ -554,7 +559,7 @@ impl VectorFS {
             (ReadPermission::Private, WritePermission::Private)
         } else {
             let parent_permissions = self
-                .get_profile_fs_internals(&writer.profile)
+                .get_profile_fs_internals_copy(&writer.profile)
                 .await?
                 .permissions_index
                 .get_path_permission(&destination_path)
@@ -569,13 +574,14 @@ impl VectorFS {
 
         // Set permissions for the new moved folder
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(new_folder.path.clone(), read_permission, write_permission)
                 .await?;
             // Remove the original folder's permissions
-            internals.permissions_index.remove_path_permission(writer.path.clone());
+            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
         // Remove the existing folder
@@ -599,7 +605,7 @@ impl VectorFS {
         // Save the folder into the new destination w/permissions
         let new_folder = self
             ._add_existing_vr_to_core_resource(
-                &destination_writer,
+                destination_writer,
                 folder_resource,
                 folder_embedding,
                 folder_metadata,
@@ -607,11 +613,12 @@ impl VectorFS {
             )
             .await?;
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .copy_path_permission(writer.path.clone(), new_folder.path.clone())
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         Ok(new_folder)
     }
@@ -684,7 +691,7 @@ impl VectorFS {
         } else {
             // Read the permissions of the parent folder
             let parent_permissions = self
-                .get_profile_fs_internals(&writer.profile)
+                .get_profile_fs_internals_copy(&writer.profile)
                 .await?
                 .permissions_index
                 .get_path_permission(&writer.path)
@@ -701,11 +708,12 @@ impl VectorFS {
 
         // Add read/write permission for the folder path
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(new_folder_path, read_permission, write_permission)
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         eprintln!("Saving folder into db");
 
@@ -737,11 +745,12 @@ impl VectorFS {
 
         // Update permissions for the current folder
         {
-            let internals = self.get_profile_fs_internals(&writer.profile).await?;
+            let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
             internals
                 .permissions_index
                 .insert_path_permission(writer.path.clone(), read_permission.clone(), write_permission.clone())
                 .await?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
         // Recursively update permissions for all child nodes
@@ -761,7 +770,7 @@ impl VectorFS {
                         .await?;
                     }
                     NodeContent::VRHeader(_) => {
-                        let internals = self.get_profile_fs_internals(&child_writer.profile).await?;
+                        let internals = self.get_profile_fs_internals_copy(&child_writer.profile).await?;
                         internals
                             .permissions_index
                             .insert_path_permission(
@@ -770,6 +779,7 @@ impl VectorFS {
                                 write_permission.clone(),
                             )
                             .await?;
+                        self._update_fs_internals(writer.profile.clone(), internals).await?;
                     }
                     _ => continue,
                 }
@@ -919,7 +929,7 @@ impl VectorFS {
             } else {
                 // Read the permissions of the parent folder
                 let parent_permissions = self
-                    .get_profile_fs_internals(&writer.profile)
+                    .get_profile_fs_internals_copy(&writer.profile)
                     .await?
                     .permissions_index
                     .get_path_permission(&writer.path)
@@ -934,11 +944,12 @@ impl VectorFS {
 
             // Add read/write permission for the new item path
             {
-                let internals = self.get_profile_fs_internals(&writer.profile).await?;
+                let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
                 internals
                     .permissions_index
                     .insert_path_permission(item.path.clone(), read_permission, write_permission)
                     .await?;
+                self._update_fs_internals(writer.profile.clone(), internals).await?;
             }
 
             // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
@@ -1125,7 +1136,7 @@ impl VectorFS {
                 ))
             }
         } else {
-            return Err(VectorFSError::EmbeddingMissingInResource(vr_header.resource_name));
+            Err(VectorFSError::EmbeddingMissingInResource(vr_header.resource_name))
         }
     }
 
@@ -1277,7 +1288,7 @@ impl VectorFS {
         writer: &VFSWriter,
         node_id: String,
     ) -> Result<(RetrievedNode, Embedding), VectorFSError> {
-        let internals = self.get_profile_fs_internals(&writer.profile).await?;
+        let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
         let path = writer.path.push_cloned(node_id);
         let result = internals.fs_core_resource.retrieve_node_and_embedding_at_path(path)?;
         Ok(result)
@@ -1289,7 +1300,7 @@ impl VectorFS {
         &self,
         writer: &VFSWriter,
     ) -> Result<(RetrievedNode, Embedding), VectorFSError> {
-        let internals = self.get_profile_fs_internals(&writer.profile).await?;
+        let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
         let result = internals
             .fs_core_resource
             .retrieve_node_and_embedding_at_path(writer.path.clone())?;

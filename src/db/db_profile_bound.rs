@@ -44,8 +44,6 @@ impl ProfileBoundWriteBatch {
         V: AsRef<[u8]>,
     {
         let new_key = self.gen_pb_key(key);
-        eprintln!("pb_put_cf with key: {:?}", new_key);
-        eprintln!("pb_put_cf with value: {:?}", value.as_ref().len());
         self.operations.push(TransactionOperation::Write(cf_name.to_string(), new_key, value.as_ref().to_vec()));
 
     }

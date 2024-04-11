@@ -23,7 +23,6 @@ impl VectorFSDB {
         let start_time = std::time::Instant::now();
 
         // Insert into the "VectorResources" column family
-        eprintln!("wb_save_resource with key: {:?}", resource.as_trait_object().reference_string());
         batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
         // Log the duration
@@ -78,8 +77,6 @@ impl VectorFSDB {
         fs_item: &FSItem,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, VectorFSError> {
-        eprintln!("Getting resource by FSItem key: {:?}", fs_item.resource_db_key());
-        eprintln!("profile: {:?}", profile);
         self.get_resource(&fs_item.resource_db_key(), profile)
     }
 

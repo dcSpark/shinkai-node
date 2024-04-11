@@ -40,7 +40,6 @@ pub enum TransactionOperation {
 }
 
 pub struct VectorFSDB {
-    // pub db: DB,
     pub db: OptimisticTransactionDB,
     pub path: String,
 }
@@ -60,7 +59,6 @@ impl VectorFSDB {
 
         let cf_names = if Path::new(db_path).exists() {
             // If the database file exists, get the list of column families from the database
-            // DB::list_cf(&db_opts, db_path)?
             OptimisticTransactionDB::<SingleThreaded>::list_cf(&db_opts, db_path)?
         } else {
             // If the database file does not exist, use the default list of column families
@@ -85,8 +83,6 @@ impl VectorFSDB {
             cfs.push(cf_desc);
         }
 
-        // let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
-        // let db = OptimisticTransactionDB::open_cf_descriptors(&db_opts, &txn_db_options, db_path, cfs)?;
         let db = OptimisticTransactionDB::open_cf_descriptors(&db_opts, db_path, cfs)?;
         Ok(Self {
             db,
@@ -133,37 +129,10 @@ impl VectorFSDB {
     /// performing the fetch.
     pub fn get_cf_pb(&self, topic: FSTopic, key: &str, profile: &ShinkaiName) -> Result<Vec<u8>, VectorFSError> {
         let new_key = Self::generate_profile_bound_key(key, profile)?;
-        eprintln!("New key: {:?}", new_key);
-        eprintln!("Topic: {:?}", topic.as_str());
-
-        // Debug code to post all the current keys and length of the values in the db
-        let cf_handle = self.get_cf_handle(topic.clone())?;
-        let iterator = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-        eprintln!("Iterating over the keys in the column family: {:?}", topic.as_str());
-        eprintln!("db path: {:?}", self.path);
-        for item in iterator {
-            match item {
-                Ok((key, value)) => {
-                    eprintln!(
-                        "Key: {:?}, Value Length: {}",
-                        String::from_utf8_lossy(&key),
-                        value.len()
-                    );
-                }
-                Err(e) => eprintln!("Error reading from iterator: {:?}", e),
-            }
-        }
-
         self.get_cf(topic, new_key)
     }
 
     /// Iterates over the provided column family
-    // pub fn iterator_cf<'a>(
-    //     &'a self,
-    //     cf: &impl AsColumnFamilyRef,
-    // ) -> Result<DBIteratorWithThreadMode<'a, DB>, VectorFSError> {
-    //     Ok(self.db.iterator_cf(cf, IteratorMode::Start))
-    // }
     pub fn iterator_cf<'a>(
         &'a self,
         cf_name: &str,
@@ -195,13 +164,6 @@ impl VectorFSDB {
     }
 
     /// Saves the value inside of the key at the provided column family
-    // pub fn put_cf<K, V>(&self, cf: &impl AsColumnFamilyRef, key: K, value: V) -> Result<(), VectorFSError>
-    // where
-    //     K: AsRef<[u8]>,
-    //     V: AsRef<[u8]>,
-    // {
-    //     Ok(self.db.put_cf(cf, key, value)?)
-    // }
     pub fn put_cf<K, V>(&self, cf_name: &str, key: K, value: V) -> Result<(), VectorFSError>
     where
         K: AsRef<[u8]>,
@@ -269,8 +231,6 @@ impl VectorFSDB {
                 }
                 TransactionOperation::Delete(cf_name, key) => {
                     let cf_handle = self.db.cf_handle(&cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
-
-                    eprintln!("Deleting key: {:?}", key);
                     txn.delete_cf(cf_handle, key.as_bytes()).map_err(VectorFSError::from)?;
                 }
                 _ => {
@@ -279,31 +239,8 @@ impl VectorFSDB {
             }
         }
 
-        // print everything
-        eprintln!("Printing all keys BEFORE commit:");
-        self.debug_print_all_columns();
-
         let result = txn.commit();
-        eprintln!("Transaction commit result: {:?}", result);
-        // eprintln!("Transaction commit result: {:?}", result);
         result.map_err(VectorFSError::from)?;
-
-        // Debugging: Attempt to read back the values after commit
-        for op in &operations {
-            if let TransactionOperation::Write(cf, key, _) = op {
-                let read_back_value = self.db.get(key).map_err(VectorFSError::from)?;
-                eprintln!(
-                    "Debug: CF: {:?}, Key: {:?}, Read Back Value Length: {:?}",
-                    cf,
-                    key,
-                    read_back_value.map(|v| v.len())
-                );
-            }
-        }
-
-        // print everything
-        eprintln!("Printing all keys AFTER commit:");
-        self.debug_print_all_columns();
 
         Ok(())
     }
@@ -311,8 +248,6 @@ impl VectorFSDB {
     /// Profile-bound saves the WriteBatch to the database
     pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), VectorFSError> {
         let operations: Vec<TransactionOperation> = pb_batch.operations;
-        eprintln!("Operations: {:?}", operations.len());
-        eprintln!("profile name for ops: {:?}", pb_batch.profile_name);
 
         // Now, use the commit_operations method to commit these operations as a single transaction
         self.commit_operations(operations)
