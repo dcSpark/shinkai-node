@@ -225,7 +225,7 @@ impl VectorFS {
                     let item_path = vec_fs_base_path.append_path_cloned(&current_path.push_cloned(item.name.clone()));
                     let item_reader = reader.new_reader_copied_data(item_path, vector_fs)?;
                     match vector_fs.retrieve_vrkai(&item_reader) {
-                        Ok(vrkai) => vrpack.insert_vrkai(&vrkai, current_path.clone())?,
+                        Ok(vrkai) => vrpack.insert_vrkai(&vrkai, current_path.clone(), false)?,
                         Err(e) => return Err(e),
                     }
                 }
@@ -244,10 +244,14 @@ impl VectorFS {
             &mut folder_merkle_hash_map,
         )?;
 
-        // Traverse through the hashmap and call the set merkle hash method on all
-        for (path, merkle_hash) in folder_merkle_hash_map {
-            vrpack._set_folder_merkle_hash(path, merkle_hash)?;
+        // Traverse through the sorted list and call the set merkle hash method on all
+        let mut kv_pairs: Vec<(&VRPath, &String)> = folder_merkle_hash_map.iter().collect();
+        kv_pairs.sort_by(|a, b| b.0.path_ids.len().cmp(&a.0.path_ids.len()));
+        for (path, merkle_hash) in kv_pairs {
+            vrpack._set_folder_merkle_hash(path.clone(), merkle_hash.clone())?;
         }
+
+        vrpack.resource.as_trait_object_mut().update_merkle_root()?;
 
         Ok(vrpack)
     }

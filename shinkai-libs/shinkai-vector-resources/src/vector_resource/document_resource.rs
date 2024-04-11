@@ -274,6 +274,7 @@ impl VectorResourceCore for DocumentVectorResource {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(), VRError> {
         let current_datetime = if let Some(dt) = new_written_datetime {
             dt
@@ -321,7 +322,7 @@ impl VectorResourceCore for DocumentVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
         // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             updated_node.update_merkle_hash()?;
         }
 
@@ -336,7 +337,7 @@ impl VectorResourceCore for DocumentVectorResource {
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
 
@@ -350,6 +351,7 @@ impl VectorResourceCore for DocumentVectorResource {
         node: Node,
         embedding: Embedding,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError> {
         let current_datetime = if let Some(dt) = new_written_datetime {
             dt
@@ -372,7 +374,7 @@ impl VectorResourceCore for DocumentVectorResource {
         embedding.set_id(id.to_string());
         new_node.set_last_written(current_datetime);
         // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             new_node.update_merkle_hash()?;
         }
 
@@ -395,7 +397,7 @@ impl VectorResourceCore for DocumentVectorResource {
         }
 
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
 
@@ -407,6 +409,7 @@ impl VectorResourceCore for DocumentVectorResource {
         &mut self,
         id: String,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<(Node, Embedding), VRError> {
         let current_datetime = if let Some(dt) = new_written_datetime {
             dt
@@ -423,7 +426,7 @@ impl VectorResourceCore for DocumentVectorResource {
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
-        if self.is_merkelized() {
+        if self.is_merkelized() && update_merkle_hashes {
             self.update_merkle_root()?;
         }
 
@@ -434,13 +437,15 @@ impl VectorResourceCore for DocumentVectorResource {
     fn remove_root_nodes_dt_specified(
         &mut self,
         new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
     ) -> Result<Vec<(Node, Embedding)>, VRError> {
         let mut ids: Vec<u64> = (0..self.node_count()).collect();
         ids.reverse();
         let mut results = vec![];
 
         for id in ids {
-            let result = self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone())?;
+            let result =
+                self.remove_node_dt_specified(id.to_string(), new_written_datetime.clone(), update_merkle_hashes)?;
             results.push(result);
         }
 
@@ -538,7 +543,7 @@ impl DocumentVectorResource {
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         let node_content = NodeContent::Resource(resource);
         let new_node = Node::from_node_content("".to_string(), node_content, metadata, tag_names);
-        self.append_node_at_path(path, new_node, embedding)
+        self.append_node_at_path(path, new_node, embedding, true)
     }
 
     /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
@@ -577,7 +582,7 @@ impl DocumentVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         let node_content = NodeContent::Text(text.to_string());
         let new_node = Node::from_node_content("".to_string(), node_content, metadata, data_tag_names);
-        self.append_node_at_path(path, new_node, embedding)
+        self.append_node_at_path(path, new_node, embedding, true)
     }
 
     /// Appends a new node (with ExternalContent) to the document at root path.
@@ -601,7 +606,7 @@ impl DocumentVectorResource {
     ) -> Result<(), VRError> {
         let node_content = NodeContent::ExternalContent(external_content);
         let new_node = Node::from_node_content("".to_string(), node_content, metadata, vec![]);
-        self.append_node_at_path(path, new_node, embedding)
+        self.append_node_at_path(path, new_node, embedding, true)
     }
 
     /// Appends a new node (with VRHeader) to the document at root depth.
@@ -626,7 +631,7 @@ impl DocumentVectorResource {
         let data_tag_names = vr_header.data_tag_names.clone();
         let node_content = NodeContent::VRHeader(vr_header);
         let new_node = Node::from_node_content("".to_string(), node_content, metadata, data_tag_names);
-        self.append_node_at_path(path, new_node, embedding)
+        self.append_node_at_path(path, new_node, embedding, true)
     }
 
     /// Replaces an existing node and associated embedding in the Document resource at root depth,
@@ -654,7 +659,7 @@ impl DocumentVectorResource {
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         let node_content = NodeContent::Resource(new_resource);
         let new_node = Node::from_node_content("".to_string(), node_content, new_metadata, tag_names);
-        self.replace_node_at_path(path, new_node, embedding)
+        self.replace_node_at_path(path, new_node, embedding, true)
     }
 
     /// Replaces an existing node & associated embedding at the root depth,
@@ -686,7 +691,7 @@ impl DocumentVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         let node_content = NodeContent::Text(new_text.to_string());
         let new_node = Node::from_node_content("".to_string(), node_content, new_metadata, data_tag_names);
-        self.replace_node_at_path(path, new_node, embedding)
+        self.replace_node_at_path(path, new_node, embedding, true)
     }
 
     /// Replaces an existing node & associated embedding with a new ExternalContent node at root depth.
@@ -711,7 +716,7 @@ impl DocumentVectorResource {
     ) -> Result<(Node, Embedding), VRError> {
         let node_content = NodeContent::ExternalContent(new_external_content);
         let new_node = Node::from_node_content("".to_string(), node_content, new_metadata, vec![]);
-        self.replace_node_at_path(path, new_node, embedding)
+        self.replace_node_at_path(path, new_node, embedding, true)
     }
 
     /// Replaces an existing node & associated embedding with a new VRHeader node at root depth.
@@ -737,13 +742,13 @@ impl DocumentVectorResource {
         let data_tag_names = new_vr_header.data_tag_names.clone();
         let node_content = NodeContent::VRHeader(new_vr_header);
         let new_node = Node::from_node_content("".to_string(), node_content, new_metadata, data_tag_names);
-        self.replace_node_at_path(path, new_node, embedding)
+        self.replace_node_at_path(path, new_node, embedding, true)
     }
 
     /// Pops and returns the last node and associated embedding.
     pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
         let path = VRPath::from_string("/")?;
-        self.pop_node_at_path(path)
+        self.pop_node_at_path(path, true)
     }
 
     /// Deletes a node and associated embedding from the resource.
