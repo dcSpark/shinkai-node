@@ -920,35 +920,41 @@ impl Node {
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais = ParsingHelper::process_files_into_vrkai(
-            dist_files,
-            &self.embedding_generator,
-            None,
-            self.unstructured_api.clone(),
-        )
-        .await?;
-
-        // Save the vrkais into VectorFS
+        // Process one one at a time so saving to VectorFS shows progress when multiple files uploaded
         let mut success_messages = Vec::new();
-        let mut vector_fs = self.vector_fs.lock().await;
-        for (filename, vrkai) in processed_vrkais {
-            let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+        for dist_file in dist_files {
+            // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
+            let processed_vrkais = ParsingHelper::process_files_into_vrkai(
+                vec![dist_file],
+                &self.embedding_generator,
+                None,
+                self.unstructured_api.clone(),
+            )
+            .await?;
 
-            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Error saving '{}' in folder: {}", filename, e),
-                    }))
-                    .await;
-                return Ok(());
+            {
+                let mut vector_fs = self.vector_fs.lock().await;
+
+                // Iterates through the single resulting vrkai
+                for (filename, vrkai) in processed_vrkais {
+                    let folder_path = destination_path.clone();
+                    let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+
+                    if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Error saving '{}' in folder: {}", filename, e),
+                            }))
+                            .await;
+                        return Ok(());
+                    }
+
+                    let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
+                    success_messages.push(success_message);
+                }
             }
-
-            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
-            success_messages.push(success_message);
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
