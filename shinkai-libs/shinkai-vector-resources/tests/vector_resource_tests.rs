@@ -52,7 +52,7 @@ fn default_vr_kai() -> VRKai {
 fn default_vr_pack() -> VRPack {
     let vrkai = default_vr_kai();
     let mut vrpack = VRPack::new_empty("");
-    vrpack.insert_vrkai(&vrkai, VRPath::root());
+    vrpack.insert_vrkai(&vrkai, VRPath::root(), true);
     vrpack
 }
 
@@ -539,7 +539,7 @@ fn test_manual_resource_vector_search() {
 
     // Check that no node is retrieved after removing it by path
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
-    new_map_resource.remove_node_at_path(test_path.clone());
+    new_map_resource.remove_node_at_path(test_path.clone(), true);
     let res = new_map_resource.retrieve_node_at_path(test_path.clone());
     assert!(!res.is_ok());
 
@@ -600,7 +600,7 @@ fn test_manual_resource_vector_search() {
 
     // Pop the previously appended node
     let path = VRPath::from_string("/3/doc_key/").unwrap();
-    fruit_doc.pop_node_at_path(path).unwrap();
+    fruit_doc.pop_node_at_path(path, true).unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
     let res = fruit_doc.retrieve_node_at_path(test_path.clone());
     assert_eq!(res.is_ok(), false);
@@ -636,7 +636,7 @@ fn test_manual_resource_vector_search() {
     );
 
     // Pop the previously appended node
-    fruit_doc.pop_node_at_path(path).unwrap();
+    fruit_doc.pop_node_at_path(path, true).unwrap();
 
     // Retrieve the Merkle hash again and assert it's the same as the original
     let reverted_merkle_hash = fruit_doc.get_merkle_root().unwrap();
