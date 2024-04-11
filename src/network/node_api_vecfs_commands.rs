@@ -22,7 +22,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::{
     source::DistributionInfo,
-    vector_resource::{BaseVectorResource, VRPath},
+    vector_resource::{BaseVectorResource, VRPack, VRPath},
 };
 use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
 
@@ -914,47 +914,67 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
+        // Sort out the vrpacks from the rest
+        let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+            files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
+
         let mut dist_files = vec![];
-        for file in files {
+        for file in other_files {
             let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
             dist_files.push((file.0, file.1, distribution_info));
         }
 
-        // Process one one at a time so saving to VectorFS shows progress when multiple files uploaded
+        // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
+        let processed_vrkais = ParsingHelper::process_files_into_vrkai(
+            dist_files,
+            &self.embedding_generator,
+            None,
+            self.unstructured_api.clone(),
+        )
+        .await?;
+
+        // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();
-        for dist_file in dist_files {
-            // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-            let processed_vrkais = ParsingHelper::process_files_into_vrkai(
-                vec![dist_file],
-                &self.embedding_generator,
-                None,
-                self.unstructured_api.clone(),
-            )
-            .await?;
+        let mut vector_fs = self.vector_fs.lock().await;
+        for (filename, vrkai) in processed_vrkais {
+            let folder_path = destination_path.clone();
+            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
 
-            {
-                let mut vector_fs = self.vector_fs.lock().await;
-
-                // Iterates through the single resulting vrkai
-                for (filename, vrkai) in processed_vrkais {
-                    let folder_path = destination_path.clone();
-                    let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
-
-                    if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Error saving '{}' in folder: {}", filename, e),
-                            }))
-                            .await;
-                        return Ok(());
-                    }
-
-                    let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
-                    success_messages.push(success_message);
-                }
+            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error saving '{}' in folder: {}", filename, e),
+                    }))
+                    .await;
+                return Ok(());
             }
+
+            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
+            success_messages.push(success_message);
+        }
+
+        // Extract the vrpacks into the VectorFS
+        for (filename, vrpack_bytes) in vr_packs {
+            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
+
+            let folder_path = destination_path.clone();
+            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+
+            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack) {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error extracting/saving '{}' into folder: {}", filename, e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+
+            let success_message = format!("VRPack '{}' extracted/saved successfully.", filename);
+            success_messages.push(success_message);
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
