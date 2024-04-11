@@ -385,7 +385,7 @@ pub struct Node {
     // The manager for subidentities.
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Arc<ShinkaiDB>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
@@ -441,13 +441,12 @@ impl Node {
             eprintln!("Error: {:?}", e);
             panic!("Failed to open database: {}", main_db_path)
         });
-        let db_arc = Arc::new(Mutex::new(db));
+        let db_arc = Arc::new(db);
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_name = ShinkaiName::new(node_name).unwrap();
         {
-            let db_lock = db_arc.lock().await;
-            match db_lock.update_local_node_keys(
+            match db_arc.update_local_node_keys(
                 node_name.clone(),
                 encryption_public_key.clone(),
                 identity_public_key.clone(),
@@ -470,8 +469,7 @@ impl Node {
         // Fetch list of existing profiles from the node to push into the VectorFS
         let mut profile_list = vec![];
         {
-            let db_lock = db_arc.lock().await;
-            profile_list = match db_lock.get_all_profiles(node_name.clone()) {
+            profile_list = match db_arc.get_all_profiles(node_name.clone()) {
                 Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
                 Err(e) => panic!("Failed to fetch profiles: {}", e),
             };
@@ -858,9 +856,7 @@ impl Node {
     }
 
     async fn retry_messages(&self) -> Result<(), NodeError> {
-        let db_lock = self.db.lock().await;
-        let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
-        drop(db_lock);
+        let messages_to_retry = self.db.get_messages_to_retry_before(None)?;
 
         for retry_message in messages_to_retry {
             let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
@@ -868,9 +864,7 @@ impl Node {
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            let db_lock = self.db.lock().await;
-            db_lock.remove_message_from_retry(&retry_message.message).unwrap();
-            drop(db_lock);
+            self.db.remove_message_from_retry(&retry_message.message).unwrap();
 
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -914,7 +908,7 @@ impl Node {
         message: ShinkaiMessage,
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
@@ -961,7 +955,6 @@ impl Node {
                     );
                     // If retry is enabled, add the message to retry list on failure
                     let retry_count = retry.unwrap_or(0) + 1;
-                    let db = db.lock().await;
                     let retry_message = RetryMessage {
                         retry_count,
                         message: message.as_ref().clone(),
@@ -1038,7 +1031,7 @@ impl Node {
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
@@ -1119,7 +1112,6 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
         match db_result {
             Ok(_) => (),

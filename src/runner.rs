@@ -35,6 +35,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::{env, fs};
+use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
@@ -72,8 +73,8 @@ pub async fn tauri_initialize_node() -> Result<
     NodeRunnerError,
 > {
     match initialize_node().await {
-        Ok((node_local_commands, api_server, node_task, ws_server, node)) => {
-            Ok((node_local_commands, api_server, node_task, ws_server, node))
+        Ok((node_local_commands, node_task, ws_server, node)) => { // api_server, 
+            Ok((node_local_commands, node_task, ws_server, node)) // api_server, 
         }
         Err(e) => {
             shinkai_log(
@@ -429,7 +430,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
 async fn init_ws_server(
     node_env: &NodeEnvironment,
     identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
-    shinkai_db: Weak<Mutex<ShinkaiDB>>,
+    shinkai_db: Weak<ShinkaiDB>,
 ) {
     let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
         let identity_manager_inner = identity_manager.lock().await;
@@ -444,8 +445,7 @@ async fn init_ws_server(
     // Update ShinkaiDB with manager so it can trigger updates
     {
         let db = shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let mut shinkai_db = db.lock().await;
-        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+        db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
     run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;
 }

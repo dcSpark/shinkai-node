@@ -59,8 +59,6 @@ impl Node {
         // Query the database for the last `limit` number of messages from the specified inbox.
         let result = match self
             .db
-            .lock()
-            .await
             .get_last_unread_messages_from_inbox(inbox_name, limit, offset_key)
         {
             Ok(messages) => messages,
@@ -110,7 +108,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
+        let result = match self.db.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -126,7 +124,7 @@ impl Node {
     }
 
     pub async fn internal_update_smart_inbox_name(&self, inbox_id: String, new_name: String) -> Result<(), String> {
-        match self.db.lock().await.update_smart_inbox_name(&inbox_id, &new_name) {
+        match self.db.update_smart_inbox_name(&inbox_id, &new_name) {
             Ok(_) => Ok(()),
             Err(e) => {
                 shinkai_log(
@@ -172,8 +170,6 @@ impl Node {
         };
         let result = match self
             .db
-            .lock()
-            .await
             .get_all_smart_inboxes_for_profile(standard_identity)
         {
             Ok(inboxes) => inboxes,
@@ -199,8 +195,6 @@ impl Node {
         // Query the database for the last `limit` number of messages from the specified inbox.
         let result = match self
             .db
-            .lock()
-            .await
             .get_last_messages_from_inbox(inbox_name, limit, offset_key)
         {
             Ok(messages) => messages,
@@ -232,8 +226,7 @@ impl Node {
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     ) -> Result<(), Error> {
-        let db = self.db.lock().await;
-        let messages = db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
+        let messages = self.db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
         let _ = res.send(messages).await.map_err(|_| ());
         Ok(())
     }
@@ -241,8 +234,6 @@ impl Node {
     pub async fn internal_mark_as_read_up_to(&self, inbox_name: String, up_to_time: String) -> Result<bool, NodeError> {
         // Attempt to mark messages as read in the database
         self.db
-            .lock()
-            .await
             .mark_as_read_up_to(inbox_name, up_to_time)
             .map_err(|e| {
                 let error_message = format!("Failed to mark messages as read: {}", e);
@@ -299,8 +290,6 @@ impl Node {
 
         match self
             .db
-            .lock()
-            .await
             .has_permission(&inbox_name, &standard_identity, perm)
         {
             Ok(result) => {
@@ -330,8 +319,7 @@ impl Node {
                             })
                         }
                     };
-                    let mut db = self.db.lock().await;
-                    db.add_permission(
+                    self.db.add_permission(
                         inbox_name.to_string().as_str(),
                         &sender_standard,
                         InboxPermission::Admin,
@@ -356,7 +344,7 @@ impl Node {
             }
         };
 
-        let result = match self.db.lock().await.get_agents_for_profile(profile_name) {
+        let result = match self.db.get_agents_for_profile(profile_name) {
             Ok(agents) => agents,
             Err(e) => {
                 return Err(NodeError {
@@ -379,7 +367,7 @@ impl Node {
     }
 
     pub async fn internal_add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), NodeError> {
-        match self.db.lock().await.add_agent(agent.clone(), profile) {
+        match self.db.add_agent(agent.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_agent_subidentity(agent).await {
@@ -457,8 +445,6 @@ impl Node {
     pub async fn internal_add_ollama_models(&self, input_models: Vec<String>) -> Result<(), String> {
         {
             self.db
-                .lock()
-                .await
                 .main_profile_exists(self.node_name.get_node_name_string().as_str())
                 .map_err(|e| format!("Failed to check if main profile exists: {}", e))?;
         }

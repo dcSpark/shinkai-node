@@ -53,7 +53,7 @@ use crate::{
 };
 
 pub struct CronManager {
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
@@ -96,7 +96,7 @@ impl From<InboxNameError> for CronManagerError {
 
 impl CronManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -136,14 +136,14 @@ impl CronManager {
     }
 
     pub fn process_job_queue(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
         job_manager: Arc<Mutex<JobManager>>,
         job_processing_fn: impl Fn(
                 CronTask,
-                Weak<Mutex<ShinkaiDB>>,
+                Weak<ShinkaiDB>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
@@ -176,8 +176,7 @@ impl CronManager {
                         return;
                     }
                     let db_arc = db_arc.unwrap();
-                    let mut db_lock = db_arc.lock().await;
-                    db_lock
+                    db_arc
                         .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())
                         .unwrap_or(HashMap::new())
                 };
@@ -248,7 +247,7 @@ impl CronManager {
 
     pub async fn process_job_message_queued(
         cron_job: CronTask,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
@@ -302,8 +301,7 @@ impl CronManager {
 
             // Add permission
             let db_arc = db.upgrade().unwrap();
-            let mut db = db_arc.lock().await;
-            db.add_permission_with_profile(
+            db_arc.add_permission_with_profile(
                 inbox_name.to_string().as_str(),
                 shinkai_profile.clone(),
                 InboxPermission::Admin,
@@ -322,9 +320,10 @@ impl CronManager {
                 node_profile_name.node_name.clone(),
             )
             .unwrap();
-            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+            db_arc
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
                 .await?;
-            db.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
+            db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
 
         // Add Message to Job Queue
@@ -387,8 +386,7 @@ impl CronManager {
         // Note: needed to avoid a deadlock
         tokio::spawn(async move {
             let db_arc = db.upgrade().unwrap();
-            let mut db_lock = db_arc.lock().await;
-            db_lock
+            db_arc
                 .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
                 .map_err(|e| CronManagerError::SomeError(e.to_string()))
         })

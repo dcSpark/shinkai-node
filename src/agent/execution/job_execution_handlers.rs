@@ -30,7 +30,7 @@ use crate::{
 impl JobManager {
     /// Processes the provided message & job data, routes them to a specific inference chain,
     pub async fn handle_cron_job_request(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -55,7 +55,7 @@ impl JobManager {
 
         // Prepare data to save inference response to the DB
         let cron_task_response = CronTaskRequestResponse {
-            cron_task_request: cron_task_request,
+            cron_task_request,
             cron_description: inference_response_content.cron_expression.to_string(),
             pddl_plan_problem: inference_response_content.pddl_plan_problem.to_string(),
             pddl_plan_domain: Some(inference_response_content.pddl_plan_domain.to_string()),
@@ -93,12 +93,10 @@ impl JobManager {
                 );
 
                 // Save response data to DB
-                let mut shinkai_db = db.lock().await;
-                shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content, agg_response, None)?;
-                shinkai_db
-                    .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+                db.add_step_history(job_message.job_id.clone(), job_message.content, agg_response, None)?;
+                db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
                     .await?;
-                shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+                db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
                 Ok(true)
             }
@@ -108,7 +106,7 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     pub async fn handle_cron_job(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         cron_job: CronTask,
@@ -121,7 +119,7 @@ impl JobManager {
         // Create a new instance of the WebScraper
         let scraper = WebScraper {
             task: cron_job.clone(),
-            unstructured_api: unstructured_api,
+            unstructured_api,
         };
 
         // Call the download_and_parse method of the WebScraper
@@ -172,17 +170,10 @@ impl JobManager {
 
                 // Save response data to DB
                 {
-                    let mut shinkai_db = db.lock().await;
-                    shinkai_db.add_step_history(
-                        job_id.clone(),
-                        "".to_string(),
-                        inference_response_content.clone(),
-                        None,
-                    )?;
-                    shinkai_db
-                        .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                    db.add_step_history(job_id.clone(), "".to_string(), inference_response_content.clone(), None)?;
+                    db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
                         .await?;
-                    shinkai_db.set_job_execution_context(job_id.clone(), new_execution_context, None)?;
+                    db.set_job_execution_context(job_id.clone(), new_execution_context, None)?;
                 }
 
                 // If crawl_links is true, scan for all the links in content and download_and_parse them as well
@@ -219,17 +210,15 @@ impl JobManager {
                                 .unwrap();
 
                                 // Save response data to DB
-                                let mut shinkai_db = db.lock().await;
-                                shinkai_db.add_step_history(
+                                db.add_step_history(
                                     job_id.clone(),
                                     "".to_string(),
                                     inference_response_content.clone(),
                                     None,
                                 )?;
-                                shinkai_db
-                                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
                                     .await?;
-                                shinkai_db.set_job_execution_context(job_id.clone(), new_execution_context, None)?;
+                                db.set_job_execution_context(job_id.clone(), new_execution_context, None)?;
                             }
                             Err(e) => {
                                 shinkai_log(
@@ -256,7 +245,7 @@ impl JobManager {
 
     /// Processes the provided image file
     pub async fn handle_image_file(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         task: String,
@@ -311,31 +300,26 @@ impl JobManager {
         );
 
         // Save response data to DB
-        let mut shinkai_db = db.lock().await;
-        shinkai_db.add_step_history(
+        db.add_step_history(
             full_job.job_id.clone(),
             "".to_string(),
             inference_response_content.to_string(),
             None,
         )?;
-        shinkai_db
-            .add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message, None)
+        db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message, None)
             .await?;
-        shinkai_db.set_job_execution_context(full_job.job_id.clone(), prev_execution_context, None)?;
+        db.set_job_execution_context(full_job.job_id.clone(), prev_execution_context, None)?;
 
         Ok(())
     }
 
     /// Inserts a KaiJobFile into a specific inbox
     pub async fn insert_kai_job_file_into_inbox(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         file_name_no_ext: String,
         kai_file: KaiJobFile,
     ) -> Result<String, AgentError> {
         let inbox_name = random_string();
-
-        // Lock the database
-        let mut db = db.lock().await;
 
         // Create the inbox
         match db.create_files_message_inbox(inbox_name.clone()) {

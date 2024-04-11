@@ -185,8 +185,9 @@ impl ShinkaiDB {
         self.db.put_cf(cf, b"needs_reset", b"true")
     }
 
-    pub fn set_ws_manager(&mut self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
-        self.ws_manager = Some(ws_manager);
+    pub fn set_ws_manager(&self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
+        // TODO: off for now
+        // self.ws_manager = Some(ws_manager);
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping

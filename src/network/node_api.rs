@@ -12,8 +12,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
-use tokio::net::TcpListener;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 use warp::Buf;
 use warp::Filter;
 
@@ -323,6 +323,9 @@ pub async fn run_api(
             .and(warp::get())
             .and_then(move || shinkai_health_handler(node_commands_sender.clone(), node_name.clone()))
     };
+
+    // GET v1/ok
+    let ok_route = warp::path!("v1" / "ok").and(warp::get()).and_then(ok_handler);
 
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
@@ -634,6 +637,7 @@ pub async fn run_api(
         .or(use_registration_code)
         .or(get_all_subidentities)
         .or(shinkai_health)
+        .or(ok_route)
         .or(create_files_inbox_with_symmetric_key)
         .or(add_file_to_inbox_with_symmetric_key)
         .or(get_filenames)
@@ -1510,6 +1514,11 @@ async fn use_registration_code_handler(
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
+}
+
+async fn ok_handler() -> Result<impl warp::Reply, warp::Rejection> {
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    Ok(warp::reply::with_status("OK", warp::http::StatusCode::OK))
 }
 
 async fn shinkai_health_handler(

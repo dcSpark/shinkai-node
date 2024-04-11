@@ -40,7 +40,7 @@ mod tests {
     async fn test_process_cron_job() {
         init_default_tracing();
         setup();
-        let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let db_weak = Arc::downgrade(&db);
         let (identity_secret_key, identity_public_key) = unsafe_deterministic_signature_keypair(0);
         let (_, encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
@@ -51,8 +51,7 @@ mod tests {
 
         {
             // add keys
-            let db_lock = db.lock().await;
-            match db_lock.update_local_node_keys(
+            match db.update_local_node_keys(
                 node_profile_name.clone(),
                 encryption_public_key,
                 identity_public_key,
@@ -68,8 +67,6 @@ mod tests {
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         {
-            let mut db_lock = db.lock().await;
-
             let open_ai = OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string(),
             };
@@ -89,7 +86,7 @@ mod tests {
             let profile = agent_name.clone().extract_profile().unwrap();
 
             // add agent
-            match db_lock.add_agent(agent.clone(), &profile) {
+            match db.add_agent(agent.clone(), &profile) {
                 Ok(()) => {
                     let mut subidentity_manager = identity_manager.lock().await;
                     match subidentity_manager.add_agent_subidentity(agent).await {
@@ -124,8 +121,7 @@ mod tests {
 
         // Add a couple of cron tasks to the database
         {
-            let mut db_lock = db.lock().await;
-            match db_lock.add_cron_task(
+            match db.add_cron_task(
                 node_profile_name.clone(),
                 "task1".to_string(),
                 "* * * * * * *".to_string(),
@@ -143,7 +139,7 @@ mod tests {
         let db_weak_clone = db_weak.clone();
         let process_job_message_queued_wrapper =
             move |job: CronTask,
-                  _db: Weak<Mutex<ShinkaiDB>>,
+                  _db: Weak<ShinkaiDB>,
                   identity_sk: SigningKey,
                   job_manager: Arc<Mutex<JobManager>>,
                   node_profile_name: ShinkaiName,

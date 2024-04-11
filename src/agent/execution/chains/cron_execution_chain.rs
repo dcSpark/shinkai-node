@@ -24,7 +24,7 @@ pub struct CronExecutionState {
 impl JobManager {
     #[async_recursion]
     pub async fn start_cron_execution_chain_for_subtask(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         full_job: Job,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
@@ -53,7 +53,7 @@ impl JobManager {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     pub async fn start_cron_execution_chain_for_main_task(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         full_job: Job,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,

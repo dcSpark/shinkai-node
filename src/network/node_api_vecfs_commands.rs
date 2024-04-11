@@ -925,8 +925,7 @@ impl Node {
         };
 
         let files = {
-            let db_lock = self.db.lock().await;
-            match db_lock.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
+            match self.db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -983,8 +982,7 @@ impl Node {
 
         {
             // remove inbox
-            let mut db_lock = self.db.lock().await;
-            match db_lock.remove_inbox(&input_payload.file_inbox) {
+            match self.db.remove_inbox(&input_payload.file_inbox) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res

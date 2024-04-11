@@ -13,7 +13,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 
 impl ShinkaiDB {
     pub fn create_new_job(
-        &mut self,
+        &self,
         job_id: String,
         agent_id: String,
         scope: JobScope,
@@ -295,7 +295,7 @@ impl ShinkaiDB {
     }
 
     /// Updates the JobScope of a job given it's id
-    pub fn update_job_scope(&mut self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
+    pub fn update_job_scope(&self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
         let scope_bytes = scope.to_bytes()?;
         let job_scope_key = format!("jobinbox_{}_scope", &job_id);
@@ -322,7 +322,7 @@ impl ShinkaiDB {
 
     /// Sets/updates the execution context for a Job in the DB
     pub fn set_job_execution_context(
-        &mut self,
+        &self,
         job_id: String,
         context: HashMap<String, String>,
         message_key: Option<String>,
@@ -456,7 +456,7 @@ impl ShinkaiDB {
     }
 
     pub fn add_step_history(
-        &mut self,
+        &self,
         job_id: String,
         user_message: String,
         agent_response: String,
@@ -610,7 +610,7 @@ impl ShinkaiDB {
     }
 
     pub async fn add_message_to_job_inbox(
-        &mut self,
+        &self,
         _: &str,
         message: &ShinkaiMessage,
         parent_message_key: Option<String>,

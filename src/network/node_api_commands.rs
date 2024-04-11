@@ -73,19 +73,18 @@ impl Node {
     }
 
     async fn has_standard_identity_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
-        let db_lock = db.lock().await;
-        let has_permission = db_lock
+        let has_permission = db
             .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
 
     async fn has_device_identity_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
@@ -96,7 +95,7 @@ impl Node {
     }
 
     pub async fn has_inbox_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         sender_subidentity: &Identity,
     ) -> Result<bool, NodeError> {
@@ -414,8 +413,7 @@ impl Node {
         // permissions: IdentityPermissions,
         // code_type: RegistrationCodeType,
 
-        let db = self.db.lock().await;
-        match db.generate_registration_new_code(permissions, code_type) {
+        match self.db.generate_registration_new_code(permissions, code_type) {
             Ok(code) => {
                 let _ = res.send(Ok(code)).await.map_err(|_| ());
             }
@@ -654,7 +652,6 @@ impl Node {
         // why are we forcing standard_idendity_type?
         // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
-        let db = self.db.lock().await;
 
         // if first_device_registration_needs_code is false
         // then create a new registration code and use it
@@ -669,7 +666,10 @@ impl Node {
             .as_str(),
         );
 
-        let main_profile_exists = match db.main_profile_exists(self.node_name.get_node_name_string().as_str()) {
+        let main_profile_exists = match self
+            .db
+            .main_profile_exists(self.node_name.get_node_name_string().as_str())
+        {
             Ok(exists) => exists,
             Err(err) => {
                 let _ = res
@@ -698,7 +698,7 @@ impl Node {
                 let code_type = RegistrationCodeType::Device("main".to_string());
                 let permissions = IdentityPermissions::Admin;
 
-                match db.generate_registration_new_code(permissions, code_type) {
+                match self.db.generate_registration_new_code(permissions, code_type) {
                     Ok(new_code) => {
                         code = new_code;
                     }
@@ -715,7 +715,8 @@ impl Node {
             }
         }
 
-        let result = db
+        let result = self
+            .db
             .use_registration_code(
                 &code.clone(),
                 self.node_name.get_node_name_string().as_str(),
@@ -731,18 +732,18 @@ impl Node {
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
         let mut profile_list = vec![];
-        profile_list = match db.get_all_profiles(self.node_name.clone()) {
+        profile_list = match self.db.get_all_profiles(self.node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
-        self.vector_fs.initialize_new_profiles(
-            &self.node_name,
-            profile_list,
-            self.embedding_generator.model_type.clone(),
-            NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
-        ).await?;
-
-        std::mem::drop(db);
+        self.vector_fs
+            .initialize_new_profiles(
+                &self.node_name,
+                profile_list,
+                self.embedding_generator.model_type.clone(),
+                NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+            )
+            .await?;
 
         match result {
             Ok(success) => {
@@ -812,13 +813,11 @@ impl Node {
                     }
                     IdentityType::Device => {
                         // use get_code_info to get the profile name
-                        let db = self.db.lock().await;
-                        let code_info = db.get_registration_code_info(code.clone().as_str()).unwrap();
+                        let code_info = self.db.get_registration_code_info(code.clone().as_str()).unwrap();
                         let profile_name = match code_info.code_type {
                             RegistrationCodeType::Device(profile_name) => profile_name,
                             _ => return Err(Box::new(ShinkaiDBError::InvalidData)),
                         };
-                        std::mem::drop(db);
 
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
                         let encryption_pk_obj =
@@ -997,8 +996,8 @@ impl Node {
                         }
                     }
                 } else {
-                    let db_lock = self.db.lock().await;
-                    let has_permission = db_lock
+                    let has_permission = self
+                        .db
                         .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
                     if has_permission {
@@ -1331,8 +1330,7 @@ impl Node {
         let hex_blake3_hash = msg.get_message_content()?;
 
         let files = {
-            let db_lock = self.db.lock().await;
-            match db_lock.get_all_files_from_inbox(hex_blake3_hash) {
+            match self.db.get_all_files_from_inbox(hex_blake3_hash) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -1422,8 +1420,7 @@ impl Node {
 
         {
             eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
-            let db_lock = self.db.lock().await;
-            let init_result = db_lock.init_profile_tool_structs(&profile);
+            let init_result = self.db.init_profile_tool_structs(&profile);
             if let Err(err) = init_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1435,7 +1432,7 @@ impl Node {
             }
 
             eprintln!("api_add_toolkit> profile install toolkit: {:?}", profile);
-            let install_result = db_lock.install_toolkit(&toolkit, &profile);
+            let install_result = self.db.install_toolkit(&toolkit, &profile);
             if let Err(err) = install_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1450,7 +1447,8 @@ impl Node {
                 "api_add_toolkit> profile setting toolkit header values: {:?}",
                 header_values
             );
-            let set_header_result = db_lock
+            let set_header_result = self
+                .db
                 .set_toolkit_header_values(
                     &toolkit.name.clone(),
                     &profile.clone(),
@@ -1471,7 +1469,8 @@ impl Node {
             // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
             let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
             eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
-            let activate_toolkit_result = db_lock
+            let activate_toolkit_result = self
+                .db
                 .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)
                 .await;
             if let Err(err) = activate_toolkit_result {
@@ -1517,8 +1516,7 @@ impl Node {
         let profile = profile.unwrap();
         let toolkit_map;
         {
-            let db_lock = self.db.lock().await;
-            toolkit_map = match db_lock.get_installed_toolkit_map(&profile) {
+            toolkit_map = match self.db.get_installed_toolkit_map(&profile) {
                 Ok(t) => t,
                 Err(err) => {
                     let _ = res
@@ -1600,10 +1598,9 @@ impl Node {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
-                    let db_lock = self.db.lock().await;
-                    match db_lock.update_job_to_finished(&job_id) {
+                    match self.db.update_job_to_finished(&job_id) {
                         Ok(_) => {
-                            match db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await {
+                            match self.db.get_kai_file_from_inbox(inbox_name.to_string()).await {
                                 Ok(Some((_, kai_file_bytes))) => {
                                     let kai_file_str = match String::from_utf8(kai_file_bytes) {
                                         Ok(s) => s,
@@ -1782,8 +1779,7 @@ impl Node {
                 let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
                 let parent_key = if !inbox_name.is_empty() {
-                    let db_guard = self.db.lock().await;
-                    match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                    match self.db.get_parent_message_hash(&inbox_name, &message_hash) {
                         Ok(result) => result,
                         Err(_) => None,
                     }
@@ -1976,7 +1972,7 @@ impl Node {
         }
     }
 
-    pub async fn process_symmetric_key(content: String, db: Arc<Mutex<ShinkaiDB>>) -> Result<String, APIError> {
+    pub async fn process_symmetric_key(content: String, db: Arc<ShinkaiDB>) -> Result<String, APIError> {
         // Convert the hex string to bytes
         let private_key_bytes = hex::decode(&content).map_err(|_| APIError {
             code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1998,10 +1994,9 @@ impl Node {
         let hash_hex = hex::encode(result.as_bytes());
 
         // Lock the database and perform operations
-        let mut db_guard = db.lock().await;
 
         // Write the symmetric key to the database
-        db_guard.write_symmetric_key(&hash_hex, &private_key_array)
+        db.write_symmetric_key(&hash_hex, &private_key_array)
             .map_err(|err| APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -2009,7 +2004,7 @@ impl Node {
             })?;
 
         // Create the files message inbox
-        db_guard.create_files_message_inbox(hash_hex.clone())
+        db.create_files_message_inbox(hash_hex.clone())
             .map_err(|err| APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -2042,7 +2037,7 @@ impl Node {
         // Extract the content of the message
         let hex_blake3_hash = decrypted_msg.get_message_content()?;
 
-        match self.db.lock().await.get_all_filenames_from_inbox(hex_blake3_hash) {
+        match self.db.get_all_filenames_from_inbox(hex_blake3_hash) {
             Ok(filenames) => {
                 let _ = res.send(Ok(filenames)).await;
                 Ok(())
@@ -2069,8 +2064,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let private_key_array = {
-            let db = self.db.lock().await;
-            match db.read_symmetric_key(&hex_blake3_hash) {
+            match self.db.read_symmetric_key(&hex_blake3_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     let _ = res
@@ -2123,8 +2117,6 @@ impl Node {
 
         match self
             .db
-            .lock()
-            .await
             .add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file)
         {
             Ok(_) => {
@@ -2145,8 +2137,7 @@ impl Node {
     }
 
     pub async fn api_is_pristine(&self, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
-        let db_lock = self.db.lock().await;
-        let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
+        let has_any_profile = self.db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
     }
@@ -2302,13 +2293,12 @@ impl Node {
                     match inbox.has_sender_creation_access(msg.clone()) {
                         Ok(_) => {
                             // use unsafe_insert_inbox_message because we already validated the message
-                            let mut db_guard = self.db.lock().await;
                             let parent_message_id = match msg.get_message_parent_key() {
                                 Ok(key) => Some(key),
                                 Err(_) => None,
                             };
 
-                            db_guard
+                            self.db
                                 .unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
                                 .await
                                 .map_err(|e| {
@@ -2415,8 +2405,7 @@ impl Node {
             let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
             let parent_key = if !inbox_name.is_empty() {
-                let db_guard = self.db.lock().await;
-                match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                match self.db.get_parent_message_hash(&inbox_name, &message_hash) {
                     Ok(result) => result,
                     Err(_) => None,
                 }

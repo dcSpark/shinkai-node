@@ -42,7 +42,7 @@ impl ShinkaiDB {
         full_hash[..full_hash.len() / 2].to_string()
     }
 
-    pub fn create_files_message_inbox(&mut self, hex_blake3_hash: String) -> Result<(), Error> {
+    pub fn create_files_message_inbox(&self, hex_blake3_hash: String) -> Result<(), Error> {
         let encrypted_inbox_id = Self::hex_blake3_to_half_hash(&hex_blake3_hash);
 
         // Use Topic::MessageBoxSymmetricKeys with a prefix for encrypted inbox
@@ -80,7 +80,7 @@ impl ShinkaiDB {
     }
 
     pub fn add_file_to_files_message_inbox(
-        &mut self,
+        &self,
         hex_blake3_hash: String,
         file_name: String,
         file_content: Vec<u8>,
@@ -183,7 +183,7 @@ impl ShinkaiDB {
     }
 
     /// Removes an inbox and all its associated files.
-    pub fn remove_inbox(&mut self, hex_blake3_hash: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_inbox(&self, hex_blake3_hash: &str) -> Result<(), ShinkaiDBError> {
         let encrypted_inbox_id = Self::hex_blake3_to_half_hash(hex_blake3_hash);
 
         // Use the same prefix for encrypted inbox as in add_file_to_files_message_inbox

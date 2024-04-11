@@ -41,8 +41,7 @@ impl Node {
             return Ok(());
         }
 
-        let db_lock = self.db.lock().await;
-        let db_result = db_lock.list_all_my_subscriptions();
+        let db_result = self.db.list_all_my_subscriptions();
 
         match db_result {
             Ok(subscriptions) => {

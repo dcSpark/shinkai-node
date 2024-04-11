@@ -39,7 +39,7 @@ impl ShinkaiDB {
         Ok(format!("{}:::{}", agent_id, profile_name))
     }
 
-    pub fn add_agent(&mut self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Serialize the agent to bytes
         let bytes = to_vec(&agent).unwrap();
 
@@ -80,7 +80,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn remove_agent(&mut self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn remove_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Get cf handle for NodeAndUsers topic
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
@@ -118,7 +118,7 @@ impl ShinkaiDB {
     }
 
     pub fn update_agent_access(
-        &mut self,
+        &self,
         agent_id: &str,
         profile: &ShinkaiName,
         new_profiles_with_access: Option<Vec<String>>,
@@ -264,7 +264,7 @@ impl ShinkaiDB {
     }
 
     pub fn remove_profile_from_agent_access(
-        &mut self,
+        &self,
         agent_id: &str,
         profile: &str,
         bounded_profile: &ShinkaiName,
@@ -281,7 +281,7 @@ impl ShinkaiDB {
     }
 
     pub fn remove_toolkit_from_agent_access(
-        &mut self,
+        &self,
         agent_id: &str,
         toolkit: &str,
         bounded_profile: &ShinkaiName,

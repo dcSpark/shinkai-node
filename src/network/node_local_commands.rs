@@ -1,4 +1,5 @@
 use super::Node;
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::{
     network::node_api::APIError,
     schemas::{identity::Identity, inbox_permission::InboxPermission},
@@ -6,17 +7,13 @@ use crate::{
 use async_channel::Sender;
 use log::error;
 use shinkai_message_primitives::{
-    schemas::{
-        agents::serialized_agent::SerializedAgent,
-        shinkai_name::ShinkaiName,
-    },
+    schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
     },
 };
 use std::str::FromStr;
-use crate::managers::identity_manager::IdentityManagerTrait;
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
@@ -95,8 +92,7 @@ impl Node {
         code_type: RegistrationCodeType,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let db = self.db.lock().await;
-        let code = match db.generate_registration_new_code(permissions, code_type) {
+        let code = match self.db.generate_registration_new_code(permissions, code_type) {
             Ok(code) => code,
             Err(e) => {
                 error!("Failed to generate registration new code: {}", e);
@@ -167,12 +163,7 @@ impl Node {
         };
 
         let perm = InboxPermission::from_str(&perm_type).unwrap();
-        let result = match self
-            .db
-            .lock()
-            .await
-            .add_permission(&inbox_name, &standard_identity, perm)
-        {
+        let result = match self.db.add_permission(&inbox_name, &standard_identity, perm) {
             Ok(_) => "Success".to_string(),
             Err(e) => e.to_string(),
         };
@@ -222,7 +213,7 @@ impl Node {
         };
 
         // First, check if permission exists and remove it if it does
-        match self.db.lock().await.remove_permission(&inbox_name, &standard_identity) {
+        match self.db.remove_permission(&inbox_name, &standard_identity) {
             Ok(()) => {
                 let _ = res
                     .send(format!(
@@ -238,7 +229,7 @@ impl Node {
     }
 
     pub async fn local_create_new_job(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
-         let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&&shinkai_message.clone()) {
+        let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&&shinkai_message.clone()) {
             Ok(name) => name,
             Err(e) => {
                 error!("Failed to get sender name from message: {}", e);
@@ -253,7 +244,9 @@ impl Node {
         let sender_subidentity = match sender_subidentity {
             Some(identity) => identity,
             None => {
-                let _ = res.send((String::new(), "Sender subidentity not found".to_string())).await;
+                let _ = res
+                    .send((String::new(), "Sender subidentity not found".to_string()))
+                    .await;
                 return;
             }
         };
@@ -309,8 +302,7 @@ impl Node {
     }
 
     pub async fn local_is_pristine(&self, res: Sender<bool>) {
-        let db_lock = self.db.lock().await;
-        let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
+        let has_any_profile = self.db.has_any_profile().unwrap_or(false);
         let _ = res.send(!has_any_profile).await;
     }
 
