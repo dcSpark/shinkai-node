@@ -17,18 +17,19 @@ impl VectorFSDB {
         let (bytes, cf) = self._prepare_resource(resource)?;
 
         // Log the size of the value
-        eprintln!("Saving resource with size: {} bytes", bytes.len());
+        eprintln!("wb_save_resource with size: {} bytes", bytes.len());
 
         // Measure the time it takes to execute pb_put_cf
         let start_time = std::time::Instant::now();
 
         // Insert into the "VectorResources" column family
+        eprintln!("wb_save_resource with key: {:?}", resource.as_trait_object().reference_string());
         batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
         // Log the duration
         eprintln!(
-            "pb_put_cf executed in: {:?} seconds",
-            start_time.elapsed().as_secs_f32()
+            "pb_put_cf executed in: {:?} ms",
+            start_time.elapsed().as_millis()
         );
 
         Ok(())
@@ -39,11 +40,11 @@ impl VectorFSDB {
     fn _prepare_resource(
         &self,
         resource: &BaseVectorResource,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = resource.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "VectorResources" column family
-        let cf = self.get_cf_handle(FSTopic::VectorResources)?;
+        let cf = FSTopic::VectorResources.as_str();
 
         Ok((bytes, cf))
     }
@@ -56,11 +57,8 @@ impl VectorFSDB {
         reference_string: &str,
         batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
-        // Retrieve the handle for the "VectorResources" column family
-        let cf = self.get_cf_handle(FSTopic::VectorResources)?;
-
         // Delete from the "VectorResources" column family
-        batch.pb_delete_cf(cf, reference_string);
+        batch.pb_delete_cf(FSTopic::VectorResources.as_str(), reference_string);
 
         Ok(())
     }
@@ -80,6 +78,8 @@ impl VectorFSDB {
         fs_item: &FSItem,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, VectorFSError> {
+        eprintln!("Getting resource by FSItem key: {:?}", fs_item.resource_db_key());
+        eprintln!("profile: {:?}", profile);
         self.get_resource(&fs_item.resource_db_key(), profile)
     }
 

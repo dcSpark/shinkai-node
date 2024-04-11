@@ -39,18 +39,22 @@ impl ProfileBoundWriteBatch {
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.
-    pub fn pb_put_cf<V>(&mut self, _cf: &impl AsColumnFamilyRef, key: &str, value: V)
+    pub fn pb_put_cf<V>(&mut self, cf_name: &str, key: &str, value: V)
     where
         V: AsRef<[u8]>,
     {
         let new_key = self.gen_pb_key(key);
-        self.operations.push(TransactionOperation::Write(new_key, value.as_ref().to_vec()));
+        eprintln!("pb_put_cf with key: {:?}", new_key);
+        eprintln!("pb_put_cf with value: {:?}", value.as_ref().len());
+        self.operations.push(TransactionOperation::Write(cf_name.to_string(), new_key, value.as_ref().to_vec()));
+
     }
 
     /// Removes the value inside of the key (profile-bound) at the provided column family.
-    pub fn pb_delete_cf(&mut self, _cf: &impl AsColumnFamilyRef, key: &str) {
+    pub fn pb_delete_cf(&mut self, cf_name: &str, key: &str) {
         let new_key = self.gen_pb_key(key);
-        self.operations.push(TransactionOperation::Delete(new_key));
+        self.operations.push(TransactionOperation::Delete(cf_name.to_string(), new_key));
+
     }
 
     /// Given an input key, generates the profile bound key using the internal profile.
@@ -188,7 +192,7 @@ impl ShinkaiDB {
     /// Profile-bound saves the WriteBatch to the database
     pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
         // self.write(pb_batch.write_batch)
-        unimplemented!()
+        panic!("Not implemented");
     }
 
     /// Validates if the key has the provided profile name properly prepended to it

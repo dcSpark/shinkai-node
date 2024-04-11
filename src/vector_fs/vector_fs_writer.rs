@@ -532,7 +532,7 @@ impl VectorFS {
         else {
             self.revert_internals_to_last_db_save(&writer.profile, &writer.profile)
                 .await?;
-            return Ok(move_result?);
+            Ok(move_result?)
         }
     }
 
@@ -668,9 +668,11 @@ impl VectorFS {
         current_datetime: DateTime<Utc>,
     ) -> Result<FSFolder, VectorFSError> {
         // Add the folder into the internals
+        eprintln!("Adding folder into internals");
         let new_folder = self
             ._add_existing_vr_to_core_resource(writer, new_vr, embedding, metadata, current_datetime)
             .await?;
+        eprintln!("Folder added into internals");
         let new_folder_path = new_folder.path.clone();
 
         // Determine permissions based on whether the parent folder is root
@@ -695,6 +697,7 @@ impl VectorFS {
             read_permission = parent_permissions.read_permission;
             write_permission = parent_permissions.write_permission;
         }
+        eprintln!("Inserting path permission");
 
         // Add read/write permission for the folder path
         {
@@ -704,11 +707,13 @@ impl VectorFS {
                 .insert_path_permission(new_folder_path, read_permission, write_permission)
                 .await?;
         }
+        eprintln!("Saving folder into db");
 
         // Save the FSInternals into the FSDB
         let internals = self.get_profile_fs_internals_read_only(&writer.profile).await?;
         let mut write_batch = writer.new_write_batch()?;
         self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+        eprintln!("Writing pb");
         self.db.write_pb(write_batch)?;
 
         Ok(new_folder)
@@ -1151,9 +1156,6 @@ impl VectorFS {
             return Err(VectorFSError::EntryAlreadyExistsAtPath(new_node_path));
         }
 
-        // Fetch FSInternals
-        // let internals = self.get_profile_fs_internals(&writer.profile).await?;
-
         // Acquire a write lock on internals_map to ensure thread-safe access
         let mut internals_map = self.internals_map.write().await;
         let internals = internals_map
@@ -1177,9 +1179,9 @@ impl VectorFS {
             );
 
             let folder = FSFolder::from_vector_resource_node(new_node, new_node_path, &internals.last_read_index)?;
-            drop(internals);
             return Ok(folder);
         }
+        drop(internals_map);
 
         // Mutator method for inserting the VR and updating the last_modified metadata of parent folder
         let mut mutator = |node: &mut Node, _: &mut Embedding| -> Result<(), VRError> {

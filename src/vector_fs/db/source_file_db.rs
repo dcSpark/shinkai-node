@@ -37,11 +37,11 @@ impl VectorFSDB {
     fn _prepare_source_file_map(
         &self,
         source_file_map: &SourceFileMap,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = source_file_map.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "SourceFiles" column family
-        let cf = self.get_cf_handle(FSTopic::SourceFiles)?;
+        let cf = FSTopic::SourceFiles.as_str();
         Ok((bytes, cf))
     }
 

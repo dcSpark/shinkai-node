@@ -63,12 +63,15 @@ impl VFSReader {
         vector_fs
             .update_last_read_path(&profile, path.clone(), current_datetime, requester_name.clone())
             .await?;
+        eprintln!("Updated last read path");
 
         let mut write_batch = ProfileBoundWriteBatch::new_vfs_batch(&profile)?;
         vector_fs
             .db
             .wb_add_read_access_log(requester_name, &path, current_datetime, profile, &mut write_batch)?;
+        eprintln!("Added read access log");
         vector_fs.db.write_pb(write_batch)?;
+        eprintln!("Wrote read access log");
 
         Ok(reader)
     }
@@ -152,8 +155,12 @@ impl VectorFS {
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
     pub async fn retrieve_vrkai(&self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
+        // eprintln!("fs_item: {:?}", fs_item);
+        eprintln!("fs_item exists {:?}", fs_item.name);
         let resource = self.db.get_resource_by_fs_item(&fs_item, &reader.profile)?;
+        eprintln!("resource: {:?}", resource);
         let sfm = self.retrieve_source_file_map(reader).await.ok();
+        eprintln!("sfm: {:?}", sfm);
 
         Ok(VRKai::new(resource, sfm))
     }

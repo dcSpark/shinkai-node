@@ -13,6 +13,7 @@ impl VectorFSDB {
         fs_internals: &VectorFSInternals,
         batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
+        eprintln!("Saving profile fs internals");
         let (bytes, cf) = self._prepare_profile_fs_internals(fs_internals)?;
         batch.pb_put_cf(cf, &VectorFSInternals::profile_fs_internals_shinkai_db_key(), bytes);
 
@@ -40,11 +41,12 @@ impl VectorFSDB {
     fn _prepare_profile_fs_internals(
         &self,
         fs_internals: &VectorFSInternals,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         // Convert JSON to bytes for storage
         let json = fs_internals.to_json()?;
+        // eprintln!("json: {:?}", json);
         let bytes = json.as_bytes().to_vec();
-        let cf = self.get_cf_handle(FSTopic::FileSystem)?;
+        let cf = FSTopic::FileSystem.as_str();
 
         Ok((bytes, cf))
     }
