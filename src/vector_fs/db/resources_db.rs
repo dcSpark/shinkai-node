@@ -27,11 +27,11 @@ impl VectorFSDB {
     fn _prepare_resource(
         &self,
         resource: &BaseVectorResource,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = resource.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "VectorResources" column family
-        let cf = self.get_cf_handle(FSTopic::VectorResources)?;
+        let cf = FSTopic::VectorResources.as_str();
 
         Ok((bytes, cf))
     }
@@ -44,11 +44,8 @@ impl VectorFSDB {
         reference_string: &str,
         batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
-        // Retrieve the handle for the "VectorResources" column family
-        let cf = self.get_cf_handle(FSTopic::VectorResources)?;
-
         // Delete from the "VectorResources" column family
-        batch.pb_delete_cf(cf, reference_string);
+        batch.pb_delete_cf(FSTopic::VectorResources.as_str(), reference_string);
 
         Ok(())
     }

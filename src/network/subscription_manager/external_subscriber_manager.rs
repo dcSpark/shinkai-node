@@ -67,7 +67,7 @@ pub struct SharedFolderInfo {
 
 pub struct ExternalSubscriberManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -89,7 +89,7 @@ pub struct ExternalSubscriberManager {
 impl ExternalSubscriberManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -227,15 +227,15 @@ impl ExternalSubscriberManager {
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        _: Weak<VectorFS>, // vector_fs
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        _: Arc<DashMap<String, SharedFolderInfo>>, // shared_folders_tree
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-        thread_number: usize,
+        _: usize, // tread_number
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -380,7 +380,7 @@ impl ExternalSubscriberManager {
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -462,7 +462,6 @@ impl ExternalSubscriberManager {
                 let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-                let mut vector_fs_inst = vector_fs_inst.lock().await;
 
                 let vr_path_shared_folder = VRPath::from_string(&shared_folder)
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -479,8 +478,10 @@ impl ExternalSubscriberManager {
                 let streamer = subscription_id.extract_streamer_node_with_profile()?;
                 let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
 
-                let reader = vector_fs_inst.new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())?;
-                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
+                let reader = vector_fs_inst
+                    .new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())
+                    .await?;
+                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).await.unwrap();
 
                 if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
                     let identity_manager = identity_manager_lock.lock().await;
@@ -562,7 +563,7 @@ impl ExternalSubscriberManager {
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -574,7 +575,7 @@ impl ExternalSubscriberManager {
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
+                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 EncryptionStaticKey,
@@ -814,7 +815,6 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -826,8 +826,11 @@ impl ExternalSubscriberManager {
                     vr_path,
                     full_streamer_profile_subidentity.clone(),
                 )
+                .await
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
+            let results = vector_fs
+                .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                .await?;
             eprintln!("available_shared_folders> results: {:?}", results);
 
             // Use the new function to filter results to only include top-level folders
@@ -907,10 +910,11 @@ impl ExternalSubscriberManager {
             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                 "VectorFS instance is not available".to_string(),
             ))?;
-        let vector_fs = vector_fs.lock().await;
 
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let result = vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])?;
+        let result = vector_fs
+            .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])
+            .await?;
 
         // Checks that the permission is valid (Whitelist or Public)
         for (_, path_permission) in &result {
@@ -948,19 +952,21 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path.clone(),
-                requester_shinkai_identity.clone(),
-            )?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path.clone(),
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Retrieve the current write permissions for the path
-            let permissions_vector =
-                vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])?;
+            let permissions_vector = vector_fs
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -971,11 +977,9 @@ impl ExternalSubscriberManager {
             let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Set the read permissions to Public while reusing the write permissions
-            let result = vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Public,
-                current_permissions.write_permission,
-            );
+            let result = vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Public, current_permissions.write_permission)
+                .await;
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -1028,11 +1032,11 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             // Retrieve the current permissions for the path
             let permissions_vector = vector_fs
-                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])?;
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -1043,18 +1047,18 @@ impl ExternalSubscriberManager {
             let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Create a writer for the path
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path,
-                requester_shinkai_identity.clone(),
-            )?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path,
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Set the read permissions to Private while reusing the write permissions using update_permissions_recursively
-            vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Private,
-                current_permissions.write_permission,
-            )?;
+            vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Private, current_permissions.write_permission)
+                .await?;
         }
         {
             // Assuming we have validated the admin and permissions, we proceed to update the DB

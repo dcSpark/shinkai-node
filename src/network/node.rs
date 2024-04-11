@@ -397,7 +397,7 @@ pub struct Node {
     // JS Toolkit Executor Remote
     pub js_toolkit_executor_remote: Option<String>,
     // The Node's VectorFS
-    pub vector_fs: Arc<Mutex<VectorFS>>,
+    pub vector_fs: Arc<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -485,11 +485,12 @@ impl Node {
             &vector_fs_db_path,
             node_name.clone(),
         )
+        .await
         .unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
-        let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
+        let vector_fs_arc = Arc::new(vector_fs);
 
         let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
             .unwrap_or_else(|_| "5".to_string())
@@ -577,7 +578,7 @@ impl Node {
             unstructured_api,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
-            my_subscription_manager: my_subscription_manager,
+            my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
         }));
 

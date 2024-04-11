@@ -37,7 +37,7 @@ impl JobManager {
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
@@ -167,7 +167,7 @@ impl JobManager {
     #[instrument(skip(identity_secret_key, db, vector_fs, generator))]
     pub async fn process_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
         full_job: Job,

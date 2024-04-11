@@ -42,7 +42,7 @@ const SOFT_REFRESH_THRESHOLD_MINUTES: usize = 2;
 
 pub struct MySubscriptionsManager {
     pub db: Weak<Mutex<ShinkaiDB>>,
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
@@ -61,7 +61,7 @@ pub struct MySubscriptionsManager {
 impl MySubscriptionsManager {
     pub async fn new(
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -563,12 +563,12 @@ impl MySubscriptionsManager {
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         thread_number: usize,
         process_job: impl Fn(
             ShinkaiSubscription,
             Weak<Mutex<ShinkaiDB>>,
-            Weak<Mutex<VectorFS>>,
+            Weak<VectorFS>,
         ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
@@ -604,7 +604,7 @@ impl MySubscriptionsManager {
     fn process_subscription_job_message_queued(
         job: ShinkaiSubscription,
         db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
             // Placeholder logic for processing a queued job message

@@ -797,7 +797,7 @@ fn subscription_manager_test() {
                     "private_test_folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )

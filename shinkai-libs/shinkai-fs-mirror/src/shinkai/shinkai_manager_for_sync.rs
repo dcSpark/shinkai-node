@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::http_requests::{request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse};
+use crate::http_requests::{
+    request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse,
+};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -130,9 +132,12 @@ impl ShinkaiManagerForSync {
         } else {
             destination
         };
-        
+
+        let timestamp = chrono::Utc::now().to_rfc3339(); // Get current time in ISO8601 format
+
         eprintln!(
-            "Uploading file: {} to node address: {} with destination: {}",
+            "[{}] Uploading file: {} to node address: {} with destination: {}",
+            timestamp,
             filename,
             self.node_address.clone(),
             destination
@@ -223,7 +228,7 @@ impl ShinkaiManagerForSync {
         } else {
             format!("/{}", path)
         };
-    
+
         // println!("Checking {} in vector FS using vecfs_retrieve_path_simplified", &path);
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_path_simplified(
             &formatted_path,
@@ -236,7 +241,7 @@ impl ShinkaiManagerForSync {
             "".to_string(),
         )
         .unwrap(); // Consider handling this unwrap more gracefully
-    
+
         let payload = serde_json::to_string(&shinkai_message).expect("Failed to serialize shinkai_message");
         let response = request_post(
             self.node_address.clone(),
@@ -244,7 +249,7 @@ impl ShinkaiManagerForSync {
             "/v1/vec_fs/retrieve_path_simplified_json",
         )
         .await;
-    
+
         match response {
             Ok(data) => Ok(data.data),
             Err(e) => Err(e),
@@ -310,7 +315,7 @@ impl ShinkaiManagerForSync {
         } else {
             format!("/{}", path)
         };
-    
+
         let shinkai_message = ShinkaiMessageBuilder::vecfs_retrieve_resource(
             &formatted_path,
             self.my_encryption_secret_key.clone(),
@@ -320,8 +325,9 @@ impl ShinkaiManagerForSync {
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),
             self.node_receiver_subidentity.clone(),
-        ).unwrap(); // Consider handling this unwrap more gracefully
-    
+        )
+        .unwrap(); // Consider handling this unwrap more gracefully
+
         let retrieve_resource_message = serde_json::json!(shinkai_message);
         let response = request_post(
             self.node_address.clone(),
@@ -329,15 +335,18 @@ impl ShinkaiManagerForSync {
             "/v1/vec_fs/retrieve_vector_resource",
         )
         .await;
-    
+
         match response {
             Ok(resp) => {
                 // println!("Vector resource retrieval successful: {:?}", resp);
                 Ok(resp)
-            },
+            }
             Err(e) => {
                 eprintln!("Failed to retrieve vector resource: {:?}", e);
-                Err(PostRequestError::RequestFailed(format!("Failed to retrieve vector resource: {:?}", e)))
+                Err(PostRequestError::RequestFailed(format!(
+                    "Failed to retrieve vector resource: {:?}",
+                    e
+                )))
             }
         }
     }

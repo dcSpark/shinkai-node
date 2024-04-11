@@ -28,13 +28,12 @@ mod tests {
     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
 
-    const NUM_THREADS: usize = 1;
     const CRON_INTERVAL_TIME: u64 = 60 * 10; // it doesn't matter here
 
     #[test]
     fn setup() {
         let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(path);
     }
 
     #[tokio::test]
@@ -55,8 +54,8 @@ mod tests {
             let db_lock = db.lock().await;
             match db_lock.update_local_node_keys(
                 node_profile_name.clone(),
-                encryption_public_key.clone(),
-                identity_public_key.clone(),
+                encryption_public_key,
+                identity_public_key,
             ) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
@@ -106,7 +105,7 @@ mod tests {
             }
         }
 
-        let vector_fs = Arc::new(Mutex::new(VectorFS::new_empty()));
+        let vector_fs = Arc::new(VectorFS::new_empty().unwrap());
         let vector_fs_weak = Arc::downgrade(&vector_fs);
         let db_weak = Arc::downgrade(&db);
 
@@ -144,7 +143,7 @@ mod tests {
         let db_weak_clone = db_weak.clone();
         let process_job_message_queued_wrapper =
             move |job: CronTask,
-                  db: Weak<Mutex<ShinkaiDB>>,
+                  _db: Weak<Mutex<ShinkaiDB>>,
                   identity_sk: SigningKey,
                   job_manager: Arc<Mutex<JobManager>>,
                   node_profile_name: ShinkaiName,

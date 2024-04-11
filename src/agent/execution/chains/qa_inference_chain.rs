@@ -25,7 +25,7 @@ impl JobManager {
     #[instrument(skip(generator, vector_fs, db))]
     pub async fn start_qa_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         full_job: Job,
         job_task: String,
         agent: SerializedAgent,
@@ -222,7 +222,7 @@ impl JobManager {
 async fn no_json_object_retry_logic(
     response: Result<JsonValue, AgentError>,
     db: Arc<Mutex<ShinkaiDB>>,
-    vector_fs: Arc<Mutex<VectorFS>>,
+    vector_fs: Arc<VectorFS>,
     full_job: Job,
     job_task: String,
     agent: SerializedAgent,

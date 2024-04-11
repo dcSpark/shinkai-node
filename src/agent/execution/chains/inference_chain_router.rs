@@ -33,7 +33,7 @@ impl JobManager {
     #[instrument(skip(generator, vector_fs, db))]
     pub async fn inference_chain_router(
         db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        vector_fs: Arc<VectorFS>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
