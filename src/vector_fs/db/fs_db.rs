@@ -54,7 +54,8 @@ impl VectorFSDB {
 
         // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
         db_opts.set_enable_blob_files(true);
-        db_opts.set_min_blob_size(1024 * 500); // 100kb
+        db_opts.set_min_blob_size(1024 * 100); // 100kb
+        db_opts.set_keep_log_file_num(10);
         db_opts.set_blob_compression_type(DBCompressionType::Lz4);
 
         let cf_names = if Path::new(db_path).exists() {
@@ -77,8 +78,9 @@ impl VectorFSDB {
             cf_opts.create_if_missing(true);
             cf_opts.create_missing_column_families(true);
             cf_opts.set_enable_blob_files(true);
-            cf_opts.set_min_blob_size(1024 * 500); // 100kb
+            cf_opts.set_min_blob_size(1024 * 100); // 100kb
             cf_opts.set_blob_compression_type(DBCompressionType::Lz4);
+            cf_opts.set_keep_log_file_num(10);
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
             cfs.push(cf_desc);
         }

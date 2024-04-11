@@ -132,6 +132,7 @@ impl ShinkaiDB {
         cf_opts.set_allow_concurrent_memtable_write(true);
         cf_opts.set_enable_write_thread_adaptive_yield(true);
         cf_opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB
+        cf_opts.set_keep_log_file_num(10);
         cf_opts.set_max_write_buffer_number(3);
         cf_opts.set_min_write_buffer_number_to_merge(1);
         cf_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
