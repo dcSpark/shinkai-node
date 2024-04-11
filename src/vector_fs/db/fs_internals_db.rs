@@ -13,7 +13,6 @@ impl VectorFSDB {
         fs_internals: &VectorFSInternals,
         batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
-        eprintln!("Saving profile fs internals");
         let (bytes, cf) = self._prepare_profile_fs_internals(fs_internals)?;
         batch.pb_put_cf(cf, &VectorFSInternals::profile_fs_internals_shinkai_db_key(), bytes);
 

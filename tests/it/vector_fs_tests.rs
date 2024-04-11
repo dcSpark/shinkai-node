@@ -193,8 +193,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let folder_name = "first_folder";
-    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
-    vector_fs.db.debug_print_all_columns();
+    vector_fs.create_new_folder(&writer, folder_name.clone()).await.unwrap();
     let writer = vector_fs
         .new_writer(
             default_test_profile(),
@@ -222,7 +221,6 @@ async fn test_vector_fs_saving_reading() {
         .is_err());
 
     // Create a Vector Resource and source file to be added into the VectorFS
-    eprintln!("Creating Vector Resource");
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
     let resource = BaseVectorResource::Document(doc_resource);
     let writer = vector_fs
@@ -236,7 +234,6 @@ async fn test_vector_fs_saving_reading() {
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
     let item_path = folder_path.push_cloned(resource.as_trait_object().name().to_string());
-
     assert!(vector_fs
         .validate_path_points_to_entry(item_path.clone(), &writer.profile)
         .await
@@ -257,7 +254,6 @@ async fn test_vector_fs_saving_reading() {
     // internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
     // Sets the permission to private from default Whitelist (for later test cases)
-    eprintln!("Setting permissions");
     let perm_writer = vector_fs
         .new_writer(default_test_profile(), item_path.clone(), default_test_profile())
         .await
@@ -267,13 +263,12 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
 
-    // Retrieve the Vector Resource & Source File Map from the db
+    /// Retrieve the Vector Resource & Source File Map from the db
     // Test both retrieve interfaces
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
         .await
         .unwrap();
-    
     let ret_vrkai = vector_fs.retrieve_vrkai(&reader).await.unwrap();
     let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
     assert_eq!(ret_resource, resource);
@@ -365,7 +360,7 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     assert_eq!(res[0].name(), "shinkai_intro");
 
-    vector_fs.print_profile_vector_fs_resource(reader.profile.clone());
+    vector_fs.print_profile_vector_fs_resource(reader.profile.clone()).await;
     // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
     let reader = vector_fs
         .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
@@ -873,12 +868,14 @@ async fn test_vector_fs_operations() {
         )
         .await
         .unwrap();
+
+    println!("\n\n\nVectorFS:");
+    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+
     let vrpack = vector_fs.retrieve_vrpack(&reader).await.unwrap();
 
-    vrpack
-        .resource
-        .as_trait_object()
-        .print_all_nodes_exhaustive(None, true, false);
+    println!("\n\n\nVRPack:");
+    vrpack.print_internal_structure(None);
 
     let unpacked_kais = vrpack.unpack_all_vrkais().unwrap();
 
@@ -937,7 +934,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::root().push_cloned("new_root_folder".to_string()),
+            VRPath::from_string("/unpacked/new_root_folder").unwrap(),
             &mut vector_fs,
         )
         .await
@@ -950,31 +947,29 @@ async fn test_vector_fs_operations() {
     println!("\n\nNew VRPack:");
     new_vrpack.print_internal_structure(None);
 
-    old_vrpack_contents.sort_by(|a, b| {
-        a.0.resource
-            .as_trait_object()
-            .reference_string()
-            .cmp(&b.0.resource.as_trait_object().reference_string())
-    });
+    let mut old_vrpack_map = old_vrpack_contents
+        .into_iter()
+        .map(|(vrkai, path)| (path, vrkai))
+        .collect::<HashMap<_, _>>();
 
-    new_vrpack_contents.sort_by(|a, b| {
-        a.0.resource
-            .as_trait_object()
-            .reference_string()
-            .cmp(&b.0.resource.as_trait_object().reference_string())
-    });
+    for (new_vrkai, new_path) in new_vrpack_contents {
+        if let Some(old_vrkai) = old_vrpack_map.remove(&new_path) {
+            assert_eq!(
+                old_vrkai.resource.as_trait_object().reference_string(),
+                new_vrkai.resource.as_trait_object().reference_string(),
+                "Mismatch for path: {}",
+                new_path
+            );
+        } else {
+            panic!("New path not found in old VRPack contents: {}", new_path);
+        }
+    }
 
-    // for oc in &old_vrpack_contents {
-    //     for nc in &new_vrpack_contents {
-    //         println!("old: {}", oc.1);
-    //         println!("new: {}", nc.1);
-    //         // assert_eq!(oc.1, nc.1);
-    //         // assert_eq!(
-    //         //     oc.0.resource.as_trait_object().reference_string(),
-    //         //     nc.0.resource.as_trait_object().reference_string()
-    //         // );
-    //     }
-    // }
+    assert!(
+        old_vrpack_map.is_empty(),
+        "Not all old VRPack contents were found in new: {:?}",
+        old_vrpack_map.keys().collect::<Vec<_>>()
+    );
 
     // Cleanup after vrpack tests
     let deletion_writer = unpack_writer

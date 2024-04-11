@@ -624,8 +624,11 @@ impl VectorFS {
     }
 
     /// Automatically creates new FSFolders along the given path that do not exist, including the final path id (aka. don't supply an FSItem's path, use its parent path).
-    pub async fn create_new_folder_auto(&self, writer: &VFSWriter, path: VRPath) -> Result<(), VectorFSError> {
+
+    /// Returns a Vec<VRPath> containing the paths of the newly created folders.
+    pub async fn create_new_folder_auto(&self, writer: &VFSWriter, path: VRPath) -> Result<Vec<VRPath>, VectorFSError> {
         let mut current_path = VRPath::root();
+        let mut created_folders = Vec::new();
         for segment in path.path_ids {
             current_path.push(segment.clone());
             if self
@@ -635,9 +638,10 @@ impl VectorFS {
             {
                 let new_writer = writer.new_writer_copied_data(current_path.pop_cloned(), self).await?;
                 self.create_new_folder(&new_writer, &segment).await?;
+                created_folders.push(current_path.clone());
             }
         }
-        Ok(())
+        Ok(created_folders)
     }
 
     /// Creates a new FSFolder underneath the writer's path. Errors if the path in `writer` does not exist.
@@ -675,11 +679,9 @@ impl VectorFS {
         current_datetime: DateTime<Utc>,
     ) -> Result<FSFolder, VectorFSError> {
         // Add the folder into the internals
-        eprintln!("Adding folder into internals");
         let new_folder = self
             ._add_existing_vr_to_core_resource(writer, new_vr, embedding, metadata, current_datetime)
             .await?;
-        eprintln!("Folder added into internals");
         let new_folder_path = new_folder.path.clone();
 
         // Determine permissions based on whether the parent folder is root
@@ -704,8 +706,7 @@ impl VectorFS {
             read_permission = parent_permissions.read_permission;
             write_permission = parent_permissions.write_permission;
         }
-        eprintln!("Inserting path permission");
-
+        
         // Add read/write permission for the folder path
         {
             let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
@@ -715,13 +716,11 @@ impl VectorFS {
                 .await?;
             self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
-        eprintln!("Saving folder into db");
 
         // Save the FSInternals into the FSDB
         let internals = self.get_profile_fs_internals_read_only(&writer.profile).await?;
         let mut write_batch = writer.new_write_batch()?;
         self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-        eprintln!("Writing pb");
         self.db.write_pb(write_batch)?;
 
         Ok(new_folder)
@@ -813,17 +812,82 @@ impl VectorFS {
         }
 
         let vrkais_with_paths = vrpack.unpack_all_vrkais()?;
+        let mut folder_merkle_hash_map: HashMap<VRPath, String> = HashMap::new();
 
         for (vrkai, path) in vrkais_with_paths {
             let parent_folder_path = base_path.append_path_cloned(&path.parent_path());
             let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self).await?;
             // Create the folders
-            self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())
-                .await?;
+            let new_folders = self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone()).await?;
             // Save the VRKai in its final location
             self.save_vrkai_in_folder(&parent_folder_writer, vrkai).await?;
+
+            // Now update the folder merkle hash map
+            for full_folder_path in new_folders {
+                // Remove the base path from the full folder path
+                let mut folder_path = full_folder_path.clone();
+                for _ in base_path.path_ids.iter() {
+                    folder_path.front_pop();
+                }
+                // Skip if empty
+                if folder_path.path_ids.is_empty() {
+                    continue;
+                }
+                if folder_merkle_hash_map.get(&folder_path).is_none() {
+                    let merkle_hash = vrpack.get_folder_merkle_hash(folder_path.clone())?;
+                    folder_merkle_hash_map.insert(full_folder_path, merkle_hash);
+                }
+            }
         }
 
+        // Sets the Merkle hashes for a collection of folders.
+        self._set_folders_merkle_hashes(
+            &writer,
+            folder_merkle_hash_map
+                .iter()
+                .map(|(path, hash)| (path.clone(), hash.clone()))
+                .collect(),
+            base_path.clone(),
+        ).await?;
+
+        Ok(())
+    }
+
+    /// Internal method which sets the merkle hashes of folders in the VectorFS
+    /// without updating any other folder merkle hashes during setting.
+    /// Then once done setting all merkle hashes, updates the merkle hashes of all folders
+    /// from base_path and upwards.
+    async fn _set_folders_merkle_hashes(
+        &self,
+        writer: &VFSWriter,
+        folder_paths_with_hashes: Vec<(VRPath, String)>,
+        base_path: VRPath,
+    ) -> Result<(), VectorFSError> {
+        {
+            // Fetch the profile's file system internals
+            let mut internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
+
+            // Iterate over each folder path and its corresponding Merkle hash
+            for (folder_path, merkle_hash) in folder_paths_with_hashes {
+                // Use the core resource to set the Merkle hash at the specified path
+                internals
+                    .fs_core_resource
+                    ._set_resource_merkle_hash_at_path(folder_path, merkle_hash)
+                    .map_err(|e| VectorFSError::from(e))?; // Convert VRError to VectorFSError as needed
+            }
+
+            // Once done with merkle hash updates, update the merkle hashes of all folders from base_path and upwards.
+            internals
+                .fs_core_resource
+                ._update_resource_merkle_hash_at_path(base_path, true)?;
+            self._update_fs_internals(writer.profile.clone(), internals).await?;
+        }
+
+        // Finally saving the profile fs internals
+        let internals = self.get_profile_fs_internals_read_only(&writer.profile).await?;
+        let mut write_batch = writer.new_write_batch()?;
+        self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
         Ok(())
     }
 
@@ -1083,6 +1147,7 @@ impl VectorFS {
                 new_vr_header_node,
                 new_node_embedding,
                 Some(current_datetime),
+                true,
             )?;
 
             // Update the resource's keywords. If no keywords, copy all, else random replace a few
@@ -1110,7 +1175,7 @@ impl VectorFS {
             if vr_header.resource_embedding_model_used == internals.default_embedding_model() {
                 internals
                     .fs_core_resource
-                    .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
+                    .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;
                 // Update last read of the new FSItem
                 internals.last_read_index.update_path_last_read(
                     new_node_path.clone(),
@@ -1181,6 +1246,7 @@ impl VectorFS {
                 new_node.clone(),
                 embedding.clone(),
                 None,
+                true,
             )?;
             // Update last read of the new FSFolder
             internals.last_read_index.update_path_last_read(
@@ -1208,6 +1274,7 @@ impl VectorFS {
                 new_node,
                 embedding.clone(),
                 None,
+                true,
             )?;
 
             // If new resource has keywords, and none in target copy all, else random replace a few
@@ -1235,7 +1302,7 @@ impl VectorFS {
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
         internals
             .fs_core_resource
-            .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
+            .mutate_node_at_path(writer.path.clone(), &mut mutator, true)?;
         // Update last read of the new FSFolder
         internals.last_read_index.update_path_last_read(
             new_node_path.clone(),
@@ -1266,18 +1333,18 @@ impl VectorFS {
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
 
         let path = writer.path.push_cloned(node_id);
-        Ok(internals.fs_core_resource.remove_node_at_path(path)?)
+        Ok(internals.fs_core_resource.remove_node_at_path(path, true)?)
     }
 
     /// Internal method used to remove the node at path. Applies only in memory.
     /// Errors if no node exists at path.
     async fn _remove_node_from_core_resource(&self, writer: &VFSWriter) -> Result<(Node, Embedding), VectorFSError> {
-        let mut internals_map = self.internals_map.write().await;
-        let internals = internals_map
-            .get_mut(&writer.profile)
-            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(writer.profile.to_string()))?;
-
-        Ok(internals.fs_core_resource.remove_node_at_path(writer.path.clone())?)
+        let mut internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
+        let result = internals
+            .fs_core_resource
+            .remove_node_at_path(writer.path.clone(), true)?;
+        self._update_fs_internals(writer.profile.clone(), internals).await?;
+        Ok(result)
     }
 
     /// Internal method used to get a child node underneath the writer's path, given its id. Applies only in memory.
