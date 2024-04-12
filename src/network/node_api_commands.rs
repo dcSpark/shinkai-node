@@ -2257,9 +2257,7 @@ impl Node {
     }
 
     pub async fn api_is_pristine(db: Arc<ShinkaiDB>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
-        eprintln!("api_is_pristine> Checking if the node is pristine");
         let has_any_profile = db.has_any_profile().unwrap_or(false);
-        eprintln!("api_is_pristine> has_any_profile: {}", has_any_profile);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
     }

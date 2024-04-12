@@ -324,9 +324,6 @@ pub async fn run_api(
             .and_then(move || shinkai_health_handler(node_commands_sender.clone(), node_name.clone()))
     };
 
-    // GET v1/ok
-    let ok_route = warp::path!("v1" / "ok").and(warp::get()).and_then(ok_handler);
-
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
     // let get_last_messages = {
@@ -637,7 +634,6 @@ pub async fn run_api(
         .or(use_registration_code)
         .or(get_all_subidentities)
         .or(shinkai_health)
-        .or(ok_route)
         .or(create_files_inbox_with_symmetric_key)
         .or(add_file_to_inbox_with_symmetric_key)
         .or(get_filenames)
@@ -1516,23 +1512,16 @@ async fn use_registration_code_handler(
     }
 }
 
-async fn ok_handler() -> Result<impl warp::Reply, warp::Rejection> {
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    Ok(warp::reply::with_status("OK", warp::http::StatusCode::OK))
-}
-
 async fn shinkai_health_handler(
     node_commands_sender: Sender<NodeCommand>,
     node_name: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    eprintln!("Checking health of node: {}", node_name);
     let version = env!("CARGO_PKG_VERSION");
 
     // Create a channel to receive the result
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
     // Send the command to the node
-    eprintln!("Sending APIIsPristine command to node: {}", node_name);
     node_commands_sender
         .send(NodeCommand::APIIsPristine { res: res_sender })
         .await

@@ -1,4 +1,16 @@
-use super::{node_api::APIError, node_error::NodeError, Node};
+use std::sync::Arc;
+
+use crate::{db::ShinkaiDB, managers::IdentityManager, vector_fs::vector_fs::VectorFS};
+
+use super::{
+    node_api::APIError,
+    node_error::NodeError,
+    subscription_manager::{
+        external_subscriber_manager::ExternalSubscriberManager,
+        my_subscription_manager::{self, MySubscriptionsManager},
+    },
+    Node,
+};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::to_string;
@@ -12,16 +24,27 @@ use shinkai_message_primitives::{
         },
     },
 };
+use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn api_subscription_my_subscriptions(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (_, requester_name) = match self
-            .validate_and_extract_payload::<String>(potentially_encrypted_msg, MessageSchemaType::MySubscriptions)
-            .await
+        let (_, requester_name) = match Self::validate_and_extract_payload::<String>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::MySubscriptions,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -31,7 +54,7 @@ impl Node {
         };
 
         // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != self.node_name.clone().get_node_name_string() {
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -41,7 +64,7 @@ impl Node {
             return Ok(());
         }
 
-        let db_result = self.db.list_all_my_subscriptions();
+        let db_result = db.list_all_my_subscriptions();
 
         match db_result {
             Ok(subscriptions) => {
@@ -74,16 +97,24 @@ impl Node {
     }
 
     pub async fn api_subscription_available_shared_items(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIAvailableSharedItems>(
-                potentially_encrypted_msg,
-                MessageSchemaType::AvailableSharedItems,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAvailableSharedItems>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::AvailableSharedItems,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -92,7 +123,7 @@ impl Node {
             }
         };
 
-        if input_payload.streamer_node_name == self.node_name.clone().get_node_name_string() {
+        if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
             if !requester_name.has_profile() {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -120,7 +151,7 @@ impl Node {
             let requester_profile = requester_name.get_profile_name_string().unwrap();
 
             // Lock the mutex and handle the Option
-            let mut subscription_manager = self.ext_subscription_manager.lock().await;
+            let mut subscription_manager = ext_subscription_manager.lock().await;
             let result = subscription_manager
                 .available_shared_folders(
                     streamer_full_name.unwrap().extract_node(),
@@ -158,7 +189,7 @@ impl Node {
                 }
             }
         } else {
-            let mut my_subscription_manager = self.my_subscription_manager.lock().await;
+            let mut my_subscription_manager = my_subscription_manager.lock().await;
 
             match ShinkaiName::from_node_and_profile_names(
                 input_payload.streamer_node_name.clone(),
@@ -208,12 +239,13 @@ impl Node {
     }
 
     pub async fn api_subscription_available_shared_items_open(
-        &self,
+        node_name: ShinkaiName,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         input_payload: APIAvailableSharedItems,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        if input_payload.streamer_node_name == self.node_name.clone().get_node_name_string() {
-            let mut subscription_manager = self.ext_subscription_manager.lock().await;
+        if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
+            let mut subscription_manager = ext_subscription_manager.lock().await;
             // TODO: update. only feasible for root for now.
             let path = "/";
             let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
@@ -246,16 +278,23 @@ impl Node {
     }
 
     pub async fn api_subscription_subscribe_to_shared_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APISubscribeToSharedFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::SubscribeToSharedFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APISubscribeToSharedFolder>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::SubscribeToSharedFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -282,7 +321,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = self.my_subscription_manager.lock().await;
+        let mut subscription_manager = my_subscription_manager.lock().await;
         let result = subscription_manager
             .subscribe_to_shared_folder(
                 streamer_full_name.extract_node(),
@@ -310,16 +349,23 @@ impl Node {
     }
 
     pub async fn api_subscription_create_shareable_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APICreateShareableFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::CreateShareableFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APICreateShareableFolder>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::CreateShareableFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -338,7 +384,7 @@ impl Node {
             return Ok(());
         }
 
-        let mut subscription_manager = self.ext_subscription_manager.lock().await;
+        let mut subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
             .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req)
             .await;
@@ -363,16 +409,23 @@ impl Node {
     }
 
     pub async fn api_subscription_update_shareable_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIUpdateShareableFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::UpdateShareableFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIUpdateShareableFolder>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UpdateShareableFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -381,7 +434,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = self.ext_subscription_manager.lock().await;
+        let mut subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
             .update_shareable_folder_requirements(input_payload.path, requester_name, input_payload.subscription)
             .await;
@@ -407,16 +460,23 @@ impl Node {
     }
 
     pub async fn api_subscription_unshare_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIUnshareFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::UnshareFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIUnshareFolder>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UnshareFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -425,7 +485,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = self.ext_subscription_manager.lock().await;
+        let mut subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
             .unshare_folder(input_payload.path, requester_name)
             .await;
