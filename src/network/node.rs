@@ -415,6 +415,7 @@ pub struct Node {
 impl Node {
     // Construct a new node. Returns a `Result` which is `Ok` if the node was successfully created,
     // and `Err` otherwise.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         node_name: String,
         listen_address: SocketAddr,
@@ -593,7 +594,7 @@ impl Node {
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_name.clone(),
-                vector_fs_weak,
+                vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
             )
@@ -610,6 +611,7 @@ impl Node {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(
                     db_weak,
+                    vector_fs_weak,
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_name.clone(),
                     Arc::clone(job_manager),
@@ -652,88 +654,119 @@ impl Node {
             pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
-                    _retry = retry_future => self.retry_messages().await?,
-                    _listen = listen_future => unreachable!(),
-                    _ping = ping_future => self.ping_all().await?,
-                    // check_peers = check_peers_future => self.connect_new_peers().await?,
+                    // _retry = retry_future => self.retry_messages().await,
+                    // _listen = listen_future => unreachable!(),
+                    // _ping = ping_future => self.ping_all().await,
+                    // check_peers = check_peers_future => self.connect_new_peers().await,
                     command = commands_future => {
                         match command {
-                            Some(NodeCommand::Shutdown) => {
-                                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
-                            // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
-                                break;
+                            Some(command) => {
+                                // Spawn a new task for each command to handle it concurrently
+                                    match command {
+                                        // NodeCommand::Shutdown => {
+                                        //     shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
+                                        //     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
+                                        // },
+                                        // NodeCommand::PingAll => self.ping_all().await,
+                                        NodeCommand::PingAll => {
+                                            let peers_clone = self.peers.clone();
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let listen_address_clone = self.listen_address;
+                                            tokio::spawn(async move {
+                                                let _ = Self::ping_all(
+                                                    node_name_clone,
+                                                    encryption_secret_key_clone,
+                                                    identity_secret_key_clone,
+                                                    peers_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    listen_address_clone,
+                                                ).await;
+                                            });
+                                            ()
+                                        },
+                                        // NodeCommand::GetPeers(sender) => self.send_peer_addresses(sender).await,
+                                        // NodeCommand::IdentityNameToExternalProfileData { name, res } => self.handle_external_profile_data(name, res).await,
+                                        // NodeCommand::SendOnionizedMessage { msg, res } => self.api_handle_send_onionized_message(msg, res).await,
+                                        // NodeCommand::GetPublicKeys(res) => self.send_public_keys(res).await,
+                                        // NodeCommand::FetchLastMessages { limit, res } => self.fetch_and_send_last_messages(limit, res).await,
+                                        // NodeCommand::GetAllSubidentitiesDevicesAndAgents(res) => self.local_get_all_subidentities_devices_and_agents(res).await,
+                                        // NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res } => self.local_create_and_send_registration_code(permissions, code_type, res).await,
+                                        // NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res } => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
+                                        // NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res } => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                                        // NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res } => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                                        // NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res } => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                        // NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res } => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                        // NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res } => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                        // NodeCommand::CreateJob { shinkai_message, res } => self.local_create_new_job(shinkai_message, res).await,
+                                        // NodeCommand::JobMessage { shinkai_message, res: _ } => self.internal_job_message(shinkai_message).await,
+                                        // NodeCommand::AddAgent { agent, profile, res } => self.local_add_agent(agent, &profile, res).await,
+                                        // NodeCommand::AvailableAgents { full_profile_name, res } => self.local_available_agents(full_profile_name, res).await,
+                                        // NodeCommand::LocalScanOllamaModels { res } => self.local_scan_ollama_models(res).await,
+                                        // NodeCommand::AddOllamaModels { models, res } => self.local_add_ollama_models(models, res).await,
+                                        // // NodeCommand::JobPreMessage { tool_calls, content, recipient, res } => self.job_pre_message(tool_calls, content, recipient, res).await,
+                                        // // API Endpoints
+                                        // NodeCommand::APICreateRegistrationCode { msg, res } => self.api_create_and_send_registration_code(msg, res).await,
+                                        // NodeCommand::APIUseRegistrationCode { msg, res } => self.api_handle_registration_code_usage(msg, res).await,
+                                        // NodeCommand::APIGetAllSubidentities { res } => self.api_get_all_profiles(res).await,
+                                        // NodeCommand::APIGetLastMessagesFromInbox { msg, res } => self.api_get_last_messages_from_inbox(msg, res).await,
+                                        // NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res } => self.api_get_last_unread_messages_from_inbox(msg, res).await,
+                                        // NodeCommand::APIMarkAsReadUpTo { msg, res } => self.api_mark_as_read_up_to(msg, res).await,
+                                        // // NodeCommand::APIAddInboxPermission { msg, res } => self.api_add_inbox_permission(msg, res).await,
+                                        // // NodeCommand::APIRemoveInboxPermission { msg, res } => self.api_remove_inbox_permission(msg, res).await,
+                                        // NodeCommand::APICreateJob { msg, res } => self.api_create_new_job(msg, res).await,
+                                        // NodeCommand::APIGetAllInboxesForProfile { msg, res } => self.api_get_all_inboxes_for_profile(msg, res).await,
+                                        // NodeCommand::APIAddAgent { msg, res } => self.api_add_agent(msg, res).await,
+                                        // NodeCommand::APIJobMessage { msg, res } => self.api_job_message(msg, res).await,
+                                        // NodeCommand::APIAvailableAgents { msg, res } => self.api_available_agents(msg, res).await,
+                                        // NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res } => self.api_create_files_inbox_with_symmetric_key(msg, res).await,
+                                        // NodeCommand::APIGetFilenamesInInbox { msg, res } => self.api_get_filenames_in_inbox(msg, res).await,
+                                        // NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res } => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await,
+                                        // NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => self.api_get_all_smart_inboxes_for_profile(msg, res).await,
+                                        // NodeCommand::APIUpdateSmartInboxName { msg, res } => self.api_update_smart_inbox_name(msg, res).await,
+                                        // NodeCommand::APIUpdateJobToFinished { msg, res } => self.api_update_job_to_finished(msg, res).await,
+                                        // NodeCommand::APIPrivateDevopsCronList { res } => self.api_private_devops_cron_list(res).await,
+                                        // NodeCommand::APIAddToolkit { msg, res } => self.api_add_toolkit(msg, res).await,
+                                        // NodeCommand::APIListToolkits { msg, res } => self.api_list_toolkits(msg, res).await,
+                                        // NodeCommand::APIChangeNodesName { msg, res } => self.api_change_nodes_name(msg, res).await,
+                                        NodeCommand::APIIsPristine { res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Self::api_is_pristine(db_clone, res).await;
+                                            });
+                                        },
+                                        // NodeCommand::IsPristine { res } => self.local_is_pristine(res).await,
+                                        // NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => self.api_get_last_messages_from_inbox_with_branches(msg, res).await,
+                                        // NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res } => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
+                                        // // NodeCommand::APIRetryMessageWithInbox { inbox_name, message_hash, res } => self.api_retry_message_with_inbox(inbox_name, message_hash, res).await,
+                                        // // NodeCommand::RetryMessageWithInbox { inbox_name, message_hash, res } => self.local_retry_message_with_inbox(inbox_name, message_hash, res).await,
+                                        // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
+                                        // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
+                                        // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
+                                        // NodeCommand::APIVecFSSearchItems { msg, res } => self.api_vec_fs_search_items(msg, res).await,
+                                        // NodeCommand::APIVecFSCreateFolder { msg, res } => self.api_vec_fs_create_folder(msg, res).await,
+                                        // NodeCommand::APIVecFSMoveItem { msg, res } => self.api_vec_fs_move_item(msg, res).await,
+                                        // NodeCommand::APIVecFSCopyItem { msg, res } => self.api_vec_fs_copy_item(msg, res).await,
+                                        // NodeCommand::APIVecFSMoveFolder { msg, res } => self.api_vec_fs_move_folder(msg, res).await,
+                                        // NodeCommand::APIVecFSCopyFolder { msg, res } => self.api_vec_fs_copy_folder(msg, res).await,
+                                        // NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => self.api_vec_fs_retrieve_vector_resource(msg, res).await,
+                                        // NodeCommand::APIVecFSDeleteFolder { msg, res } => self.api_vec_fs_delete_folder(msg, res).await,
+                                        // NodeCommand::APIVecFSDeleteItem { msg, res } => self.api_vec_fs_delete_item(msg, res).await,
+                                        // NodeCommand::APIAvailableSharedItems { msg, res } => self.api_subscription_available_shared_items(msg, res).await,
+                                        // NodeCommand::APIAvailableSharedItemsOpen { msg, res } => self.api_subscription_available_shared_items_open(msg, res).await,
+                                        // NodeCommand::APICreateShareableFolder { msg, res } => self.api_subscription_create_shareable_folder(msg, res).await,
+                                        // NodeCommand::APIUpdateShareableFolder { msg, res } => self.api_subscription_update_shareable_folder(msg, res).await,
+                                        // NodeCommand::APIUnshareFolder { msg, res } => self.api_subscription_unshare_folder(msg, res).await,
+                                        // NodeCommand::APISubscribeToSharedFolder { msg, res } => self.api_subscription_subscribe_to_shared_folder(msg, res).await,
+                                        // NodeCommand::APIMySubscriptions { msg, res } => self.api_subscription_my_subscriptions(msg, res).await,
+                                        _ => (),
+                                    }
                             },
-                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                            Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
-                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg, res }) => self.api_handle_send_onionized_message(msg, res).await?,
-                            Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
-                            Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::GetAllSubidentitiesDevicesAndAgents(res)) => self.local_get_all_subidentities_devices_and_agents(res).await,
-                            Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
-                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { shinkai_message, res: _ }) => self.internal_job_message(shinkai_message).await?,
-                            Some(NodeCommand::AddAgent { agent, profile, res }) => self.local_add_agent(agent, &profile, res).await,
-                            Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
-                            Some(NodeCommand::LocalScanOllamaModels { res }) => self.local_scan_ollama_models(res).await,
-                            Some(NodeCommand::AddOllamaModels { models, res }) => self.local_add_ollama_models(models, res).await,
-                            // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
-                            // API Endpoints
-                            Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
-                            Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
-                            Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
-                            Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
-                            Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
-                            // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
-                            // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
-                            Some(NodeCommand::APICreateJob { msg, res }) => self.api_create_new_job(msg, res).await?,
-                            Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
-                            Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
-                            Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
-                            Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
-                            Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
-                            Some(NodeCommand::APIGetFilenamesInInbox { msg, res }) => self.api_get_filenames_in_inbox(msg, res).await?,
-                            Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
-                            Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
-                            Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
-                            Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
-                            Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
-                            Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
-                            Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
-                            Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
-                            Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
-                            Some(NodeCommand::IsPristine { res }) => self.local_is_pristine(res).await,
-                            Some(NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res }) => self.api_get_last_messages_from_inbox_with_branches(msg, res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
-                            // Some(NodeCommand::APIRetryMessageWithInbox { inbox_name, message_hash, res }) => self.api_retry_message_with_inbox(inbox_name, message_hash, res).await,
-                            // Some(NodeCommand::RetryMessageWithInbox { inbox_name, message_hash, res }) => self.local_retry_message_with_inbox(inbox_name, message_hash, res).await,
-                            Some(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await?,
-                            Some(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res }) => self.api_convert_files_and_save_to_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await?,
-                            Some(NodeCommand::APIVecFSSearchItems { msg, res }) => self.api_vec_fs_search_items(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCreateFolder { msg, res }) => self.api_vec_fs_create_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSMoveItem { msg, res }) => self.api_vec_fs_move_item(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCopyItem { msg, res }) => self.api_vec_fs_copy_item(msg, res).await?,
-                            Some(NodeCommand::APIVecFSMoveFolder { msg, res }) => self.api_vec_fs_move_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCopyFolder { msg, res }) => self.api_vec_fs_copy_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
-                            Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
-                            Some(NodeCommand::APIAvailableSharedItems { msg, res }) => self.api_subscription_available_shared_items(msg, res).await?,
-                            Some(NodeCommand::APIAvailableSharedItemsOpen { msg, res }) => self.api_subscription_available_shared_items_open(msg, res).await?,
-                            Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
-                            Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
-                            Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
-                            Some(NodeCommand::APISubscribeToSharedFolder { msg, res }) => self.api_subscription_subscribe_to_shared_folder(msg, res).await?,
-                            Some(NodeCommand::APIMySubscriptions { msg, res }) => self.api_subscription_my_subscriptions(msg, res).await?,
-                            _ => {},
+                            None => eprintln!("Received None command"),
                         }
                     }
             };

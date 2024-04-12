@@ -96,10 +96,6 @@ impl ShinkaiDB {
         n: usize,
         until_offset_hash_key: Option<String>,
     ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
-        // println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        // println!("Offset key: {:?}", until_offset_hash_key);
-        // println!("n: {:?}", n);
-
         // Fetch the column family for Inbox
         let cf_inbox = self.db.cf_handle(Topic::Inbox.as_str()).unwrap();
         let inbox_hash = InboxName::new(inbox_name.clone())?.hash_value_first_half();

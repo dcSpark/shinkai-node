@@ -49,7 +49,7 @@ use crate::{
     agent::{error::AgentError, job_manager::JobManager},
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
     planner::kai_files::{KaiJobFile, KaiSchemaType},
-    schemas::inbox_permission::InboxPermission,
+    schemas::inbox_permission::InboxPermission, vector_fs::vector_fs::VectorFS,
 };
 
 pub struct CronManager {
@@ -97,20 +97,23 @@ impl From<InboxNameError> for CronManagerError {
 impl CronManager {
     pub async fn new(
         db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
     ) -> Self {
         let cron_processing_task = CronManager::process_job_queue(
             db.clone(),
+            vector_fs.clone(),
             node_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             Self::cron_interval_time(),
             job_manager.clone(),
-            |job, db, identity_sk, job_manager, node_name, profile| {
+            |job, db, vector_fs, identity_sk, job_manager, node_name, profile| {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db,
+                    vector_fs,
                     identity_sk,
                     job_manager,
                     node_name,
@@ -137,6 +140,7 @@ impl CronManager {
 
     pub fn process_job_queue(
         db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
@@ -144,6 +148,7 @@ impl CronManager {
         job_processing_fn: impl Fn(
                 CronTask,
                 Weak<ShinkaiDB>,
+                Weak<VectorFS>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
@@ -202,6 +207,7 @@ impl CronManager {
                         }
 
                         let db_clone = db.clone();
+                        let vector_fs_clone = vector_fs.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_manager_clone = job_manager.clone();
                         let node_profile_name_clone = node_profile_name.clone();
@@ -212,6 +218,7 @@ impl CronManager {
                             let result = job_processing_fn_clone(
                                 cron_task,
                                 db_clone,
+                                vector_fs_clone,
                                 identity_sk_clone,
                                 job_manager_clone,
                                 node_profile_name_clone,
@@ -248,6 +255,7 @@ impl CronManager {
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
@@ -280,8 +288,9 @@ impl CronManager {
 
         // Note(Nico): should we close the job after the processing?
         let db_arc = db.upgrade().unwrap();
+        let vector_fs = vector_fs.upgrade().unwrap();
         let inbox_name_result =
-            JobManager::insert_kai_job_file_into_inbox(db_arc.clone(), "cron_job".to_string(), kai_file).await;
+            JobManager::insert_kai_job_file_into_inbox(db_arc.clone(), vector_fs.clone(), "cron_job".to_string(), kai_file).await;
 
         if let Err(e) = inbox_name_result {
             shinkai_log(

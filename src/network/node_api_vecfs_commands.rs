@@ -925,7 +925,7 @@ impl Node {
         };
 
         let files = {
-            match self.db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
+            match self.vector_fs.db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -982,7 +982,7 @@ impl Node {
 
         {
             // remove inbox
-            match self.db.remove_inbox(&input_payload.file_inbox) {
+            match self.vector_fs.db.remove_inbox(&input_payload.file_inbox) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res

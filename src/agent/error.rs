@@ -1,4 +1,4 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError};
+use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError, vector_fs::vector_fs_error::VectorFSError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -27,6 +27,7 @@ pub enum AgentError {
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(ShinkaiDBError),
+    VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
     AgentNotFound,
     ContentParseFailed,
@@ -95,6 +96,7 @@ impl fmt::Display for AgentError {
             AgentError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
             AgentError::IO(err) => write!(f, "IO error: {}", err),
             AgentError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
+            AgentError::VectorFS(err) => write!(f, "VectorFS error: {}", err),
             AgentError::AgentNotFound => write!(f, "Agent not found"),
             AgentError::ContentParseFailed => write!(f, "Failed to parse content"),
             AgentError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
@@ -158,6 +160,7 @@ impl AgentError {
             AgentError::MessageTypeParseFailed => "MessageTypeParseFailed",
             AgentError::IO(_) => "IO",
             AgentError::ShinkaiDB(_) => "ShinkaiDB",
+            AgentError::VectorFS(_) => "VectorFS",
             AgentError::ShinkaiNameError(_) => "ShinkaiNameError",
             AgentError::AgentNotFound => "AgentNotFound",
             AgentError::ContentParseFailed => "ContentParseFailed",
@@ -284,5 +287,11 @@ impl From<InboxNameError> for AgentError {
 impl From<ModelCapabilitiesManagerError> for AgentError {
     fn from(error: ModelCapabilitiesManagerError) -> Self {
         AgentError::AgentsCapabilitiesManagerError(error)
+    }
+}
+
+impl From<VectorFSError> for AgentError {
+    fn from(err: VectorFSError) -> AgentError {
+        AgentError::VectorFS(err)
     }
 }

@@ -1525,12 +1525,14 @@ async fn shinkai_health_handler(
     node_commands_sender: Sender<NodeCommand>,
     node_name: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    eprintln!("Checking health of node: {}", node_name);
     let version = env!("CARGO_PKG_VERSION");
 
     // Create a channel to receive the result
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
     // Send the command to the node
+    eprintln!("Sending APIIsPristine command to node: {}", node_name);
     node_commands_sender
         .send(NodeCommand::APIIsPristine { res: res_sender })
         .await

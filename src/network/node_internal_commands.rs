@@ -1,5 +1,8 @@
 use super::{node_error::NodeError, Node};
+use crate::agent::job_manager::JobManager;
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::schemas::{
     identity::{Identity, StandardIdentity},
@@ -7,9 +10,10 @@ use crate::schemas::{
     smart_inbox::SmartInbox,
 };
 use async_channel::Sender;
-use ed25519_dalek::VerifyingKey;
+use chashmap::CHashMap;
+use chrono::Utc;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
-use opentelemetry::global;
 use regex::Regex;
 use shinkai_message_primitives::{
     schemas::{
@@ -29,18 +33,25 @@ use std::{
     net::SocketAddr,
 };
 use std::{str::FromStr, sync::Arc};
-use x25519_dalek::PublicKey as EncryptionPublicKey;
+use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
-    pub async fn send_peer_addresses(&self, sender: Sender<Vec<SocketAddr>>) -> Result<(), Error> {
-        let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+    pub async fn send_peer_addresses(
+        peers: CHashMap<(SocketAddr, String), chrono::DateTime<chrono::Utc>>,
+        sender: Sender<Vec<SocketAddr>>,
+    ) -> Result<(), Error> {
+        let peer_addresses: Vec<SocketAddr> = peers.into_iter().map(|(k, _)| k.0).collect();
         sender.send(peer_addresses).await.unwrap();
         Ok(())
     }
 
-    pub async fn handle_external_profile_data(&self, name: String, res: Sender<StandardIdentity>) -> Result<(), Error> {
-        let external_global_identity = self
-            .identity_manager
+    pub async fn handle_external_profile_data(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        name: String,
+        res: Sender<StandardIdentity>,
+    ) -> Result<(), Error> {
+        let external_global_identity = identity_manager
             .lock()
             .await
             .external_profile_to_global_identity(&name)
@@ -51,22 +62,19 @@ impl Node {
     }
 
     pub async fn internal_get_last_unread_messages_from_inbox(
-        &self,
+        db: Arc<ShinkaiDB>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
     ) -> Vec<ShinkaiMessage> {
         // Query the database for the last `limit` number of messages from the specified inbox.
-        let result = match self
-            .db
-            .get_last_unread_messages_from_inbox(inbox_name, limit, offset_key)
-        {
+        let result = match db.get_last_unread_messages_from_inbox(inbox_name, limit, offset_key) {
             Ok(messages) => messages,
             Err(e) => {
                 shinkai_log(
                     ShinkaiLogOption::Node,
                     ShinkaiLogLevel::Error,
-                    format!("Failed to get last messages from inbox: {}", e).as_str(),
+                    format!("Failed to get last unread messages from inbox: {}", e).as_str(),
                 );
                 return Vec::new();
             }
@@ -75,9 +83,12 @@ impl Node {
         result
     }
 
-    pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: ShinkaiName) -> Vec<String> {
+    pub async fn internal_get_all_inboxes_for_profile(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        db: Arc<ShinkaiDB>,
+        full_profile_name: ShinkaiName) -> Vec<String> {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let identity_manager = self.identity_manager.lock().await;
+        let identity_manager = identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager
@@ -94,6 +105,7 @@ impl Node {
             return Vec::new();
         }
 
+        drop(identity_manager);
         let identity = identity.unwrap();
 
         // Check if the found identity is a StandardIdentity. If not, return an empty vector.
@@ -108,7 +120,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match self.db.get_inboxes_for_profile(standard_identity) {
+        let result = match db.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -123,8 +135,12 @@ impl Node {
         result
     }
 
-    pub async fn internal_update_smart_inbox_name(&self, inbox_id: String, new_name: String) -> Result<(), String> {
-        match self.db.update_smart_inbox_name(&inbox_id, &new_name) {
+    pub async fn internal_update_smart_inbox_name(
+        db: Arc<ShinkaiDB>,
+        inbox_id: String,
+        new_name: String,
+    ) -> Result<(), String> {
+        match db.update_smart_inbox_name(&inbox_id, &new_name) {
             Ok(_) => Ok(()),
             Err(e) => {
                 shinkai_log(
@@ -137,9 +153,13 @@ impl Node {
         }
     }
 
-    pub async fn internal_get_all_smart_inboxes_for_profile(&self, full_profile_name: String) -> Vec<SmartInbox> {
+    pub async fn internal_get_all_smart_inboxes_for_profile(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        full_profile_name: String,
+    ) -> Vec<SmartInbox> {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let identity_manager = self.identity_manager.lock().await;
+        let identity_manager = identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(full_profile_name.as_str()).await;
@@ -168,10 +188,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match self
-            .db
-            .get_all_smart_inboxes_for_profile(standard_identity)
-        {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -187,16 +204,13 @@ impl Node {
     }
 
     pub async fn internal_get_last_messages_from_inbox(
-        &self,
+        db: Arc<ShinkaiDB>,
         inbox_name: String,
         limit: usize,
         offset_key: Option<String>,
     ) -> Vec<Vec<ShinkaiMessage>> {
         // Query the database for the last `limit` number of messages from the specified inbox.
-        let result = match self
-            .db
-            .get_last_messages_from_inbox(inbox_name, limit, offset_key)
-        {
+        let result = match db.get_last_messages_from_inbox(inbox_name, limit, offset_key) {
             Ok(messages) => messages,
             Err(e) => {
                 shinkai_log(
@@ -211,9 +225,13 @@ impl Node {
         result
     }
 
-    pub async fn send_public_keys(&self, res: Sender<(VerifyingKey, EncryptionPublicKey)>) -> Result<(), Error> {
-        let identity_public_key = self.identity_public_key.clone();
-        let encryption_public_key = self.encryption_public_key.clone();
+    pub async fn send_public_keys(
+        identity_public_key: VerifyingKey,
+        encryption_public_key: EncryptionPublicKey,
+        res: Sender<(VerifyingKey, EncryptionPublicKey)>,
+    ) -> Result<(), Error> {
+        let identity_public_key = identity_public_key.clone();
+        let encryption_public_key = encryption_public_key.clone();
         let _ = res
             .send((identity_public_key, encryption_public_key))
             .await
@@ -222,36 +240,39 @@ impl Node {
     }
 
     pub async fn fetch_and_send_last_messages(
-        &self,
+        db: Arc<ShinkaiDB>,
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     ) -> Result<(), Error> {
-        let messages = self.db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
+        let messages = db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
         let _ = res.send(messages).await.map_err(|_| ());
         Ok(())
     }
 
-    pub async fn internal_mark_as_read_up_to(&self, inbox_name: String, up_to_time: String) -> Result<bool, NodeError> {
+    pub async fn internal_mark_as_read_up_to(
+        db: Arc<ShinkaiDB>,
+        inbox_name: String,
+        up_to_time: String,
+    ) -> Result<bool, NodeError> {
         // Attempt to mark messages as read in the database
-        self.db
-            .mark_as_read_up_to(inbox_name, up_to_time)
-            .map_err(|e| {
-                let error_message = format!("Failed to mark messages as read: {}", e);
-                error!("{}", &error_message);
-                NodeError { message: error_message }
-            })?;
+        db.mark_as_read_up_to(inbox_name, up_to_time).map_err(|e| {
+            let error_message = format!("Failed to mark messages as read: {}", e);
+            error!("{}", &error_message);
+            NodeError { message: error_message }
+        })?;
         Ok(true)
     }
 
     pub async fn has_inbox_permission(
-        &self,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: String,
         perm_type: String,
         identity_name: String,
         res: Sender<bool>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let identity_manager = self.identity_manager.lock().await;
+        let identity_manager = identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
@@ -288,10 +309,7 @@ impl Node {
             }
         };
 
-        match self
-            .db
-            .has_permission(&inbox_name, &standard_identity, perm)
-        {
+        match db.has_permission(&inbox_name, &standard_identity, perm) {
             Ok(result) => {
                 let _ = res.send(result).await;
             }
@@ -302,29 +320,24 @@ impl Node {
     }
 
     pub async fn internal_create_new_job(
-        &self,
+        job_manager: Arc<Mutex<JobManager>>,
+        db: Arc<ShinkaiDB>,
         shinkai_message: ShinkaiMessage,
         sender: Identity,
     ) -> Result<String, NodeError> {
-        let job_manager = self.job_manager.as_ref().expect("JobManager not initialized");
-        match job_manager.lock().await.process_job_message(shinkai_message).await {
+        let mut job_manager = job_manager.lock().await;
+        match job_manager.process_job_message(shinkai_message).await {
             Ok(job_id) => {
-                {
-                    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                    let sender_standard = match sender {
-                        Identity::Standard(std_identity) => std_identity,
-                        _ => {
-                            return Err(NodeError {
-                                message: "Sender is not a StandardIdentity".to_string(),
-                            })
-                        }
-                    };
-                    self.db.add_permission(
-                        inbox_name.to_string().as_str(),
-                        &sender_standard,
-                        InboxPermission::Admin,
-                    )?;
-                }
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                let sender_standard = match sender {
+                    Identity::Standard(std_identity) => std_identity,
+                    _ => {
+                        return Err(NodeError {
+                            message: "Sender is not a StandardIdentity".to_string(),
+                        })
+                    }
+                };
+                db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
                 Ok(job_id)
             }
             Err(err) => {
@@ -334,8 +347,12 @@ impl Node {
         }
     }
 
-    pub async fn internal_get_agents_for_profile(&self, profile: String) -> Result<Vec<SerializedAgent>, NodeError> {
-        let profile_name = match ShinkaiName::from_node_and_profile_names(self.node_name.node_name.clone(), profile) {
+    pub async fn internal_get_agents_for_profile(
+        db: Arc<ShinkaiDB>,
+        node_name: String,
+        profile: String,
+    ) -> Result<Vec<SerializedAgent>, NodeError> {
+        let profile_name = match ShinkaiName::from_node_and_profile_names(node_name, profile) {
             Ok(profile_name) => profile_name,
             Err(e) => {
                 return Err(NodeError {
@@ -344,7 +361,7 @@ impl Node {
             }
         };
 
-        let result = match self.db.get_agents_for_profile(profile_name) {
+        let result = match db.get_agents_for_profile(profile_name) {
             Ok(agents) => agents,
             Err(e) => {
                 return Err(NodeError {
@@ -356,9 +373,12 @@ impl Node {
         Ok(result)
     }
 
-    pub async fn internal_job_message(&self, shinkai_message: ShinkaiMessage) -> Result<(), NodeError> {
-        let job_manager = self.job_manager.as_ref().expect("JobManager not initialized");
-        match job_manager.lock().await.process_job_message(shinkai_message).await {
+    pub async fn internal_job_message(
+        job_manager: Arc<Mutex<JobManager>>,
+        shinkai_message: ShinkaiMessage,
+    ) -> Result<(), NodeError> {
+        let mut job_manager = job_manager.lock().await;
+        match job_manager.process_job_message(shinkai_message).await {
             Ok(_) => Ok(()),
             Err(err) => Err(NodeError {
                 message: format!("Error with process job message: {}", err),
@@ -366,10 +386,15 @@ impl Node {
         }
     }
 
-    pub async fn internal_add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), NodeError> {
-        match self.db.add_agent(agent.clone(), profile) {
+    pub async fn internal_add_agent(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        agent: SerializedAgent,
+        profile: &ShinkaiName,
+    ) -> Result<(), NodeError> {
+        match db.add_agent(agent.clone(), profile) {
             Ok(()) => {
-                let mut subidentity_manager = self.identity_manager.lock().await;
+                let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager.add_agent_subidentity(agent).await {
                     Ok(_) => Ok(()),
                     Err(err) => {
@@ -384,12 +409,19 @@ impl Node {
         }
     }
 
-    pub async fn ping_all(&self) -> io::Result<()> {
-        info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
-        for (peer, _) in self.peers.clone() {
-            let sender = self.node_name.clone().get_node_name_string();
-            let receiver_profile_identity = self
-                .identity_manager
+    pub async fn ping_all(
+        node_name: ShinkaiName,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_secret_key: SigningKey,
+        peers: CHashMap<(SocketAddr, String), chrono::DateTime<Utc>>,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        listen_address: SocketAddr,
+    ) -> io::Result<()> {
+        info!("{} > Pinging all peers {} ", listen_address, peers.len());
+        for (peer, _) in peers.clone() {
+            let sender = node_name.get_node_name_string();
+            let receiver_profile_identity = identity_manager
                 .lock()
                 .await
                 .external_profile_to_global_identity(&peer.1.clone())
@@ -402,20 +434,20 @@ impl Node {
             let _ = ping_pong(
                 peer,
                 PingPong::Ping,
-                clone_static_secret_key(&self.encryption_secret_key),
-                clone_signature_secret_key(&self.identity_secret_key),
+                clone_static_secret_key(&encryption_secret_key),
+                clone_signature_secret_key(&identity_secret_key),
                 receiver_public_key,
                 sender,
                 receiver,
-                Arc::clone(&self.db),
-                self.identity_manager.clone(),
+                Arc::clone(&db),
+                identity_manager.clone(),
             )
             .await;
         }
         Ok(())
     }
 
-    pub async fn internal_scan_ollama_models(&self) -> Result<Vec<String>, NodeError> {
+    pub async fn internal_scan_ollama_models() -> Result<Vec<String>, NodeError> {
         let client = reqwest::Client::new();
         let res = client
             .get("http://localhost:11434/api/tags")
@@ -442,14 +474,18 @@ impl Node {
         Ok(names)
     }
 
-    pub async fn internal_add_ollama_models(&self, input_models: Vec<String>) -> Result<(), String> {
+    pub async fn internal_add_ollama_models(
+        db: Arc<ShinkaiDB>,
+        node_name: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        input_models: Vec<String>,
+    ) -> Result<(), String> {
         {
-            self.db
-                .main_profile_exists(self.node_name.get_node_name_string().as_str())
+            db.main_profile_exists(node_name.as_str())
                 .map_err(|e| format!("Failed to check if main profile exists: {}", e))?;
         }
 
-        let available_models = self.internal_scan_ollama_models().await.map_err(|e| e.message)?;
+        let available_models = Self::internal_scan_ollama_models().await.map_err(|e| e.message)?;
 
         // Ensure all input models are available
         for model in &input_models {
@@ -459,9 +495,7 @@ impl Node {
         }
 
         // Assuming global_identity is available
-        let global_identity =
-            ShinkaiName::from_node_and_profile_names(self.node_name.get_node_name_string(), "main".to_string())
-                .unwrap();
+        let global_identity = ShinkaiName::from_node_and_profile_names(node_name, "main".to_string()).unwrap();
         let external_url = "http://localhost:11434"; // Common URL for all Ollama models
 
         let agents: Vec<SerializedAgent> = input_models
@@ -493,9 +527,9 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in agents {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            self.internal_add_agent(agent, &profile_name)
+            Self::internal_add_agent(db.clone(), identity_manager.clone(), agent, &profile_name)
                 .await
-                .map_err(|e| format!("Failed to add agent: {}", e.message))?;
+                .map_err(|e| format!("Failed to add agent: {}", e))?;
         }
 
         Ok(())

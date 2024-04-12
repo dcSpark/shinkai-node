@@ -24,13 +24,14 @@ use crate::{
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    planner::kai_files::{KaiJobFile, KaiSchemaType},
+    planner::kai_files::{KaiJobFile, KaiSchemaType}, vector_fs::{self, vector_fs::VectorFS},
 };
 
 impl JobManager {
     /// Processes the provided message & job data, routes them to a specific inference chain,
     pub async fn handle_cron_job_request(
         db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -72,7 +73,7 @@ impl JobManager {
         };
 
         let inbox_name_result =
-            Self::insert_kai_job_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
+            Self::insert_kai_job_file_into_inbox(db.clone(), vector_fs.clone(), "cron_request".to_string(), kai_file).await;
 
         match inbox_name_result {
             Ok(inbox_name) => {
@@ -316,6 +317,7 @@ impl JobManager {
     /// Inserts a KaiJobFile into a specific inbox
     pub async fn insert_kai_job_file_into_inbox(
         db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         file_name_no_ext: String,
         kai_file: KaiJobFile,
     ) -> Result<String, AgentError> {
@@ -331,7 +333,7 @@ impl JobManager {
                 let kai_file_bytes = kai_file_json.into_bytes();
 
                 // Save the KaiJobFile to the inbox
-                let _ = db.add_file_to_files_message_inbox(
+                let _ = vector_fs.db.add_file_to_files_message_inbox(
                     inbox_name.clone(),
                     format!("{}.jobkai", file_name_no_ext).to_string(),
                     kai_file_bytes,

@@ -51,11 +51,7 @@ mod tests {
 
         {
             // add keys
-            match db.update_local_node_keys(
-                node_profile_name.clone(),
-                encryption_public_key,
-                identity_public_key,
-            ) {
+            match db.update_local_node_keys(node_profile_name.clone(), encryption_public_key, identity_public_key) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
@@ -112,7 +108,7 @@ mod tests {
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
-                vector_fs_weak,
+                vector_fs_weak.clone(),
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
             )
@@ -140,6 +136,7 @@ mod tests {
         let process_job_message_queued_wrapper =
             move |job: CronTask,
                   _db: Weak<ShinkaiDB>,
+                  vector_fs_weak: Weak<VectorFS>,
                   identity_sk: SigningKey,
                   job_manager: Arc<Mutex<JobManager>>,
                   node_profile_name: ShinkaiName,
@@ -147,6 +144,7 @@ mod tests {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db_weak_clone.clone(),
+                    vector_fs_weak.clone(),
                     identity_sk,
                     job_manager.clone(),
                     node_profile_name.clone(),
@@ -156,6 +154,7 @@ mod tests {
 
         let job_queue_handler = CronManager::process_job_queue(
             db_weak.clone(),
+            vector_fs_weak.clone(),
             node_profile_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             CRON_INTERVAL_TIME,

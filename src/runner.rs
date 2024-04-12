@@ -73,8 +73,8 @@ pub async fn tauri_initialize_node() -> Result<
     NodeRunnerError,
 > {
     match initialize_node().await {
-        Ok((node_local_commands, node_task, ws_server, node)) => { // api_server, 
-            Ok((node_local_commands, node_task, ws_server, node)) // api_server, 
+        Ok((node_local_commands, api_server, node_task, ws_server, node)) => {
+            Ok((node_local_commands, api_server, node_task, ws_server, node))
         }
         Err(e) => {
             shinkai_log(
