@@ -68,7 +68,7 @@ pub struct WebSocketManager {
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
     subscriptions: HashMap<String, HashMap<String, bool>>,
     shared_keys: HashMap<String, String>,
-    shinkai_db: Weak<Mutex<ShinkaiDB>>,
+    shinkai_db: Weak<ShinkaiDB>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
     message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
@@ -90,7 +90,7 @@ impl Clone for WebSocketManager {
 
 impl WebSocketManager {
     pub async fn new(
-        shinkai_db: Weak<Mutex<ShinkaiDB>>,
+        shinkai_db: Weak<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
     ) -> Arc<Mutex<Self>> {

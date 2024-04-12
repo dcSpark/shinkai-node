@@ -38,7 +38,7 @@ impl Ord for CronTask {
 
 impl ShinkaiDB {
     pub fn add_cron_task(
-        &mut self,
+        &self,
         profile: ShinkaiName,
         task_id: String,
         cron: String,
@@ -97,7 +97,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn remove_cron_task(&mut self, profile: ShinkaiName, task_id: String) -> Result<(), ShinkaiDBError> {
+    pub fn remove_cron_task(&self, profile: ShinkaiName, task_id: String) -> Result<(), ShinkaiDBError> {
         let profile_name = profile
             .get_profile_name_string()
             .ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;

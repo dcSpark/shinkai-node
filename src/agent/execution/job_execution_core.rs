@@ -36,13 +36,14 @@ impl JobManager {
     #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Result<String, AgentError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
+        let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
         let job_id = job_message.job_message.job_id.clone();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -68,6 +69,7 @@ impl JobManager {
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
             db.clone(),
+            vector_fs.clone(),
             &job_message.job_message,
             agent_found.clone(),
             full_job.clone(),
@@ -88,6 +90,7 @@ impl JobManager {
         // Processes any files which were sent with the job message
         let process_files_result = JobManager::process_job_message_files_for_vector_resources(
             db.clone(),
+            vector_fs.clone(),
             &job_message.job_message,
             agent_found.clone(),
             &mut full_job,
@@ -101,7 +104,6 @@ impl JobManager {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
         }
 
-        let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_fs").unwrap();
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
             vector_fs.clone(),
@@ -124,7 +126,7 @@ impl JobManager {
 
     /// Handle errors by sending an error message to the job inbox
     async fn handle_error(
-        db: &Arc<Mutex<ShinkaiDB>>,
+        db: &Arc<ShinkaiDB>,
         user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
@@ -153,9 +155,7 @@ impl JobManager {
         )
         .expect("Failed to build error message");
 
-        let mut shinkai_db = db.lock().await;
-        shinkai_db
-            .add_message_to_job_inbox(job_id, &shinkai_message, None)
+        db.add_message_to_job_inbox(job_id, &shinkai_message, None)
             .await
             .expect("Failed to add error message to job inbox");
 
@@ -166,7 +166,7 @@ impl JobManager {
     /// and then parses + saves the output result to the DB.
     #[instrument(skip(identity_secret_key, db, vector_fs, generator))]
     pub async fn process_inference_chain(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
@@ -230,24 +230,23 @@ impl JobManager {
         );
 
         // Save response data to DB
-        let mut shinkai_db = db.lock().await;
-        shinkai_db.add_step_history(
+        db.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
             inference_response_content.to_string(),
             None,
         )?;
-        shinkai_db
-            .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
             .await?;
-        shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
     }
 
     /// Temporary function to process the files in the job message for tasks
     pub async fn should_process_job_files_for_tasks_take_over(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
@@ -268,12 +267,11 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let shinkai_db = db.lock().await;
-                let files_result = shinkai_db.get_all_files_from_inbox(job_message.files_inbox.clone());
+                let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
                 // Check if there was an error getting the files
                 match files_result {
                     Ok(files) => files,
-                    Err(e) => return Err(AgentError::ShinkaiDB(e)),
+                    Err(e) => return Err(AgentError::VectorFS(e)),
                 }
             };
 
@@ -321,6 +319,7 @@ impl JobManager {
                             // Handle CronJobRequest
                             JobManager::handle_cron_job_request(
                                 db.clone(),
+                                vector_fs.clone(),
                                 agent_found.clone(),
                                 full_job.clone(),
                                 job_message.clone(),
@@ -415,7 +414,8 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources,
     /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.
     pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         agent_found: Option<SerializedAgent>,
         full_job: &mut Job,
@@ -433,6 +433,7 @@ impl JobManager {
             // TODO: later we should able to grab errors and return them to the user
             let new_scope_entries_result = JobManager::process_files_inbox(
                 db.clone(),
+                vector_fs.clone(),
                 agent_found,
                 job_message.files_inbox.clone(),
                 profile,
@@ -503,8 +504,7 @@ impl JobManager {
                             }
                         }
                     }
-                    let mut shinkai_db = db.lock().await;
-                    shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
+                    db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
                 }
                 Err(e) => {
                     shinkai_log(
@@ -524,10 +524,11 @@ impl JobManager {
     /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     pub async fn process_files_inbox(
-        db: Arc<Mutex<ShinkaiDB>>,
+        _db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         agent: Option<SerializedAgent>,
         files_inbox: String,
-        profile: ShinkaiName,
+        _profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
@@ -537,12 +538,11 @@ impl JobManager {
 
         // Get the files from the DB
         let files = {
-            let shinkai_db = db.lock().await;
-            let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
+            let files_result = vector_fs.db.get_all_files_from_inbox(files_inbox.clone());
             // Check if there was an error getting the files
             match files_result {
                 Ok(files) => files,
-                Err(e) => return Err(AgentError::ShinkaiDB(e)),
+                Err(e) => return Err(AgentError::VectorFS(e)),
             }
         };
 
@@ -577,7 +577,7 @@ impl JobManager {
 
                 files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
             } else {
-                let local_scope_entry = LocalScopeVRKaiEntry { vrkai: vrkai };
+                let local_scope_entry = LocalScopeVRKaiEntry { vrkai };
                 files_map.insert(filename, ScopeEntry::LocalScopeVRKai(local_scope_entry));
             }
         }
@@ -597,7 +597,7 @@ impl JobManager {
 
                 files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));
             } else {
-                let local_scope_entry = LocalScopeVRPackEntry { vrpack: vrpack };
+                let local_scope_entry = LocalScopeVRPackEntry { vrpack };
                 files_map.insert(filename, ScopeEntry::LocalScopeVRPack(local_scope_entry));
             }
         }

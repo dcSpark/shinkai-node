@@ -12,8 +12,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
-use tokio::net::TcpListener;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 use warp::Buf;
 use warp::Filter;
 

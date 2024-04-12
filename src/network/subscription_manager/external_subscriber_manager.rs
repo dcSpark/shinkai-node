@@ -66,7 +66,7 @@ pub struct SharedFolderInfo {
 }
 
 pub struct ExternalSubscriberManager {
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -88,7 +88,7 @@ pub struct ExternalSubscriberManager {
 
 impl ExternalSubscriberManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
@@ -226,7 +226,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         _: Weak<VectorFS>, // vector_fs
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -292,7 +292,6 @@ impl ExternalSubscriberManager {
                             break; // or continue based on your error handling policy
                         }
                     };
-                    let db = db.lock().await;
                     match db.all_subscribers_subscription() {
                         Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
                         Err(e) => {
@@ -379,7 +378,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -562,7 +561,7 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -574,7 +573,7 @@ impl ExternalSubscriberManager {
         thread_number: usize,
         process_job: impl Fn(
                 SubscriptionWithTree,
-                Weak<Mutex<ShinkaiDB>>,
+                Weak<ShinkaiDB>,
                 Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
@@ -754,7 +753,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
             let identities = db
                 .get_all_profiles(self.node_name.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -843,7 +841,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             for (path, permission) in filtered_results {
                 let path_str = path.to_string();
@@ -931,7 +928,6 @@ impl ExternalSubscriberManager {
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
         ))?;
-        let mut db = db.lock().await;
 
         db.set_folder_requirements(&path, subscription_requirement)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -996,7 +992,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let mut db = db.lock().await;
 
             db.set_folder_requirements(&path, subscription_requirement)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -1065,7 +1060,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let mut db = db.lock().await;
             db.remove_folder_requirements(&path)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
@@ -1143,7 +1137,6 @@ impl ExternalSubscriberManager {
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
         ))?;
-        let mut db = db.lock().await;
 
         match db.get_subscription_by_id(&subscription_id) {
             Ok(_) => {
@@ -1187,7 +1180,7 @@ impl ExternalSubscriberManager {
 
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,
@@ -1197,7 +1190,6 @@ impl ExternalSubscriberManager {
             let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
@@ -1271,7 +1263,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
             db.get_subscription_by_id(&subscription_id).map_err(|e| match e {

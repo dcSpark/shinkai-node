@@ -18,7 +18,7 @@ use tokio::sync::Mutex;
 pub struct IdentityManager {
     pub local_node_name: ShinkaiName,
     pub local_identities: Vec<Identity>,
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
     pub is_ready: bool,
 }
@@ -39,35 +39,32 @@ impl Clone for Box<dyn IdentityManagerTrait + Send> {
 
 impl IdentityManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         local_node_name: ShinkaiName,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+            let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            let db = db_arc.lock().await;
             db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
                 .collect()
         };
 
         let agents = {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+            let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            let db = db_arc.lock().await;
             db.get_all_agents()?
                 .into_iter()
                 .map(Identity::Agent)
                 .collect::<Vec<_>>()
         };
         {
-            let db_arc = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
+            let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            let db = db_arc.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
         }
 
@@ -172,8 +169,7 @@ impl IdentityManager {
 
     pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedAgent> {
         let db_arc = self.db.upgrade()?;
-        let db = db_arc.lock().await;
-        db.get_agent(agent_id, profile).ok().flatten()
+        db_arc.get_agent(agent_id, profile).ok().flatten()
     }
 
     // Primarily for testing
@@ -191,8 +187,7 @@ impl IdentityManager {
             .db
             .upgrade()
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
-        let db = db_arc.lock().await;
-        db.get_all_agents()
+        db_arc.get_all_agents()
     }
 
     pub async fn external_profile_to_global_identity(

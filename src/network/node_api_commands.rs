@@ -6,7 +6,9 @@ use super::{
     Node,
 };
 use crate::{
+    agent::job_manager::{self, JobManager},
     db::db_errors::ShinkaiDBError,
+    managers::IdentityManager,
     planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
@@ -15,6 +17,7 @@ use crate::{
     },
     tools::js_toolkit_executor::JSToolkitExecutor,
     utils::update_global_identity::update_global_identity_name,
+    vector_fs::vector_fs::VectorFS,
 };
 use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
@@ -22,6 +25,7 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::Sender;
 use blake3::Hasher;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::error;
 use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
@@ -50,22 +54,24 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn validate_message(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: &ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> =
-            Box::new(self.identity_manager.lock().await.clone());
+        let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> = identity_manager.lock().await.clone_box();
         // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
 
         validate_message_main_logic(
-            &self.encryption_secret_key,
+            &encryption_secret_key,
             Arc::new(Mutex::new(identity_manager_trait)),
-            &self.node_name,
+            &node_name.clone(),
             potentially_encrypted_msg,
             schema_type,
         )
@@ -73,19 +79,18 @@ impl Node {
     }
 
     async fn has_standard_identity_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
-        let db_lock = db.lock().await;
-        let has_permission = db_lock
+        let has_permission = db
             .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
 
     async fn has_device_identity_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
@@ -96,7 +101,7 @@ impl Node {
     }
 
     pub async fn has_inbox_access(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         inbox_name: &InboxName,
         sender_subidentity: &Identity,
     ) -> Result<bool, NodeError> {
@@ -126,7 +131,10 @@ impl Node {
     }
 
     async fn process_last_messages_from_inbox<F, T>(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<T, APIError>>,
         response_handler: F,
@@ -134,12 +142,14 @@ impl Node {
     where
         F: FnOnce(Vec<Vec<ShinkaiMessage>>) -> T,
     {
-        let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::APIGetMessagesFromInboxRequest),
-            )
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIGetMessagesFromInboxRequest),
+        )
+        .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -196,12 +206,12 @@ impl Node {
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
-        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value {
-                    let response = self
-                        .internal_get_last_messages_from_inbox(inbox_name.to_string(), count, offset)
-                        .await;
+                    let response =
+                        Self::internal_get_last_messages_from_inbox(db.clone(), inbox_name.to_string(), count, offset)
+                            .await;
                     let processed_response = response_handler(response);
                     let _ = res.send(Ok(processed_response)).await;
                     return Ok(());
@@ -238,36 +248,61 @@ impl Node {
     }
 
     pub async fn api_get_last_messages_from_inbox(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     ) -> Result<(), NodeError> {
-        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| {
-            response.into_iter().filter_map(|msg| msg.first().cloned()).collect()
-        })
+        Self::process_last_messages_from_inbox(
+            encryption_secret_key,
+            db,
+            identity_manager,
+            node_name,
+            potentially_encrypted_msg,
+            res,
+            |response| response.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
+        )
         .await
     }
 
     pub async fn api_get_last_messages_from_inbox_with_branches(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<Vec<ShinkaiMessage>>, APIError>>,
     ) -> Result<(), NodeError> {
-        self.process_last_messages_from_inbox(potentially_encrypted_msg, res, |response| response)
-            .await
+        Self::process_last_messages_from_inbox(
+            encryption_secret_key,
+            db,
+            identity_manager,
+            node_name,
+            potentially_encrypted_msg,
+            res,
+            |response| response,
+        )
+        .await
     }
 
     pub async fn api_get_last_unread_messages_from_inbox(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::APIGetMessagesFromInboxRequest),
-            )
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIGetMessagesFromInboxRequest),
+        )
+        .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -311,12 +346,16 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
-                    let response = self
-                        .internal_get_last_unread_messages_from_inbox(inbox_name.to_string(), count, offset)
-                        .await;
+                    let response = Self::internal_get_last_unread_messages_from_inbox(
+                        db.clone(),
+                        inbox_name.to_string(),
+                        count,
+                        offset,
+                    )
+                    .await;
                     let _ = res.send(Ok(response)).await;
                     return Ok(());
                 } else {
@@ -352,16 +391,21 @@ impl Node {
     }
 
     pub async fn api_create_and_send_registration_code(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::CreateRegistrationCode),
-            )
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::CreateRegistrationCode),
+        )
+        .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
             Err(api_error) => {
@@ -414,7 +458,6 @@ impl Node {
         // permissions: IdentityPermissions,
         // code_type: RegistrationCodeType,
 
-        let db = self.db.lock().await;
         match db.generate_registration_new_code(permissions, code_type) {
             Ok(code) => {
                 let _ = res.send(Ok(code)).await.map_err(|_| ());
@@ -433,13 +476,22 @@ impl Node {
     }
 
     pub async fn api_create_new_job(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
+        job_manager: Arc<Mutex<JobManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobCreationSchema))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::JobCreationSchema),
+        )
+        .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -449,7 +501,7 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-        match self.internal_create_new_job(msg, sender_subidentity).await {
+        match Self::internal_create_new_job(job_manager, db, msg, sender_subidentity).await {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok(job_id.clone())).await;
@@ -469,16 +521,21 @@ impl Node {
     }
 
     pub async fn api_mark_as_read_up_to(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::APIReadUpToTimeRequest),
-            )
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIReadUpToTimeRequest),
+        )
+        .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -497,16 +554,15 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
-                    let response = self
-                        .internal_mark_as_read_up_to(inbox_name.to_string(), up_to_time.clone())
-                        .await;
+                if value {
+                    let response =
+                        Self::internal_mark_as_read_up_to(db, inbox_name.to_string(), up_to_time.clone()).await;
                     match response {
                         Ok(true) => {
                             let _ = res.send(Ok("true".to_string())).await;
-                            return Ok(());
+                            Ok(())
                         }
                         Ok(false) => {
                             let _ = res
@@ -516,7 +572,7 @@ impl Node {
                                     message: format!("Failed to mark as read up to time: {}", up_to_time),
                                 }))
                                 .await;
-                            return Ok(());
+                            Ok(())
                         }
                         Err(_e) => {
                             let _ = res
@@ -529,8 +585,7 @@ impl Node {
                                     ),
                                 }))
                                 .await;
-
-                            return Ok(());
+                            Ok(())
                         }
                     }
                 } else {
@@ -566,7 +621,16 @@ impl Node {
     }
 
     pub async fn api_handle_registration_code_usage(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        encryption_secret_key: EncryptionStaticKey,
+        first_device_needs_registration_code: bool,
+        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
+        initial_agents: Vec<SerializedAgent>,
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -591,7 +655,7 @@ impl Node {
         let message_to_decrypt = msg.clone();
 
         let decrypted_message_result =
-            message_to_decrypt.decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk);
+            message_to_decrypt.decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk);
 
         let decrypted_message = match decrypted_message_result {
             Ok(message) => message,
@@ -654,7 +718,6 @@ impl Node {
         // why are we forcing standard_idendity_type?
         // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
-        let db = self.db.lock().await;
 
         // if first_device_registration_needs_code is false
         // then create a new registration code and use it
@@ -664,12 +727,12 @@ impl Node {
             ShinkaiLogLevel::Info,
             format!(
                 "registration code usage> first device needs registration code?: {:?}",
-                self.first_device_needs_registration_code
+                first_device_needs_registration_code
             )
             .as_str(),
         );
 
-        let main_profile_exists = match db.main_profile_exists(self.node_name.get_node_name_string().as_str()) {
+        let main_profile_exists = match db.main_profile_exists(node_name.get_node_name_string().as_str()) {
             Ok(exists) => exists,
             Err(err) => {
                 let _ = res
@@ -693,7 +756,7 @@ impl Node {
             .as_str(),
         );
 
-        if self.first_device_needs_registration_code == false {
+        if first_device_needs_registration_code == false {
             if main_profile_exists == false {
                 let code_type = RegistrationCodeType::Device("main".to_string());
                 let permissions = IdentityPermissions::Admin;
@@ -718,7 +781,7 @@ impl Node {
         let result = db
             .use_registration_code(
                 &code.clone(),
-                self.node_name.get_node_name_string().as_str(),
+                node_name.get_node_name_string().as_str(),
                 registration_name.as_str(),
                 &profile_identity_pk,
                 &profile_encryption_pk,
@@ -731,18 +794,18 @@ impl Node {
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
         let mut profile_list = vec![];
-        profile_list = match db.get_all_profiles(self.node_name.clone()) {
+        profile_list = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
-        self.vector_fs.initialize_new_profiles(
-            &self.node_name,
-            profile_list,
-            self.embedding_generator.model_type.clone(),
-            NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
-        ).await?;
-
-        std::mem::drop(db);
+        vector_fs
+            .initialize_new_profiles(
+                &node_name,
+                profile_list,
+                embedding_generator.model_type.clone(),
+                NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+            )
+            .await?;
 
         match result {
             Ok(success) => {
@@ -755,7 +818,7 @@ impl Node {
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile_names(
-                            self.node_name.get_node_name_string(),
+                            node_name.get_node_name_string(),
                             registration_name.clone(),
                         );
 
@@ -778,23 +841,21 @@ impl Node {
                             addr: None,
                             profile_signature_public_key: Some(signature_pk_obj),
                             profile_encryption_public_key: Some(encryption_pk_obj),
-                            node_encryption_public_key: self.encryption_public_key.clone(),
-                            node_signature_public_key: self.identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key.clone(),
+                            node_signature_public_key: identity_public_key.clone(),
                             identity_type: standard_identity_type,
                             permission_type,
                         };
-                        let mut subidentity_manager = self.identity_manager.lock().await;
+                        let mut subidentity_manager = identity_manager.lock().await;
                         match subidentity_manager.add_profile_subidentity(subidentity).await {
                             Ok(_) => {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_name.get_node_name_string().clone(),
+                                    node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        self.encryption_public_key.clone(),
+                                        encryption_public_key.clone(),
                                     ),
-                                    identity_public_key: signature_public_key_to_string(
-                                        self.identity_public_key.clone(),
-                                    ),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -812,13 +873,11 @@ impl Node {
                     }
                     IdentityType::Device => {
                         // use get_code_info to get the profile name
-                        let db = self.db.lock().await;
                         let code_info = db.get_registration_code_info(code.clone().as_str()).unwrap();
                         let profile_name = match code_info.code_type {
                             RegistrationCodeType::Device(profile_name) => profile_name,
                             _ => return Err(Box::new(ShinkaiDBError::InvalidData)),
                         };
-                        std::mem::drop(db);
 
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
                         let encryption_pk_obj =
@@ -826,9 +885,9 @@ impl Node {
 
                         // Check if the profile exists in the identity_manager
                         {
-                            let mut identity_manager = self.identity_manager.lock().await;
+                            let mut identity_manager = identity_manager.lock().await;
                             let profile_identity_name = ShinkaiName::from_node_and_profile_names(
-                                self.node_name.get_node_name_string(),
+                                node_name.get_node_name_string(),
                                 profile_name.clone(),
                             )
                             .unwrap();
@@ -842,8 +901,8 @@ impl Node {
                                     addr: None,
                                     profile_encryption_public_key: Some(encryption_pk_obj),
                                     profile_signature_public_key: Some(signature_pk_obj),
-                                    node_encryption_public_key: self.encryption_public_key.clone(),
-                                    node_signature_public_key: self.identity_public_key.clone(),
+                                    node_encryption_public_key: encryption_public_key.clone(),
+                                    node_signature_public_key: identity_public_key.clone(),
                                     identity_type: StandardIdentityType::Profile,
                                     permission_type: IdentityPermissions::Admin,
                                 };
@@ -854,7 +913,7 @@ impl Node {
                         // Logic for handling device identity
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
                         let full_identity_name = ShinkaiName::from_node_and_profile_names_and_type_and_name(
-                            self.node_name.get_node_name_string(),
+                            node_name.get_node_name_string(),
                             profile_name,
                             ShinkaiSubidentityType::Device,
                             registration_name.clone(),
@@ -872,8 +931,8 @@ impl Node {
 
                         let device_identity = DeviceIdentity {
                             full_identity_name: full_identity_name.clone(),
-                            node_encryption_public_key: self.encryption_public_key.clone(),
-                            node_signature_public_key: self.identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key.clone(),
+                            node_signature_public_key: identity_public_key.clone(),
                             profile_encryption_public_key: encryption_pk_obj,
                             profile_signature_public_key: signature_pk_obj,
                             device_encryption_public_key: device_encryption_pk_obj,
@@ -881,26 +940,30 @@ impl Node {
                             permission_type,
                         };
 
-                        let mut identity_manager = self.identity_manager.lock().await;
-                        match identity_manager.add_device_subidentity(device_identity).await {
+                        let mut identity_manager_mut = identity_manager.lock().await;
+                        match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if main_profile_exists == false && !self.initial_agents.is_empty() {
-                                    std::mem::drop(identity_manager);
+                                if main_profile_exists == false && !initial_agents.is_empty() {
+                                    std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
-                                    for agent in &self.initial_agents {
-                                        self.internal_add_agent(agent.clone(), &profile).await?;
+                                    for agent in &initial_agents {
+                                        Self::internal_add_agent(
+                                            db.clone(),
+                                            identity_manager.clone(),
+                                            agent.clone(),
+                                            &profile,
+                                        )
+                                        .await?;
                                     }
                                 }
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
-                                    node_name: self.node_name.get_node_name_string().clone(),
+                                    node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        self.encryption_public_key.clone(),
+                                        encryption_public_key.clone(),
                                     ),
-                                    identity_public_key: signature_public_key_to_string(
-                                        self.identity_public_key.clone(),
-                                    ),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -936,13 +999,21 @@ impl Node {
     }
 
     pub async fn api_update_smart_inbox_name(
-        &self,
+        encryption_secret_key: EncryptionStaticKey,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
             Err(api_error) => {
@@ -970,10 +1041,7 @@ impl Node {
         match sender {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
-                    match self
-                        .internal_update_smart_inbox_name(inbox_name.clone(), new_name)
-                        .await
-                    {
+                    match Self::internal_update_smart_inbox_name(db.clone(), inbox_name.clone(), new_name).await {
                         Ok(_) => {
                             if res.send(Ok(())).await.is_err() {
                                 let error = APIError {
@@ -997,12 +1065,11 @@ impl Node {
                         }
                     }
                 } else {
-                    let db_lock = self.db.lock().await;
-                    let has_permission = db_lock
+                    let has_permission = db
                         .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
                     if has_permission {
-                        match self.internal_update_smart_inbox_name(inbox_name, new_name).await {
+                        match Self::internal_update_smart_inbox_name(db.clone(), inbox_name, new_name).await {
                             Ok(_) => {
                                 if res.send(Ok(())).await.is_err() {
                                     let error = APIError {
@@ -1057,13 +1124,21 @@ impl Node {
     }
 
     pub async fn api_get_all_smart_inboxes_for_profile(
-        &self,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
             Err(api_error) => {
@@ -1099,7 +1174,12 @@ impl Node {
                     || (sender_profile_name == profile_requested)
                 {
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_smart_inboxes_for_profile(profile_requested).await;
+                    let inboxes = Self::internal_get_all_smart_inboxes_for_profile(
+                        db.clone(),
+                        identity_manager.clone(),
+                        profile_requested,
+                    )
+                    .await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1134,7 +1214,12 @@ impl Node {
                     || (sender_profile_name == profile_requested)
                 {
                     // Get all inboxes for the profilei
-                    let inboxes = self.internal_get_all_smart_inboxes_for_profile(profile_requested).await;
+                    let inboxes = Self::internal_get_all_smart_inboxes_for_profile(
+                        db.clone(),
+                        identity_manager.clone(),
+                        profile_requested,
+                    )
+                    .await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1179,13 +1264,21 @@ impl Node {
     }
 
     pub async fn api_get_all_inboxes_for_profile(
-        &self,
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
             Err(api_error) => {
@@ -1200,7 +1293,7 @@ impl Node {
             profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
         } else {
             profile_requested = ShinkaiName::from_node_and_profile_names(
-                self.node_name.get_node_name_string(),
+                node_name.get_node_name_string(),
                 profile_requested_str.clone(),
             )
             .map_err(|err| err.to_string())?;
@@ -1231,7 +1324,12 @@ impl Node {
                     || (sender_profile_name == profile_requested.get_profile_name_string().unwrap_or("".to_string()))
                 {
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = Self::internal_get_all_inboxes_for_profile(
+                        identity_manager.clone(),
+                        db.clone(),
+                        profile_requested,
+                    )
+                    .await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1266,7 +1364,12 @@ impl Node {
                     || (sender_profile_name == profile_requested.get_profile_name_string().unwrap_or("".to_string()))
                 {
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = Self::internal_get_all_inboxes_for_profile(
+                        identity_manager.clone(),
+                        db.clone(),
+                        profile_requested,
+                    )
+                    .await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1311,13 +1414,23 @@ impl Node {
     }
 
     pub async fn api_add_toolkit(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        js_toolkit_executor_remote: Option<String>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -1331,8 +1444,7 @@ impl Node {
         let hex_blake3_hash = msg.get_message_content()?;
 
         let files = {
-            let db_lock = self.db.lock().await;
-            match db_lock.get_all_files_from_inbox(hex_blake3_hash) {
+            match vector_fs.db.get_all_files_from_inbox(hex_blake3_hash) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -1389,7 +1501,7 @@ impl Node {
         let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
 
         // initialize the executor (locally or remotely depending on ENV)
-        let executor_result = match &self.js_toolkit_executor_remote {
+        let executor_result = match &js_toolkit_executor_remote {
             Some(remote_address) => JSToolkitExecutor::new_remote(remote_address.clone()).await,
             None => JSToolkitExecutor::new_local().await,
         };
@@ -1422,8 +1534,7 @@ impl Node {
 
         {
             eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
-            let db_lock = self.db.lock().await;
-            let init_result = db_lock.init_profile_tool_structs(&profile);
+            let init_result = db.init_profile_tool_structs(&profile);
             if let Err(err) = init_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1435,7 +1546,7 @@ impl Node {
             }
 
             eprintln!("api_add_toolkit> profile install toolkit: {:?}", profile);
-            let install_result = db_lock.install_toolkit(&toolkit, &profile);
+            let install_result = db.install_toolkit(&toolkit, &profile);
             if let Err(err) = install_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1450,7 +1561,7 @@ impl Node {
                 "api_add_toolkit> profile setting toolkit header values: {:?}",
                 header_values
             );
-            let set_header_result = db_lock
+            let set_header_result = db
                 .set_toolkit_header_values(
                     &toolkit.name.clone(),
                     &profile.clone(),
@@ -1471,7 +1582,7 @@ impl Node {
             // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
             let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
             eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
-            let activate_toolkit_result = db_lock
+            let activate_toolkit_result = db
                 .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)
                 .await;
             if let Err(err) = activate_toolkit_result {
@@ -1489,13 +1600,21 @@ impl Node {
     }
 
     pub async fn api_list_toolkits(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -1517,8 +1636,7 @@ impl Node {
         let profile = profile.unwrap();
         let toolkit_map;
         {
-            let db_lock = self.db.lock().await;
-            toolkit_map = match db_lock.get_installed_toolkit_map(&profile) {
+            toolkit_map = match db.get_installed_toolkit_map(&profile) {
                 Ok(t) => t,
                 Err(err) => {
                     let _ = res
@@ -1553,14 +1671,22 @@ impl Node {
     }
 
     pub async fn api_update_job_to_finished(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIFinishJob))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIFinishJob),
+        )
+        .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
             Err(api_error) => {
@@ -1600,60 +1726,8 @@ impl Node {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
-                    let db_lock = self.db.lock().await;
-                    match db_lock.update_job_to_finished(&job_id) {
+                    match db.update_job_to_finished(&job_id) {
                         Ok(_) => {
-                            match db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await {
-                                Ok(Some((_, kai_file_bytes))) => {
-                                    let kai_file_str = match String::from_utf8(kai_file_bytes) {
-                                        Ok(s) => s,
-                                        Err(_) => {
-                                            let _ = res
-                                                .send(Err(APIError {
-                                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                                    error: "Bad Request".to_string(),
-                                                    message: "Failed to convert bytes to string".to_string(),
-                                                }))
-                                                .await;
-                                            return Ok(());
-                                        }
-                                    };
-
-                                    let kai_file: KaiJobFile = match KaiJobFile::from_json_str(&kai_file_str) {
-                                        Ok(k) => k,
-                                        Err(_) => {
-                                            let _ = res
-                                                .send(Err(APIError {
-                                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                                    error: "Bad Request".to_string(),
-                                                    message: "Failed to parse KaiJobFile".to_string(),
-                                                }))
-                                                .await;
-                                            return Ok(());
-                                        }
-                                    };
-
-                                    match KaiJobFileManager::execute(kai_file, self).await {
-                                        Ok(_) => (),
-                                        Err(e) => shinkai_log(
-                                            ShinkaiLogOption::DetailedAPI,
-                                            ShinkaiLogLevel::Error,
-                                            format!("Error executing KaiJobFileManager: {}", e).as_str(),
-                                        ),
-                                    }
-                                }
-                                Ok(None) => shinkai_log(
-                                    ShinkaiLogOption::DetailedAPI,
-                                    ShinkaiLogLevel::Info,
-                                    format!("No file found in the inbox").as_str(),
-                                ),
-                                Err(err) => shinkai_log(
-                                    ShinkaiLogOption::DetailedAPI,
-                                    ShinkaiLogLevel::Error,
-                                    format!("Error getting file from inbox: {:?}", err).as_str(),
-                                ),
-                            }
-
                             let _ = res.send(Ok(())).await;
                             Ok(())
                         }
@@ -1711,11 +1785,11 @@ impl Node {
     }
 
     pub async fn api_get_all_profiles(
-        &self,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Obtain the IdentityManager lock
-        let identity_manager = self.identity_manager.lock().await;
+        let identity_manager = identity_manager.lock().await;
 
         // Get all identities (both standard and agent)
         let identities = identity_manager.get_all_subidentities();
@@ -1746,16 +1820,22 @@ impl Node {
     }
 
     pub async fn api_job_message(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        job_manager: Arc<Mutex<JobManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg.clone(),
-                Some(MessageSchemaType::JobMessageSchema),
-            )
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg.clone(),
+            Some(MessageSchemaType::JobMessageSchema),
+        )
+        .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -1771,7 +1851,7 @@ impl Node {
         );
         // TODO: add permissions to check if the sender has the right permissions to send the job message
 
-        match self.internal_job_message(msg.clone()).await {
+        match Self::internal_job_message(job_manager, msg.clone()).await {
             Ok(_) => {
                 let inbox_name = match InboxName::from_message(&msg.clone()) {
                     Ok(inbox) => inbox.to_string(),
@@ -1782,8 +1862,7 @@ impl Node {
                 let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
                 let parent_key = if !inbox_name.is_empty() {
-                    let db_guard = self.db.lock().await;
-                    match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
                         Ok(result) => result,
                         Err(_) => None,
                     }
@@ -1816,13 +1895,21 @@ impl Node {
     }
 
     pub async fn api_available_agents(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<SerializedAgent>, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::Empty))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::Empty),
+        )
+        .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -1837,7 +1924,7 @@ impl Node {
                 message: "Profile name not found".to_string(),
             })?;
 
-        match self.internal_get_agents_for_profile(profile).await {
+        match Self::internal_get_agents_for_profile(db.clone(), node_name.clone().node_name, profile).await {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }
@@ -1854,13 +1941,21 @@ impl Node {
     }
 
     pub async fn api_add_agent(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIAddAgentRequest),
+        )
+        .await;
         let (msg, sender_identity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -1918,7 +2013,7 @@ impl Node {
             }
         };
 
-        match self.internal_add_agent(serialized_agent.agent, &profile).await {
+        match Self::internal_add_agent(db.clone(), identity_manager.clone(), serialized_agent.agent, &profile).await {
             Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
@@ -1938,14 +2033,23 @@ impl Node {
     }
 
     pub async fn api_create_files_inbox_with_symmetric_key(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::SymmetricKeyExchange))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key.clone(),
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::SymmetricKeyExchange),
+        )
+        .await;
         let (msg, _) = match validation_result {
             Ok((msg, identity)) => (msg, identity),
             Err(api_error) => {
@@ -1955,12 +2059,12 @@ impl Node {
         };
 
         // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key)?;
 
         // Extract the content of the message
         let content = decrypted_msg.get_message_content()?;
 
-        match Self::process_symmetric_key(content, self.db.clone()).await {
+        match Self::process_symmetric_key(content, db.clone()).await {
             Ok(_) => {
                 let _ = res
                     .send(Ok(
@@ -1976,7 +2080,7 @@ impl Node {
         }
     }
 
-    pub async fn process_symmetric_key(content: String, db: Arc<Mutex<ShinkaiDB>>) -> Result<String, APIError> {
+    pub async fn process_symmetric_key(content: String, db: Arc<ShinkaiDB>) -> Result<String, APIError> {
         // Convert the hex string to bytes
         let private_key_bytes = hex::decode(&content).map_err(|_| APIError {
             code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1998,10 +2102,9 @@ impl Node {
         let hash_hex = hex::encode(result.as_bytes());
 
         // Lock the database and perform operations
-        let mut db_guard = db.lock().await;
 
         // Write the symmetric key to the database
-        db_guard.write_symmetric_key(&hash_hex, &private_key_array)
+        db.write_symmetric_key(&hash_hex, &private_key_array)
             .map_err(|err| APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -2009,7 +2112,7 @@ impl Node {
             })?;
 
         // Create the files message inbox
-        db_guard.create_files_message_inbox(hash_hex.clone())
+        db.create_files_message_inbox(hash_hex.clone())
             .map_err(|err| APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -2020,14 +2123,24 @@ impl Node {
     }
 
     pub async fn api_get_filenames_in_inbox(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the message
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key.clone(),
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::TextContent),
+        )
+        .await;
         let msg = match validation_result {
             Ok((msg, _)) => msg,
             Err(api_error) => {
@@ -2037,12 +2150,12 @@ impl Node {
         };
 
         // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key)?;
 
         // Extract the content of the message
         let hex_blake3_hash = decrypted_msg.get_message_content()?;
 
-        match self.db.lock().await.get_all_filenames_from_inbox(hex_blake3_hash) {
+        match vector_fs.db.get_all_filenames_from_inbox(hex_blake3_hash) {
             Ok(filenames) => {
                 let _ = res.send(Ok(filenames)).await;
                 Ok(())
@@ -2061,7 +2174,8 @@ impl Node {
     }
 
     pub async fn api_add_file_to_inbox_with_symmetric_key(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         filename: String,
         file_data: Vec<u8>,
         hex_blake3_hash: String,
@@ -2069,7 +2183,6 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let private_key_array = {
-            let db = self.db.lock().await;
             match db.read_symmetric_key(&hex_blake3_hash) {
                 Ok(key) => key,
                 Err(_) => {
@@ -2121,10 +2234,8 @@ impl Node {
             .as_str(),
         );
 
-        match self
+        match vector_fs
             .db
-            .lock()
-            .await
             .add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file)
         {
             Ok(_) => {
@@ -2144,15 +2255,18 @@ impl Node {
         }
     }
 
-    pub async fn api_is_pristine(&self, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
-        let db_lock = self.db.lock().await;
-        let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
+    pub async fn api_is_pristine(db: Arc<ShinkaiDB>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
+        let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
     }
 
     pub async fn api_change_nodes_name(
-        &self,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
@@ -2161,9 +2275,14 @@ impl Node {
         // 1 sec later? panic! and exit the program
         // Validate the message
 
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::ChangeNodesName))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key.clone(),
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::ChangeNodesName),
+        )
+        .await;
         let msg = match validation_result {
             Ok((msg, _)) => msg,
             Err(api_error) => {
@@ -2173,7 +2292,7 @@ impl Node {
         };
 
         // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key.clone(), &encryption_public_key.clone())?;
 
         // Extract the content of the message
         let new_node_name = decrypted_msg.get_message_content()?;
@@ -2195,14 +2314,14 @@ impl Node {
 
         {
             // Check if the new node name exists in the blockchain and the keys match
-            let identity_manager = self.identity_manager.lock().await;
+            let identity_manager = identity_manager.lock().await;
             match identity_manager
                 .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
                 .await
             {
                 Ok(standard_identity) => {
-                    if standard_identity.node_encryption_public_key != self.encryption_public_key
-                        || standard_identity.node_signature_public_key != self.identity_public_key
+                    if standard_identity.node_encryption_public_key != encryption_public_key
+                        || standard_identity.node_signature_public_key != identity_public_key
                     {
                         let _ = res
                             .send(Err(APIError {
@@ -2248,12 +2367,16 @@ impl Node {
     }
 
     pub async fn api_handle_send_onionized_message(
-        &self,
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if self.node_name.get_node_name_string() == "@@localhost.shinkai" {
+        if node_name.get_node_name_string() == "@@localhost.shinkai" {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -2264,7 +2387,14 @@ impl Node {
             return Ok(());
         }
 
-        let validation_result = self.validate_message(potentially_encrypted_msg.clone(), None).await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key.clone(),
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg.clone(),
+            None,
+        )
+        .await;
         let (mut msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
@@ -2302,14 +2432,12 @@ impl Node {
                     match inbox.has_sender_creation_access(msg.clone()) {
                         Ok(_) => {
                             // use unsafe_insert_inbox_message because we already validated the message
-                            let mut db_guard = self.db.lock().await;
                             let parent_message_id = match msg.get_message_parent_key() {
                                 Ok(key) => Some(key),
                                 Err(_) => None,
                             };
 
-                            db_guard
-                                .unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
+                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
                                 .await
                                 .map_err(|e| {
                                     shinkai_log(
@@ -2360,8 +2488,7 @@ impl Node {
             .unwrap()
             .to_string();
 
-        let external_global_identity_result = self
-            .identity_manager
+        let external_global_identity_result = identity_manager
             .lock()
             .await
             .external_profile_to_global_identity(&recipient_node_name_string.clone())
@@ -2385,22 +2512,22 @@ impl Node {
         msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
 
         let encrypted_msg = msg.encrypt_outer_layer(
-            &self.encryption_secret_key.clone(),
+            &encryption_secret_key.clone(),
             &external_global_identity.node_encryption_public_key,
         )?;
 
         // We update the signature so it comes from the node and not the profile
         // that way the recipient will be able to verify it
-        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
+        let signature_sk = clone_signature_secret_key(&identity_secret_key);
         let encrypted_msg = encrypted_msg.sign_outer_layer(&signature_sk)?;
         let node_addr = external_global_identity.addr.unwrap();
 
         Node::send(
             encrypted_msg,
-            Arc::new(clone_static_secret_key(&self.encryption_secret_key)),
+            Arc::new(clone_static_secret_key(&encryption_secret_key)),
             (node_addr, recipient_node_name_string),
-            self.db.clone(),
-            self.identity_manager.clone(),
+            db.clone(),
+            identity_manager.clone(),
             true,
             None,
         );
@@ -2415,8 +2542,7 @@ impl Node {
             let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
             let parent_key = if !inbox_name.is_empty() {
-                let db_guard = self.db.lock().await;
-                match db_guard.get_parent_message_hash(&inbox_name, &message_hash) {
+                match db.get_parent_message_hash(&inbox_name, &message_hash) {
                     Ok(result) => result,
                     Err(_) => None,
                 }

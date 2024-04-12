@@ -24,7 +24,7 @@ pub struct CronExecutionState {
 impl JobManager {
     #[async_recursion]
     pub async fn image_analysis_chain(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         full_job: Job,
         agent_found: Option<SerializedAgent>,
         execution_context: HashMap<String, String>,

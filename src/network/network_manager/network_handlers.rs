@@ -52,7 +52,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -230,7 +230,7 @@ pub async fn handle_ping(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
@@ -259,7 +259,7 @@ pub async fn handle_default_encryption(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
@@ -339,7 +339,7 @@ pub async fn handle_network_message_cases(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
@@ -886,7 +886,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     _: Arc<Mutex<MySubscriptionsManager>>,
     _: Arc<Mutex<ExternalSubscriberManager>>,
@@ -929,7 +929,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {

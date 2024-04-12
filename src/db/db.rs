@@ -17,7 +17,7 @@ pub enum Topic {
     AllMessages,
     Toolkits,
     MessagesToRetry,
-    TempFilesInbox,
+    // TempFilesInbox,
     AnyQueuesPrefixed,
     CronQueues,
     NodeAndUsers,
@@ -32,7 +32,7 @@ impl Topic {
             Self::AllMessages => "all_messages",
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
-            Self::TempFilesInbox => "temp_files_inbox",
+            // Self::TempFilesInbox => "temp_files_inbox",
             Self::AnyQueuesPrefixed => "any_queues_prefixed",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
@@ -74,7 +74,7 @@ impl ShinkaiDB {
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
-                Topic::TempFilesInbox.as_str().to_string(),
+                // Topic::TempFilesInbox.as_str().to_string(),
                 Topic::AnyQueuesPrefixed.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
                 Topic::NodeAndUsers.as_str().to_string(),
@@ -87,7 +87,7 @@ impl ShinkaiDB {
                 "inbox" => Some(47),
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
-                "temp_files_inbox" => Some(47),
+                // "temp_files_inbox" => Some(47),
                 "subscriptions" => Some(47),
                 "any_queues_prefixed" => Some(24),
                 _ => None, // No prefix extractor for other CFs
@@ -185,8 +185,9 @@ impl ShinkaiDB {
         self.db.put_cf(cf, b"needs_reset", b"true")
     }
 
-    pub fn set_ws_manager(&mut self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
-        self.ws_manager = Some(ws_manager);
+    pub fn set_ws_manager(&self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
+        // TODO: off for now
+        // self.ws_manager = Some(ws_manager);
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping

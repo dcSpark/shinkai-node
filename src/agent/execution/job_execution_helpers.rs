@@ -5,15 +5,12 @@ use crate::agent::parsing_helper::ParsingHelper;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use async_std::println;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::source::{SourceFileType, VRSourceReference};
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::instrument;
 
 impl JobManager {
@@ -146,10 +143,10 @@ impl JobManager {
     /// Fetches boilerplate/relevant data required for a job to process a step
     pub async fn fetch_relevant_job_data(
         job_id: &str,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>
     ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), AgentError> {
         // Fetch the job
-        let full_job = { db.lock().await.get_job(job_id)? };
+        let full_job = { db.get_job(job_id)? };
 
         // Acquire Agent
         let agent_id = full_job.parent_agent_id.clone();
@@ -169,8 +166,7 @@ impl JobManager {
         Ok((full_job, agent_found, profile_name, user_profile))
     }
 
-    pub async fn get_all_agents(db: Arc<Mutex<ShinkaiDB>>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
-        let db = db.lock().await;
+    pub async fn get_all_agents(db: Arc<ShinkaiDB>,) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         db.get_all_agents()
     }
 

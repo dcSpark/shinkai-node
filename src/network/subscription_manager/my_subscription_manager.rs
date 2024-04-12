@@ -41,7 +41,7 @@ const REFRESH_THRESHOLD_MINUTES: usize = 10;
 const SOFT_REFRESH_THRESHOLD_MINUTES: usize = 2;
 
 pub struct MySubscriptionsManager {
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
@@ -60,7 +60,7 @@ pub struct MySubscriptionsManager {
 
 impl MySubscriptionsManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
@@ -256,7 +256,6 @@ impl MySubscriptionsManager {
     ) -> Result<(), SubscriberManagerError> {
         // Check locally if I'm already subscribed to the folder using the DB
         if let Some(db_lock) = self.db.upgrade() {
-            let db = db_lock.lock().await;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(
                 streamer_node_name.clone(),
@@ -265,7 +264,7 @@ impl MySubscriptionsManager {
                 my_node_name,
                 my_profile.clone(),
             );
-            match db.get_my_subscription(subscription_id.get_unique_id()) {
+            match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
                 Ok(_) => {
                     // Already subscribed, no need to proceed further
                     return Err(SubscriberManagerError::AlreadySubscribed(
@@ -324,8 +323,7 @@ impl MySubscriptionsManager {
             );
 
             if let Some(db_lock) = self.db.upgrade() {
-                let mut db = db_lock.lock().await;
-                db.add_my_subscription(new_subscription)?;
+                db_lock.add_my_subscription(new_subscription)?;
             } else {
                 return Err(SubscriberManagerError::DatabaseError(
                     "Unable to access DB for updating".to_string(),
@@ -368,11 +366,10 @@ impl MySubscriptionsManager {
         match action {
             MessageSchemaType::SubscribeToSharedFolderResponse => {
                 // Validate that we requested the subscription
-                let db_lock = self
+                let db = self
                     .db
                     .upgrade()
                     .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
-                let mut db = db_lock.lock().await;
                 let subscription_result = db.get_my_subscription(&subscription_id.get_unique_id())?;
                 if subscription_result.state != ShinkaiSubscriptionStatus::SubscriptionRequested {
                     // return error
@@ -407,10 +404,9 @@ impl MySubscriptionsManager {
                 .db
                 .upgrade()
                 .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
-            let db_lock = db.lock().await;
 
             // Attempt to get the subscription from the DB
-            let subscription = db_lock.get_my_subscription(&subscription_id).map_err(|e| match e {
+            let subscription = db.get_my_subscription(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => {
                     SubscriberManagerError::SubscriptionNotFound(subscription_id.to_string())
                 }
@@ -526,7 +522,7 @@ impl MySubscriptionsManager {
 
     pub async fn send_message_to_peer(
         message: ShinkaiMessage,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
@@ -562,12 +558,12 @@ impl MySubscriptionsManager {
 
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         thread_number: usize,
         process_job: impl Fn(
             ShinkaiSubscription,
-            Weak<Mutex<ShinkaiDB>>,
+            Weak<ShinkaiDB>,
             Weak<VectorFS>,
         ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static>,
     ) -> tokio::task::JoinHandle<()> {
@@ -603,7 +599,7 @@ impl MySubscriptionsManager {
     // Correct the return type of the function to match the expected type
     fn process_subscription_job_message_queued(
         job: ShinkaiSubscription,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
