@@ -654,9 +654,45 @@ impl Node {
             pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
-                    // _retry = retry_future => self.retry_messages().await,
-                    // _listen = listen_future => unreachable!(),
-                    // _ping = ping_future => self.ping_all().await,
+                    _retry = retry_future => {
+                        // Clone the necessary variables for `retry_messages`
+                        let db_clone = self.db.clone();
+                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                        let identity_manager_clone = self.identity_manager.clone();
+
+                        // Spawn a new task to call `retry_messages` asynchronously
+                        tokio::spawn(async move {
+                            let _ = Self::retry_messages(
+                                db_clone,
+                                encryption_secret_key_clone,
+                                identity_manager_clone,
+                            ).await;
+                        });
+                    },
+                    _listen = listen_future => unreachable!(),
+                    _ping = ping_future => {
+                        // Clone the necessary variables for `ping_all`
+                        let node_name_clone = self.node_name.clone();
+                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                        let identity_secret_key_clone = self.identity_secret_key.clone();
+                        let peers_clone = self.peers.clone();
+                        let db_clone = Arc::clone(&self.db);
+                        let identity_manager_clone = Arc::clone(&self.identity_manager);
+                        let listen_address_clone = self.listen_address;
+
+                        // Spawn a new task to call `ping_all` asynchronously
+                        tokio::spawn(async move {
+                            let _ = Self::ping_all(
+                                node_name_clone,
+                                encryption_secret_key_clone,
+                                identity_secret_key_clone,
+                                peers_clone,
+                                db_clone,
+                                identity_manager_clone,
+                                listen_address_clone,
+                            ).await;
+                        });
+                    },
                     // check_peers = check_peers_future => self.connect_new_peers().await,
                     command = commands_future => {
                         match command {
@@ -688,8 +724,8 @@ impl Node {
                                             });
                                         },
                                         NodeCommand::GetPublicKeys(sender) => {
-                                            let identity_public_key = self.identity_public_key.clone();
-                                            let encryption_public_key = self.encryption_public_key.clone();
+                                            let identity_public_key = self.identity_public_key;
+                                            let encryption_public_key = self.encryption_public_key;
                                             tokio::spawn(async move {
                                                 let _ = Node::send_public_keys(
                                                     identity_public_key,
@@ -927,8 +963,8 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let first_device_needs_registration_code = self.first_device_needs_registration_code;
                                             let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
-                                            let encryption_public_key_clone = self.encryption_public_key.clone();
-                                            let identity_public_key_clone = self.identity_public_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            let identity_public_key_clone = self.identity_public_key;
                                             let initial_agents_clone = self.initial_agents.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
@@ -1098,7 +1134,7 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                                            let encryption_public_key_clone = self.encryption_public_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
                                             tokio::spawn(async move {
                                                 let _ = Node::api_create_files_inbox_with_symmetric_key(
                                                     db_clone,
@@ -1118,7 +1154,7 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                                            let encryption_public_key_clone = self.encryption_public_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
                                             tokio::spawn(async move {
                                                 let _ = Node::api_get_filenames_in_inbox(
                                                     db_clone,
@@ -1254,8 +1290,8 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                                            let encryption_public_key_clone = self.encryption_public_key.clone();
-                                            let identity_public_key_clone = self.identity_public_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            let identity_public_key_clone = self.identity_public_key;
                                             tokio::spawn(async move {
                                                 let _ = Node::api_change_nodes_name(
                                                     node_name_clone,
@@ -1686,12 +1722,13 @@ impl Node {
                                         _ => (),
                                     }
                             },
-                            None => eprintln!("Received None command"),
+                            None => {
+                                // do nothing
+                            }
                         }
                     }
             };
         }
-        Ok(())
     }
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
@@ -1808,16 +1845,20 @@ impl Node {
         }
     }
 
-    async fn retry_messages(&self) -> Result<(), NodeError> {
-        let messages_to_retry = self.db.get_messages_to_retry_before(None)?;
+    async fn retry_messages(
+        db: Arc<ShinkaiDB>,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> Result<(), NodeError> {
+        let messages_to_retry = db.get_messages_to_retry_before(None)?;
 
         for retry_message in messages_to_retry {
-            let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
+            let encrypted_secret_key = clone_static_secret_key(&encryption_secret_key);
             let save_to_db_flag = retry_message.save_to_db_flag;
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            self.db.remove_message_from_retry(&retry_message.message).unwrap();
+            db.remove_message_from_retry(&retry_message.message).unwrap();
 
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -1830,8 +1871,8 @@ impl Node {
                 retry_message.message,
                 Arc::new(encrypted_secret_key),
                 retry_message.peer,
-                self.db.clone(),
-                self.identity_manager.clone(),
+                db.clone(),
+                identity_manager.clone(),
                 save_to_db_flag,
                 retry,
             );

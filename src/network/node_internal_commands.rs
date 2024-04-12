@@ -417,7 +417,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
-    ) -> io::Result<()> {
+    ) -> Result<(), NodeError> {
         info!("{} > Pinging all peers {} ", listen_address, peers.len());
         for (peer, _) in peers.clone() {
             let sender = node_name.get_node_name_string();

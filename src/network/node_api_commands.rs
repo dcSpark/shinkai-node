@@ -556,13 +556,13 @@ impl Node {
         // TODO(Discuss): can local admin read any messages from any device or profile?
         match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
+                if value {
                     let response =
                         Self::internal_mark_as_read_up_to(db, inbox_name.to_string(), up_to_time.clone()).await;
                     match response {
                         Ok(true) => {
                             let _ = res.send(Ok("true".to_string())).await;
-                            return Ok(());
+                            Ok(())
                         }
                         Ok(false) => {
                             let _ = res
@@ -572,7 +572,7 @@ impl Node {
                                     message: format!("Failed to mark as read up to time: {}", up_to_time),
                                 }))
                                 .await;
-                            return Ok(());
+                            Ok(())
                         }
                         Err(_e) => {
                             let _ = res
@@ -585,8 +585,7 @@ impl Node {
                                     ),
                                 }))
                                 .await;
-
-                            return Ok(());
+                            Ok(())
                         }
                     }
                 } else {
