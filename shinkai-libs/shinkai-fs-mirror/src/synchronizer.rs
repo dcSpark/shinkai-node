@@ -262,26 +262,49 @@ impl FilesystemSynchronizer {
             let creation_datetime_str = Self::creation_datetime_extraction(&file_path).map_err(|e| {
                 eprintln!("Failed to extract creation datetime: {:?}", e);
                 PostRequestError::Unknown("Failed to extract creation datetime".into())
-            });
+            })?;
 
-            let upload_result = shinkai_manager_for_sync
-                .upload_file(&file_data, filename, &destination_str, creation_datetime_str?)
-                .await;
+            let retry_delays = vec![0, 60, 300]; // Retry delays in seconds: immediately, after 1 minute, and after 5 minutes
+            let mut attempt = 0;
 
-            if upload_result.is_ok() {
-                uploaded_files_count += 1;
-                eprintln!("Uploaded {}/{} files.", uploaded_files_count, total_files);
+            loop {
+                let upload_result = shinkai_manager_for_sync
+                    .upload_file(
+                        &file_data,
+                        filename,
+                        &destination_str,
+                        creation_datetime_str.clone(),
+                    )
+                    .await;
 
-                let file_path_for_db = relative_path.to_path_buf();
-                let mut db = syncing_folders_db.lock().await;
-                let syncing_folder = SyncingFolder {
-                    local_last_synchronized_file_datetime: modified_time,
-                };
-                db.add_or_update_file_mirror_state(profile_name.to_string(), file_path_for_db, syncing_folder)
-                    .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
-            } else if let Err(e) = upload_result {
-                eprintln!("Failed to upload file: {:?}", e);
-                return Err(e);
+                match upload_result {
+                    Ok(_) => {
+                        uploaded_files_count += 1;
+                        eprintln!("Uploaded {}/{} files.", uploaded_files_count, total_files);
+
+                        let file_path_for_db = relative_path.to_path_buf();
+                        let mut db = syncing_folders_db.lock().await;
+                        let syncing_folder = SyncingFolder {
+                            local_last_synchronized_file_datetime: modified_time,
+                        };
+                        db.add_or_update_file_mirror_state(profile_name.to_string(), file_path_for_db, syncing_folder)
+                            .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
+                        break;
+                    }
+                    Err(e) => match e {
+                        PostRequestError::RequestFailed(ref msg)
+                            if msg.contains("timed out") && attempt < retry_delays.len() =>
+                        {
+                            eprintln!("Timeout error occurred, retrying... Attempt: {}", attempt + 1);
+                            tokio::time::sleep(tokio::time::Duration::from_secs(retry_delays[attempt])).await;
+                            attempt += 1;
+                        }
+                        _ => {
+                            eprintln!("Failed to upload file: {:?}", e);
+                            break; // Move on to the next file after the specified number of retries
+                        }
+                    },
+                }
             }
         }
 
