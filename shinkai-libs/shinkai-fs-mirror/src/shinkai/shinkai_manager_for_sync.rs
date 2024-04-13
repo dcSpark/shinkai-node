@@ -244,9 +244,6 @@ impl ShinkaiManagerForSync {
             Ok::<(), PostRequestError>(())
         });
 
-        let elapsed_time = start_time.elapsed(); // End timing
-        eprintln!("File upload and processing completed in: {:?}", elapsed_time); // Log the elapsed time
-
         tokio::select! {
             _ = timeout_task => {
                 Err(PostRequestError::RequestFailed("Operation timed out".to_string()))
