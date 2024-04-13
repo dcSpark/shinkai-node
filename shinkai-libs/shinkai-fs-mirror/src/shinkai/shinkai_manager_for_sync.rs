@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use crate::http_requests::{
     request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse,
@@ -18,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::{
     shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
     signatures::string_to_signature_secret_key,
 };
+use tokio::time::sleep;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::shinkai_utils::decrypt_exported_keys;
@@ -158,67 +160,109 @@ impl ShinkaiManagerForSync {
         .unwrap();
 
         let inbox_message_creation = serde_json::json!(shinkai_message);
-        request_post(
-            self.node_address.clone(),
-            inbox_message_creation.to_string(),
-            "/v1/create_files_inbox_with_symmetric_key",
-        )
-        .await
-        .map_err(|e| PostRequestError::RequestFailed(format!("HTTP request failed with err: {:?}", e)))?;
 
-        // Encrypt file and upload it
-        let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+        // Create a timeout task
+        let timeout_task = sleep(Duration::from_secs(600));
 
-        let mut nonce_bytes = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let nonce = GenericArray::from_slice(&nonce_bytes);
-        let nonce_slice = nonce.as_slice();
-        let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-        let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+        // Clone self to be able to move it into the async block
+        let node_address = self.node_address.clone();
+        let receiver_public_key = self.receiver_public_key;
+        let my_encryption_secret_key = self.my_encryption_secret_key.clone();
+        let my_signature_secret_key = self.my_signature_secret_key.clone();
+        let sender = self.sender.clone();
+        let sender_subidentity = self.sender_subidentity.clone();
+        let node_receiver = self.node_receiver.clone();
+        let node_receiver_subidentity = self.node_receiver_subidentity.clone();
 
-        let form = reqwest::multipart::Form::new().part(
-            "file",
-            reqwest::multipart::Part::bytes(ciphertext).file_name(filename.to_string()),
-        );
+        // Convert file_data into an owned value
+        let file_data_owned = file_data.to_vec();
+        let file_name_clone = filename.to_string();
+        let destination_clone = destination.to_string();
 
-        let url = format!(
-            "/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
-            hash_of_aes_encryption_key_hex(symmetrical_sk),
-            nonce_str
-        );
-
-        request_post_multipart(self.node_address.clone(), &url, form)
+        let upload_task = tokio::spawn(async move {
+            request_post(
+                node_address.clone(),
+                inbox_message_creation.to_string(),
+                "/v1/create_files_inbox_with_symmetric_key",
+            )
             .await
-            .map_err(|e| PostRequestError::RequestFailed(format!("Multipart HTTP request failed with err: {:?}", e)))?;
+            .map_err(|e| PostRequestError::RequestFailed(format!("HTTP request failed with err: {:?}", e)))?;
 
-        // Process message
-        let shinkai_message = ShinkaiMessageBuilder::vecfs_create_items(
-            destination,
-            &hash_of_aes_encryption_key_hex(symmetrical_sk),
-            file_datetime.as_deref(),
-            self.my_encryption_secret_key.clone(),
-            self.my_signature_secret_key.clone(),
-            self.receiver_public_key,
-            self.sender.clone(),
-            self.sender_subidentity.clone(),
-            self.node_receiver.clone(),
-            self.node_receiver_subidentity.clone(),
-        )
-        .unwrap();
+            // Encrypt file and upload it
+            let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
 
-        let message_creation = serde_json::json!(shinkai_message);
-        request_post(
-            self.node_address.clone(),
-            message_creation.to_string(),
-            "/v1/vec_fs/convert_files_and_save_to_folder",
-        )
-        .await
-        .map_err(|e| PostRequestError::RequestFailed(format!("Convert File HTTP request failed with err: {:?}", e)))?;
+            let mut nonce_bytes = [0u8; 12];
+            rand::thread_rng().fill_bytes(&mut nonce_bytes);
+            let nonce = GenericArray::from_slice(&nonce_bytes);
+            let nonce_slice = nonce.as_slice();
+            let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+            let ciphertext = cipher.encrypt(nonce, file_data_owned.as_ref()).expect("encryption failure!");
+
+            let form = reqwest::multipart::Form::new().part(
+                "file",
+                reqwest::multipart::Part::bytes(ciphertext).file_name(file_name_clone),
+            );
+
+            let url = format!(
+                "/v1/add_file_to_inbox_with_symmetric_key/{}/{}",
+                hash_of_aes_encryption_key_hex(symmetrical_sk),
+                nonce_str
+            );
+
+            request_post_multipart(node_address.clone(), &url, form)
+                .await
+                .map_err(|e| {
+                    PostRequestError::RequestFailed(format!("Multipart HTTP request failed with err: {:?}", e))
+                })?;
+
+            // Process message
+            let shinkai_message = ShinkaiMessageBuilder::vecfs_create_items(
+                destination_clone.as_str(),
+                &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                file_datetime.as_deref(),
+                my_encryption_secret_key.clone(),
+                my_signature_secret_key.clone(),
+                receiver_public_key,
+                sender.clone(),
+                sender_subidentity.clone(),
+                node_receiver.clone(),
+                node_receiver_subidentity.clone(),
+            )
+            .unwrap();
+
+            let message_creation = serde_json::json!(shinkai_message);
+            request_post(
+                node_address.clone(),
+                message_creation.to_string(),
+                "/v1/vec_fs/convert_files_and_save_to_folder",
+            )
+            .await
+            .map_err(|e| {
+                PostRequestError::RequestFailed(format!("Convert File HTTP request failed with err: {:?}", e))
+            })?;
+
+            Ok::<(), PostRequestError>(())
+        });
 
         let elapsed_time = start_time.elapsed(); // End timing
         eprintln!("File upload and processing completed in: {:?}", elapsed_time); // Log the elapsed time
 
-        Ok(())
+        tokio::select! {
+            _ = timeout_task => {
+                Err(PostRequestError::RequestFailed("Operation timed out".to_string()))
+            },
+            result = upload_task => {
+                match result {
+                    Ok(Ok(())) => {
+                        let elapsed_time = start_time.elapsed(); // End timing
+                        eprintln!("File upload and processing completed in: {:?}", elapsed_time); // Log the elapsed time
+                        Ok(())
+                    },
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(PostRequestError::RequestFailed("Upload task panicked".to_string())),
+                }
+            }
+        }
     }
 
     // Need review

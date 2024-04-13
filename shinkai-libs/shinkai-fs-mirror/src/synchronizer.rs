@@ -237,12 +237,15 @@ impl FilesystemSynchronizer {
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         folder_to_watch: &PathBuf,
     ) -> Result<(), PostRequestError> {
+        let total_files = files.len();
+        let mut uploaded_files_count = 0;
+
         for (file_path, modified_time) in files {
             // Skip uploading if the file is named .DS_Store
             if file_path.file_name().map_or(false, |name| name == ".DS_Store") {
                 continue;
             }
-            
+
             let file_data = std::fs::read(&file_path)
                 .map_err(|_| PostRequestError::FSFolderNotFound("Failed to read file data".into()))?;
             let filename = file_path
@@ -265,7 +268,10 @@ impl FilesystemSynchronizer {
                 .upload_file(&file_data, filename, &destination_str, creation_datetime_str?)
                 .await;
 
-            if let Ok(_) = upload_result {
+            if upload_result.is_ok() {
+                uploaded_files_count += 1;
+                eprintln!("Uploaded {}/{} files.", uploaded_files_count, total_files);
+
                 let file_path_for_db = relative_path.to_path_buf();
                 let mut db = syncing_folders_db.lock().await;
                 let syncing_folder = SyncingFolder {
