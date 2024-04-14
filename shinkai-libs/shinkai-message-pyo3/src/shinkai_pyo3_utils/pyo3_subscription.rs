@@ -11,6 +11,8 @@ pub struct PyFolderSubscription {
     pub monthly_payment: Option<PyPaymentOption>,
     #[pyo3(get, set)]
     pub is_free: bool,
+    #[pyo3(get, set)]
+    pub folder_description: String,
 }
 
 #[pyclass]
@@ -33,18 +35,20 @@ impl PyPaymentOption {
 #[pymethods]
 impl PyFolderSubscription {
     #[new]
-    #[pyo3(signature = (is_free, minimum_token_delegation = None, minimum_time_delegated_hours = None, monthly_payment = None))]
+    #[pyo3(signature = (is_free, minimum_token_delegation = None, minimum_time_delegated_hours = None, monthly_payment = None, folder_description))]
     pub fn new(
         is_free: bool,
         minimum_token_delegation: Option<u64>,
         minimum_time_delegated_hours: Option<u64>,
         monthly_payment: Option<PyPaymentOption>,
+        folder_description: String,
     ) -> Self {
         Self {
             minimum_token_delegation,
             minimum_time_delegated_hours,
             monthly_payment,
             is_free,
+            folder_description,
         }
     }
 }

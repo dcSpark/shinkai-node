@@ -176,6 +176,7 @@ async fn make_folder_shareable(
             minimum_time_delegated_hours: Some(100),
             monthly_payment: Some(PaymentOption::USD(10.0)),
             is_free: false,
+            folder_description: "This is a test folder".to_string(),
         },
     };
 
