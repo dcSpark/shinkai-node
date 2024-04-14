@@ -82,6 +82,7 @@ impl MySubscriptionsManager {
             .parse::<usize>()
             .unwrap_or(NUM_THREADS); // Start processing the job queue
 
+        // Note(Nico): we can use this to update our subscription status
         let subscription_queue_handler = MySubscriptionsManager::process_subscription_queue(
             subscriptions_queue_manager.clone(),
             db.clone(),
@@ -240,6 +241,90 @@ impl MySubscriptionsManager {
             .await?;
 
             Ok(placeholder_shared_folder)
+        } else {
+            // Handle the case where the identity manager is no longer available
+            Err(SubscriberManagerError::IdentityManagerUnavailable)
+        }
+    }
+
+    pub async fn unsubscribe_to_shared_folder(
+        &self,
+        streamer_node_name: ShinkaiName,
+        streamer_profile: String,
+        my_profile: String,
+        folder_name: String,
+    ) -> Result<(), SubscriberManagerError> {
+        // Check locally if I'm already subscribed to the folder using the DB
+        let subscription_id = {
+            let db_lock = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()))?;
+            let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
+            let subscription_id = SubscriptionId::new(
+                streamer_node_name.clone(),
+                streamer_profile.clone(),
+                folder_name.clone(),
+                my_node_name,
+                my_profile.clone(),
+            );
+            // Check if the subscription exists in the DB
+            match db_lock.get_my_subscription(subscription_id.get_unique_id()) {
+                Ok(_) => subscription_id, // Subscription exists, proceed with unsubscribe
+                Err(ShinkaiDBError::DataNotFound) => {
+                    // Subscription does not exist, cannot unsubscribe
+                    return Err(SubscriberManagerError::SubscriptionNotFound(
+                        "Subscription does not exist.".to_string(),
+                    ));
+                }
+                Err(e) => {
+                    // Other database errors
+                    return Err(SubscriberManagerError::DatabaseError(e.to_string()));
+                }
+            }
+        };
+
+        // Continue
+        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_lock.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&streamer_node_name.get_node_name_string())
+                .await?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            // If folder doesn't exist it should create a shinkai message and send it to the network queue
+            // then it should create and update a local cache with the current status (waiting for the network to respond)
+
+            let msg_request_subscription = ShinkaiMessageBuilder::vecfs_unsubscribe_to_shared_folder(
+                folder_name.clone(),
+                streamer_node_name.clone().get_node_name_string(),
+                streamer_profile.clone(),
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.get_node_name_string(),
+                my_profile.clone(),
+                streamer_node_name.get_node_name_string(),
+                streamer_profile.clone(),
+            )
+            .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
+
+            if let Some(db_lock) = self.db.upgrade() {
+                db_lock.remove_my_subscription(subscription_id.get_unique_id())?;
+            } else {
+                return Err(SubscriberManagerError::DatabaseError(
+                    "Unable to access DB for updating".to_string(),
+                ));
+            }
+
+            Self::send_message_to_peer(
+                msg_request_subscription,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+            )
+            .await?;
+
+            Ok(())
         } else {
             // Handle the case where the identity manager is no longer available
             Err(SubscriberManagerError::IdentityManagerUnavailable)

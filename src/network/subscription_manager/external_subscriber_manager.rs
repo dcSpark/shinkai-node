@@ -18,13 +18,16 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
+};
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -1178,6 +1181,67 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
+    /// Unsubscribe from a shared folder
+    /// This function will remove the subscription from the database, but will not remove already scheduled actions.
+    pub async fn unsubscribe_from_shared_folder(
+        &mut self,
+        requester_shinkai_identity: ShinkaiName,
+        streamer_shinkai_identity: ShinkaiName,
+        shared_folder: String,
+    ) -> Result<bool, SubscriberManagerError> {
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for requester".to_string()),
+        )?;
+        let streamer_profile = streamer_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for streamer".to_string()),
+        )?;
+
+        let subscription_id = SubscriptionId::new(
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile.clone(),
+            shared_folder.clone(),
+            requester_shinkai_identity.extract_node(),
+            requester_profile.clone(),
+        );
+
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+
+        match db.remove_subscriber(&subscription_id) {
+            Ok(_) => {
+                // Successfully unsubscribed
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Info,
+                    &format!(
+                        "Successfully unsubscribed from shared folder: {} for subscription ID: {}",
+                        shared_folder,
+                        subscription_id.get_unique_id()
+                    ),
+                );
+
+                // Optionally, remove from the subscription_ids_are_sync map if needed
+                let subscription_id_str = subscription_id.get_unique_id().to_string();
+                self.subscription_ids_are_sync.remove(&subscription_id_str);
+
+                Ok(true)
+            }
+            Err(e) => {
+                // Handle error
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Error,
+                    &format!(
+                        "Failed to unsubscribe from shared folder: {}. Error: {:?}",
+                        shared_folder, e
+                    ),
+                );
+                Err(SubscriberManagerError::DatabaseError(e.to_string()))
+            }
+        }
+    }
+
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
         db: Weak<ShinkaiDB>,
@@ -1239,6 +1303,42 @@ impl ExternalSubscriberManager {
         }
 
         Ok(())
+    }
+
+    pub async fn get_node_subscribers(
+        &self,
+        path: Option<String>,
+    ) -> Result<HashMap<String, Vec<ShinkaiSubscription>>, SubscriberManagerError> {
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+
+        let subscriptions = if let Some(ref path) = path {
+            if path != "/" {
+                // Use db.all_subscribers_for_folder when path is defined and not "/"
+                db.all_subscribers_for_folder(path)
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+            } else {
+                // When path is "/", treat it the same as if path is None
+                db.all_subscribers_subscription()
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+            }
+        } else {
+            // When path is None, get all subscriptions and then group by folder
+            db.all_subscribers_subscription()
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+        };
+
+        let mut subscribers_by_path: HashMap<String, Vec<ShinkaiSubscription>> = HashMap::new();
+
+        for subscription in subscriptions {
+            subscribers_by_path
+                .entry(subscription.shared_folder.clone())
+                .or_default()
+                .push(subscription);
+        }
+
+        Ok(subscribers_by_path)
     }
 
     pub async fn subscriber_current_state_response(
