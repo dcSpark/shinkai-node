@@ -35,13 +35,13 @@ impl PyPaymentOption {
 #[pymethods]
 impl PyFolderSubscription {
     #[new]
-    #[pyo3(signature = (is_free, minimum_token_delegation = None, minimum_time_delegated_hours = None, monthly_payment = None, folder_description))]
+    #[pyo3(signature = (folder_description, is_free, minimum_token_delegation = None, minimum_time_delegated_hours = None, monthly_payment = None))]
     pub fn new(
+        folder_description: String,
         is_free: bool,
         minimum_token_delegation: Option<u64>,
         minimum_time_delegated_hours: Option<u64>,
         monthly_payment: Option<PyPaymentOption>,
-        folder_description: String,
     ) -> Self {
         Self {
             minimum_token_delegation,

@@ -1843,6 +1843,7 @@ impl PyShinkaiMessageBuilder {
     my_signature_secret_key,
     receiver_public_key,
     path,
+    folder_description,
     is_free,
     sender,
     sender_subidentity,
