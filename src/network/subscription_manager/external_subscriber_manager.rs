@@ -222,7 +222,7 @@ impl ExternalSubscriberManager {
             self.shared_folders_trees
                 .get(path)
                 .map(|value| vec![value.clone()])
-                .unwrap_or_else(Vec::new)
+                .unwrap_or_default()
         }
     }
 

@@ -13,8 +13,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{PaymentOption, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
-    APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIUnshareFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
@@ -335,7 +334,7 @@ async fn retrieve_file_info(
     profile_name: &str,
     path: &str,
     is_simple: bool,
-) {
+) -> String {
     let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
     let msg = generate_message_with_payload(
@@ -365,6 +364,7 @@ async fn retrieve_file_info(
     } else {
         eprintln!("resp for current file system files: {}", resp);
     }
+    resp
 }
 
 fn print_tree_simple(json_str: &str) {
@@ -953,6 +953,7 @@ fn subscription_manager_test() {
                     )
                     .await;
                 }
+                panic!("Stop here");
             }
             {
                 // Show available shared items
@@ -1459,6 +1460,41 @@ fn subscription_manager_test() {
                     // Assert that the response is empty, indicating no subscriptions
                     let expected_resp: HashMap<String, Vec<ShinkaiSubscription>> = HashMap::new();
                     assert_eq!(send_result, expected_resp, "Expected no subscriptions, but found some.");
+            }
+            {
+                // unshare folder
+                let msg = ShinkaiMessageBuilder::subscriptions_unshare_folder(
+                    "/shared_test_folder".to_string(),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                    node1_identity_name.to_string(),
+                    "".to_string(),
+                ).unwrap();
+            
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+            
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIUnshareFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("unshare folder resp: {:?}", resp);    
+                show_available_shared_items(
+                    node1_identity_name,
+                    node1_profile_name,
+                    &node1_commands_sender,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
             }
             {
                 eprintln!("Get All Inboxes for Profile Node1");

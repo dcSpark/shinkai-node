@@ -1364,6 +1364,7 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_vec_fs_retrieve_path_simplified_json(
                                                     db_clone,
@@ -1372,6 +1373,7 @@ impl Node {
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    ext_subscription_manager_clone,
                                                     res,
                                                 ).await;
                                             });

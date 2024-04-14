@@ -853,7 +853,6 @@ pub async fn handle_network_message_cases(
                     }
                 }
                 MessageSchemaType::UnsubscribeToSharedFolder => {
-                    eprintln!("{} > UnsubscribeToSharedFolder", receiver_address);
                     let streamer_node_with_profile =
                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                     let requester_node_with_profile =
