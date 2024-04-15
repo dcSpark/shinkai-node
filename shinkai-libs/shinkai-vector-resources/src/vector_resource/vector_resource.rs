@@ -121,6 +121,234 @@ pub trait VectorResourceCore: Send + Sync {
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
+
+
+    // Async wrapper methods
+    async fn name_async(&self) -> &str {
+        self.name()
+    }
+
+    async fn description_async(&self) -> Option<&str> {
+        self.description()
+    }
+
+    async fn source_async(&self) -> VRSourceReference {
+        self.source()
+    }
+
+    async fn keywords_async(&self) -> &VRKeywords {
+        self.keywords()
+    }
+
+    async fn keywords_mut_async(&mut self) -> &mut VRKeywords {
+        self.keywords_mut()
+    }
+
+    async fn set_name_async(&mut self, new_name: String) {
+        self.set_name(new_name);
+    }
+
+    async fn set_description_async(&mut self, new_description: Option<String>) {
+        self.set_description(new_description);
+    }
+
+    async fn set_source_async(&mut self, new_source: VRSourceReference) {
+        self.set_source(new_source);
+    }
+
+    async fn resource_id_async(&self) -> &str {
+        self.resource_id()
+    }
+
+    async fn set_resource_id_async(&mut self, id: String) {
+        self.set_resource_id(id);
+    }
+
+    async fn resource_embedding_async(&self) -> &Embedding {
+        self.resource_embedding()
+    }
+
+    async fn set_resource_embedding_async(&mut self, embedding: Embedding) {
+        self.set_resource_embedding(embedding);
+    }
+
+    async fn resource_base_type_async(&self) -> VRBaseType {
+        self.resource_base_type()
+    }
+
+    async fn embedding_model_used_string_async(&self) -> EmbeddingModelTypeString {
+        self.embedding_model_used_string()
+    }
+
+    async fn set_embedding_model_used_async(&mut self, model_type: EmbeddingModelType) {
+        self.set_embedding_model_used(model_type);
+    }
+
+    async fn distribution_info_async(&self) -> &DistributionInfo {
+        self.distribution_info()
+    }
+
+    async fn set_distribution_info_async(&mut self, dist_info: DistributionInfo) {
+        self.set_distribution_info(dist_info);
+    }
+
+    async fn data_tag_index_async(&self) -> &DataTagIndex {
+        self.data_tag_index()
+    }
+
+    async fn metadata_index_async(&self) -> &MetadataIndex {
+        self.metadata_index()
+    }
+
+    async fn get_embedding_async(&self, id: String) -> Result<Embedding, VRError> {
+        self.get_embedding(id)
+    }
+
+    async fn get_root_embeddings_async(&self) -> Vec<Embedding> {
+        self.get_root_embeddings()
+    }
+
+    async fn get_node_async(&self, id: String) -> Result<Node, VRError> {
+        self.get_node(id)
+    }
+
+    async fn get_root_nodes_async(&self) -> Vec<Node> {
+        self.get_root_nodes()
+    }
+
+    async fn get_merkle_root_async(&self) -> Result<String, VRError> {
+        self.get_merkle_root()
+    }
+
+    async fn set_merkle_root_async(&mut self, merkle_hash: String) -> Result<(), VRError> {
+        self.set_merkle_root(merkle_hash)
+    }
+
+    // Async wrapper methods for the newly provided methods
+    async fn insert_node_dt_specified_async(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
+    ) -> Result<(), VRError> {
+        self.insert_node_dt_specified(id, node, embedding, new_written_datetime, update_merkle_hashes)
+    }
+
+    async fn replace_node_dt_specified_async(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
+    ) -> Result<(Node, Embedding), VRError> {
+        self.replace_node_dt_specified(id, node, embedding, new_written_datetime, update_merkle_hashes)
+    }
+
+    async fn remove_node_dt_specified_async(
+        &mut self,
+        id: String,
+        new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
+    ) -> Result<(Node, Embedding), VRError> {
+        self.remove_node_dt_specified(id, new_written_datetime, update_merkle_hashes)
+    }
+
+    async fn remove_root_nodes_dt_specified_async(
+        &mut self,
+        new_written_datetime: Option<DateTime<Utc>>,
+        update_merkle_hashes: bool,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
+        self.remove_root_nodes_dt_specified(new_written_datetime, update_merkle_hashes)
+    }
+
+    async fn created_datetime_async(&self) -> DateTime<Utc> {
+        self.created_datetime()
+    }
+
+    async fn last_written_datetime_async(&self) -> DateTime<Utc> {
+        self.last_written_datetime()
+    }
+
+    async fn set_last_written_datetime_async(&mut self, datetime: DateTime<Utc>) {
+        self.set_last_written_datetime(datetime);
+    }
+
+    async fn get_data_tag_index_async(&self) -> &DataTagIndex {
+        self.get_data_tag_index()
+    }
+
+    async fn set_data_tag_index_async(&mut self, data_tag_index: DataTagIndex) {
+        self.set_data_tag_index(data_tag_index);
+    }
+
+    async fn get_metadata_index_async(&self) -> &MetadataIndex {
+        self.get_metadata_index()
+    }
+
+    async fn set_metadata_index_async(&mut self, metadata_index: MetadataIndex) {
+        self.set_metadata_index(metadata_index);
+    }
+
+    async fn to_json_async(&self) -> Result<String, VRError> {
+        self.to_json()
+    }
+
+    async fn as_any_async(&self) -> &dyn Any {
+        self.as_any()
+    }
+
+    async fn as_any_mut_async(&mut self) -> &mut dyn Any {
+        self.as_any_mut()
+    }
+
+    async fn as_ordered_vector_resource_async(&self) -> Result<&dyn OrderedVectorResource, VRError> {
+        self.as_ordered_vector_resource()
+    }
+
+    async fn as_ordered_vector_resource_mut_async(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
+        self.as_ordered_vector_resource_mut()
+    }
+
+  async fn insert_node_async(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        self.insert_node(id, node, embedding)
+    }
+
+    async fn replace_node_async(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        self.replace_node(id, node, embedding)
+    }
+
+    async fn remove_node_async(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        self.remove_node(id)
+    }
+
+    async fn remove_root_nodes_async(&mut self) -> Result<Vec<(Node, Embedding)>, VRError> {
+        self.remove_root_nodes()
+    }
+
+    async fn get_root_nodes_and_embeddings_async(&self) -> Vec<(Node, Embedding)> {
+        self.get_root_nodes_and_embeddings()
+    }
+
+    async fn encoded_size_async(&self) -> Result<usize, VRError> {
+        self.encoded_size()
+    }
+
+    async fn is_merkelized_async(&self) -> bool {
+        self.is_merkelized()
+    }
+
+    async fn embedding_model_used_async(&self) -> EmbeddingModelType {
+        self.embedding_model_used()
+    }
+
+    async fn update_merkle_root_async(&mut self) -> Result<(), VRError> {
+        self.update_merkle_root()
+    }
+
+
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
         self.insert_node_dt_specified(id, node, embedding, None, true)
