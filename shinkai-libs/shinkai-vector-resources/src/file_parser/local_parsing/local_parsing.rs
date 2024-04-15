@@ -1,4 +1,3 @@
-use super::json_parsing::*;
 use crate::file_parser::file_parser_types::TextGroup;
 use crate::resource_errors::VRError;
 use crate::source::VRSourceReference;
@@ -34,7 +33,7 @@ impl LocalFileParser {
                     SourceFileType::Document(doc) => match doc {
                         DocumentFileType::Txt => LocalFileParser::process_txt_file(file_buffer, max_node_text_size),
                         DocumentFileType::Json => LocalFileParser::process_json_file(file_buffer, max_node_text_size),
-                        // DocumentFileType::Csv => Self::process_csv_file(file_buffer, file_name, max_node_text_size),
+                        DocumentFileType::Csv => LocalFileParser::process_csv_file(file_buffer, max_node_text_size),
                         _ => Err(VRError::UnsupportedFileType(file_name.to_string())),
                     },
                 },
