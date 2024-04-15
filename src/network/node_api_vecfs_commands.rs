@@ -24,14 +24,14 @@ use shinkai_message_primitives::{
         },
     },
 };
-use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
-    embedding_generator::{self, EmbeddingGenerator},
+use shinkai_vector_resources::{
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
-  vector_resource::{BaseVectorResource, VRPack, VRPath},
+    vector_resource::{VRKai, VRPack, VRPath},
+    embedding_generator::{EmbeddingGenerator},
 };
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -1138,9 +1138,9 @@ impl Node {
             let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
 
             let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()).await?;
 
-            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack) {
+            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
