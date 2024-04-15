@@ -187,8 +187,16 @@ impl ShinkaiFileParser {
         let new_name = grouped_text.text.clone();
         let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
         let mut metadata = HashMap::new();
-        metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
+        metadata.insert(
+            ShinkaiFileParser::page_numbers_metadata_key(),
+            grouped_text.format_page_num_string(),
+        );
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
+    }
+
+    /// Key of page numbers metadata
+    pub fn page_numbers_metadata_key() -> String {
+        "pg_nums".to_string()
     }
 
     /// Internal method used to push into correct group for hierarchical grouping

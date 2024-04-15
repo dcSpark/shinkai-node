@@ -1,5 +1,6 @@
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
+use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
@@ -194,7 +195,7 @@ impl RetrievedNode {
     pub fn format_position_string(&self) -> String {
         match &self.node.metadata {
             Some(metadata) => {
-                if let Some(page_numbers) = metadata.get("page_numbers") {
+                if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
                     format!("Pgs: {}", page_numbers)
                 } else {
                     // If from a Document Vector Resource, then we can create a relative position based on parents
