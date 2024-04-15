@@ -201,11 +201,11 @@ impl JobManager {
                     total_num_of_results,
                     TraversalMethod::Exhaustive,
                     &deep_traversal_options,
-                    generator,
+                    generator.clone(),
                 )
                 .await?;
 
-            let groups = RetrievedNode::group_proximity_results(&mut vr_pack_results)?;
+            let mut groups = RetrievedNode::group_proximity_results(&mut vr_pack_results)?;
             retrieved_node_groups.append(&mut groups);
         }
 
@@ -217,20 +217,20 @@ impl JobManager {
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
                     .await?;
 
-                let results = vec_fs
+                let mut results = vector_fs
                     .deep_vector_search_customized(
                         &reader,
                         query_text.clone(),
                         num_of_resources_to_search_into,
                         total_num_of_results,
-                        deep_traversal_options,
+                        deep_traversal_options.clone(),
                     )
                     .await?
                     .iter()
-                    .map(|fs_node| fs_node.resource_retrieved_node)
+                    .map(|fs_node| fs_node.resource_retrieved_node.clone())
                     .collect();
 
-                let groups = RetrievedNode::group_proximity_results(&mut results)?;
+                let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
 
                 retrieved_node_groups.append(&mut groups);
             }
@@ -246,18 +246,29 @@ impl JobManager {
 
         // Perform vector search on all direct resources
         for resource in &resources {
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_nodes.extend(results);
+            let mut results = resource.as_trait_object().vector_search_customized(
+                query.clone(),
+                total_num_of_results,
+                TraversalMethod::Exhaustive,
+                &deep_traversal_options,
+                None,
+            );
+
+            let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
+
+            retrieved_node_groups.append(&mut groups);
         }
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
-            &format!("Num of nodes retrieved: {}", retrieved_nodes.len()),
+            &format!("Num of node groups retrieved: {}", retrieved_node_groups.len()),
         );
 
-        // Sort the retrieved nodes by score before returning
-        let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
+        // Sort the retrieved node groups by score
+        let sorted_retrieved_node_groups =
+            RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
+        let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
         let updated_nodes =
             JobManager::include_description_retrieved_node(include_description, sorted_retrieved_nodes, &resources)
                 .await;

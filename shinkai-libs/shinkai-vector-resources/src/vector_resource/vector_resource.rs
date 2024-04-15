@@ -124,7 +124,7 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_root_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
-        self.insert_node_dt_specified(id, node, embedding, None)
+        self.insert_node_dt_specified(id, node, embedding, None, true)
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth).
@@ -134,12 +134,12 @@ pub trait VectorResourceCore: Send + Sync {
         node: Node,
         embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        self.replace_node_dt_specified(id, node, embedding, None)
+        self.replace_node_dt_specified(id, node, embedding, None, true)
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth).
     fn remove_root_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
-        self.remove_node_dt_specified(id, None)
+        self.remove_node_dt_specified(id, None, true)
     }
 
     /// Removes all Nodes/Embeddings at the root level depth.
