@@ -168,13 +168,22 @@ impl RetrievedNode {
         return self.resource_header.get_resource_datetime_default();
     }
 
+    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
+    ///  Returns a string in RFC3339 format without the fractional seconds.
+    pub fn get_datetime_default_string(&self) -> String {
+        match self.get_datetime_default().to_rfc3339().split('.').next() {
+            Some(datetime_string) => datetime_string.to_string(),
+            None => self.get_datetime_default().to_rfc3339(),
+        }
+    }
+
     /// Formats the data, source, and metadata together into a single string that is ready
     /// to be included as part of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
         let source_string = self.resource_header.resource_source.format_source_string();
         let position_string = self.format_position_string();
-        let datetime_string = self.get_datetime_default().to_rfc3339();
+        let datetime_string = self.get_datetime_default_string();
 
         let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
 
