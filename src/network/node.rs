@@ -22,13 +22,14 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
+use std::collections::HashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
+use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIAvailableSharedItems, IdentityPermissions, JobToolCall, RegistrationCodeType,
@@ -343,9 +344,17 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIUnsubscribe {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     APIMySubscriptions {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
+    },
+    APIGetMySubscribers {
+        msg: ShinkaiMessage,
+        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
     },
 }
 
@@ -1355,6 +1364,7 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_vec_fs_retrieve_path_simplified_json(
                                                     db_clone,
@@ -1363,6 +1373,7 @@ impl Node {
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    ext_subscription_manager_clone,
                                                     res,
                                                 ).await;
                                             });
@@ -1714,6 +1725,40 @@ impl Node {
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUnsubscribe { msg, res } => self.api_unsubscribe_my_subscriptions(msg, res).await, 
+                                        NodeCommand::APIUnsubscribe { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_unsubscribe_my_subscriptions(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    my_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetMySubscribers { msg, res } => self.api_get_my_subscribers(msg, res).await,
+                                        NodeCommand::APIGetMySubscribers { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_my_subscribers(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
                                                     msg,
                                                     res,
                                                 ).await;

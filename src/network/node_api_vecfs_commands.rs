@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
-use super::{node_api::APIError, node_error::NodeError, Node};
+use super::{
+    node_api::APIError, node_error::NodeError,
+    subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
+};
 use crate::{
-    agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager, schemas::identity::Identity,
+    agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
+    network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };
 use async_channel::Sender;
@@ -20,7 +24,12 @@ use shinkai_message_primitives::{
         },
     },
 };
-use shinkai_vector_resources::{embedding_generator::{self, EmbeddingGenerator}, file_parser::unstructured_api::UnstructuredAPI, source::DistributionInfo, vector_resource::VRPath};
+use shinkai_vector_resources::{
+    embedding_generator::{self, EmbeddingGenerator},
+    file_parser::unstructured_api::UnstructuredAPI,
+    source::DistributionInfo,
+    vector_resource::VRPath,
+};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -78,6 +87,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
@@ -124,9 +134,75 @@ impl Node {
             }
         };
 
+        fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
+            if let Some(path) = obj.get("path") {
+                if let Some(path_str) = path.as_str() {
+                    if let Some(shared_folder) = shared_folders.iter().find(|sf| sf.path == path_str) {
+                        let mut shared_folder_info = serde_json::to_value(shared_folder).unwrap();
+                        // Remove the "tree" field from the shared_folder_info before adding it to the obj
+                        if let Some(obj) = shared_folder_info.as_object_mut() {
+                            obj.remove("tree");
+                        }
+                        obj.as_object_mut().unwrap().insert(
+                            "shared_folder_info".to_string(),
+                            serde_json::to_value(shared_folder).unwrap(),
+                        );
+                    }
+                }
+            }
+
+            if let Some(child_folders) = obj.get_mut("child_folders") {
+                if let Some(child_folders_array) = child_folders.as_array_mut() {
+                    for child_folder in child_folders_array {
+                        add_shared_folder_info(child_folder, shared_folders);
+                    }
+                }
+            }
+        }
+
         let result = vector_fs.retrieve_fs_path_simplified_json(&reader).await;
         let result = match result {
-            Ok(result) => result,
+            Ok(result) => {
+                eprintln!("retrieve_fs_path_simplified_json result: {:?}", result);
+                let mut subscription_manager = ext_subscription_manager.lock().await;
+                let shared_folders_result = subscription_manager
+                    .available_shared_folders(
+                        requester_name.extract_node(),
+                        requester_name.get_profile_name_string().unwrap_or_default(),
+                        requester_name.extract_node(),
+                        requester_name.get_profile_name_string().unwrap_or_default(),
+                        input_payload.path,
+                    )
+                    .await;
+                drop(subscription_manager);
+
+                let shared_folders_result = match shared_folders_result {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to retrieve shared folders: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                let mut result_value: serde_json::Value = match serde_json::from_str(&result) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to parse JSON result: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                add_shared_folder_info(&mut result_value, &shared_folders_result);
+                result
+            }
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{db::ShinkaiDB, managers::IdentityManager, vector_fs::vector_fs::VectorFS};
 
@@ -15,12 +15,12 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::to_string;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
+    schemas::{shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAvailableSharedItems, APICreateShareableFolder, APISubscribeToSharedFolder, APIUnshareFolder,
-            APIUpdateShareableFolder, MessageSchemaType,
+            APIAvailableSharedItems, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder,
+            APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder, MessageSchemaType,
         },
     },
 };
@@ -28,6 +28,84 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
+    pub async fn api_unsubscribe_my_subscriptions(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIUnsubscribeToSharedFolder>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UnsubscribeToSharedFolder,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Validation: requester_name node should be me
+        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid node name provided".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let mut my_subscription_manager = my_subscription_manager.lock().await;
+        let sender_profile = requester_name.get_profile_name_string().unwrap_or("".to_string());
+
+        match ShinkaiName::from_node_and_profile_names(
+            input_payload.streamer_node_name.clone(),
+            input_payload.streamer_profile_name.clone(),
+        ) {
+            Ok(ext_node_name) => {
+                let result = my_subscription_manager
+                    .unsubscribe_to_shared_folder(
+                        ext_node_name,
+                        input_payload.streamer_profile_name.clone(),
+                        sender_profile,
+                        input_payload.path,
+                    )
+                    .await;
+                match result {
+                    Ok(_) => {
+                        let _ = res.send(Ok("Unsubscribed".to_string())).await.map_err(|_| ());
+                    }
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to convert path to VRPath: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid node name provided".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn api_subscription_my_subscriptions(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -506,6 +584,53 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             }
         }
+        Ok(())
+    }
+
+    pub async fn api_get_my_subscribers(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, _) = match Self::validate_and_extract_payload::<APIGetMySubscribers>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::GetMySubscribers,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                eprintln!("Error: {}", api_error.message);
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut subscription_manager = ext_subscription_manager.lock().await;
+        let subscribers_result = subscription_manager
+            .get_node_subscribers(Some(input_payload.path))
+            .await;
+
+        match subscribers_result {
+            Ok(subscribers) => {
+                let _ = res.send(Ok(subscribers)).await.map_err(|_| ());
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to retrieve subscribers: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
         Ok(())
     }
 }

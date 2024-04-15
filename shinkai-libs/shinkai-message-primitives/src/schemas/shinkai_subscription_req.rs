@@ -6,6 +6,7 @@ pub struct FolderSubscription {
     pub minimum_time_delegated_hours: Option<u64>,
     pub monthly_payment: Option<PaymentOption>,
     pub is_free: bool,
+    pub folder_description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
