@@ -39,7 +39,7 @@ mod tests {
     async fn test_web_scraper() {
         init_default_tracing(); 
         setup();
-        let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);
         let node_profile_name = ShinkaiName::new("@@localhost.shinkai/main".to_string()).unwrap();
         // Originals

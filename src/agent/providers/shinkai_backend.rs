@@ -48,7 +48,7 @@ impl LLMProvider for ShinkaiBackend {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
                 let messages_json = match self.model_type.as_str() {
-                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
+                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE" => {
                         let open_ai = OpenAI {
                             model_type: self.model_type.clone(),
                         };

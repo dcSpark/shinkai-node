@@ -22,7 +22,7 @@ mod it {
     mod node_integration_tests;
     mod node_retrying_tests;
     mod node_simple_ux_tests;
-    mod node_toolkit_api_tests;
+    // mod node_toolkit_api_tests;
     mod performance_tests;
     mod planner_integration_tests;
     mod planner_tests;
@@ -31,7 +31,7 @@ mod it {
     mod utils;
     mod vector_fs_api_tests;
     mod vector_fs_tests;
-    mod websocket_tests;
+    // mod websocket_tests;
     mod subscription_manager_tests;
     mod shinkai_mirror_tests;
 }

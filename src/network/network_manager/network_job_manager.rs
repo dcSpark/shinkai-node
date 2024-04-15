@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -82,8 +82,8 @@ pub struct NetworkJobManager {
 
 impl NetworkJobManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -93,8 +93,7 @@ impl NetworkJobManager {
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
-            let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let shinkai_db = db_arc.lock().await;
+            let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
@@ -163,8 +162,8 @@ impl NetworkJobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -175,8 +174,8 @@ impl NetworkJobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
-                Weak<Mutex<ShinkaiDB>>,                // db
-                Weak<Mutex<VectorFS>>,                 // vector_fs
+                Weak<ShinkaiDB>,                // db
+                Weak<VectorFS>,                        // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
                 SigningKey,                            // my_signature_secret_key
@@ -348,8 +347,8 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -429,8 +428,8 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         _: EncryptionStaticKey,
         _: SigningKey,
@@ -446,9 +445,8 @@ impl NetworkJobManager {
         // check that the subscription exists
         let subscription = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-            let db_lock = maybe_db.lock().await;
 
-            match db_lock.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
+            match maybe_db.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
                 Ok(sub) => sub,
                 Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
             }
@@ -457,10 +455,9 @@ impl NetworkJobManager {
         // get the symmetric key from the database
         let symmetric_sk_bytes = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-            let db_lock = maybe_db.lock().await;
 
             // Retrieve the symmetric key using the symmetric_key_hash from the database
-            match db_lock.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
+            match maybe_db.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     return Err(NetworkJobQueueError::SymmetricKeyNotFound(
@@ -505,8 +502,7 @@ impl NetworkJobManager {
 
         // Check if the folder already exists. For now, we delete the folder and recreate it
         {
-            let maybe_vector_fs = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
-            let mut vector_fs_lock = maybe_vector_fs.lock().await;
+            let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
 
             // If we're syncing into a different folder name, then update vr_pack name to match
             if let Ok(path_id) = destination_vr_path.last_path_id() {
@@ -517,6 +513,7 @@ impl NetworkJobManager {
 
             let path_already_exists = vector_fs_lock
                 .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
+                .await
                 .is_ok();
 
             let destination_writer = vector_fs_lock
@@ -525,10 +522,11 @@ impl NetworkJobManager {
                     destination_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
             if path_already_exists {
-                vector_fs_lock.delete_folder(&destination_writer)?;
+                vector_fs_lock.delete_folder(&destination_writer).await?;
             }
 
             let parent_writer = vector_fs_lock
@@ -537,12 +535,13 @@ impl NetworkJobManager {
                     parent_vr_path.clone(),
                     local_subscriber.clone(),
                 )
+                .await
                 .unwrap();
 
-            let result = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack);
+            let _ = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
 
             {
-                // debug. print current files
+                // // debug. print current files
                 // eprintln!("debug current files");
                 // // let root_path = VRPath::root();
                 // let root_path = VRPath::from_string("/").unwrap();
@@ -550,9 +549,9 @@ impl NetworkJobManager {
                 //     local_subscriber.clone(),
                 //     root_path.clone(),
                 //     local_subscriber.clone(),
-                // );
+                // ).await;
                 // let reader = reader.unwrap();
-                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader);
+                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
                 // eprintln!("Current files: {:?}", result);
             }
         }
@@ -560,6 +559,7 @@ impl NetworkJobManager {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_message_internode(
         receiver_address: SocketAddr,
         unsafe_sender_address: SocketAddr,
@@ -567,7 +567,7 @@ impl NetworkJobManager {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        shinkai_db: Weak<Mutex<ShinkaiDB>>,
+        shinkai_db: Weak<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,

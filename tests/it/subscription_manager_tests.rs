@@ -3,16 +3,17 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
-use chrono::{TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
+use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId};
 use core::panic;
+use std::collections::HashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{PaymentOption, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
-    APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIUnshareFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
@@ -175,6 +176,7 @@ async fn make_folder_shareable(
             minimum_time_delegated_hours: Some(100),
             monthly_payment: Some(PaymentOption::USD(10.0)),
             is_free: false,
+            folder_description: "This is a test folder".to_string(),
         },
     };
 
@@ -333,7 +335,7 @@ async fn retrieve_file_info(
     profile_name: &str,
     path: &str,
     is_simple: bool,
-) {
+) -> String {
     let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
     let msg = generate_message_with_payload(
@@ -363,6 +365,7 @@ async fn retrieve_file_info(
     } else {
         eprintln!("resp for current file system files: {}", resp);
     }
+    resp
 }
 
 fn print_tree_simple(json_str: &str) {
@@ -797,7 +800,7 @@ fn subscription_manager_test() {
                     "private_test_folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
                 )
@@ -1111,7 +1114,8 @@ fn subscription_manager_test() {
                                 "monthly_payment": {
                                     "USD": 10.0
                                 },
-                                "is_free": false
+                                "is_free": false,
+                                "folder_description": "This is a test folder"
                             }
                         }
                     }
@@ -1320,6 +1324,180 @@ fn subscription_manager_test() {
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
             }
             {
+                 // check that the unsubscription was processed in the other node
+                 eprintln!("Check current subscribers for node 1");
+                 let unchanged_message = ShinkaiMessageBuilder::get_my_subscribers(
+                     None,
+                     node1_profile_encryption_sk.clone(),
+                     clone_signature_secret_key(&node1_profile_identity_sk),
+                     node1_encryption_pk,
+                     node1_identity_name.to_string().clone(),
+                     node1_profile_name.to_string().clone(),
+                     node1_identity_name.to_string(),
+                     node1_profile_name.to_string(),
+                 ).unwrap(); 
+ 
+                 let (res_send_msg_sender, res_send_msg_receiver): (
+                     async_channel::Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+                     async_channel::Receiver<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+                 ) = async_channel::bounded(1);
+ 
+                 node1_commands_sender
+                    .send(NodeCommand::APIGetMySubscribers {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+ 
+                    let send_result = res_send_msg_receiver.recv().await.unwrap();
+                    // eprint!("\n\nsend_result subscribers: {:?}", send_result);
+                     
+                    // Assuming send_result is Ok, directly access the HashMap for comparison
+                    let mut actual_subscriptions = send_result.expect("Failed to get subscribers");
+
+                    // Prepare the expected subscriptions for comparison
+                    let mut expected_subscriptions = HashMap::from([
+                        ("/shared_test_folder".to_string(), vec![
+                            ShinkaiSubscription::new(
+                                "/shared_test_folder".to_string(),
+                                ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                                "main".to_string(),
+                                ShinkaiName::new("@@node2_test.sepolia-shinkai".to_string()).unwrap(),
+                                "main_profile_node2".to_string(),
+                                ShinkaiSubscriptionStatus::SubscriptionConfirmed,
+                                Some(SubscriptionPayment::Free),
+                            )
+                        ])
+                    ]);
+
+                    let dummy_date: DateTime<Utc> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+
+                    // Remove date fields from both actual and expected subscriptions for comparison
+                    for subscriptions in actual_subscriptions.values_mut() {
+                        for subscription in subscriptions {
+                            subscription.date_created = dummy_date;
+                            subscription.last_modified = dummy_date;
+                            subscription.last_sync = None;
+                        }
+                    }
+
+                    for subscriptions in expected_subscriptions.values_mut() {
+                        for subscription in subscriptions {
+                            subscription.date_created = dummy_date;
+                            subscription.last_modified = dummy_date;
+                            subscription.last_sync = None;
+                        }
+                    }
+
+                    // Compare the actual subscriptions with the expected ones
+                    assert_eq!(actual_subscriptions, expected_subscriptions, "The actual subscriptions do not match the expected ones.");
+            }
+            {
+                // Unsubscribe from the shared folder
+                eprintln!("\n\nUnsubscribe from the shared folder");
+                let unchanged_message = ShinkaiMessageBuilder::vecfs_unsubscribe_to_shared_folder(
+                    "/shared_test_folder".to_string(),
+                    node1_identity_name.to_string(),
+                    node1_profile_name.to_string(),
+                    node2_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node2_profile_identity_sk),
+                    node2_encryption_pk,
+                    node2_identity_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
+                    node2_identity_name.to_string(),
+                    "".to_string(),
+                )
+                .unwrap();
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<String, APIError>>,
+                    async_channel::Receiver<Result<String, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node2_commands_sender
+                    .send(NodeCommand::APIUnsubscribe {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                    let send_result = res_send_msg_receiver.recv().await.unwrap();
+                    // eprint!("\n\nsend_result unsubscribe: {:?}", send_result);
+                    assert!(matches!(send_result, Ok(ref s) if s == "Unsubscribed"), "Expected to unsubscribe successfully.");
+            }
+            {
+                // check that the unsubscription was processed in the other node
+                eprintln!("\n\nCheck that the unsubscribe was processed in the node 1");
+                // add two second delay
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                let unchanged_message = ShinkaiMessageBuilder::get_my_subscribers(
+                    None,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                    node1_identity_name.to_string(),
+                    "".to_string(),
+                ).unwrap(); 
+
+                let (res_send_msg_sender, res_send_msg_receiver): (
+                    async_channel::Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+                    async_channel::Receiver<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+                ) = async_channel::bounded(1);
+
+                node1_commands_sender
+                    .send(NodeCommand::APIGetMySubscribers {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                    let send_result = res_send_msg_receiver.recv().await.unwrap().expect("Failed to receive response");
+
+                    // Assert that the response is empty, indicating no subscriptions
+                    let expected_resp: HashMap<String, Vec<ShinkaiSubscription>> = HashMap::new();
+                    assert_eq!(send_result, expected_resp, "Expected no subscriptions, but found some.");
+            }
+            {
+                // unshare folder
+                let msg = ShinkaiMessageBuilder::subscriptions_unshare_folder(
+                    "/shared_test_folder".to_string(),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                    node1_identity_name.to_string(),
+                    "".to_string(),
+                ).unwrap();
+            
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+            
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIUnshareFolder { msg, res: res_sender })
+                    .await
+                    .unwrap();
+                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("unshare folder resp: {:?}", resp);    
+                show_available_shared_items(
+                    node1_identity_name,
+                    node1_profile_name,
+                    &node1_commands_sender,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
+            }
+            {
                 eprintln!("Get All Inboxes for Profile Node1");
                 // TODO: modify to see your messages
                 // TODO: check that inboxes are being deleted after uploading a file and converting it
@@ -1343,29 +1521,29 @@ fn subscription_manager_test() {
                 // let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                 // eprintln!("node1_all_profiles: {:?}", node2_last_messages);
 
-                let inboxes = api_get_all_smart_inboxes_from_profile(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone(),
-                    node1_profile_name.clone(),
-                    node1_identity_name.clone(),
-                )
-                .await;
-                eprintln!("node1_all_profiles smart inboxes: {:?}", inboxes);
+                // let inboxes = api_get_all_smart_inboxes_from_profile(
+                //     node1_commands_sender.clone(),
+                //     clone_static_secret_key(&node1_profile_encryption_sk),
+                //     node1_encryption_pk.clone(),
+                //     clone_signature_secret_key(&node1_profile_identity_sk),
+                //     node1_identity_name.clone(),
+                //     node1_profile_name.clone(),
+                //     node1_identity_name.clone(),
+                // )
+                // .await;
+                // eprintln!("node1_all_profiles smart inboxes: {:?}", inboxes);
 
-                let inboxes = api_get_all_smart_inboxes_from_profile(
-                    node2_commands_sender.clone(),
-                    clone_static_secret_key(&node2_profile_encryption_sk),
-                    node2_encryption_pk.clone(),
-                    clone_signature_secret_key(&node2_profile_identity_sk),
-                    node2_identity_name.clone(),
-                    node2_profile_name.clone(),
-                    node2_identity_name.clone(),
-                )
-                .await;
-                eprintln!("node2_all_profiles smart inboxes: {:?}", inboxes);
+                // let inboxes = api_get_all_smart_inboxes_from_profile(
+                //     node2_commands_sender.clone(),
+                //     clone_static_secret_key(&node2_profile_encryption_sk),
+                //     node2_encryption_pk.clone(),
+                //     clone_signature_secret_key(&node2_profile_identity_sk),
+                //     node2_identity_name.clone(),
+                //     node2_profile_name.clone(),
+                //     node2_identity_name.clone(),
+                // )
+                // .await;
+                // eprintln!("node2_all_profiles smart inboxes: {:?}", inboxes);
             }
             {
                 // Dont forget to do this at the end

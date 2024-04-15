@@ -22,13 +22,14 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
+use std::collections::HashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
+use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIAvailableSharedItems, IdentityPermissions, JobToolCall, RegistrationCodeType,
@@ -343,9 +344,17 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIUnsubscribe {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     APIMySubscriptions {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
+    },
+    APIGetMySubscribers {
+        msg: ShinkaiMessage,
+        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
     },
 }
 
@@ -385,7 +394,7 @@ pub struct Node {
     // The manager for subidentities.
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
-    pub db: Arc<Mutex<ShinkaiDB>>,
+    pub db: Arc<ShinkaiDB>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
@@ -397,7 +406,7 @@ pub struct Node {
     // JS Toolkit Executor Remote
     pub js_toolkit_executor_remote: Option<String>,
     // The Node's VectorFS
-    pub vector_fs: Arc<Mutex<VectorFS>>,
+    pub vector_fs: Arc<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -415,6 +424,7 @@ pub struct Node {
 impl Node {
     // Construct a new node. Returns a `Result` which is `Ok` if the node was successfully created,
     // and `Err` otherwise.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         node_name: String,
         listen_address: SocketAddr,
@@ -441,13 +451,12 @@ impl Node {
             eprintln!("Error: {:?}", e);
             panic!("Failed to open database: {}", main_db_path)
         });
-        let db_arc = Arc::new(Mutex::new(db));
+        let db_arc = Arc::new(db);
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_name = ShinkaiName::new(node_name).unwrap();
         {
-            let db_lock = db_arc.lock().await;
-            match db_lock.update_local_node_keys(
+            match db_arc.update_local_node_keys(
                 node_name.clone(),
                 encryption_public_key.clone(),
                 identity_public_key.clone(),
@@ -470,8 +479,7 @@ impl Node {
         // Fetch list of existing profiles from the node to push into the VectorFS
         let mut profile_list = vec![];
         {
-            let db_lock = db_arc.lock().await;
-            profile_list = match db_lock.get_all_profiles(node_name.clone()) {
+            profile_list = match db_arc.get_all_profiles(node_name.clone()) {
                 Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
                 Err(e) => panic!("Failed to fetch profiles: {}", e),
             };
@@ -485,11 +493,12 @@ impl Node {
             &vector_fs_db_path,
             node_name.clone(),
         )
+        .await
         .unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
-        let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
+        let vector_fs_arc = Arc::new(vector_fs);
 
         let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
             .unwrap_or_else(|_| "5".to_string())
@@ -577,7 +586,7 @@ impl Node {
             unstructured_api,
             conn_limiter,
             ext_subscription_manager: ext_subscriber_manager,
-            my_subscription_manager: my_subscription_manager,
+            my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
         }));
 
@@ -594,7 +603,7 @@ impl Node {
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_name.clone(),
-                vector_fs_weak,
+                vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
             )
@@ -611,6 +620,7 @@ impl Node {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(
                     db_weak,
+                    vector_fs_weak,
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_name.clone(),
                     Arc::clone(job_manager),
@@ -653,93 +663,1117 @@ impl Node {
             pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
-                    _retry = retry_future => self.retry_messages().await?,
+                    _retry = retry_future => {
+                        // Clone the necessary variables for `retry_messages`
+                        let db_clone = self.db.clone();
+                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                        let identity_manager_clone = self.identity_manager.clone();
+
+                        // Spawn a new task to call `retry_messages` asynchronously
+                        tokio::spawn(async move {
+                            let _ = Self::retry_messages(
+                                db_clone,
+                                encryption_secret_key_clone,
+                                identity_manager_clone,
+                            ).await;
+                        });
+                    },
                     _listen = listen_future => unreachable!(),
-                    _ping = ping_future => self.ping_all().await?,
-                    // check_peers = check_peers_future => self.connect_new_peers().await?,
+                    _ping = ping_future => {
+                        // Clone the necessary variables for `ping_all`
+                        let node_name_clone = self.node_name.clone();
+                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                        let identity_secret_key_clone = self.identity_secret_key.clone();
+                        let peers_clone = self.peers.clone();
+                        let db_clone = Arc::clone(&self.db);
+                        let identity_manager_clone = Arc::clone(&self.identity_manager);
+                        let listen_address_clone = self.listen_address;
+
+                        // Spawn a new task to call `ping_all` asynchronously
+                        tokio::spawn(async move {
+                            let _ = Self::ping_all(
+                                node_name_clone,
+                                encryption_secret_key_clone,
+                                identity_secret_key_clone,
+                                peers_clone,
+                                db_clone,
+                                identity_manager_clone,
+                                listen_address_clone,
+                            ).await;
+                        });
+                    },
+                    // check_peers = check_peers_future => self.connect_new_peers().await,
                     command = commands_future => {
                         match command {
-                            Some(NodeCommand::Shutdown) => {
-                                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
-                            // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
-                                break;
+                            Some(command) => {
+                                // Spawn a new task for each command to handle it concurrently
+                                    match command {
+                                        // NodeCommand::Shutdown => {
+                                        //     shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
+                                        //     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
+                                        // },
+                                        NodeCommand::PingAll => {
+                                            let peers_clone = self.peers.clone();
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let listen_address_clone = self.listen_address;
+                                            tokio::spawn(async move {
+                                                let _ = Self::ping_all(
+                                                    node_name_clone,
+                                                    encryption_secret_key_clone,
+                                                    identity_secret_key_clone,
+                                                    peers_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    listen_address_clone,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::GetPublicKeys(sender) => {
+                                            let identity_public_key = self.identity_public_key;
+                                            let encryption_public_key = self.encryption_public_key;
+                                            tokio::spawn(async move {
+                                                let _ = Node::send_public_keys(
+                                                    identity_public_key,
+                                                    encryption_public_key,
+                                                    sender,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::IdentityNameToExternalProfileData { name, res } => {
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            tokio::spawn(async move {
+                                                let _ = Self::handle_external_profile_data(
+                                                    identity_manager_clone,
+                                                    name,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::SendOnionizedMessage { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_handle_send_onionized_message(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    identity_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::FetchLastMessages { limit, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::fetch_and_send_last_messages(
+                                                    db_clone,
+                                                    limit,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::GetAllSubidentitiesDevicesAndAgents(res) => {
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_get_all_subidentities_devices_and_agents(
+                                                    identity_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res } => {
+                                            let db = self.db.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_create_and_send_registration_code(
+                                                    db,
+                                                    permissions,
+                                                    code_type,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_get_last_messages_from_inbox(
+                                                    db_clone,
+                                                    inbox_name,
+                                                    limit,
+                                                    offset_key,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_mark_as_read_up_to(
+                                                    db_clone,
+                                                    inbox_name,
+                                                    up_to_time,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_get_last_unread_messages_from_inbox(
+                                                    db_clone,
+                                                    inbox_name,
+                                                    limit,
+                                                    offset,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res } => {
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_add_inbox_permission(
+                                                    identity_manager_clone,
+                                                    db_clone,
+                                                    inbox_name,
+                                                    perm_type,
+                                                    identity,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res } => {
+                                            let identity_manager_clone = Arc::clone(&self.identity_manager);
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_remove_inbox_permission(
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    inbox_name,
+                                                    perm_type,
+                                                    identity,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res } => {
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let db_clone = self.db.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::has_inbox_permission(
+                                                    identity_manager_clone,
+                                                    db_clone,
+                                                    inbox_name,
+                                                    perm_type,
+                                                    identity,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::CreateJob { shinkai_message, res } => {
+                                            let job_manager_clone = self.job_manager.clone().unwrap();
+                                            let db_clone = self.db.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_create_new_job(
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    job_manager_clone,
+                                                    shinkai_message,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::JobMessage { shinkai_message, res } => {
+                                            let job_manager_clone = self.job_manager.clone().unwrap();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_job_message(
+                                                    job_manager_clone,
+                                                    shinkai_message,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::AddAgent { agent, profile, res } => {
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let db_clone = self.db.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_add_agent(
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    agent,
+                                                    &profile,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::AvailableAgents { full_profile_name, res } => {
+                                            let db_clone = self.db.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_available_agents(
+                                                    db_clone,
+                                                    &node_name_clone,
+                                                    full_profile_name,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::LocalScanOllamaModels { res } => {
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_scan_ollama_models(
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::AddOllamaModels { models, res } => {
+                                            let db_clone = self.db.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_add_ollama_models(
+                                                    db_clone,
+                                                    &node_name_clone,
+                                                    identity_manager_clone,
+                                                    models,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APICreateRegistrationCode { msg, res } => {
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_create_and_send_registration_code(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIUseRegistrationCode { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vec_fs_clone = self.vector_fs.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let first_device_needs_registration_code = self.first_device_needs_registration_code;
+                                            let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            let identity_public_key_clone = self.identity_public_key;
+                                            let initial_agents_clone = self.initial_agents.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_handle_registration_code_usage(
+                                                    db_clone,
+                                                    vec_fs_clone,
+                                                    node_name_clone,
+                                                    encryption_secret_key_clone,
+                                                    first_device_needs_registration_code,
+                                                    embedding_generator_clone,
+                                                    identity_manager_clone,
+                                                    encryption_public_key_clone,
+                                                    identity_public_key_clone,
+                                                    initial_agents_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIGetAllSubidentities { res } => {
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_all_profiles(
+                                                    identity_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIGetLastMessagesFromInbox { msg, res } => {
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_last_messages_from_inbox(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res } => {
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_last_unread_messages_from_inbox(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIMarkAsReadUpTo { msg, res } => {
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_mark_as_read_up_to(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APICreateJob { msg, res } => {
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let job_manager_clone = self.job_manager.clone().unwrap();
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_create_new_job(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    job_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetAllInboxesForProfile { msg, res } => self.api_get_all_inboxes_for_profile(msg, res).await,
+                                        NodeCommand::APIGetAllInboxesForProfile { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_all_inboxes_for_profile(
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddAgent { msg, res } => self.api_add_agent(msg, res).await,
+                                        NodeCommand::APIAddAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIJobMessage { msg, res } => self.api_job_message(msg, res).await,
+                                        NodeCommand::APIJobMessage { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let job_manager_clone = self.job_manager.clone().unwrap();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_job_message(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    job_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAvailableAgents { msg, res } => self.api_available_agents(msg, res).await,
+                                        NodeCommand::APIAvailableAgents { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_available_agents(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res } => self.api_create_files_inbox_with_symmetric_key(msg, res).await,
+                                        NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_create_files_inbox_with_symmetric_key(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    encryption_public_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetFilenamesInInbox { msg, res } => self.api_get_filenames_in_inbox(msg, res).await,
+                                        NodeCommand::APIGetFilenamesInInbox { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_filenames_in_inbox(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    encryption_public_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res } => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await,
+                                        NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_file_to_inbox_with_symmetric_key(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    filename,
+                                                    file,
+                                                    public_key,
+                                                    encrypted_nonce,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => self.api_get_all_smart_inboxes_for_profile(msg, res).await,
+                                        NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_all_smart_inboxes_for_profile(
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUpdateSmartInboxName { msg, res } => self.api_update_smart_inbox_name(msg, res).await,
+                                        NodeCommand::APIUpdateSmartInboxName { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_update_smart_inbox_name(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUpdateJobToFinished { msg, res } => self.api_update_job_to_finished(msg, res).await,
+                                        NodeCommand::APIUpdateJobToFinished { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_update_job_to_finished(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIPrivateDevopsCronList { res } => self.api_private_devops_cron_list(res).await,
+                                        NodeCommand::APIPrivateDevopsCronList { res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_private_devops_cron_list(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddToolkit { msg, res } => self.api_add_toolkit(msg, res).await,
+                                        NodeCommand::APIAddToolkit { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let js_toolkit_executor_remote = self.js_toolkit_executor_remote.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_toolkit(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    js_toolkit_executor_remote,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIListToolkits { msg, res } => self.api_list_toolkits(msg, res).await,
+                                        NodeCommand::APIListToolkits { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_list_toolkits(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIChangeNodesName { msg, res } => self.api_change_nodes_name(msg, res).await,
+                                        NodeCommand::APIChangeNodesName { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let encryption_public_key_clone = self.encryption_public_key;
+                                            let identity_public_key_clone = self.identity_public_key;
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_change_nodes_name(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    encryption_public_key_clone,
+                                                    identity_public_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIIsPristine { res } => self.api_is_pristine(res).await,
+                                        NodeCommand::APIIsPristine { res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Self::api_is_pristine(db_clone, res).await;
+                                            });
+                                        },
+                                        // NodeCommand::IsPristine { res } => self.local_is_pristine(res).await,
+                                        NodeCommand::IsPristine { res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Self::local_is_pristine(db_clone, res).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => self.api_get_last_messages_from_inbox_with_branches(msg, res).await,
+                                        NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_last_messages_from_inbox_with_branches(
+                                                    encryption_secret_key_clone,
+                                                    db_clone,
+                                                    identity_manager_clone,
+                                                    node_name_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res } => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
+                                        NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_get_last_messages_from_inbox_with_branches(
+                                                    db_clone,
+                                                    inbox_name,
+                                                    limit,
+                                                    offset_key,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
+                                        NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_retrieve_path_simplified_json(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    ext_subscription_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
+                                        NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let embedding_generator_clone = self.embedding_generator.clone();
+                                            let unstructured_api_clone = self.unstructured_api.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_convert_files_and_save_to_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    Arc::new(embedding_generator_clone),
+                                                    Arc::new(unstructured_api_clone),
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
+                                        NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_retrieve_vector_search_simplified_json(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSSearchItems { msg, res } => self.api_vec_fs_search_items(msg, res).await,
+                                        NodeCommand::APIVecFSSearchItems { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_search_items(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSCreateFolder { msg, res } => self.api_vec_fs_create_folder(msg, res).await,
+                                        NodeCommand::APIVecFSCreateFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_create_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSMoveItem { msg, res } => self.api_vec_fs_move_item(msg, res).await,
+                                        NodeCommand::APIVecFSMoveItem { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_move_item(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSCopyItem { msg, res } => self.api_vec_fs_copy_item(msg, res).await,
+                                        NodeCommand::APIVecFSCopyItem { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_copy_item(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSMoveFolder { msg, res } => self.api_vec_fs_move_folder(msg, res).await,
+                                        NodeCommand::APIVecFSMoveFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_move_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSCopyFolder { msg, res } => self.api_vec_fs_copy_folder(msg, res).await,
+                                        NodeCommand::APIVecFSCopyFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_copy_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => self.api_vec_fs_retrieve_vector_resource(msg, res).await,
+                                        NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_retrieve_vector_resource(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSDeleteFolder { msg, res } => self.api_vec_fs_delete_folder(msg, res).await,
+                                        NodeCommand::APIVecFSDeleteFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_delete_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSDeleteItem { msg, res } => self.api_vec_fs_delete_item(msg, res).await,
+                                        NodeCommand::APIVecFSDeleteItem { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_delete_item(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAvailableSharedItems { msg, res } => self.api_subscription_available_shared_items(msg, res).await,
+                                        NodeCommand::APIAvailableSharedItems { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_available_shared_items(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    my_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAvailableSharedItemsOpen { msg, res } => self.api_subscription_available_shared_items_open(msg, res).await,
+                                        NodeCommand::APIAvailableSharedItemsOpen { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_available_shared_items_open(
+                                                    node_name_clone,
+                                                    ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APICreateShareableFolder { msg, res } => self.api_subscription_create_shareable_folder(msg, res).await,
+                                        NodeCommand::APICreateShareableFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_create_shareable_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUpdateShareableFolder { msg, res } => self.api_subscription_update_shareable_folder(msg, res).await,
+                                        NodeCommand::APIUpdateShareableFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_update_shareable_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUnshareFolder { msg, res } => self.api_subscription_unshare_folder(msg, res).await,
+                                        NodeCommand::APIUnshareFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_unshare_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APISubscribeToSharedFolder { msg, res } => self.api_subscription_subscribe_to_shared_folder(msg, res).await,
+                                        NodeCommand::APISubscribeToSharedFolder { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_subscribe_to_shared_folder(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    my_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIMySubscriptions { msg, res } => self.api_subscription_my_subscriptions(msg, res).await,
+                                        NodeCommand::APIMySubscriptions { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_subscription_my_subscriptions(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIUnsubscribe { msg, res } => self.api_unsubscribe_my_subscriptions(msg, res).await, 
+                                        NodeCommand::APIUnsubscribe { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let my_subscription_manager_clone = self.my_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_unsubscribe_my_subscriptions(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    my_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetMySubscribers { msg, res } => self.api_get_my_subscribers(msg, res).await,
+                                        NodeCommand::APIGetMySubscribers { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_my_subscribers(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        _ => (),
+                                    }
                             },
-                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                            Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
-                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg, res }) => self.api_handle_send_onionized_message(msg, res).await?,
-                            Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
-                            Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::GetAllSubidentitiesDevicesAndAgents(res)) => self.local_get_all_subidentities_devices_and_agents(res).await,
-                            Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
-                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { shinkai_message, res: _ }) => self.internal_job_message(shinkai_message).await?,
-                            Some(NodeCommand::AddAgent { agent, profile, res }) => self.local_add_agent(agent, &profile, res).await,
-                            Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
-                            Some(NodeCommand::LocalScanOllamaModels { res }) => self.local_scan_ollama_models(res).await,
-                            Some(NodeCommand::AddOllamaModels { models, res }) => self.local_add_ollama_models(models, res).await,
-                            // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
-                            // API Endpoints
-                            Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
-                            Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
-                            Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
-                            Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
-                            Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
-                            // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
-                            // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
-                            Some(NodeCommand::APICreateJob { msg, res }) => self.api_create_new_job(msg, res).await?,
-                            Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
-                            Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
-                            Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
-                            Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
-                            Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
-                            Some(NodeCommand::APIGetFilenamesInInbox { msg, res }) => self.api_get_filenames_in_inbox(msg, res).await?,
-                            Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
-                            Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
-                            Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
-                            Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
-                            Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
-                            Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
-                            Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
-                            Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
-                            Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
-                            Some(NodeCommand::IsPristine { res }) => self.local_is_pristine(res).await,
-                            Some(NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res }) => self.api_get_last_messages_from_inbox_with_branches(msg, res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
-                            // Some(NodeCommand::APIRetryMessageWithInbox { inbox_name, message_hash, res }) => self.api_retry_message_with_inbox(inbox_name, message_hash, res).await,
-                            // Some(NodeCommand::RetryMessageWithInbox { inbox_name, message_hash, res }) => self.local_retry_message_with_inbox(inbox_name, message_hash, res).await,
-                            Some(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await?,
-                            Some(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res }) => self.api_convert_files_and_save_to_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res }) => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await?,
-                            Some(NodeCommand::APIVecFSSearchItems { msg, res }) => self.api_vec_fs_search_items(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCreateFolder { msg, res }) => self.api_vec_fs_create_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSMoveItem { msg, res }) => self.api_vec_fs_move_item(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCopyItem { msg, res }) => self.api_vec_fs_copy_item(msg, res).await?,
-                            Some(NodeCommand::APIVecFSMoveFolder { msg, res }) => self.api_vec_fs_move_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSCopyFolder { msg, res }) => self.api_vec_fs_copy_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSRetrieveVectorResource { msg, res }) => self.api_vec_fs_retrieve_vector_resource(msg, res).await?,
-                            Some(NodeCommand::APIVecFSDeleteFolder { msg, res }) => self.api_vec_fs_delete_folder(msg, res).await?,
-                            Some(NodeCommand::APIVecFSDeleteItem { msg, res }) => self.api_vec_fs_delete_item(msg, res).await?,
-                            Some(NodeCommand::APIAvailableSharedItems { msg, res }) => self.api_subscription_available_shared_items(msg, res).await?,
-                            Some(NodeCommand::APIAvailableSharedItemsOpen { msg, res }) => self.api_subscription_available_shared_items_open(msg, res).await?,
-                            Some(NodeCommand::APICreateShareableFolder { msg, res }) => self.api_subscription_create_shareable_folder(msg, res).await?,
-                            Some(NodeCommand::APIUpdateShareableFolder { msg, res }) => self.api_subscription_update_shareable_folder(msg, res).await?,
-                            Some(NodeCommand::APIUnshareFolder { msg, res }) => self.api_subscription_unshare_folder(msg, res).await?,
-                            Some(NodeCommand::APISubscribeToSharedFolder { msg, res }) => self.api_subscription_subscribe_to_shared_folder(msg, res).await?,
-                            Some(NodeCommand::APIMySubscriptions { msg, res }) => self.api_subscription_my_subscriptions(msg, res).await?,
-                            _ => {},
+                            None => {
+                                // do nothing
+                            }
                         }
                     }
             };
         }
-        Ok(())
     }
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
@@ -856,20 +1890,20 @@ impl Node {
         }
     }
 
-    async fn retry_messages(&self) -> Result<(), NodeError> {
-        let db_lock = self.db.lock().await;
-        let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
-        drop(db_lock);
+    async fn retry_messages(
+        db: Arc<ShinkaiDB>,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> Result<(), NodeError> {
+        let messages_to_retry = db.get_messages_to_retry_before(None)?;
 
         for retry_message in messages_to_retry {
-            let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
+            let encrypted_secret_key = clone_static_secret_key(&encryption_secret_key);
             let save_to_db_flag = retry_message.save_to_db_flag;
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            let db_lock = self.db.lock().await;
-            db_lock.remove_message_from_retry(&retry_message.message).unwrap();
-            drop(db_lock);
+            db.remove_message_from_retry(&retry_message.message).unwrap();
 
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -882,8 +1916,8 @@ impl Node {
                 retry_message.message,
                 Arc::new(encrypted_secret_key),
                 retry_message.peer,
-                self.db.clone(),
-                self.identity_manager.clone(),
+                db.clone(),
+                identity_manager.clone(),
                 save_to_db_flag,
                 retry,
             );
@@ -913,7 +1947,7 @@ impl Node {
         message: ShinkaiMessage,
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
@@ -960,7 +1994,6 @@ impl Node {
                     );
                     // If retry is enabled, add the message to retry list on failure
                     let retry_count = retry.unwrap_or(0) + 1;
-                    let db = db.lock().await;
                     let retry_message = RetryMessage {
                         retry_count,
                         message: message.as_ref().clone(),
@@ -1037,7 +2070,7 @@ impl Node {
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
@@ -1118,7 +2151,6 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
         match db_result {
             Ok(_) => (),

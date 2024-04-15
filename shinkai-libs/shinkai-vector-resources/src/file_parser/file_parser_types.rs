@@ -1,8 +1,7 @@
 use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
 use serde::Deserialize;
 
-/// An intermediary type in between `UnstructuredElement`s and
-/// `Embedding`s/`Node`s
+/// An intermediary type for processing content into Node's held in VectorResources
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextGroup {
     pub text: String,
@@ -12,7 +11,18 @@ pub struct TextGroup {
 }
 
 impl TextGroup {
-    pub fn new() -> Self {
+    /// Creates a new instance of TextGroup
+    pub fn new(text: String, page_numbers: Vec<u32>, sub_groups: Vec<TextGroup>, embedding: Option<Embedding>) -> Self {
+        TextGroup {
+            text,
+            page_numbers,
+            sub_groups,
+            embedding,
+        }
+    }
+
+    /// Creates a new instance of TextGroup with default empty values.
+    pub fn new_empty() -> Self {
         TextGroup {
             text: String::new(),
             page_numbers: Vec::new(),

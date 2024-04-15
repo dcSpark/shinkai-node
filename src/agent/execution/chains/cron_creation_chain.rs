@@ -227,7 +227,7 @@ impl JobManager {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     pub async fn start_cron_creation_chain(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         full_job: Job,
         job_task: String,
         agent: SerializedAgent,

@@ -32,8 +32,8 @@ impl JobManager {
     /// Returns the final String result from the inferencing, and a new execution context.
     #[instrument(skip(generator, vector_fs, db))]
     pub async fn inference_chain_router(
-        db: Arc<Mutex<ShinkaiDB>>,
-        vector_fs: Arc<Mutex<VectorFS>>,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -89,7 +89,7 @@ impl JobManager {
     // Could it be based on the first message of the Job?
     #[instrument(skip(db))]
     pub async fn alt_inference_chain_router(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -145,7 +145,7 @@ impl JobManager {
 
     #[instrument(skip(db, chosen_chain))]
     pub async fn cron_inference_chain_router_summary(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         task_description: String,

@@ -1,21 +1,14 @@
 use super::{
-    vector_fs_error::VectorFSError,
     vector_fs_permissions::PermissionsIndex,
     vector_fs_types::{LastReadIndex, SubscriptionsIndex},
 };
-use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
-use chrono::{DateTime, Utc};
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     embeddings::Embedding,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
-    resource_errors::VRError,
     source::DistributionInfo,
-    vector_resource::{
-        BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSourceReference, VectorResource,
-        VectorResourceCore,
-    },
+    vector_resource::{MapVectorResource, VRSourceReference, VectorResourceCore},
 };
 use std::collections::HashMap;
 
@@ -29,7 +22,7 @@ pub struct VectorFSInternals {
 }
 
 impl VectorFSInternals {
-    pub fn new(
+    pub async fn new(
         node_name: ShinkaiName,
         default_embedding_model_used: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -47,7 +40,7 @@ impl VectorFSInternals {
         );
         Self {
             fs_core_resource: core_resource,
-            permissions_index: PermissionsIndex::new(node_name),
+            permissions_index: PermissionsIndex::new(node_name).await,
             subscription_index: SubscriptionsIndex::new_empty(),
             supported_embedding_models,
             last_read_index: LastReadIndex::new_empty(),
@@ -56,12 +49,12 @@ impl VectorFSInternals {
 
     /// IMPORTANT: This creates a barebones empty struct, intended to be used for tests
     /// that do not require a real filled out internals struct.
-    pub fn new_empty() -> Self {
+    pub async fn new_empty() -> Self {
         let node_name = ShinkaiName::from_node_name("@@node1_test.shinkai".to_string()).unwrap();
         let default_embedding_model =
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
         let supported_embedding_models = vec![default_embedding_model.clone()];
-        Self::new(node_name, default_embedding_model, supported_embedding_models)
+        Self::new(node_name, default_embedding_model, supported_embedding_models).await
     }
 
     /// Returns the default Embedding model used by the profile's VecFS.

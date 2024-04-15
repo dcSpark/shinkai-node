@@ -17,7 +17,6 @@ pub enum Topic {
     AllMessages,
     Toolkits,
     MessagesToRetry,
-    TempFilesInbox,
     AnyQueuesPrefixed,
     CronQueues,
     NodeAndUsers,
@@ -32,7 +31,6 @@ impl Topic {
             Self::AllMessages => "all_messages",
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "messages_to_retry",
-            Self::TempFilesInbox => "temp_files_inbox",
             Self::AnyQueuesPrefixed => "any_queues_prefixed",
             Self::CronQueues => "cron_queues",
             Self::NodeAndUsers => "node_and_users",
@@ -74,7 +72,6 @@ impl ShinkaiDB {
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
-                Topic::TempFilesInbox.as_str().to_string(),
                 Topic::AnyQueuesPrefixed.as_str().to_string(),
                 Topic::CronQueues.as_str().to_string(),
                 Topic::NodeAndUsers.as_str().to_string(),
@@ -87,7 +84,6 @@ impl ShinkaiDB {
                 "inbox" => Some(47),
                 "node_and_users" => Some(47),
                 "all_messages" => Some(47),
-                "temp_files_inbox" => Some(47),
                 "subscriptions" => Some(47),
                 "any_queues_prefixed" => Some(24),
                 _ => None, // No prefix extractor for other CFs
@@ -123,16 +119,20 @@ impl ShinkaiDB {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
-        cf_opts.set_log_level(LogLevel::Debug);
+        
+        // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
+        cf_opts.set_enable_blob_files(true);
+        cf_opts.set_min_blob_size(1024 * 100); // 100kb
+        cf_opts.set_max_total_wal_size(250 * 1024 * 1024); // 250MB
 
         cf_opts.set_allow_concurrent_memtable_write(true);
         cf_opts.set_enable_write_thread_adaptive_yield(true);
         cf_opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB
+        cf_opts.set_keep_log_file_num(10);
         cf_opts.set_max_write_buffer_number(3);
         cf_opts.set_min_write_buffer_number_to_merge(1);
         cf_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
         cf_opts.increase_parallelism(std::cmp::max(1, num_cpus::get() as i32 / 2));
-        cf_opts.enable_statistics();
 
         let mut block_based_options = rocksdb::BlockBasedOptions::default();
         let cache_size = 64 * 1024 * 1024; // 64 MB for Block Cache
@@ -149,6 +149,11 @@ impl ShinkaiDB {
 
         if std::env::var("DEBUG_TIMING").unwrap_or_default() == "true" {
             cf_opts.set_db_log_dir("./rocksdb_logs");
+            cf_opts.enable_statistics();
+        }
+
+        if std::env::var("ROCKSDB_LOG_LEVEL").unwrap_or_default() == "debug" {
+            cf_opts.set_log_level(LogLevel::Debug);
         }
 
         cf_opts
@@ -176,8 +181,9 @@ impl ShinkaiDB {
         self.db.put_cf(cf, b"needs_reset", b"true")
     }
 
-    pub fn set_ws_manager(&mut self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
-        self.ws_manager = Some(ws_manager);
+    pub fn set_ws_manager(&self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
+        // TODO: off for now
+        // self.ws_manager = Some(ws_manager);
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping

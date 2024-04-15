@@ -25,6 +25,7 @@ pub enum SubscriberManagerError {
     FileSystemUnavailable,
     OperationFailed(String),
     IdentityProfileNotFound(String),
+    SerializationError(String),
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -50,6 +51,7 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::FileSystemUnavailable => write!(f, "File system unavailable"),
             SubscriberManagerError::OperationFailed(e) => write!(f, "Operation failed: {}", e),
             SubscriberManagerError::IdentityProfileNotFound(e) => write!(f, "Identity profile not found: {}", e),
+            SubscriberManagerError::SerializationError(e) => write!(f, "Serialization error: {}", e),
         }
     }
 }

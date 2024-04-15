@@ -181,17 +181,27 @@ impl VRPack {
     }
 
     /// Adds a VRKai into the VRPack inside of the specified parent path (folder or root).
-    pub fn insert_vrkai(&mut self, vrkai: &VRKai, parent_path: VRPath) -> Result<(), VRError> {
+    pub fn insert_vrkai(
+        &mut self,
+        vrkai: &VRKai,
+        parent_path: VRPath,
+        update_merkle_hashes: bool,
+    ) -> Result<(), VRError> {
         let resource_name = vrkai.resource.as_trait_object().name().to_string();
         let embedding = vrkai.resource.as_trait_object().resource_embedding().clone();
         let metadata = None;
         let enc_vrkai = vrkai.encode_as_base64()?;
         let mut node = Node::new_text(resource_name.clone(), enc_vrkai, metadata, &vec![]);
+        // We always take the merkle root of the resource, no matter what
         node.merkle_hash = Some(vrkai.resource.as_trait_object().get_merkle_root()?);
 
-        self.resource
-            .as_trait_object_mut()
-            .insert_node_at_path(parent_path, resource_name, node, embedding)?;
+        self.resource.as_trait_object_mut().insert_node_at_path(
+            parent_path,
+            resource_name,
+            node,
+            embedding,
+            update_merkle_hashes,
+        )?;
 
         // Add the embedding model used to the hashmap
         let model = vrkai.resource.as_trait_object().embedding_model_used();
@@ -222,6 +232,7 @@ impl VRPack {
             folder_name.to_string(),
             node,
             embedding,
+            true,
         )?;
 
         self.folder_count += 1;
@@ -245,9 +256,21 @@ impl VRPack {
         Self::parse_node_to_vrkai(&node.node)
     }
 
+    /// Fetches the merkle hash of the folder at the specified path.
+    pub fn get_folder_merkle_hash(&self, path: VRPath) -> Result<String, VRError> {
+        let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
+        match node.node.content {
+            NodeContent::Resource(resource) => Ok(resource.as_trait_object().get_merkle_root()?),
+            _ => Err(VRError::InvalidNodeType(format!(
+                "Node is not a folder: {} ",
+                path.format_to_string()
+            ))),
+        }
+    }
+
     /// Removes a node (VRKai or folder) from the VRPack at the specified path.
     pub fn remove_at_path(&mut self, path: VRPath) -> Result<(), VRError> {
-        let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path)?;
+        let removed_node = self.resource.as_trait_object_mut().remove_node_at_path(path, true)?;
         match removed_node.0.content {
             NodeContent::Text(vrkai_base64) => {
                 // Decrease the embedding model count in the hashmap
@@ -679,19 +702,9 @@ impl VRPack {
     /// Note: Intended for internal use only (used by VectorFS).
     /// Sets the Merkle hash of a folder node at the specified path.
     pub fn _set_folder_merkle_hash(&mut self, path: VRPath, merkle_hash: String) -> Result<(), VRError> {
-        self.resource.as_trait_object_mut().mutate_node_at_path(
-            path,
-            &mut |node: &mut Node, _embedding: &mut Embedding| {
-                if let NodeContent::Resource(resource) = &mut node.content {
-                    resource
-                        .as_trait_object_mut()
-                        .set_merkle_root(merkle_hash.clone())
-                        .map_err(|_| VRError::InvalidNodeType("Expected a folder node".to_string()))?;
-                    Ok(())
-                } else {
-                    Err(VRError::InvalidNodeType("Expected a folder node".to_string()))
-                }
-            },
-        )
+        self.resource
+            .as_trait_object_mut()
+            ._set_resource_merkle_hash_at_path(path, merkle_hash)?;
+        Ok(())
     }
 }

@@ -5,9 +5,6 @@ use super::fs_db::{FSTopic, VectorFSDB};
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_resource::MapVectorResource;
-use shinkai_vector_resources::vector_resource::VRSourceReference;
-use std::collections::HashMap;
 
 impl VectorFSDB {
     /// Commits saving the supplied VectorFS Internals to the write batch
@@ -43,11 +40,12 @@ impl VectorFSDB {
     fn _prepare_profile_fs_internals(
         &self,
         fs_internals: &VectorFSInternals,
-    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), VectorFSError> {
+    ) -> Result<(Vec<u8>, &str), VectorFSError> {
         // Convert JSON to bytes for storage
         let json = fs_internals.to_json()?;
+        // eprintln!("json: {:?}", json);
         let bytes = json.as_bytes().to_vec();
-        let cf = self.get_cf_handle(FSTopic::FileSystem)?;
+        let cf = FSTopic::FileSystem.as_str();
 
         Ok((bytes, cf))
     }
@@ -66,7 +64,7 @@ impl VectorFSDB {
     }
 
     /// Creates and saves the profile's VectorFSInternals if one does not exist in the DB.
-    pub fn init_profile_fs_internals(
+    pub async fn init_profile_fs_internals(
         &self,
         profile: &ShinkaiName,
         default_embedding_model: EmbeddingModelType,
@@ -75,7 +73,7 @@ impl VectorFSDB {
         if let Err(_) = self.get_profile_fs_internals(profile) {
             // Extract just the node name from the profile name
             let fs_internals =
-                VectorFSInternals::new(profile.clone(), default_embedding_model, supported_embedding_models);
+                VectorFSInternals::new(profile.clone(), default_embedding_model, supported_embedding_models).await;
 
             self.save_profile_fs_internals(&fs_internals, profile)?;
         }

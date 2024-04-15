@@ -1,6 +1,8 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::source::VRSourceReference;
+use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
 use shinkai_vector_resources::vector_resource::vrkai::VRKai;
@@ -50,7 +52,7 @@ fn default_vr_kai() -> VRKai {
 fn default_vr_pack() -> VRPack {
     let vrkai = default_vr_kai();
     let mut vrpack = VRPack::new_empty("");
-    vrpack.insert_vrkai(&vrkai, VRPath::root());
+    vrpack.insert_vrkai(&vrkai, VRPath::root(), true);
     vrpack
 }
 
@@ -597,7 +599,7 @@ fn test_manual_resource_vector_search() {
 
     // Check that no node is retrieved after removing it by path
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
-    new_map_resource.remove_node_at_path(test_path.clone());
+    new_map_resource.remove_node_at_path(test_path.clone(), true);
     let res = new_map_resource.retrieve_node_at_path(test_path.clone());
     assert!(!res.is_ok());
 
@@ -658,7 +660,7 @@ fn test_manual_resource_vector_search() {
 
     // Pop the previously appended node
     let path = VRPath::from_string("/3/doc_key/").unwrap();
-    fruit_doc.pop_node_at_path(path).unwrap();
+    fruit_doc.pop_node_at_path(path, true).unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
     let res = fruit_doc.retrieve_node_at_path(test_path.clone());
     assert_eq!(res.is_ok(), false);
@@ -694,7 +696,7 @@ fn test_manual_resource_vector_search() {
     );
 
     // Pop the previously appended node
-    fruit_doc.pop_node_at_path(path).unwrap();
+    fruit_doc.pop_node_at_path(path, true).unwrap();
 
     // Retrieve the Merkle hash again and assert it's the same as the original
     let reverted_merkle_hash = fruit_doc.get_merkle_root().unwrap();
@@ -904,4 +906,35 @@ async fn test_embeddings_coherence() {
     assert!(doc.verify_internal_embeddings_coherence(&generator, 0.5).await.is_ok());
     assert!(doc.verify_internal_embeddings_coherence(&generator, 0.0).await.is_ok());
     assert!(doc.verify_internal_embeddings_coherence(&generator, 23.4).await.is_ok());
+}
+
+#[tokio::test]
+async fn local_txt_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "canada.txt";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name.clone())).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Who's donnacona?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.3);
+    assert!(results[0].node.get_text_content().unwrap().contains("Donnacona"));
+    for result in results {
+        // println!("{}:{}", result.score, result.node.get_text_content().unwrap());
+        assert!(result.node.get_text_content().unwrap().len() > 200);
+    }
 }

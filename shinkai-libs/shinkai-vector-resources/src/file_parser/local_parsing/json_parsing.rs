@@ -6,12 +6,7 @@ use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
-    pub fn process_json_file(
-        file_buffer: Vec<u8>,
-        file_name: String,
-        max_node_text_size: u64,
-        source: VRSourceReference,
-    ) -> Result<Vec<TextGroup>, VRError> {
+    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
         let json_string = String::from_utf8(file_buffer.clone()).map_err(|_| VRError::FailedJSONParsing)?;
         let json: JsonValue = serde_json::from_str(&json_string)?;
 
@@ -25,7 +20,7 @@ impl LocalFileParser {
             JsonValue::Object(map) => map
                 .iter()
                 .map(|(key, value)| {
-                    let mut text_group = TextGroup::new();
+                    let mut text_group = TextGroup::new_empty();
                     text_group.text = key.clone();
                     match value {
                         JsonValue::Object(_) | JsonValue::Array(_) => {
@@ -79,11 +74,11 @@ impl LocalFileParser {
 //                 match value {
 //                     JsonValue::Object(_) | JsonValue::Array(_) => {
 //                         if !accumulated_string.is_empty() {
-//                             let mut text_group = TextGroup::new();
+//                             let mut text_group = TextGroup::new_empty();
 //                             text_group.text = std::mem::take(&mut accumulated_string);
 //                             text_groups.push(text_group);
 //                         }
-//                         let mut text_group = TextGroup::new();
+//                         let mut text_group = TextGroup::new_empty();
 //                         text_group.text = key.clone();
 //                         text_group.sub_groups = Self::process_container_json_value(value, max_node_text_size);
 //                         text_groups.push(text_group);
@@ -91,7 +86,7 @@ impl LocalFileParser {
 //                         let content = format!("{}: {}", key, value.to_string());
 //                         if accumulated_string.len() + content.len() > max_node_text_size as usize {
 //                             if !accumulated_string.is_empty() {
-//                                 let mut text_group = TextGroup::new();
+//                                 let mut text_group = TextGroup::new_empty();
 //                                 text_group.text = std::mem::take(&mut accumulated_string);
 //                                 text_groups.push(text_group);
 //                             }
@@ -103,7 +98,7 @@ impl LocalFileParser {
 //                                 }
 //                                 accumulated_string.push_str(&part);
 //                                 // If the part was too large and had to be split, add the first part as a TextGroup
-//                                 let mut text_group = TextGroup::new();
+//                                 let mut text_group = TextGroup::new_empty();
 //                                 text_group.text = std::mem::take(&mut accumulated_string);
 //                                 text_groups.push(text_group);
 //                             } else {
@@ -125,7 +120,7 @@ impl LocalFileParser {
 //     }
 
 //     if !accumulated_string.is_empty() {
-//         let mut text_group = TextGroup::new();
+//         let mut text_group = TextGroup::new_empty();
 //         text_group.text = accumulated_string;
 //         text_groups.push(text_group);
 //     }

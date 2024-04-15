@@ -21,7 +21,7 @@ use shinkai_message_primitives::{
         shinkai_message_error::ShinkaiMessageError,
         shinkai_message_extension::EncryptionStatus,
         shinkai_message_schemas::{
-            APISubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
+            APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus
         },
     },
     shinkai_utils::{
@@ -52,7 +52,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -144,7 +144,10 @@ pub async fn handle_based_on_message_content_and_encryption(
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Debug,
-                &format!("{} {} > ACK from {:?}", my_node_profile_name, receiver_address, unsafe_sender_address),
+                &format!(
+                    "{} {} > ACK from {:?}",
+                    my_node_profile_name, receiver_address, unsafe_sender_address
+                ),
             );
             // Currently, we are not saving ACKs received to the DB.
             Ok(())
@@ -153,7 +156,10 @@ pub async fn handle_based_on_message_content_and_encryption(
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Debug,
-                &format!("{} {} > Not currently encrypted", my_node_profile_name, receiver_address),
+                &format!(
+                    "{} {} > Not currently encrypted",
+                    my_node_profile_name, receiver_address
+                ),
             );
             handle_network_message_cases(
                 message,
@@ -230,7 +236,7 @@ pub async fn handle_ping(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
@@ -259,7 +265,7 @@ pub async fn handle_default_encryption(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
@@ -267,7 +273,10 @@ pub async fn handle_default_encryption(
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            eprintln!("{} {} > Successfully decrypted message outer layer", my_node_profile_name, receiver_address);
+            eprintln!(
+                "{} {} > Successfully decrypted message outer layer",
+                my_node_profile_name, receiver_address
+            );
             let message = decrypted_message.get_message_content();
             match message {
                 Ok(message_content) => {
@@ -339,7 +348,7 @@ pub async fn handle_network_message_cases(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
@@ -843,6 +852,115 @@ pub async fn handle_network_message_cases(
                         }
                     }
                 }
+                MessageSchemaType::UnsubscribeToSharedFolder => {
+                    let streamer_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                    let requester_node_with_profile =
+                        ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!(
+                            "{} > Unsubscribe Request from: {:?} to: {:?}",
+                            receiver_address, streamer_node_with_profile, requester_node_with_profile
+                        ),
+                    );
+
+                    // Extract the shared folder path from the message content
+                    let json_content = message.get_message_content().unwrap_or("".to_string());
+
+                    match serde_json::from_str::<APIUnsubscribeToSharedFolder>(&json_content) {
+                        Ok(response) => {
+                            // Call unsubscribe_from_shared_folder
+                            let mut external_subscriber_manager = external_subscription_manager.lock().await;
+                            match external_subscriber_manager
+                                .unsubscribe_from_shared_folder(
+                                    requester_node_with_profile.clone(),
+                                    streamer_node_with_profile.clone(),
+                                    response.path.clone(),
+                                )
+                                .await
+                            {
+                                Ok(result) => {
+                                    if result {
+                                        shinkai_log(
+                                            ShinkaiLogOption::Network,
+                                            ShinkaiLogLevel::Debug,
+                                            "Successfully unsubscribed from shared folder.",
+                                        );
+                                    } else {
+                                        shinkai_log(
+                                            ShinkaiLogOption::Network,
+                                            ShinkaiLogLevel::Error,
+                                            "Failed to unsubscribe from shared folder.",
+                                        );
+                                    }
+
+                                    let status = if result {
+                                        SubscriptionResponseStatus::Success
+                                    } else {
+                                        SubscriptionResponseStatus::Failure
+                                    };
+
+                                    let response = SubscriptionGenericResponse {
+                                        subscription_details: format!(
+                                            "Unsubscribing to {} Successful",
+                                            response.path.clone()
+                                        ),
+                                        status,
+                                        shared_folder: response.path.clone(),
+                                        error: None,
+                                        metadata: None,
+                                    };
+
+                                    let msg = ShinkaiMessageBuilder::p2p_subscription_generic_response(
+                                        response,
+                                        MessageSchemaType::UnsubscribeToSharedFolderResponse,
+                                        clone_static_secret_key(my_encryption_secret_key),
+                                        clone_signature_secret_key(my_signature_secret_key),
+                                        sender_encryption_pk,
+                                        my_node_profile_name.to_string(),
+                                        streamer_node_with_profile
+                                            .get_profile_name_string()
+                                            .unwrap_or("".to_string()),
+                                        requester_node_with_profile.get_node_name_string(),
+                                        requester_node_with_profile
+                                            .get_profile_name_string()
+                                            .unwrap_or("".to_string()),
+                                    )
+                                    .unwrap();
+
+                                    Node::send(
+                                        msg,
+                                        Arc::new(clone_static_secret_key(my_encryption_secret_key)),
+                                        (sender_address, requester_node_with_profile.get_node_name_string()),
+                                        maybe_db.clone(),
+                                        maybe_identity_manager.clone(),
+                                        false,
+                                        None,
+                                    );
+                                }
+                                Err(e) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Error unsubscribing from shared folder: {:?}", e),
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!(
+                                    "UnsubscribeToSharedFolder Failed to deserialize JSON to SubscriptionGenericResponse: {}",
+                                    e
+                                ),
+                            );
+                        }
+                    }
+                }
                 _ => {
                     // Ignore other schemas
                     shinkai_log(
@@ -886,7 +1004,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     _: Arc<Mutex<MySubscriptionsManager>>,
     _: Arc<Mutex<ExternalSubscriberManager>>,
@@ -929,7 +1047,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<Mutex<ShinkaiDB>>,
+    maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {

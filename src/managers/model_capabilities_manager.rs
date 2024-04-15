@@ -94,22 +94,21 @@ pub enum ModelPrivacy {
 
 // Struct for AgentsCapabilitiesManager
 pub struct ModelCapabilitiesManager {
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub profile: ShinkaiName,
     pub agents: Vec<SerializedAgent>,
 }
 
 impl ModelCapabilitiesManager {
     // Constructor
-    pub async fn new(db: Weak<Mutex<ShinkaiDB>>, profile: ShinkaiName) -> Self {
+    pub async fn new(db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
         let agents = Self::get_agents(&db_arc, profile.clone()).await;
         Self { db, profile, agents }
     }
 
     // Function to get all agents from the database for a profile
-    async fn get_agents(db: &Arc<Mutex<ShinkaiDB>>, profile: ShinkaiName) -> Vec<SerializedAgent> {
-        let db = db.lock().await;
+    async fn get_agents(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedAgent> {
         db.get_agents_for_profile(profile).unwrap()
     }
 

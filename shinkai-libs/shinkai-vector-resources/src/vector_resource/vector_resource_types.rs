@@ -2,7 +2,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
-use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::DistributionInfo;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSourceReference,
@@ -265,7 +265,7 @@ impl Node {
             last_written_datetime: current_time,
             merkle_hash: None,
         };
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -295,7 +295,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -324,7 +324,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -355,7 +355,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -386,7 +386,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node._generate_merkle_hash();
+        let _ = node._generate_merkle_hash();
         node
     }
 
@@ -868,6 +868,15 @@ impl VRPath {
         self.path_ids.pop()
     }
 
+    /// Removes the first element from the path_ids and returns it as an Option.
+    pub fn front_pop(&mut self) -> Option<String> {
+        if self.path_ids.is_empty() {
+            None
+        } else {
+            Some(self.path_ids.remove(0))
+        }
+    }
+
     /// Returns a copy of the final id in the path, if it exists.
     /// This is the id of the actual node that the path points to.
     pub fn last_path_id(&self) -> Result<String, VRError> {
@@ -889,6 +898,13 @@ impl VRPath {
     pub fn pop_cloned(&self) -> Self {
         let mut new_path = self.clone();
         new_path.pop();
+        new_path
+    }
+
+    /// Returns a cloned VRPath with the first id removed from the start.
+    pub fn front_pop_cloned(&self) -> Self {
+        let mut new_path = self.clone();
+        new_path.front_pop();
         new_path
     }
 

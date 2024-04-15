@@ -18,13 +18,16 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
+};
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -66,8 +69,8 @@ pub struct SharedFolderInfo {
 }
 
 pub struct ExternalSubscriberManager {
-    pub db: Weak<Mutex<ShinkaiDB>>,
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub db: Weak<ShinkaiDB>,
+    pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
     pub my_signature_secret_key: SigningKey,
@@ -88,8 +91,8 @@ pub struct ExternalSubscriberManager {
 
 impl ExternalSubscriberManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -219,23 +222,23 @@ impl ExternalSubscriberManager {
             self.shared_folders_trees
                 .get(path)
                 .map(|value| vec![value.clone()])
-                .unwrap_or_else(Vec::new)
+                .unwrap_or_default()
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_request_state_updates(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        _: Weak<VectorFS>, // vector_fs
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         identity_manager: Weak<Mutex<IdentityManager>>,
-        shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+        _: Arc<DashMap<String, SharedFolderInfo>>, // shared_folders_tree
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-        thread_number: usize,
+        _: usize, // tread_number
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -292,7 +295,6 @@ impl ExternalSubscriberManager {
                             break; // or continue based on your error handling policy
                         }
                     };
-                    let db = db.lock().await;
                     match db.all_subscribers_subscription() {
                         Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
                         Err(e) => {
@@ -379,8 +381,8 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -462,7 +464,6 @@ impl ExternalSubscriberManager {
                 let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-                let mut vector_fs_inst = vector_fs_inst.lock().await;
 
                 let vr_path_shared_folder = VRPath::from_string(&shared_folder)
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -479,8 +480,10 @@ impl ExternalSubscriberManager {
                 let streamer = subscription_id.extract_streamer_node_with_profile()?;
                 let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
 
-                let reader = vector_fs_inst.new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())?;
-                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).unwrap();
+                let reader = vector_fs_inst
+                    .new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())
+                    .await?;
+                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).await.unwrap();
 
                 if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
                     let identity_manager = identity_manager_lock.lock().await;
@@ -561,8 +564,8 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -573,8 +576,8 @@ impl ExternalSubscriberManager {
         thread_number: usize,
         process_job: impl Fn(
                 SubscriptionWithTree,
-                Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
+                Weak<ShinkaiDB>,
+                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 EncryptionStaticKey,
@@ -753,7 +756,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
             let identities = db
                 .get_all_profiles(self.node_name.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -814,7 +816,6 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -826,8 +827,11 @@ impl ExternalSubscriberManager {
                     vr_path,
                     full_streamer_profile_subidentity.clone(),
                 )
+                .await
                 .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let results = vector_fs.find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])?;
+            let results = vector_fs
+                .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                .await?;
             eprintln!("available_shared_folders> results: {:?}", results);
 
             // Use the new function to filter results to only include top-level folders
@@ -840,7 +844,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             for (path, permission) in filtered_results {
                 let path_str = path.to_string();
@@ -907,10 +910,11 @@ impl ExternalSubscriberManager {
             .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                 "VectorFS instance is not available".to_string(),
             ))?;
-        let vector_fs = vector_fs.lock().await;
 
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        let result = vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])?;
+        let result = vector_fs
+            .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path])
+            .await?;
 
         // Checks that the permission is valid (Whitelist or Public)
         for (_, path_permission) in &result {
@@ -927,7 +931,6 @@ impl ExternalSubscriberManager {
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
         ))?;
-        let mut db = db.lock().await;
 
         db.set_folder_requirements(&path, subscription_requirement)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -948,19 +951,21 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path.clone(),
-                requester_shinkai_identity.clone(),
-            )?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path.clone(),
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Retrieve the current write permissions for the path
-            let permissions_vector =
-                vector_fs.get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])?;
+            let permissions_vector = vector_fs
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -971,11 +976,9 @@ impl ExternalSubscriberManager {
             let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Set the read permissions to Public while reusing the write permissions
-            let result = vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Public,
-                current_permissions.write_permission,
-            );
+            let result = vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Public, current_permissions.write_permission)
+                .await;
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -992,7 +995,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let mut db = db.lock().await;
 
             db.set_folder_requirements(&path, subscription_requirement)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -1028,11 +1030,11 @@ impl ExternalSubscriberManager {
                 .ok_or(SubscriberManagerError::VectorFSNotAvailable(
                     "VectorFS instance is not available".to_string(),
                 ))?;
-            let mut vector_fs = vector_fs.lock().await;
 
             // Retrieve the current permissions for the path
             let permissions_vector = vector_fs
-                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])?;
+                .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![VRPath::from_string(&path)?])
+                .await?;
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -1043,25 +1045,24 @@ impl ExternalSubscriberManager {
             let (vr_path, current_permissions) = permissions_vector.into_iter().next().unwrap();
 
             // Create a writer for the path
-            let writer = vector_fs.new_writer(
-                requester_shinkai_identity.clone(),
-                vr_path,
-                requester_shinkai_identity.clone(),
-            )?;
+            let writer = vector_fs
+                .new_writer(
+                    requester_shinkai_identity.clone(),
+                    vr_path,
+                    requester_shinkai_identity.clone(),
+                )
+                .await?;
 
             // Set the read permissions to Private while reusing the write permissions using update_permissions_recursively
-            vector_fs.update_permissions_recursively(
-                &writer,
-                ReadPermission::Private,
-                current_permissions.write_permission,
-            )?;
+            vector_fs
+                .update_permissions_recursively(&writer, ReadPermission::Private, current_permissions.write_permission)
+                .await?;
         }
         {
             // Assuming we have validated the admin and permissions, we proceed to update the DB
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let mut db = db.lock().await;
             db.remove_folder_requirements(&path)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
@@ -1139,7 +1140,6 @@ impl ExternalSubscriberManager {
         let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
             "Database instance is not available".to_string(),
         ))?;
-        let mut db = db.lock().await;
 
         match db.get_subscription_by_id(&subscription_id) {
             Ok(_) => {
@@ -1181,9 +1181,70 @@ impl ExternalSubscriberManager {
         Ok(true)
     }
 
+    /// Unsubscribe from a shared folder
+    /// This function will remove the subscription from the database, but will not remove already scheduled actions.
+    pub async fn unsubscribe_from_shared_folder(
+        &mut self,
+        requester_shinkai_identity: ShinkaiName,
+        streamer_shinkai_identity: ShinkaiName,
+        shared_folder: String,
+    ) -> Result<bool, SubscriberManagerError> {
+        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for requester".to_string()),
+        )?;
+        let streamer_profile = streamer_shinkai_identity.get_profile_name_string().ok_or(
+            SubscriberManagerError::IdentityProfileNotFound("Profile name not found for streamer".to_string()),
+        )?;
+
+        let subscription_id = SubscriptionId::new(
+            streamer_shinkai_identity.extract_node(),
+            streamer_profile.clone(),
+            shared_folder.clone(),
+            requester_shinkai_identity.extract_node(),
+            requester_profile.clone(),
+        );
+
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+
+        match db.remove_subscriber(&subscription_id) {
+            Ok(_) => {
+                // Successfully unsubscribed
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Info,
+                    &format!(
+                        "Successfully unsubscribed from shared folder: {} for subscription ID: {}",
+                        shared_folder,
+                        subscription_id.get_unique_id()
+                    ),
+                );
+
+                // Optionally, remove from the subscription_ids_are_sync map if needed
+                let subscription_id_str = subscription_id.get_unique_id().to_string();
+                self.subscription_ids_are_sync.remove(&subscription_id_str);
+
+                Ok(true)
+            }
+            Err(e) => {
+                // Handle error
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Error,
+                    &format!(
+                        "Failed to unsubscribe from shared folder: {}. Error: {:?}",
+                        shared_folder, e
+                    ),
+                );
+                Err(SubscriberManagerError::DatabaseError(e.to_string()))
+            }
+        }
+    }
+
     pub async fn create_and_send_request_updated_state(
         subscription_id: SubscriptionId,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,
@@ -1193,7 +1254,6 @@ impl ExternalSubscriberManager {
             let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             let subscription = db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
                 ShinkaiDBError::DataNotFound => SubscriberManagerError::SubscriptionNotFound(format!(
@@ -1245,6 +1305,42 @@ impl ExternalSubscriberManager {
         Ok(())
     }
 
+    pub async fn get_node_subscribers(
+        &self,
+        path: Option<String>,
+    ) -> Result<HashMap<String, Vec<ShinkaiSubscription>>, SubscriberManagerError> {
+        let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            "Database instance is not available".to_string(),
+        ))?;
+
+        let subscriptions = if let Some(ref path) = path {
+            if path != "/" {
+                // Use db.all_subscribers_for_folder when path is defined and not "/"
+                db.all_subscribers_for_folder(path)
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+            } else {
+                // When path is "/", treat it the same as if path is None
+                db.all_subscribers_subscription()
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+            }
+        } else {
+            // When path is None, get all subscriptions and then group by folder
+            db.all_subscribers_subscription()
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?
+        };
+
+        let mut subscribers_by_path: HashMap<String, Vec<ShinkaiSubscription>> = HashMap::new();
+
+        for subscription in subscriptions {
+            subscribers_by_path
+                .entry(subscription.shared_folder.clone())
+                .or_default()
+                .push(subscription);
+        }
+
+        Ok(subscribers_by_path)
+    }
+
     pub async fn subscriber_current_state_response(
         &self,
         subscription_unique_id: String,
@@ -1267,7 +1363,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            let db = db.lock().await;
 
             let subscription_id = SubscriptionId::from_unique_id(subscription_unique_id.clone());
             db.get_subscription_by_id(&subscription_id).map_err(|e| match e {
@@ -1317,7 +1412,7 @@ mod tests {
 
     #[test]
     fn test_convert_string_to_shared_folder_info() {
-        let json_str = r#"[{"path":"/shared_test_folder","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false}}]"#;
+        let json_str = r#"[{"path":"/shared_test_folder","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false, "folder_description":"Dummy description for testing purposes"}}]"#;
 
         let shared_folder_info: Vec<SharedFolderInfo> = from_str(json_str).unwrap();
 
@@ -1337,5 +1432,6 @@ mod tests {
             Some(10.0)
         );
         assert!(!subscription_requirement.is_free);
+        assert_eq!(subscription_requirement.folder_description, "Dummy description for testing purposes");
     }
 }

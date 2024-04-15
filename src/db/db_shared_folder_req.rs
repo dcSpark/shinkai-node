@@ -3,7 +3,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 
 impl ShinkaiDB {
     pub fn set_folder_requirements(
-        &mut self,
+        &self,
         path: &str,
         subscription_requirement: FolderSubscription,
     ) -> Result<(), ShinkaiDBError> {
@@ -49,7 +49,7 @@ impl ShinkaiDB {
         Ok(subscription_requirement)
     }
 
-    pub fn remove_folder_requirements(&mut self, path: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_folder_requirements(&self, path: &str) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 

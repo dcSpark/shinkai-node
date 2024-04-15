@@ -28,20 +28,19 @@ mod tests {
     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
 
-    const NUM_THREADS: usize = 1;
     const CRON_INTERVAL_TIME: u64 = 60 * 10; // it doesn't matter here
 
     #[test]
     fn setup() {
         let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(path);
     }
 
     #[tokio::test]
     async fn test_process_cron_job() {
         init_default_tracing();
         setup();
-        let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let db_weak = Arc::downgrade(&db);
         let (identity_secret_key, identity_public_key) = unsafe_deterministic_signature_keypair(0);
         let (_, encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
@@ -52,12 +51,7 @@ mod tests {
 
         {
             // add keys
-            let db_lock = db.lock().await;
-            match db_lock.update_local_node_keys(
-                node_profile_name.clone(),
-                encryption_public_key.clone(),
-                identity_public_key.clone(),
-            ) {
+            match db.update_local_node_keys(node_profile_name.clone(), encryption_public_key, identity_public_key) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
@@ -69,8 +63,6 @@ mod tests {
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         {
-            let mut db_lock = db.lock().await;
-
             let open_ai = OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string(),
             };
@@ -90,7 +82,7 @@ mod tests {
             let profile = agent_name.clone().extract_profile().unwrap();
 
             // add agent
-            match db_lock.add_agent(agent.clone(), &profile) {
+            match db.add_agent(agent.clone(), &profile) {
                 Ok(()) => {
                     let mut subidentity_manager = identity_manager.lock().await;
                     match subidentity_manager.add_agent_subidentity(agent).await {
@@ -106,7 +98,7 @@ mod tests {
             }
         }
 
-        let vector_fs = Arc::new(Mutex::new(VectorFS::new_empty()));
+        let vector_fs = Arc::new(VectorFS::new_empty().unwrap());
         let vector_fs_weak = Arc::downgrade(&vector_fs);
         let db_weak = Arc::downgrade(&db);
 
@@ -116,7 +108,7 @@ mod tests {
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
-                vector_fs_weak,
+                vector_fs_weak.clone(),
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
             )
@@ -125,8 +117,7 @@ mod tests {
 
         // Add a couple of cron tasks to the database
         {
-            let mut db_lock = db.lock().await;
-            match db_lock.add_cron_task(
+            match db.add_cron_task(
                 node_profile_name.clone(),
                 "task1".to_string(),
                 "* * * * * * *".to_string(),
@@ -144,7 +135,8 @@ mod tests {
         let db_weak_clone = db_weak.clone();
         let process_job_message_queued_wrapper =
             move |job: CronTask,
-                  db: Weak<Mutex<ShinkaiDB>>,
+                  _db: Weak<ShinkaiDB>,
+                  vector_fs_weak: Weak<VectorFS>,
                   identity_sk: SigningKey,
                   job_manager: Arc<Mutex<JobManager>>,
                   node_profile_name: ShinkaiName,
@@ -152,6 +144,7 @@ mod tests {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db_weak_clone.clone(),
+                    vector_fs_weak.clone(),
                     identity_sk,
                     job_manager.clone(),
                     node_profile_name.clone(),
@@ -161,6 +154,7 @@ mod tests {
 
         let job_queue_handler = CronManager::process_job_queue(
             db_weak.clone(),
+            vector_fs_weak.clone(),
             node_profile_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             CRON_INTERVAL_TIME,

@@ -31,7 +31,7 @@ const NUM_THREADS: usize = 4;
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
-    pub db: Weak<Mutex<ShinkaiDB>>,
+    pub db: Weak<ShinkaiDB>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub agents: Vec<Arc<Mutex<Agent>>>,
     pub identity_secret_key: SigningKey,
@@ -39,7 +39,7 @@ pub struct JobManager {
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
     // The Node's VectorFS
-    pub vector_fs: Weak<Mutex<VectorFS>>,
+    pub vector_fs: Weak<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
@@ -48,19 +48,18 @@ pub struct JobManager {
 
 impl JobManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let shinkai_db = db_arc.lock().await;
-            let all_jobs = shinkai_db.get_all_jobs().unwrap();
+            let all_jobs = db_arc.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -134,16 +133,16 @@ impl JobManager {
 
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        db: Weak<Mutex<ShinkaiDB>>,
-        vector_fs: Weak<Mutex<VectorFS>>,
+        db: Weak<ShinkaiDB>,
+        vector_fs: Weak<VectorFS>,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
         job_processing_fn: impl Fn(
                 JobForProcessing,
-                Weak<Mutex<ShinkaiDB>>,
-                Weak<Mutex<VectorFS>>,
+                Weak<ShinkaiDB>,
+                Weak<VectorFS>,
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
@@ -356,16 +355,15 @@ impl JobManager {
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let mut shinkai_db = db_arc.lock().await;
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden) {
+            match db_arc.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden) {
                 Ok(_) => (),
                 Err(err) => return Err(AgentError::ShinkaiDB(err)),
             };
 
-            match shinkai_db.get_job(&job_id) {
+            match db_arc.get_job(&job_id) {
                 Ok(job) => {
-                    std::mem::drop(shinkai_db); // require to avoid deadlock
+                    std::mem::drop(db_arc); // require to avoid deadlock
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
                     let mut agent_found = None;
                     for agent in &self.agents {
@@ -419,8 +417,7 @@ impl JobManager {
         };
 
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let mut shinkai_db = db_arc.lock().await;
-        let is_empty = shinkai_db.is_job_inbox_empty(&job_message.job_id.clone())?;
+        let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
             let mut content = job_message.clone().content;
             if content.chars().count() > 30 {
@@ -428,13 +425,13 @@ impl JobManager {
                 content = format!("{}...", truncated_content);
             }
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
-            shinkai_db.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+            db_arc.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
         }
 
-        shinkai_db
+        db_arc
             .add_message_to_job_inbox(&job_message.job_id.clone(), &message, job_message.parent.clone())
             .await?;
-        std::mem::drop(shinkai_db);
+        std::mem::drop(db_arc);
 
         self.add_job_message_to_job_queue(&job_message, &profile).await?;
 

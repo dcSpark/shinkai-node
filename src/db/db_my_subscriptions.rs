@@ -2,7 +2,7 @@ use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use shinkai_message_primitives::schemas::shinkai_subscription::ShinkaiSubscription;
 
 impl ShinkaiDB {
-    pub fn add_my_subscription(&mut self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
+    pub fn add_my_subscription(&self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 
@@ -19,7 +19,7 @@ impl ShinkaiDB {
     }
 
     /// Removes a subscription.
-    pub fn remove_my_subscription(&mut self, subscription_id: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_my_subscription(&self, subscription_id: &str) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 
@@ -53,7 +53,7 @@ impl ShinkaiDB {
     }
 
     /// Updates a subscription.
-    pub fn update_my_subscription(&mut self, new_subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
+    pub fn update_my_subscription(&self, new_subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
         // Use shared CFs
         let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
 

@@ -1,40 +1,54 @@
-use super::{node_api::APIError, node_error::NodeError, Node};
-use crate::{
-    agent::{job_manager::JobManager, parsing_helper::ParsingHelper},
-    schemas::identity::Identity,
+use std::sync::Arc;
+
+use super::{
+    node_api::APIError, node_error::NodeError,
+    subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
+use crate::{
+    agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
+    network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
+    vector_fs::vector_fs::VectorFS,
+};
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
-            APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-            APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
+            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
             APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems,
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            MessageSchemaType,
         },
     },
 };
 use shinkai_vector_resources::{
+    embedding_generator::{self, EmbeddingGenerator},
+    file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
-    vector_resource::{BaseVectorResource, VRPath},
+    vector_resource::VRPath,
 };
-use shinkai_vector_resources::{source::SourceFileMap, vector_resource::VRKai};
+use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
-        &self,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: MessageSchemaType,
     ) -> Result<(T, ShinkaiName), APIError> {
-        let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(schema_type))
-            .await;
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(schema_type),
+        )
+        .await;
         let (msg, identity) = match validation_result {
             Ok((msg, identity)) => (msg, identity),
             Err(api_error) => return Err(api_error),
@@ -67,24 +81,31 @@ impl Node {
     }
 
     pub async fn api_vec_fs_retrieve_path_simplified_json(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
+        let (input_payload, requester_name) =
+            match Self::validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
+                node_name,
+                identity_manager,
+                encryption_secret_key,
                 potentially_encrypted_msg,
                 MessageSchemaType::VecFsRetrievePathSimplifiedJson,
             )
             .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let mut vector_fs = self.vector_fs.lock().await;
+            {
+                Ok(data) => data,
+                Err(api_error) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -97,7 +118,9 @@ impl Node {
                 return Ok(());
             }
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -111,9 +134,75 @@ impl Node {
             }
         };
 
-        let result = vector_fs.retrieve_fs_path_simplified_json(&reader);
+        fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
+            if let Some(path) = obj.get("path") {
+                if let Some(path_str) = path.as_str() {
+                    if let Some(shared_folder) = shared_folders.iter().find(|sf| sf.path == path_str) {
+                        let mut shared_folder_info = serde_json::to_value(shared_folder).unwrap();
+                        // Remove the "tree" field from the shared_folder_info before adding it to the obj
+                        if let Some(obj) = shared_folder_info.as_object_mut() {
+                            obj.remove("tree");
+                        }
+                        obj.as_object_mut().unwrap().insert(
+                            "shared_folder_info".to_string(),
+                            serde_json::to_value(shared_folder).unwrap(),
+                        );
+                    }
+                }
+            }
+
+            if let Some(child_folders) = obj.get_mut("child_folders") {
+                if let Some(child_folders_array) = child_folders.as_array_mut() {
+                    for child_folder in child_folders_array {
+                        add_shared_folder_info(child_folder, shared_folders);
+                    }
+                }
+            }
+        }
+
+        let result = vector_fs.retrieve_fs_path_simplified_json(&reader).await;
         let result = match result {
-            Ok(result) => result,
+            Ok(result) => {
+                eprintln!("retrieve_fs_path_simplified_json result: {:?}", result);
+                let mut subscription_manager = ext_subscription_manager.lock().await;
+                let shared_folders_result = subscription_manager
+                    .available_shared_folders(
+                        requester_name.extract_node(),
+                        requester_name.get_profile_name_string().unwrap_or_default(),
+                        requester_name.extract_node(),
+                        requester_name.get_profile_name_string().unwrap_or_default(),
+                        input_payload.path,
+                    )
+                    .await;
+                drop(subscription_manager);
+
+                let shared_folders_result = match shared_folders_result {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to retrieve shared folders: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                let mut result_value: serde_json::Value = match serde_json::from_str(&result) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to parse JSON result: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+                add_shared_folder_info(&mut result_value, &shared_folders_result);
+                result
+            }
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -130,16 +219,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_search_items(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsSearchItems>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsSearchItems,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsSearchItems>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsSearchItems,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -148,7 +243,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match input_payload.path {
             Some(path) => match VRPath::from_string(&path) {
                 Ok(path) => path,
@@ -164,7 +258,9 @@ impl Node {
             },
             None => VRPath::root(),
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -187,6 +283,7 @@ impl Node {
             .unwrap();
         let search_results = vector_fs
             .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
+            .await
             .unwrap();
 
         let results: Vec<String> = search_results
@@ -201,25 +298,31 @@ impl Node {
 
     // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsRetrieveVectorSearchSimplifiedJson>(
+        let (input_payload, requester_name) =
+            match Self::validate_and_extract_payload::<APIVecFsRetrieveVectorSearchSimplifiedJson>(
+                node_name,
+                identity_manager,
+                encryption_secret_key,
                 potentially_encrypted_msg,
                 MessageSchemaType::VecFsRetrieveVectorSearchSimplifiedJson,
             )
             .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+            {
+                Ok(data) => data,
+                Err(api_error) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match input_payload.path {
             Some(path) => match VRPath::from_string(&path) {
                 Ok(path) => path,
@@ -235,7 +338,9 @@ impl Node {
             },
             None => VRPath::root(),
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -293,16 +398,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_create_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsCreateFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsCreateFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsCreateFolder>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsCreateFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -311,7 +422,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -325,7 +435,10 @@ impl Node {
             }
         };
 
-        let writer = match vector_fs.new_writer(requester_name.clone(), vr_path, requester_name.clone()) {
+        let writer = match vector_fs
+            .new_writer(requester_name.clone(), vr_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -338,7 +451,7 @@ impl Node {
             }
         };
 
-        match vector_fs.create_new_folder(&writer, &input_payload.folder_name) {
+        match vector_fs.create_new_folder(&writer, &input_payload.folder_name).await {
             Ok(_) => {
                 let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -357,16 +470,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsMoveFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsMoveFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsMoveFolder>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsMoveFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -375,7 +494,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let folder_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -401,7 +519,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -414,7 +535,7 @@ impl Node {
             }
         };
 
-        match vector_fs.move_folder(&orig_writer, destination_path) {
+        match vector_fs.move_folder(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -433,16 +554,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsCopyFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsCopyFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsCopyFolder>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsCopyFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -451,7 +578,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let folder_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -478,7 +604,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -491,7 +620,7 @@ impl Node {
             }
         };
 
-        match vector_fs.copy_folder(&orig_writer, destination_path) {
+        match vector_fs.copy_folder(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Folder copied successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -510,16 +639,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_item(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsDeleteItem>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsDeleteItem,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsDeleteItem>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsDeleteItem,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -528,7 +663,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -542,7 +676,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -555,7 +692,7 @@ impl Node {
             }
         };
 
-        match vector_fs.delete_item(&orig_writer) {
+        match vector_fs.delete_item(&orig_writer).await {
             Ok(_) => {
                 let success_message = format!("Item successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -574,16 +711,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsDeleteFolder>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsDeleteFolder,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsDeleteFolder>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsDeleteFolder,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -592,7 +735,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -606,7 +748,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -619,7 +764,7 @@ impl Node {
             }
         };
 
-        match vector_fs.delete_folder(&orig_writer) {
+        match vector_fs.delete_folder(&orig_writer).await {
             Ok(_) => {
                 let success_message = format!("Folder successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -638,16 +783,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_item(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsMoveItem>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsMoveItem,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsMoveItem>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsMoveItem,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -656,7 +807,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -683,7 +833,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -696,7 +849,7 @@ impl Node {
             }
         };
 
-        match vector_fs.move_item(&orig_writer, destination_path) {
+        match vector_fs.move_item(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -715,16 +868,22 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_item(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFsCopyItem>(
-                potentially_encrypted_msg,
-                MessageSchemaType::VecFsCopyItem,
-            )
-            .await
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFsCopyItem>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsCopyItem,
+        )
+        .await
         {
             Ok(data) => data,
             Err(api_error) => {
@@ -733,7 +892,6 @@ impl Node {
             }
         };
 
-        let mut vector_fs = self.vector_fs.lock().await;
         let item_path = match VRPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
@@ -759,7 +917,10 @@ impl Node {
             }
         };
 
-        let orig_writer = match vector_fs.new_writer(requester_name.clone(), item_path, requester_name.clone()) {
+        let orig_writer = match vector_fs
+            .new_writer(requester_name.clone(), item_path, requester_name.clone())
+            .await
+        {
             Ok(writer) => writer,
             Err(e) => {
                 let api_error = APIError {
@@ -772,7 +933,7 @@ impl Node {
             }
         };
 
-        match vector_fs.copy_item(&orig_writer, destination_path) {
+        match vector_fs.copy_item(&orig_writer, destination_path).await {
             Ok(_) => {
                 let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
                 let _ = res.send(Ok(success_message)).await.map_err(|_| ());
@@ -791,24 +952,30 @@ impl Node {
     }
 
     pub async fn api_vec_fs_retrieve_vector_resource(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIVecFSRetrieveVectorResource>(
+        let (input_payload, requester_name) =
+            match Self::validate_and_extract_payload::<APIVecFSRetrieveVectorResource>(
+                node_name,
+                identity_manager,
+                encryption_secret_key,
                 potentially_encrypted_msg,
                 MessageSchemaType::VecFsRetrieveVectorResource,
             )
             .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let mut vector_fs = self.vector_fs.lock().await;
+            {
+                Ok(data) => data,
+                Err(api_error) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -821,7 +988,9 @@ impl Node {
                 return Ok(());
             }
         };
-        let reader = vector_fs.new_reader(requester_name.clone(), vr_path, requester_name.clone());
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
         let reader = match reader {
             Ok(reader) => reader,
             Err(e) => {
@@ -835,7 +1004,7 @@ impl Node {
             }
         };
 
-        let result = vector_fs.retrieve_vector_resource(&reader);
+        let result = vector_fs.retrieve_vector_resource(&reader).await;
         let result = match result {
             Ok(result) => result,
             Err(e) => {
@@ -866,23 +1035,32 @@ impl Node {
     }
 
     pub async fn api_convert_files_and_save_to_folder(
-        &self,
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        embedding_generator: Arc<EmbeddingGenerator>,
+        unstructured_api: Arc<UnstructuredAPI>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match self
-            .validate_and_extract_payload::<APIConvertFilesAndSaveToFolder>(
+        let (input_payload, requester_name) =
+            match Self::validate_and_extract_payload::<APIConvertFilesAndSaveToFolder>(
+                node_name,
+                identity_manager,
+                encryption_secret_key,
                 potentially_encrypted_msg,
                 MessageSchemaType::ConvertFilesAndSaveToFolder,
             )
             .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+            {
+                Ok(data) => data,
+                Err(api_error) => {
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
         let destination_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -897,8 +1075,7 @@ impl Node {
         };
 
         let files = {
-            let db_lock = self.db.lock().await;
-            match db_lock.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
+            match vector_fs.db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -916,27 +1093,28 @@ impl Node {
 
         let mut dist_files = vec![];
         for file in files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime);
             dist_files.push((file.0, file.1, distribution_info));
         }
 
         // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
         let processed_vrkais = ParsingHelper::process_files_into_vrkai(
             dist_files,
-            &self.embedding_generator,
+            &*embedding_generator,
             None,
-            self.unstructured_api.clone(),
+            (*unstructured_api).clone(),
         )
         .await?;
 
         // Save the vrkais into VectorFS
         let mut success_messages = Vec::new();
-        let mut vector_fs = self.vector_fs.lock().await;
         for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone())?;
+            let writer = vector_fs
+                .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+                .await?;
 
-            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai) {
+            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai).await {
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -949,6 +1127,23 @@ impl Node {
 
             let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
             success_messages.push(success_message);
+        }
+
+        {
+            // remove inbox
+            match vector_fs.db.remove_inbox(&input_payload.file_inbox) {
+                Ok(files) => files,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("{}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
