@@ -162,6 +162,7 @@ impl JobManager {
     /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// If include_description is true then adds the description of the highest scored Vector Resource as an auto-included
     /// RetrievedNode at the front of the returned list.
+    #[allow(clippy::too_many_arguments)]
     pub async fn job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
