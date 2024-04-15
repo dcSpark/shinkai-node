@@ -113,6 +113,7 @@ fn decrypt_message(encrypted_hex: &str, shared_key: &str) -> Result<String, Box<
     Ok(decrypted_message)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_message_with_text(
     content: String,
     inbox_name: String,
@@ -146,7 +147,7 @@ fn generate_message_with_text(
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 #[tokio::test]
@@ -159,7 +160,7 @@ async fn test_websocket() {
     let agent_id = "agent3".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let shinkai_db = Arc::new(shinkai_db);
     let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
@@ -189,7 +190,6 @@ async fn test_websocket() {
 
     // Update ShinkaiDB with manager so it can trigger updates
     {
-        let mut shinkai_db = shinkai_db.lock().await;
         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
 
@@ -254,7 +254,6 @@ async fn test_websocket() {
             }
         };
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false) {
@@ -321,7 +320,6 @@ async fn test_websocket() {
             "2023-07-02T20:53:34.810Z".to_string(),
         );
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db
             .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
             .await;
@@ -357,7 +355,6 @@ async fn test_websocket() {
             "2023-07-02T20:53:34.810Z".to_string(),
         );
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db
             .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
             .await;
@@ -432,7 +429,6 @@ async fn test_websocket() {
             "2023-07-02T20:53:34.810Z".to_string(),
         );
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db
             .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
             .await;
@@ -466,7 +462,7 @@ async fn test_websocket_smart_inbox() {
     let agent_id = "agent4".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let shinkai_db = Arc::new(shinkai_db);
     let shinkai_db_weak = Arc::downgrade(&shinkai_db);
 
     let node1_identity_name = "@@node1.shinkai";
@@ -496,7 +492,6 @@ async fn test_websocket_smart_inbox() {
 
     // Update ShinkaiDB with manager so it can trigger updates
     {
-        let mut shinkai_db = shinkai_db.lock().await;
         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
 
@@ -555,7 +550,6 @@ async fn test_websocket_smart_inbox() {
             }
         };
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false) {
@@ -597,9 +591,8 @@ async fn test_websocket_smart_inbox() {
             "2023-07-02T20:53:34.810Z".to_string(),
         );
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None)
             .await;
     }
 
@@ -629,9 +622,8 @@ async fn test_websocket_smart_inbox() {
             "2023-07-02T20:53:34.810Z".to_string(),
         );
 
-        let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None)
             .await;
     }
 

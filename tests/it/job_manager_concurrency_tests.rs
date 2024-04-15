@@ -108,13 +108,13 @@ async fn test_process_job_queue_concurrency() {
 
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
-    let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
+    let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<Mutex<ShinkaiDB>>,
+                              db: Weak<ShinkaiDB>,
                               vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
@@ -143,8 +143,7 @@ async fn test_process_job_queue_concurrency() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let mut db = db_arc.lock().await;
-            let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })
@@ -201,7 +200,7 @@ async fn test_process_job_queue_concurrency() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        let last_messages_all = db.lock().await.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 8);
     });
 
@@ -227,13 +226,13 @@ async fn test_sequential_process_for_same_job_id() {
 
     let NUM_THREADS = 8;
     let db_path = "db_tests/";
-    let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
+    let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<Mutex<ShinkaiDB>>,
+                              db: Weak<ShinkaiDB>,
                               vector_fs: Weak<VectorFS>,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
@@ -262,8 +261,7 @@ async fn test_sequential_process_for_same_job_id() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let mut db = db_arc.lock().await;
-            let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })
@@ -317,7 +315,7 @@ async fn test_sequential_process_for_same_job_id() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let last_messages_all = db_copy.lock().await.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db_copy.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 1);
     });
 
@@ -335,6 +333,4 @@ async fn test_sequential_process_for_same_job_id() {
     if long_running_task_result.is_err() {
         // Handle the error case if necessary
     }
-
-    let _ = db.lock().await;
 }

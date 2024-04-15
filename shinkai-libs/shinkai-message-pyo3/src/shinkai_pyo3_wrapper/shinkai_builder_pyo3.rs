@@ -1843,6 +1843,7 @@ impl PyShinkaiMessageBuilder {
     my_signature_secret_key,
     receiver_public_key,
     path,
+    folder_description,
     is_free,
     sender,
     sender_subidentity,
@@ -1858,6 +1859,7 @@ impl PyShinkaiMessageBuilder {
         my_signature_secret_key: String,
         receiver_public_key: String,
         path: String,
+        folder_description: String,
         is_free: bool,
         sender: String,
         sender_subidentity: ShinkaiNameString,
@@ -1885,6 +1887,7 @@ impl PyShinkaiMessageBuilder {
                         }
                     },
                     is_free,
+                    folder_description,
                 },
             };
 

@@ -82,7 +82,7 @@ pub struct NetworkJobManager {
 
 impl NetworkJobManager {
     pub async fn new(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -93,8 +93,7 @@ impl NetworkJobManager {
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
-            let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-            let shinkai_db = db_arc.lock().await;
+            let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
@@ -163,7 +162,7 @@ impl NetworkJobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -175,7 +174,7 @@ impl NetworkJobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
-                Weak<Mutex<ShinkaiDB>>,                // db
+                Weak<ShinkaiDB>,                // db
                 Weak<VectorFS>,                        // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
@@ -348,7 +347,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -429,7 +428,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_receiving_vr_pack_from_subscription(
         network_vr_pack: NetworkVRKai,
-        db: Weak<Mutex<ShinkaiDB>>,
+        db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         _: EncryptionStaticKey,
@@ -446,9 +445,8 @@ impl NetworkJobManager {
         // check that the subscription exists
         let subscription = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-            let db_lock = maybe_db.lock().await;
 
-            match db_lock.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
+            match maybe_db.get_my_subscription(network_vr_pack.subscription_id.get_unique_id()) {
                 Ok(sub) => sub,
                 Err(_) => return Err(NetworkJobQueueError::Other("Subscription not found".to_string())),
             }
@@ -457,10 +455,9 @@ impl NetworkJobManager {
         // get the symmetric key from the database
         let symmetric_sk_bytes = {
             let maybe_db = db.upgrade().ok_or(NetworkJobQueueError::ShinkaDBUpgradeFailed)?;
-            let db_lock = maybe_db.lock().await;
 
             // Retrieve the symmetric key using the symmetric_key_hash from the database
-            match db_lock.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
+            match maybe_db.read_symmetric_key(&network_vr_pack.symmetric_key_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     return Err(NetworkJobQueueError::SymmetricKeyNotFound(
@@ -570,7 +567,7 @@ impl NetworkJobManager {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        shinkai_db: Weak<Mutex<ShinkaiDB>>,
+        shinkai_db: Weak<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,

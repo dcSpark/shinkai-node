@@ -1,7 +1,7 @@
 use crate::{
     schemas::shinkai_subscription_req::SubscriptionPayment,
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
     },
 };
 use ed25519_dalek::SigningKey;
@@ -354,6 +354,34 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn subscriptions_unshare_folder(
+        path: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIUnshareFolder {
+            path,
+        };
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::UnshareFolder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
     // TODO: to be able to manage an error as well
     // for that we need a new struct to manage the resp and error
     #[allow(clippy::too_many_arguments)]
@@ -547,6 +575,35 @@ impl ShinkaiMessageBuilder {
             // Note(Nico): we could change this but it works for now
             "".to_string(),
             MessageSchemaType::MySubscriptions,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn get_my_subscribers(
+        path: Option<String>,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIGetMySubscribers {
+            path: path.unwrap_or_else(|| "/".to_string()),
+        };
+
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::GetMySubscribers,
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,

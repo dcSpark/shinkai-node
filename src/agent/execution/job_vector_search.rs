@@ -19,7 +19,7 @@ impl JobManager {
     /// Of note, this does not fetch resources inside of folders in the job scope, as those are not fetched in whole,
     /// but instead have a deep vector search performed on them via the VectorFS itself separately.
     pub async fn fetch_job_scope_direct_resources(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
@@ -45,7 +45,7 @@ impl JobManager {
     /// Attempts to take at least 1 retrieved node per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
     pub async fn keyword_chained_job_scope_vector_search(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query_text: String,
@@ -163,7 +163,7 @@ impl JobManager {
     /// If include_description is true then adds the description of the highest scored Vector Resource as an auto-included
     /// RetrievedNode at the front of the returned list.
     pub async fn job_scope_vector_search(
-        db: Arc<Mutex<ShinkaiDB>>,
+        db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query: Embedding,

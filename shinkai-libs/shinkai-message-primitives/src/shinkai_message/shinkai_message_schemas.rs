@@ -44,10 +44,12 @@ pub enum MessageSchemaType {
     CreateShareableFolder,
     UpdateShareableFolder,
     UnshareFolder,
+    GetMySubscribers,
     ConvertFilesAndSaveToFolder,
     SubscribeToSharedFolder,
     UnsubscribeToSharedFolder,
     SubscribeToSharedFolderResponse,
+    UnsubscribeToSharedFolderResponse,
     MySubscriptions,
     SubscriptionRequiresTreeUpdate,
     SubscriptionRequiresTreeUpdateResponse,
@@ -89,10 +91,12 @@ impl MessageSchemaType {
             "CreateShareableFolder" => Some(Self::CreateShareableFolder),
             "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
             "UnshareFolder" => Some(Self::UnshareFolder),
+            "GetMySubscribers" => Some(Self::GetMySubscribers),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
             "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
             "UnsubscribeToSharedFolder" => Some(Self::UnsubscribeToSharedFolder),
             "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
+            "UnsubscribeToSharedFolderResponse" => Some(Self::UnsubscribeToSharedFolderResponse),
             "MySubscriptions" => Some(Self::MySubscriptions),
             "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
             "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
@@ -134,10 +138,12 @@ impl MessageSchemaType {
             Self::CreateShareableFolder => "CreateShareableFolder",
             Self::UpdateShareableFolder => "UpdateShareableFolder",
             Self::UnshareFolder => "UnshareFolder",
+            Self::GetMySubscribers => "GetMySubscribers",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
             Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
             Self::UnsubscribeToSharedFolder => "UnsubscribeToSharedFolder",
             Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
+            Self::UnsubscribeToSharedFolderResponse => "UnsubscribeToSharedFolderResponse",
             Self::MySubscriptions => "MySubscriptions",
             Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
             Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
@@ -426,6 +432,11 @@ pub struct APIUpdateShareableFolder {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIUnshareFolder {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIGetMySubscribers {
     pub path: String,
 }
 

@@ -198,7 +198,7 @@ impl ShinkaiDB {
     }
 
     pub fn mark_as_read_up_to(
-        &mut self,
+        &self,
         inbox_name: String,
         up_to_message_hash_offset: String,
     ) -> Result<(), ShinkaiDBError> {
@@ -267,7 +267,7 @@ impl ShinkaiDB {
     }
 
     pub fn add_permission(
-        &mut self,
+        &self,
         inbox_name: &str,
         identity: &StandardIdentity,
         perm: InboxPermission,
@@ -278,7 +278,7 @@ impl ShinkaiDB {
     }
 
     pub fn add_permission_with_profile(
-        &mut self,
+        &self,
         inbox_name: &str,
         profile: ShinkaiName,
         perm: InboxPermission,
@@ -332,7 +332,7 @@ impl ShinkaiDB {
         Ok(self.db.get_cf(cf_inbox, fixed_inbox_key.as_bytes())?.is_some())
     }
 
-    pub fn remove_permission(&mut self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
+    pub fn remove_permission(&self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
         let profile_name = identity.full_identity_name.get_profile_name_string().clone().ok_or(
             ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()),
         )?;
@@ -554,7 +554,7 @@ impl ShinkaiDB {
         Ok(smart_inboxes)
     }
 
-    pub fn update_smart_inbox_name(&mut self, inbox_id: &str, new_name: &str) -> Result<(), ShinkaiDBError> {
+    pub fn update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), ShinkaiDBError> {
         // Fetch the column family for the Inbox topic
         let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
 

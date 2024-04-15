@@ -18,6 +18,7 @@ pub enum FSTopic {
     SourceFiles,
     ReadAccessLogs,
     WriteAccessLogs,
+    TempFilesInbox,
 }
 
 impl FSTopic {
@@ -28,6 +29,7 @@ impl FSTopic {
             Self::SourceFiles => "sourcefiles",
             Self::ReadAccessLogs => "readacesslogs",
             Self::WriteAccessLogs => "writeaccesslogs",
+            Self::TempFilesInbox => "tempfilesinbox",
         }
     }
 }
@@ -69,6 +71,7 @@ impl VectorFSDB {
                 FSTopic::SourceFiles.as_str().to_string(),
                 FSTopic::ReadAccessLogs.as_str().to_string(),
                 FSTopic::WriteAccessLogs.as_str().to_string(),
+                FSTopic::TempFilesInbox.as_str().to_string(),
             ]
         };
 
@@ -81,6 +84,14 @@ impl VectorFSDB {
             cf_opts.set_min_blob_size(1024 * 100); // 100kb
             cf_opts.set_blob_compression_type(DBCompressionType::Lz4);
             cf_opts.set_keep_log_file_num(10);
+
+            // Set a prefix extractor for the TempFilesInbox column family
+            if cf_name == FSTopic::TempFilesInbox.as_str() {
+                let prefix_length = 47; // Adjust the prefix length as needed
+                let prefix_extractor = rocksdb::SliceTransform::create_fixed_prefix(prefix_length);
+                cf_opts.set_prefix_extractor(prefix_extractor);
+            }
+
             let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
             cfs.push(cf_desc);
         }
@@ -182,13 +193,7 @@ impl VectorFSDB {
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.
-    pub fn put_cf_pb<V>(
-        &self,
-        cf_name: &str,
-        key: &str,
-        value: V,
-        profile: &ShinkaiName,
-    ) -> Result<(), VectorFSError>
+    pub fn put_cf_pb<V>(&self, cf_name: &str, key: &str, value: V, profile: &ShinkaiName) -> Result<(), VectorFSError>
     where
         V: AsRef<[u8]>,
     {
@@ -197,17 +202,21 @@ impl VectorFSDB {
     }
 
     /// Deletes the key from the provided column family
-    pub fn delete_cf<K>(&self, cf: &impl AsColumnFamilyRef, key: K) -> Result<(), VectorFSError>
+    pub fn delete_cf<K>(&self, cf_name: &str, key: K) -> Result<(), VectorFSError>
     where
         K: AsRef<[u8]>,
     {
-        Ok(self.db.delete_cf(cf, key)?)
+        let cf_handle = self.db.cf_handle(cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
+        let txn = self.db.transaction();
+        txn.delete_cf(cf_handle, key.as_ref()).map_err(VectorFSError::from)?;
+        txn.commit().map_err(VectorFSError::from)?;
+        Ok(())
     }
 
     /// Deletes the key (profile-bound) from the provided column family.
     pub fn delete_cf_pb(
         &self,
-        cf: &impl AsColumnFamilyRef,
+        cf: &str,
         key: &str,
         profile: &ShinkaiName,
     ) -> Result<(), VectorFSError> {

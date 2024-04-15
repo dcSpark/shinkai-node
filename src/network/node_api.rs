@@ -12,8 +12,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
-use tokio::net::TcpListener;
 use std::net::SocketAddr;
+use tokio::net::TcpListener;
 use warp::Buf;
 use warp::Filter;
 
@@ -610,6 +610,24 @@ pub async fn run_api(
             })
     };
 
+    // POST v1/unsubscribe
+    let unsubscribe = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "unsubscribe")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| unsubscribe_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/get_my_subscribers
+    let get_my_subscribers = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "my_subscribers")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_my_subscribers_handler(node_commands_sender.clone(), message))
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -660,6 +678,7 @@ pub async fn run_api(
         .or(api_unshare_folder)
         .or(my_subscriptions)
         .or(subscribe_to_shared_folder)
+        .or(unsubscribe)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -1064,6 +1083,21 @@ async fn subscribe_to_shared_folder_handler(
     .await
 }
 
+async fn unsubscribe_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIUnsubscribe {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 async fn change_nodes_name_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1090,6 +1124,23 @@ async fn api_my_subscriptions_handler(
         },
     )
     .await
+}
+
+async fn get_my_subscribers_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::APIGetMySubscribers { 
+            msg: message,
+            res: res_sender 
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let subscribers = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    Ok(warp::reply::json(&subscribers))
 }
 
 async fn send_msg_handler(
