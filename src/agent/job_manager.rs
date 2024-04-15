@@ -97,15 +97,17 @@ impl JobManager {
             job_queue_manager.clone(),
             db.clone(),
             vector_fs.clone(),
+            node_profile_name.clone(),
             thread_number,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
             unstructured_api.clone(),
-            |job, db, vector_fs, identity_sk, generator, unstructured_api| {
+            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
                     vector_fs,
+                    node_profile_name,
                     identity_sk,
                     generator,
                     unstructured_api,
@@ -135,6 +137,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
+        node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -143,6 +146,7 @@ impl JobManager {
                 JobForProcessing,
                 Weak<ShinkaiDB>,
                 Weak<VectorFS>,
+                ShinkaiName,
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
@@ -214,6 +218,7 @@ impl JobManager {
                     let job_processing_fn = Arc::clone(&job_processing_fn);
                     let cloned_generator = generator.clone();
                     let cloned_unstructured_api = unstructured_api.clone();
+                    let node_profile_name = node_profile_name.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -233,6 +238,7 @@ impl JobManager {
                                         job,
                                         db_clone_2,
                                         vector_fs_clone_2,
+                                        node_profile_name,
                                         identity_sk_clone,
                                         cloned_generator,
                                         cloned_unstructured_api,
