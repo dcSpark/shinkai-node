@@ -60,7 +60,7 @@ impl JobManager {
     ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
-        let mut ret_nodes = JobManager::job_scope_vector_search(
+        let mut ret_groups = JobManager::job_scope_vector_search_groups(
             db.clone(),
             vector_fs.clone(),
             job_scope,
@@ -74,18 +74,21 @@ impl JobManager {
         )
         .await?;
 
-        // Extract the summary text from the most similar
-        let summary_node_text = ret_nodes
-            .get(0)
-            .and_then(|node| node.node.get_text_content().ok())
-            .map(|text| text.to_string())
-            .unwrap_or_default();
+        // Extract the summary text if it exists (as a solo group)
+        let mut summary_node_text = String::new();
+        if let Some(group) = ret_groups.get(0) {
+            if group.len() == 1 {
+                summary_node_text = group[0].node.get_text_content().unwrap_or_default().to_string();
+            }
+        }
 
-        // Initialize included_vrs vector with the resource header id of the first node, if it exists
-        let mut included_vrs = ret_nodes
-            .get(0)
-            .map(|node| vec![node.resource_header.reference_string()])
-            .unwrap_or_else(Vec::new);
+        // Initialize included_vrs vector with the resource header id of the first node from each ret_node_group, if it exists
+        let mut included_vrs: Vec<String> = Vec::new();
+        for ret_node_group in ret_groups.iter() {
+            if let Some(first_node) = ret_node_group.get(0) {
+                included_vrs.push(first_node.resource_header.reference_string());
+            }
+        }
 
         // Extract top 3 keywords from the query_text
         let keywords = Self::extract_keywords_from_text(&query_text, 3);
@@ -93,7 +96,7 @@ impl JobManager {
         // Now we proceed to keyword search chaining logic.
         for keyword in keywords {
             let keyword_query = generator.generate_embedding_default(&keyword).await?;
-            let keyword_ret_nodes = JobManager::job_scope_vector_search(
+            let keyword_ret_nodes_groups = JobManager::job_scope_vector_search_groups(
                 db.clone(),
                 vector_fs.clone(),
                 job_scope,
@@ -110,48 +113,47 @@ impl JobManager {
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
             let mut from_unique_vr = false;
-            for keyword_node in keyword_ret_nodes {
-                if !ret_nodes
-                    .iter()
-                    .any(|node| node.node.content == keyword_node.node.content)
-                {
-                    // If the node is unique and we haven't inserted any keyword node yet
-                    if !keyword_node_inserted {
-                        // Insert the first node that is not in ret_nodes
-                        if ret_nodes.len() >= 3 {
-                            ret_nodes.insert(3, keyword_node.clone()); // Insert at the 3rd position
+            for group in keyword_ret_nodes_groups.iter() {
+                if let Some(first_group_node) = group.get(0) {
+                    if !ret_groups.iter().any(|ret_group| group == ret_group) {
+                        // If the node is unique and we haven't inserted any keyword node yet
+                        if !keyword_node_inserted {
+                            // Insert the first node that is not in ret_nodes
+                            if ret_groups.len() >= 3 {
+                                ret_groups.insert(3, group.clone()); // Insert at the 3rd position
+                            } else {
+                                ret_groups.push(group.clone()); // If less than 3 nodes, just append
+                            }
+                            keyword_node_inserted = true;
+
+                            // Check if this keyword node is from a unique VR
+                            from_unique_vr =
+                                !included_vrs.contains(&first_group_node.resource_header.reference_string());
+                            // Update the included_vrs
+                            included_vrs.push(first_group_node.resource_header.reference_string());
+
+                            // If the first unique node is from a unique VR, no need to continue going through rest of the keyword_nodes
+                            if from_unique_vr {
+                                break;
+                            }
                         } else {
-                            ret_nodes.push(keyword_node.clone()); // If less than 3 nodes, just append
-                        }
-                        keyword_node_inserted = true;
-
-                        // Check if this keyword node is from a unique VR
-                        from_unique_vr = !included_vrs.contains(&keyword_node.resource_header.reference_string());
-                        // Update the included_vrs
-                        included_vrs.push(keyword_node.resource_header.reference_string());
-
-                        // If the first unique node is from a unique VR, no need to continue going through rest of the keyword_nodes
-                        if from_unique_vr {
+                            // If we're attempting to insert a unique VR node and found one
+                            if ret_groups.len() >= 4 {
+                                ret_groups.insert(4, group.clone()); // Insert at the 4th position if possible
+                            } else {
+                                ret_groups.push(group.clone()); // Otherwise, just append
+                            }
+                            // Once a unique VR node is inserted, no need to continue for this keyword
                             break;
                         }
-                    } else {
-                        // If we're attempting to insert a unique VR node and found one
-                        if ret_nodes.len() >= 4 {
-                            ret_nodes.insert(4, keyword_node); // Insert at the 4th position if possible
-                        } else {
-                            ret_nodes.push(keyword_node); // Otherwise, just append
-                        }
-                        // Once a unique VR node is inserted, no need to continue for this keyword
-                        break;
                     }
                 }
             }
         }
 
-        // Remove the extra lowest scored search results to ensure the list does not exceed num_of_results
-        ret_nodes.truncate(num_of_results as usize);
-
-        Ok((ret_nodes, summary_node_text))
+        // Flatten the retrieved node groups into a single list
+        let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
+        Ok((flatted_result_nodes, summary_node_text))
     }
 
     /// Extracts top N keywords from the given text.
