@@ -55,14 +55,7 @@ impl RetrievedNode {
             .into_iter()
             .map(|node| {
                 let hash = node.node.get_merkle_hash().unwrap_or_default();
-                let id_ref_key = format!(
-                    "{}-{}-{}-{}-{}",
-                    hash,
-                    node.retrieval_path,
-                    node.node.last_written_datetime.to_rfc3339(),
-                    node.score,
-                    node.resource_header.resource_id,
-                );
+                let id_ref_key = node.generate_globally_unique_node_id();
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
             })
@@ -78,6 +71,57 @@ impl RetrievedNode {
             .collect();
 
         sorted_data
+    }
+
+    /// Sorts groups of RetrievedNodes based on the highest score within each group.
+    /// Returns the groups sorted by the highest score in each group.
+    pub fn sort_by_score_groups(
+        retrieved_node_groups: &Vec<Vec<RetrievedNode>>,
+        num_results: u64,
+    ) -> Vec<Vec<RetrievedNode>> {
+        let mut highest_score_nodes: Vec<RetrievedNode> = Vec::new();
+        let mut group_map: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
+
+        // Iterate over each group, find the node with the highest score, and store it along with the group
+        for group in retrieved_node_groups {
+            if let Some(highest_node) = group
+                .iter()
+                .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                let highest_node_clone = highest_node.clone();
+                let id_ref_key = highest_node.generate_globally_unique_node_id();
+                highest_score_nodes.push(highest_node_clone);
+                group_map.insert(id_ref_key, group.clone());
+            }
+        }
+
+        // Sort the highest scoring nodes from each group
+        let sorted_highest_nodes = Self::sort_by_score(&highest_score_nodes, num_results);
+
+        // Fetch each group in the order determined by the sorted highest scoring nodes
+        let sorted_groups: Vec<Vec<RetrievedNode>> = sorted_highest_nodes
+            .into_iter()
+            .filter_map(|node| {
+                let id_ref_key = node.generate_globally_unique_node_id();
+                group_map.remove(&id_ref_key)
+            })
+            .collect();
+
+        sorted_groups
+    }
+
+    /// Generates a unique identifier (across VRs) for the RetrievedNode based on its content and metadata.
+    /// This id includes merkle hash, retrieval path, last written datetime, score, and resource id.
+    pub fn generate_globally_unique_node_id(&self) -> String {
+        let hash = self.node.get_merkle_hash().unwrap_or_default();
+        format!(
+            "{}-{}-{}-{}-{}",
+            hash,
+            self.retrieval_path,
+            self.node.last_written_datetime.to_rfc3339(),
+            self.score,
+            self.resource_header.resource_id,
+        )
     }
 
     /// Formats the retrieval path to a string, adding a trailing `/`
