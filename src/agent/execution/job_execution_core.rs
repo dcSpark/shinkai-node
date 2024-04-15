@@ -572,7 +572,7 @@ impl JobManager {
                     source: vrkai.resource.as_trait_object().source().clone(),
                 };
 
-                // TODO: Save to the vector_fs if not None
+                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
                 // let vector_fs = self.v
 
                 files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
@@ -592,7 +592,7 @@ impl JobManager {
                     path: folder_path.push_cloned(vrpack.name.clone()),
                 };
 
-                // TODO: Save to the vector_fs if not None
+                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
                 // let vector_fs = self.v
 
                 files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));

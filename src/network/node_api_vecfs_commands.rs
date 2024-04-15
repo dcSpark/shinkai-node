@@ -25,13 +25,13 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::{
-    embedding_generator::{self, EmbeddingGenerator},
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
-    vector_resource::VRPath,
+    vector_resource::{VRKai, VRPack, VRPath},
+    embedding_generator::{EmbeddingGenerator},
 };
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -1091,9 +1091,13 @@ impl Node {
         };
         // eprintln!("Files: {:?}", files);
 
+        // Sort out the vrpacks from the rest
+        let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+            files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
+
         let mut dist_files = vec![];
-        for file in files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime);
+        for file in other_files {
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
             dist_files.push((file.0, file.1, distribution_info));
         }
 
@@ -1126,6 +1130,28 @@ impl Node {
             }
 
             let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
+            success_messages.push(success_message);
+        }
+
+        // Extract the vrpacks into the VectorFS
+        for (filename, vrpack_bytes) in vr_packs {
+            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
+
+            let folder_path = destination_path.clone();
+            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()).await?;
+
+            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error extracting/saving '{}' into folder: {}", filename, e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+
+            let success_message = format!("VRPack '{}' extracted/saved successfully.", filename);
             success_messages.push(success_message);
         }
 
