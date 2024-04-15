@@ -954,7 +954,6 @@ fn subscription_manager_test() {
                     )
                     .await;
                 }
-                panic!("Stop here");
             }
             {
                 // Show available shared items
@@ -1115,7 +1114,8 @@ fn subscription_manager_test() {
                                 "monthly_payment": {
                                     "USD": 10.0
                                 },
-                                "is_free": false
+                                "is_free": false,
+                                "folder_description": "This is a test folder"
                             }
                         }
                     }
