@@ -737,4 +737,24 @@ pub trait VectorResourceCore: Send + Sync {
             update_ancestor_merkle_hashes,
         )
     }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_last_written_datetime.
+    fn get_resource_datetime_default(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.distribution_info().datetime {
+            datetime.clone()
+        } else {
+            self.last_written_datetime()
+        }
+    }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_created_datetime.
+    fn get_resource_datetime_default_created(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.distribution_info().datetime {
+            datetime.clone()
+        } else {
+            self.created_datetime()
+        }
+    }
 }
