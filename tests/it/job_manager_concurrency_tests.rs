@@ -111,11 +111,13 @@ async fn test_process_job_queue_concurrency() {
     let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<ShinkaiDB>,
                               vector_fs: Weak<VectorFS>,
+                              node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -162,15 +164,17 @@ async fn test_process_job_queue_concurrency() {
         job_queue_manager,
         db_weak.clone(),
         vector_fs_weak.clone(),
+        node_name.clone(),
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
+        move |job, db, vector_fs, node_name, identity_sk, generator, unstructured_api| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
                 vector_fs_weak.clone(),
+                node_name.clone(),
                 identity_sk,
                 generator,
                 unstructured_api,
@@ -229,11 +233,13 @@ async fn test_sequential_process_for_same_job_id() {
     let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<ShinkaiDB>,
                               vector_fs: Weak<VectorFS>,
+                              node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -280,15 +286,17 @@ async fn test_sequential_process_for_same_job_id() {
         job_queue_manager,
         db_weak.clone(),
         vector_fs_weak.clone(),
+        node_name.clone(), 
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, vector_fs, identity_sk, generator, unstructured_api| {
+        move |job, db, vector_fs, node_name, identity_sk, generator, unstructured_api| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
                 vector_fs_weak.clone(),
+                node_name.clone(),
                 identity_sk,
                 generator,
                 unstructured_api,
