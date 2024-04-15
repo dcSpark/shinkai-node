@@ -56,6 +56,7 @@ impl JobManager {
         user_profile: &ShinkaiName,
         generator: RemoteEmbeddingGenerator,
         num_of_results: u64,
+        max_tokens_in_prompt: usize,
     ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
@@ -69,6 +70,7 @@ impl JobManager {
             user_profile,
             true,
             generator.clone(),
+            max_tokens_in_prompt,
         )
         .await?;
 
@@ -101,6 +103,7 @@ impl JobManager {
                 user_profile,
                 true,
                 generator.clone(),
+                max_tokens_in_prompt,
             )
             .await?;
 
@@ -176,9 +179,15 @@ impl JobManager {
         profile: &ShinkaiName,
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
+        max_tokens_in_prompt: usize,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        // TODO: Make this dynamic based on LLM context window length
-        let proximity_window_size = 1;
+        let proximity_window_size = if max_tokens_in_prompt < 5000 {
+            1
+        } else if max_tokens_in_prompt < 33000 {
+            2
+        } else {
+            3
+        };
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
         let mut retrieved_node_groups = Vec::new();
 

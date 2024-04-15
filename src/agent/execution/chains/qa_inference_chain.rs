@@ -36,6 +36,7 @@ impl JobManager {
         summary_text: Option<String>,
         iteration_count: u64,
         max_iterations: u64,
+        max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -65,6 +66,7 @@ impl JobManager {
                 &user_profile,
                 generator.clone(),
                 20,
+                max_tokens_in_prompt,
             )
             .await?;
             ret_nodes = ret;
@@ -113,6 +115,7 @@ impl JobManager {
                 Some(summary_node_text),
                 iteration_count,
                 max_iterations,
+                max_tokens_in_prompt,
             )
             .await;
         }
@@ -214,6 +217,7 @@ impl JobManager {
             Some(summary.to_string()),
             iteration_count + 1,
             max_iterations,
+            max_tokens_in_prompt,
         )
         .await
     }
@@ -233,6 +237,7 @@ async fn no_json_object_retry_logic(
     summary_node_text: Option<String>,
     iteration_count: u64,
     max_iterations: u64,
+    max_tokens_in_prompt: usize,
 ) -> Result<String, AgentError> {
     if let Err(e) = &response {
         // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
@@ -250,6 +255,7 @@ async fn no_json_object_retry_logic(
                 summary_text,
                 iteration_count + 1,
                 max_iterations,
+                max_tokens_in_prompt,
             )
             .await;
         }
