@@ -97,7 +97,7 @@ pub trait VectorResourceCore: Send + Sync {
     ) -> Result<Vec<(Node, Embedding)>, VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
-    /// ISO RFC3339 when then Vector Resource was last written
+    /// ISO RFC3339 when then Vector Resource was last written into (a node was modified)
     fn last_written_datetime(&self) -> DateTime<Utc>;
     /// Set a RFC3339 Datetime of when then Vector Resource was last written
     fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>);

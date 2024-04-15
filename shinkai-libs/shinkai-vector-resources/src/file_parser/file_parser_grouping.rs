@@ -194,11 +194,6 @@ impl ShinkaiFileParser {
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
     }
 
-    /// Key of page numbers metadata
-    pub fn page_numbers_metadata_key() -> String {
-        "pg_nums".to_string()
-    }
-
     /// Internal method used to push into correct group for hierarchical grouping
     pub fn push_group_to_appropriate_parent(
         group: TextGroup,

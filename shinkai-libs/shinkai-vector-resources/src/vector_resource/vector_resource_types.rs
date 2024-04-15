@@ -160,12 +160,21 @@ impl RetrievedNode {
         result
     }
 
+    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
+    pub fn get_datetime_default(&self) -> DateTime<Utc> {
+        if let Some(datetime) = self.node.get_metadata_datetime() {
+            return datetime;
+        }
+        return self.resource_header.get_resource_datetime_default();
+    }
+
     /// Formats the data, source, and metadata together into a single string that is ready
     /// to be included as part of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
         let source_string = self.resource_header.resource_source.format_source_string();
         let position_string = self.format_position_string();
+        let datetime_string = self.get_datetime_default().to_rfc3339();
 
         let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
 
@@ -183,9 +192,12 @@ impl RetrievedNode {
         };
 
         let formatted_string = if position_string.len() > 0 {
-            format!("- {} (Source: {}, {})", data_string, source_string, position_string)
+            format!(
+                "- {} (Source: {}, {}) {}",
+                data_string, source_string, position_string, datetime_string
+            )
         } else {
-            format!("- {} (Source: {})", data_string, source_string)
+            format!("- {} (Source: {}) {}", data_string, source_string, datetime_string)
         };
 
         Some(formatted_string)
@@ -620,6 +632,19 @@ impl Node {
     fn merkle_hash_metadata_key() -> &'static str {
         "merkle_hash"
     }
+
+    /// Tries to fetch the node's datetime by reading it from the default datetime metadata key
+    pub fn get_metadata_datetime(&self) -> Option<DateTime<Utc>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(datetime) = metadata.get(&ShinkaiFileParser::datetime_metadata_key()) {
+                let datetime_option = DateTime::parse_from_rfc3339(datetime).ok();
+                if let Some(dt) = datetime_option {
+                    return Some(dt.into());
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Contents of a Node
@@ -651,7 +676,9 @@ pub struct VRHeader {
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSourceReference,
     pub resource_embedding: Option<Embedding>,
+    /// ISO RFC3339 when then Vector Resource was created
     pub resource_created_datetime: DateTime<Utc>,
+    /// ISO RFC3339 when then Vector Resource was last written into (a node was modified)
     pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
@@ -748,6 +775,26 @@ impl VRHeader {
         let name = name.replace(" ", "_").replace(":", "_");
         let resource_id = resource_id.replace(" ", "_").replace(":", "_");
         format!("{}:::{}", name, resource_id)
+    }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_last_written_datetime.
+    pub fn get_resource_datetime_default(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.resource_distribution_info.datetime {
+            datetime.clone()
+        } else {
+            self.resource_last_written_datetime
+        }
+    }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_created_datetime.
+    pub fn get_resource_datetime_default_created(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.resource_distribution_info.datetime {
+            datetime.clone()
+        } else {
+            self.resource_created_datetime
+        }
     }
 }
 
