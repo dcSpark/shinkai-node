@@ -181,6 +181,38 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
+        let sorted_retrieved_node_groups = Self::job_scope_vector_search_groups(
+            db,
+            vector_fs,
+            job_scope,
+            query,
+            query_text,
+            num_of_top_results,
+            profile,
+            include_description,
+            generator,
+            max_tokens_in_prompt,
+        )
+        .await?;
+
+        let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
+        Ok(sorted_retrieved_nodes)
+    }
+
+    /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
+    /// Returns the proximity groups of retrieved nodes.
+    pub async fn job_scope_vector_search_groups(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        job_scope: &JobScope,
+        query: Embedding,
+        query_text: String,
+        num_of_top_results: u64,
+        profile: &ShinkaiName,
+        include_description: bool,
+        generator: RemoteEmbeddingGenerator,
+        max_tokens_in_prompt: usize,
+    ) -> Result<Vec<Vec<RetrievedNode>>, ShinkaiDBError> {
         let proximity_window_size = if max_tokens_in_prompt < 5000 {
             1
         } else if max_tokens_in_prompt < 33000 {
@@ -274,29 +306,38 @@ impl JobManager {
             &format!("Num of node groups retrieved: {}", retrieved_node_groups.len()),
         );
 
-        // Sort the retrieved node groups by score
-        let sorted_retrieved_node_groups =
+        // Sort the retrieved node groups by score, and generate a description if any direct VRs available
+        let mut sorted_retrieved_node_groups =
             RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
-        let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
-        let updated_nodes =
-            JobManager::include_description_retrieved_node(include_description, sorted_retrieved_nodes, &resources)
-                .await;
+        if !resources.is_empty() && !sorted_retrieved_node_groups.is_empty() {
+            if let Some(group) = sorted_retrieved_node_groups.get(0) {
+                if let Some(top_node) = group.get(0) {
+                    let description_node_vec = JobManager::generate_description_retrieved_node(
+                        include_description,
+                        top_node.clone(),
+                        &resources,
+                    )
+                    .await;
+                    sorted_retrieved_node_groups.insert(0, description_node_vec);
+                }
+            }
+        }
 
-        Ok(updated_nodes)
+        Ok(sorted_retrieved_node_groups)
     }
 
     /// If include_description is true then adds the description of the Vector Resource
     /// that the top scored retrieved node is from, by prepending a fake RetrievedNode
     /// with the description inside. Removes the lowest scored node to preserve list length.
-    async fn include_description_retrieved_node(
+    async fn generate_description_retrieved_node(
         include_description: bool,
-        sorted_retrieved_nodes: Vec<RetrievedNode>,
+        top_node: RetrievedNode,
         resources: &[BaseVectorResource],
     ) -> Vec<RetrievedNode> {
-        let mut new_nodes = sorted_retrieved_nodes.clone();
+        let mut new_nodes = vec![];
 
-        if include_description && !sorted_retrieved_nodes.is_empty() {
-            let resource_header = sorted_retrieved_nodes[0].resource_header.clone();
+        if include_description {
+            let resource_header = top_node.resource_header.clone();
 
             // Iterate through resources until we find one with a matching resource reference string
             for resource in resources {
@@ -308,7 +349,7 @@ impl JobManager {
                             Node::new_text(String::new(), description.to_string(), None, &vec![]),
                             1.0 as f32,
                             resource_header,
-                            sorted_retrieved_nodes[0].retrieval_path.clone(),
+                            top_node.retrieval_path.clone(),
                         );
                         new_nodes.insert(0, description_node);
                         new_nodes.pop(); // Remove the last element to maintain the same length
