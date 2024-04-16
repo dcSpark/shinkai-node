@@ -1,5 +1,5 @@
 use super::{Node, VectorResource};
-use crate::resource_errors::VRError;
+use crate::{embeddings::Embedding, resource_errors::VRError};
 
 /// Trait extension which specific Vector Resource types implement that have a guaranteed internal ordering
 /// of their nodes, such as DocumentVectorResources. This trait extension enables new
@@ -10,5 +10,9 @@ pub trait OrderedVectorResource: VectorResource {
     /// Id to be used when pushing a new node
     fn new_push_node_id(&self) -> String;
     /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth
-    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError>;
+    fn get_node_and_embedding_proximity(
+        &self,
+        id: String,
+        proximity_window: u64,
+    ) -> Result<Vec<(Node, Embedding)>, VRError>;
 }

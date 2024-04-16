@@ -322,7 +322,7 @@ impl ToolRouter {
     /// within the ToolRouter.
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        let node = self.routing_resource.get_node(key)?;
+        let node = self.routing_resource.get_root_node(key)?;
         Ok(ShinkaiTool::from_json(&node.get_text_content()?)?)
     }
 
@@ -375,7 +375,7 @@ impl ToolRouter {
 
         // Setup the metadata based on tool type
 
-        match self.routing_resource.get_node(router_key.clone()) {
+        match self.routing_resource.get_root_node(router_key.clone()) {
             Ok(_) => {
                 // If a Shinkai tool with same key is already found, error
                 return Err(ToolError::ToolAlreadyInstalled(data.to_string()));
@@ -408,7 +408,7 @@ impl ToolRouter {
     pub fn get_tool_embedding(&self, shinkai_tool: &ShinkaiTool) -> Result<Embedding, ToolError> {
         Ok(self
             .routing_resource
-            .get_embedding(shinkai_tool.tool_router_key().to_string())?)
+            .get_root_embedding(shinkai_tool.tool_router_key().to_string())?)
     }
 
     pub fn from_json(json: &str) -> Result<Self, ToolError> {

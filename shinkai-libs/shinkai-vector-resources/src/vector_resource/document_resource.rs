@@ -52,7 +52,11 @@ impl OrderedVectorResource for DocumentVectorResource {
 
     /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth.
     /// Returns the nodes in its default ordering as determined by the internal VR struct.
-    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError> {
+    fn get_node_and_embedding_proximity(
+        &self,
+        id: String,
+        proximity_window: u64,
+    ) -> Result<Vec<(Node, Embedding)>, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
 
         // Check if id is within valid range
@@ -73,14 +77,16 @@ impl OrderedVectorResource for DocumentVectorResource {
         };
 
         // Acquire all nodes
-        let mut nodes = Vec::new();
+        let mut nodes_and_embeddings = Vec::new();
         for id in start_id..=end_id {
-            if let Ok(node) = self.get_node(id.to_string()) {
-                nodes.push(node);
+            if let Ok(node) = self.get_root_node(id.to_string()) {
+                if let Ok(embedding) = self.get_root_embedding(id.to_string()) {
+                    nodes_and_embeddings.push((node, embedding));
+                }
             }
         }
 
-        Ok(nodes)
+        Ok(nodes_and_embeddings)
     }
 }
 
@@ -240,7 +246,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
-    fn get_embedding(&self, id: String) -> Result<Embedding, VRError> {
+    fn get_root_embedding(&self, id: String) -> Result<Embedding, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
@@ -250,7 +256,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
-    fn get_node(&self, id: String) -> Result<Node, VRError> {
+    fn get_root_node(&self, id: String) -> Result<Node, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
@@ -380,7 +386,7 @@ impl VectorResourceCore for DocumentVectorResource {
 
         // Replace the old node and fetch old embedding
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
-        let old_embedding = self.get_embedding(id.clone())?;
+        let old_embedding = self.get_root_embedding(id.clone())?;
 
         // Replacing the embedding
         self.embeddings[index] = embedding;
@@ -754,7 +760,7 @@ impl DocumentVectorResource {
     /// Deletes a node and associated embedding from the resource.
     pub fn remove_node_with_integer(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         // Remove the node + adjust remaining node ids
-        let deleted_node = self._remove_node(id)?;
+        let deleted_node = self._remove_root_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
         self.metadata_index.remove_node(&deleted_node);
 
@@ -771,7 +777,7 @@ impl DocumentVectorResource {
     }
 
     /// Internal node deletion
-    fn _remove_node(&mut self, id: u64) -> Result<Node, VRError> {
+    fn _remove_root_node(&mut self, id: u64) -> Result<Node, VRError> {
         if id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
         }

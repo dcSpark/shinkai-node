@@ -1,5 +1,6 @@
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
+use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
@@ -55,14 +56,7 @@ impl RetrievedNode {
             .into_iter()
             .map(|node| {
                 let hash = node.node.get_merkle_hash().unwrap_or_default();
-                let id_ref_key = format!(
-                    "{}-{}-{}-{}-{}",
-                    hash,
-                    node.retrieval_path,
-                    node.node.last_written_datetime.to_rfc3339(),
-                    node.score,
-                    node.resource_header.resource_id,
-                );
+                let id_ref_key = node.generate_globally_unique_node_id();
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
             })
@@ -78,6 +72,59 @@ impl RetrievedNode {
             .collect();
 
         sorted_data
+    }
+
+    /// Sorts groups of RetrievedNodes based on the highest score within each group.
+    /// Returns the groups sorted by the highest score in each group.
+    pub fn sort_by_score_groups(
+        retrieved_node_groups: &Vec<Vec<RetrievedNode>>,
+        num_results: u64,
+    ) -> Vec<Vec<RetrievedNode>> {
+        let mut highest_score_nodes: Vec<RetrievedNode> = Vec::new();
+        let mut group_map: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
+
+        // Iterate over each group, find the node with the highest score, and store it along with the group
+        for group in retrieved_node_groups {
+            if let Some(highest_node) = group
+                .iter()
+                .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                println!("Highest node score: {:?}", highest_node.score);
+                let highest_node_clone = highest_node.clone();
+                let id_ref_key = highest_node.generate_globally_unique_node_id();
+                highest_score_nodes.push(highest_node_clone);
+                group_map.insert(id_ref_key, group.clone());
+            }
+        }
+
+        // Sort the highest scoring nodes from each group
+        let sorted_highest_nodes = Self::sort_by_score(&highest_score_nodes, num_results);
+
+        // Fetch each group in the order determined by the sorted highest scoring nodes
+        let sorted_groups: Vec<Vec<RetrievedNode>> = sorted_highest_nodes
+            .into_iter()
+            .filter_map(|node| {
+                println!("Post-sort Highest node score: {:?}", node.score);
+                let id_ref_key = node.generate_globally_unique_node_id();
+                group_map.remove(&id_ref_key)
+            })
+            .collect();
+
+        sorted_groups
+    }
+
+    /// Generates a unique identifier (across VRs) for the RetrievedNode based on its content and metadata.
+    /// This id includes merkle hash, retrieval path, last written datetime, score, and resource id.
+    pub fn generate_globally_unique_node_id(&self) -> String {
+        let hash = self.node.get_merkle_hash().unwrap_or_default();
+        format!(
+            "{}-{}-{}-{}-{}",
+            hash,
+            self.retrieval_path,
+            self.node.last_written_datetime.to_rfc3339(),
+            self.score,
+            self.resource_header.resource_id,
+        )
     }
 
     /// Formats the retrieval path to a string, adding a trailing `/`
@@ -115,12 +162,30 @@ impl RetrievedNode {
         result
     }
 
+    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
+    pub fn get_datetime_default(&self) -> DateTime<Utc> {
+        if let Some(datetime) = self.node.get_metadata_datetime() {
+            return datetime;
+        }
+        return self.resource_header.get_resource_datetime_default();
+    }
+
+    /// Fetches the node's datetime by first checking node metadata, then if none available, from the resource_header
+    ///  Returns a string in RFC3339 format without the fractional seconds.
+    pub fn get_datetime_default_string(&self) -> String {
+        match self.get_datetime_default().to_rfc3339().split('.').next() {
+            Some(datetime_string) => datetime_string.to_string(),
+            None => self.get_datetime_default().to_rfc3339(),
+        }
+    }
+
     /// Formats the data, source, and metadata together into a single string that is ready
     /// to be included as part of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
         let source_string = self.resource_header.resource_source.format_source_string();
         let position_string = self.format_position_string();
+        let datetime_string = self.get_datetime_default_string();
 
         let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
 
@@ -138,9 +203,12 @@ impl RetrievedNode {
         };
 
         let formatted_string = if position_string.len() > 0 {
-            format!("- {} (Source: {}, {})", data_string, source_string, position_string)
+            format!(
+                "- {} (Source: {}, {}) {}",
+                data_string, source_string, position_string, datetime_string
+            )
         } else {
-            format!("- {} (Source: {})", data_string, source_string)
+            format!("- {} (Source: {}) {}", data_string, source_string, datetime_string)
         };
 
         Some(formatted_string)
@@ -150,27 +218,89 @@ impl RetrievedNode {
     pub fn format_position_string(&self) -> String {
         match &self.node.metadata {
             Some(metadata) => {
-                if let Some(page_numbers) = metadata.get("page_numbers") {
-                    format!("Pgs: {}", page_numbers)
-                } else {
-                    // If from a Document Vector Resource, then we can create a relative position based on parents
-                    // as all node ids in Docs are integers.
-                    if self.resource_header.resource_base_type == VRBaseType::Document {
-                        let section_string = self
-                            .retrieval_path
-                            .path_ids
-                            .iter()
-                            .map(|id| id.to_string())
-                            .collect::<Vec<String>>()
-                            .join(".");
-                        format!("Section: {}", section_string)
-                    } else {
-                        String::new()
+                if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
+                    if !page_numbers.is_empty() {
+                        return format!("Pgs: {}", page_numbers);
                     }
+                }
+                // If from a Document Vector Resource, then we can create a relative position based on parents
+                // as all node ids in Docs are integers.
+                if self.resource_header.resource_base_type == VRBaseType::Document {
+                    let section_string = self
+                        .retrieval_path
+                        .path_ids
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<String>>()
+                        .join(".");
+                    format!("Section: {}", section_string)
+                } else {
+                    String::new()
                 }
             }
             None => String::new(),
         }
+    }
+
+    /// Sets the proximity_group_id in the node's metadata.
+    pub fn set_proximity_group_id(&mut self, proximity_group_id: String) {
+        let metadata = self.node.metadata.get_or_insert_with(HashMap::new);
+        metadata.insert("proximity_group_id".to_string(), proximity_group_id);
+    }
+
+    /// Gets the proximity_group_id from the node's metadata if it exists.
+    pub fn get_proximity_group_id(&self) -> Option<&String> {
+        self.node.metadata.as_ref()?.get("proximity_group_id")
+    }
+
+    /// Removes the proximity_group_id from the node's metadata if it exists.
+    pub fn remove_proximity_group_id(&mut self) {
+        if let Some(metadata) = &mut self.node.metadata {
+            metadata.remove("proximity_group_id");
+            if metadata.is_empty() {
+                self.node.metadata = None;
+            }
+        }
+    }
+
+    /// Groups the given RetrievedNodes by their proximity_group_id.
+    /// Can only be used with nodes returned using `ResultsMode::ProximitySearch`, else errors.
+    pub fn group_proximity_results(nodes: &Vec<RetrievedNode>) -> Result<Vec<Vec<RetrievedNode>>, VRError> {
+        let mut grouped_results: Vec<Vec<RetrievedNode>> = Vec::new();
+        let mut current_group: Vec<RetrievedNode> = Vec::new();
+        let mut current_group_id: Option<String> = None;
+
+        for node in nodes {
+            match node.get_proximity_group_id() {
+                Some(group_id) => {
+                    if current_group_id.as_ref() == Some(group_id) {
+                        // Current node belongs to the current group
+                        current_group.push(node.clone());
+                    } else {
+                        // Current node starts a new group
+                        if !current_group.is_empty() {
+                            grouped_results.push(current_group);
+                            current_group = Vec::new();
+                        }
+                        current_group.push(node.clone());
+                        current_group_id = Some(group_id.clone());
+                    }
+                }
+                None => {
+                    // If the node does not have a proximity_group_id, return an error
+                    return Err(VRError::ResourceDoesNotSupportOrderedOperations(
+                        node.resource_header.reference_string(),
+                    ));
+                }
+            }
+        }
+
+        // Add the last group if it's not empty
+        if !current_group.is_empty() {
+            grouped_results.push(current_group);
+        }
+
+        Ok(grouped_results)
     }
 }
 
@@ -514,6 +644,19 @@ impl Node {
     fn merkle_hash_metadata_key() -> &'static str {
         "merkle_hash"
     }
+
+    /// Tries to fetch the node's datetime by reading it from the default datetime metadata key
+    pub fn get_metadata_datetime(&self) -> Option<DateTime<Utc>> {
+        if let Some(metadata) = &self.metadata {
+            if let Some(datetime) = metadata.get(&ShinkaiFileParser::datetime_metadata_key()) {
+                let datetime_option = DateTime::parse_from_rfc3339(datetime).ok();
+                if let Some(dt) = datetime_option {
+                    return Some(dt.into());
+                }
+            }
+        }
+        None
+    }
 }
 
 /// Contents of a Node
@@ -545,7 +688,9 @@ pub struct VRHeader {
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSourceReference,
     pub resource_embedding: Option<Embedding>,
+    /// ISO RFC3339 when then Vector Resource was created
     pub resource_created_datetime: DateTime<Utc>,
+    /// ISO RFC3339 when then Vector Resource was last written into (a node was modified)
     pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     pub resource_merkle_root: Option<String>,
@@ -642,6 +787,26 @@ impl VRHeader {
         let name = name.replace(" ", "_").replace(":", "_");
         let resource_id = resource_id.replace(" ", "_").replace(":", "_");
         format!("{}:::{}", name, resource_id)
+    }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_last_written_datetime.
+    pub fn get_resource_datetime_default(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.resource_distribution_info.datetime {
+            datetime.clone()
+        } else {
+            self.resource_last_written_datetime
+        }
+    }
+
+    /// Attempts to return the DistributionInfo datetime, if not available, returns
+    /// the resource_created_datetime.
+    pub fn get_resource_datetime_default_created(&self) -> DateTime<Utc> {
+        if let Some(datetime) = &self.resource_distribution_info.datetime {
+            datetime.clone()
+        } else {
+            self.resource_created_datetime
+        }
     }
 }
 
