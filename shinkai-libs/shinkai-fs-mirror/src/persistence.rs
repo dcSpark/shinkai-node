@@ -205,8 +205,6 @@ impl ShinkaiMirrorDB {
         let prefix = format!("{}_{}",  profile_name, key_prefix.to_string_lossy());
         eprintln!("Deleting keys with prefix: {}", prefix);
     
-        // let prefix_bytes = prefix.as_bytes();
-    
         let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
     
         while let Some(result) = iter.next() {
@@ -256,5 +254,23 @@ impl ShinkaiMirrorDB {
             }
         }
         Ok(results)
+    }
+
+    pub fn delete_file_mirror_state(
+        &self,
+        profile_name: String,
+        key: PathBuf,
+    ) -> Result<(), ShinkaiMirrorDBError> {
+        let cf_handle = self
+            .db
+            .cf_handle(MirrorTopic::FileMirror.as_str())
+            .ok_or_else(|| ShinkaiMirrorDBError::ColumnFamilyNotFound(MirrorTopic::FileMirror.as_str().to_string()))?;
+        let combined_key = format!("{}_{}", profile_name, key.to_string_lossy());
+        let serialized_key = serde_json::to_vec(&combined_key)
+            .map_err(|_| ShinkaiMirrorDBError::SerializationError(combined_key.clone()))?;
+        self.db
+            .delete_cf(cf_handle, serialized_key)
+            .map_err(ShinkaiMirrorDBError::from)?;
+        Ok(())
     }
 }

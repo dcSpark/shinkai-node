@@ -11,7 +11,8 @@ use crate::{
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
@@ -1044,7 +1045,7 @@ impl Node {
         embedding_generator: Arc<EmbeddingGenerator>,
         unstructured_api: Arc<UnstructuredAPI>,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIConvertFilesAndSaveToFolder>(
@@ -1116,7 +1117,7 @@ impl Node {
         for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
             let writer = vector_fs
-                .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
                 .await?;
 
             if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai).await {
@@ -1130,33 +1131,12 @@ impl Node {
                 return Ok(());
             }
 
-            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
-            success_messages.push(success_message);
-        }
-
-        // Extract the vrpacks into the VectorFS
-        for (filename, vrpack_bytes) in vr_packs {
-            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
-
-            let folder_path = destination_path.clone();
-            let writer = vector_fs
-                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
-                .await?;
-
-            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Error extracting/saving '{}' into folder: {}", filename, e),
-                    }))
-                    .await;
-                return Ok(());
-            }
-
             // TODO: read information about the file to return to the user
+            let mut file_path = folder_path.clone();
+            let filename_without_extension = filename.trim_end_matches(|c: char| c != '.').trim_end_matches('.').to_string();
+            file_path.push(filename_without_extension.clone());
             let reader = vector_fs
-                .new_reader(requester_name.clone(), folder_path, requester_name.clone())
+                .new_reader(requester_name.clone(), file_path.clone(), requester_name.clone())
                 .await;
             let reader = match reader {
                 Ok(reader) => reader,
@@ -1185,10 +1165,56 @@ impl Node {
                 }
             };
 
-            let success_message = result.to_json()?;
+            #[derive(Serialize)]
+            struct VectorResourceInfo {
+                name: String,
+                path: String,
+                merkle_hash: String,
+            }
+
+            let result_trait = result.as_trait_object();
+
+            let resource_info = VectorResourceInfo {
+                name: filename_without_extension.to_string(),
+                path: file_path.to_string(),
+                merkle_hash: result_trait.get_merkle_root().unwrap_or_default(),
+            };
+
+            let success_message = match serde_json::to_value(&resource_info) {
+                Ok(json) => json,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to convert vector resource info to JSON: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
             success_messages.push(success_message);
         }
 
+        // Extract the vrpacks into the VectorFS
+        for (filename, vrpack_bytes) in vr_packs {
+            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
+
+            let folder_path = destination_path.clone();
+            let writer = vector_fs
+                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
+                .await?;
+
+            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error extracting/saving '{}' into folder: {}", filename, e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        }
         {
             // remove inbox
             match vector_fs.db.remove_inbox(&input_payload.file_inbox) {

@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
+use warp::filters::path::full;
 
 use crate::http_requests::PostRequestError;
 use crate::persistence::{ShinkaiMirrorDB, ShinkaiMirrorDBError};
+use crate::shinkai::api_schemas::FileUploadResponse;
 use crate::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -108,6 +110,55 @@ impl FilesystemSynchronizer {
         })
     }
 
+    pub async fn scan_folders_and_remove_old_files(
+        destination_path: PathBuf,
+        folder_to_watch: &PathBuf,
+        profile_name: &str,
+        syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    ) {
+        // Scan the local folder for existing files
+        let folder_files = Self::scan_folders(folder_to_watch);
+
+        // Lock the database to access the synchronized files' information
+        let db = syncing_folders_db.lock().await;
+
+        // Iterate over each file found in the local folder
+        for (path, local_modified_time) in folder_files {
+            // Calculate the relative path of the file with respect to the folder being watched
+            if let Ok(relative_path) = path.strip_prefix(folder_to_watch) {
+                // Remove the file extension from the relative path
+                let relative_path_without_extension = relative_path.with_extension("");
+                // Construct the full path as it would be represented in the destination, without the file extension
+                let full_destination_path = destination_path.join(relative_path_without_extension);
+
+                // Attempt to retrieve the file's synchronization state from the database
+                match db.get_file_mirror_state(profile_name.to_string(), full_destination_path.clone()) {
+                    Ok(Some(syncing_folder)) => {
+                        // If the file exists in the database, compare the last modified times
+                        if local_modified_time > syncing_folder.local_last_synchronized_file_datetime {
+                            // If the local file is older, delete it
+                            if let Err(e) =
+                                db.delete_file_mirror_state(profile_name.to_string(), full_destination_path.clone())
+                            {
+                                eprintln!("Failed to delete outdated file {:?}: {}", full_destination_path, e);
+                            } else {
+                                eprintln!("Deleted outdated file {:?}", full_destination_path);
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        // Do nothing
+                        // eprintln!("File {:?} is not in the database.", full_destination_path);
+                    }
+                    Err(e) => {
+                        // Log any errors encountered while accessing the database
+                        eprintln!("Error accessing database for file {:?}: {}", full_destination_path, e);
+                    }
+                }
+            }
+        }
+    }
+
     pub async fn scan_folders_and_calculate_difference(
         destination_path: PathBuf,
         folder_to_watch: &PathBuf,
@@ -115,10 +166,6 @@ impl FilesystemSynchronizer {
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
     ) -> Vec<(PathBuf, SystemTime)> {
         let current_folder_files = Self::scan_folders(folder_to_watch);
-        eprintln!("Files scanned: {:?}", current_folder_files.len());
-        for (path, _) in &current_folder_files {
-            eprintln!("Path: {:?}", path);
-        }
         let mut files_to_update = Vec::new();
 
         for (full_path, modified_time) in current_folder_files {
@@ -133,11 +180,15 @@ impl FilesystemSynchronizer {
             path = path.with_extension("");
             let syncing_folders = syncing_folders_db.lock().await;
             // Use get_file_mirror_state to check if the file exists in the database
-            eprintln!("Checking file: {:?}", path);
+            // eprintln!("Checking file: {:?}", path);
             match syncing_folders.get_file_mirror_state(profile_name.to_string(), path.clone()) {
                 Ok(Some(syncing_folder)) => {
                     // If the file exists and the modified time is greater than the last synchronized time, add it to the update list
                     if modified_time != syncing_folder.local_last_synchronized_file_datetime {
+                        eprintln!(
+                            "File {:?} has been modified. Last synchronized time: {:?}, Current time: {:?}",
+                            path, syncing_folder.local_last_synchronized_file_datetime, modified_time
+                        );
                         files_to_update.push((full_path, modified_time));
                     }
                 }
@@ -151,7 +202,6 @@ impl FilesystemSynchronizer {
                 }
             }
         }
-        eprintln!("Files to update: {:?}", files_to_update.len());
         files_to_update
     }
 
@@ -278,27 +328,29 @@ impl FilesystemSynchronizer {
             let mut attempt = 0;
 
             loop {
-                let upload_result = shinkai_manager_for_sync
+                let upload_result: Result<Vec<FileUploadResponse>, PostRequestError> = shinkai_manager_for_sync
                     .upload_file(&file_data, filename, &destination_str, creation_datetime_str.clone())
                     .await;
 
                 match upload_result {
-                    Ok(_) => {
+                    Ok(response) if !response.is_empty() => {
+                        let response = &response[0].clone(); // Use the first result
                         uploaded_files_count += 1;
                         eprintln!("Uploaded {}/{} files.", uploaded_files_count, total_files);
 
                         // Construct the full path for the database, ensuring there's a "/" between destination_path and file_path_for_db if necessary
-                        let file_path_for_db = destination_dir.join(filename);
+                        let file_path_for_db = destination_dir.join(filename).with_extension("");
 
                         let mut db = syncing_folders_db.lock().await;
                         let syncing_folder = SyncingFolder {
                             local_last_synchronized_file_datetime: modified_time,
-                            merkle_hash: None,
+                            merkle_hash: Some(response.merkle_hash.clone()),
                         };
                         db.add_or_update_file_mirror_state(profile_name.to_string(), file_path_for_db, syncing_folder)
                             .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
                         break;
                     }
+                    Ok(_) => eprintln!("No files were uploaded."),
                     Err(e) => match e {
                         PostRequestError::RequestFailed(ref msg)
                             if msg.contains("timed out") && attempt < retry_delays.len() =>
@@ -319,28 +371,14 @@ impl FilesystemSynchronizer {
         Ok(())
     }
 
+    /// Deletes the local entries (not files) which are not found in the Node
+    /// This could happen if files were deleted in the Node, the local entries need to be synced with the Node
     pub async fn sync_local_with_node_folder(
         destination_path: PathBuf,
         profile_name: &str,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         shinkai_manager_for_sync: &ShinkaiManagerForSync,
     ) -> Result<(), ShinkaiMirrorDBError> {
-        eprintln!("sync_local_with_node_folder");
-        {
-            let destination_path_str = destination_path.to_string_lossy();
-            let db = syncing_folders_db.lock().await;
-            let all_file_mirror_states = db.all_file_mirror_states().unwrap();
-            let filtered_states: Vec<_> = all_file_mirror_states
-                .into_iter()
-                .filter(|(path, _)| path.starts_with(&*destination_path_str))
-                .collect();
-            eprintln!(
-                "Filtered states with prefix '{}': {:?}",
-                destination_path_str,
-                filtered_states.len()
-            );
-        }
-
         let destination_path_str = destination_path.to_string_lossy();
         let folder_check_path = format!("/{}", destination_path_str.trim_start_matches("./"));
 
@@ -348,41 +386,43 @@ impl FilesystemSynchronizer {
         match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
             Ok(result) => {
                 let paths_and_hashes = Self::extract_paths_and_hashes(&result);
-                // eprintln!("Paths and hashes: {:?}", paths_and_hashes);
 
                 // If the folder exists on the node, proceed with synchronization
-                let db = syncing_folders_db.lock().await;
+                let mut db = syncing_folders_db.lock().await;
 
-                let get_all_before = db.all_file_mirror_states().unwrap();
-                eprintln!("Before sync: {:?}", get_all_before.len());
+                // Get all file mirror states before synchronization
+                let all_file_mirror_states = db.all_file_mirror_states().unwrap();
+                let filtered_states: Vec<_> = all_file_mirror_states
+                    .into_iter()
+                    .filter(|(path, _)| path.starts_with(&*destination_path_str))
+                    .collect();
 
-                // First, delete all keys in the database that partially overlap with the given profile name and destination path
-                let _ = db.delete_keys_with_profile_and_prefix(&profile_name, &destination_path);
+                // Delete local entries that do not exist on the server
+                for (path, _) in filtered_states.iter() {
+                    // Convert the PathBuf to a String for comparison
+                    let db_path_str = path.to_string_lossy();
 
-                // Add all the ones that we already have
-                for (path, hash) in paths_and_hashes.iter() {
-                    let path_buf = PathBuf::from(path);
-                    eprintln!("Adding path: {:?}", path_buf);
-                    let syncing_folder = SyncingFolder {
-                        local_last_synchronized_file_datetime: SystemTime::now(),
-                        merkle_hash: Some(hash.to_string()),
-                    };
-                    db.add_or_update_file_mirror_state(profile_name.to_string(), path_buf, syncing_folder)
-                        .map_err(|e| {
-                            eprintln!("Failed to add or update file mirror state: {:?}", e);
-                            ShinkaiMirrorDBError::from(e)
-                        })?;
+                    // Strip the leading "./" from the path string
+                    let comparable_path_str = db_path_str.strip_prefix("./").unwrap_or(&db_path_str);
+
+                    // Convert the string slice back to a Path, remove the extension, and convert back to a string slice
+                    let path_without_extension_buf = Path::new(comparable_path_str).with_extension("");
+                    let path_without_extension = path_without_extension_buf.to_str().unwrap_or(comparable_path_str);
+
+                    if !paths_and_hashes.contains_key(path_without_extension) {
+                        eprintln!("Deleting local entry not found on server: {:?}", comparable_path_str);
+                        if let Err(e) = db.delete_file_mirror_state(profile_name.to_string(), PathBuf::from(path)) {
+                            eprintln!("Failed to delete local entry not found on server {:?}: {}", path, e);
+                        }
+                    }
                 }
-
-                let get_all_after = db.all_file_mirror_states().unwrap();
-                eprintln!("After sync: {:?}", get_all_after.len());
 
                 Ok(())
             }
             Err(e) => {
                 eprintln!("Failed to get node folder: {:?}", e);
                 if let PostRequestError::FSFolderNotFound(_) = e {
-                    let db = syncing_folders_db.lock().await;
+                    let mut db = syncing_folders_db.lock().await;
                     let _ = db.delete_keys_with_profile_and_prefix(&profile_name, &destination_path);
                     eprintln!(
                         "Deleted all keys for profile: '{}' with prefix: '{}' due to FS folder not found.",
@@ -410,8 +450,18 @@ impl FilesystemSynchronizer {
     ) -> Result<(), PostRequestError> {
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
-            Ok(health_status) => {
+            Ok(_health_status) => {
+                eprintln!("Scanning folders and removing old files...");
+                let _ = Self::scan_folders_and_remove_old_files(
+                    destination_path.clone(),
+                    folder_to_watch,
+                    profile_name,
+                    syncing_folders_db.clone(),
+                )
+                .await;
+
                 // Sync current persistence with the one from the server
+                eprintln!("Syncing local with node folder (deleting local registry for files that are not in the node anymore)...");
                 let _ = Self::sync_local_with_node_folder(
                     destination_path.clone(),
                     profile_name,
@@ -428,6 +478,7 @@ impl FilesystemSynchronizer {
                     syncing_folders_db.clone(),
                 )
                 .await;
+                eprintln!("Files to update: {:?}", files_to_update.len());
 
                 let paths_to_create: Vec<PathBuf> = files_to_update.iter().map(|(path, _)| path.clone()).collect();
 
@@ -498,11 +549,9 @@ impl FilesystemSynchronizer {
 
     fn extract_paths_and_hashes(result: &Value) -> HashMap<String, String> {
         let mut paths_and_hashes = HashMap::new();
-        eprintln!("Starting extraction from top-level result.");
         // Check if the result is a string and attempt to parse it as JSON
         if let Value::String(result_str) = result {
             if let Ok(parsed_result) = serde_json::from_str::<Value>(result_str) {
-                eprintln!("Parsed result from string successfully.");
                 Self::extract_paths_and_hashes_recursive(&parsed_result, &mut paths_and_hashes);
             } else {
                 eprintln!("Failed to parse result string as JSON.");

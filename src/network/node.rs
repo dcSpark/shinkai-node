@@ -21,6 +21,7 @@ use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use serde_json::Value;
 use core::panic;
 use std::collections::HashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -286,7 +287,7 @@ pub enum NodeCommand {
     },
     APIConvertFilesAndSaveToFolder {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Vec<Value>, APIError>>,
     },
     APIVecFSCreateFolder {
         msg: ShinkaiMessage,

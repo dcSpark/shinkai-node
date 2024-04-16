@@ -10,6 +10,8 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::RngCore;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
 };
@@ -120,13 +122,13 @@ impl ShinkaiManagerForSync {
         }
     }
 
-    pub async fn upload_file(
+    pub async fn upload_file<T: DeserializeOwned + Default + Send + 'static>(
         &self,
         file_data: &[u8],
         filename: &str,
         destination: &str,
         file_datetime: Option<String>,
-    ) -> Result<(), PostRequestError> {
+    ) -> Result<T, PostRequestError> {
         let start_time = std::time::Instant::now(); // Start timing
 
         let destination = if destination.starts_with("./") {
@@ -196,7 +198,9 @@ impl ShinkaiManagerForSync {
             let nonce = GenericArray::from_slice(&nonce_bytes);
             let nonce_slice = nonce.as_slice();
             let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-            let ciphertext = cipher.encrypt(nonce, file_data_owned.as_ref()).expect("encryption failure!");
+            let ciphertext = cipher
+                .encrypt(nonce, file_data_owned.as_ref())
+                .expect("encryption failure!");
 
             let form = reqwest::multipart::Form::new().part(
                 "file",
@@ -234,7 +238,7 @@ impl ShinkaiManagerForSync {
             let result = request_post(
                 node_address.clone(),
                 message_creation.to_string(),
-                "/v1/vec_fs/convert_files_and_save_to_folder", // TODO: can we return the merkle hash and extra info from here?
+                "/v1/vec_fs/convert_files_and_save_to_folder",
             )
             .await
             .map_err(|e| {
@@ -242,7 +246,10 @@ impl ShinkaiManagerForSync {
             })?;
             eprintln!("File upload and processing completed: {:?}", result);
 
-            Ok::<(), PostRequestError>(())
+            let parsed_result: T = serde_json::from_value(result.data)
+                .map_err(|_| PostRequestError::RequestFailed("Failed to parse response data".to_string()))?;
+
+            Ok(parsed_result)
         });
 
         tokio::select! {
@@ -251,10 +258,10 @@ impl ShinkaiManagerForSync {
             },
             result = upload_task => {
                 match result {
-                    Ok(Ok(())) => {
-                        let elapsed_time = start_time.elapsed(); // End timing
-                        eprintln!("File upload and processing completed in: {:?}", elapsed_time); // Log the elapsed time
-                        Ok(())
+                    Ok(Ok(parsed_result)) => {
+                        let elapsed_time = start_time.elapsed();
+                        eprintln!("File upload and processing completed in: {:?}", elapsed_time);
+                        Ok(parsed_result)
                     },
                     Ok(Err(e)) => Err(e),
                     Err(_) => Err(PostRequestError::RequestFailed("Upload task panicked".to_string())),
