@@ -6,7 +6,7 @@ use super::{
     node_api::APIError,
     node_error::NodeError,
     subscription_manager::{
-        subscription_manager::external_subscriber_manager::SharedFolderInfo,
+        external_subscriber_manager::SharedFolderInfo,
         external_subscriber_manager::ExternalSubscriberManager,
         my_subscription_manager::{self, MySubscriptionsManager},
     },
