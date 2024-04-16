@@ -1,6 +1,7 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -996,4 +997,22 @@ async fn local_malformed_csv_parsing_test() {
 
     assert!(results[0].score > 0.5);
     assert!(results[0].node.get_text_content().unwrap().contains("3000"));
+}
+
+#[tokio::test]
+async fn metadata_parsing_test() {
+    let mut tg1 = TextGroup::new("String without metadata".to_string(), vec![], vec![], None);
+    let mut tg2 = TextGroup::new("String with metadata timestamp: {{{timestamp:2022-09-18T02:17:59Z}}}".to_string(), vec![], vec![], None);
+    let mut tg3 = TextGroup::new("String with metadata timestamp: {{{timestamp:2024-01-01T23:41:30Z}}} and page numbers: {{{pg_nums:[19, 20]}}}".to_string(), vec![], vec![], None);
+    let mut tg4 = TextGroup::new("String with invalid metadata timestamp: {{{timestamp:br0K3n}}}".to_string(), vec![], vec![], None);
+
+    let md1 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg1);
+    let md2 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg2);
+    let md3 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg3);
+    let md4 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg4);
+
+    assert!(md1.is_empty());
+    assert!(!md2.is_empty());
+    assert!(!md3.is_empty());
+    assert!(md4.is_empty());
 }

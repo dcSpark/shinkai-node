@@ -1,5 +1,4 @@
 use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
-use serde::Deserialize;
 
 /// An intermediary type for processing content into Node's held in VectorResources
 #[derive(Debug, Clone, PartialEq)]

@@ -9,9 +9,14 @@ impl ShinkaiFileParser {
         "pg_nums".to_string()
     }
 
-    /// Key of page numbers metadata
+    /// Key of datetime metadata
     pub fn datetime_metadata_key() -> String {
         "datetime".to_string()
+    }
+
+    /// Key of timestamp metadata
+    pub fn timestamp_metadata_key() -> String {
+        "timestamp".to_string()
     }
 
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
