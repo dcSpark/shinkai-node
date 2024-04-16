@@ -78,12 +78,15 @@ pub enum PrefilterMode {
     SyntacticVectorSearch(Vec<String>),
 }
 
+pub type ProximityWindow = u64;
+pub type NumberOfTopResults = u64;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResultsMode {
-    /// Perform a vector search which returns the highest scored node + an integer number
+    /// Finds the highest `NumberOfTopResults` scored nodes + fetches a `ProximityWindow` number
     /// of nodes before/after. This search only works if the VectorResource where the node is held in
-    /// implements OrderedVectorResource, otherwise search returns just the single node.
-    ProximitySearch(u64),
+    /// implements OrderedVectorResource.
+    ProximitySearch(ProximityWindow, NumberOfTopResults),
 }
 
 pub type Key = String;

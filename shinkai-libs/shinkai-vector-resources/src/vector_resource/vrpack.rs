@@ -252,13 +252,19 @@ impl VRPack {
 
     /// Fetches the VRKai node at the specified path and parses it into a VRKai.
     pub fn get_vrkai(&self, path: VRPath) -> Result<VRKai, VRError> {
-        let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
+        let node = self
+            .resource
+            .as_trait_object()
+            .retrieve_node_at_path(path.clone(), None)?;
         Self::parse_node_to_vrkai(&node.node)
     }
 
     /// Fetches the merkle hash of the folder at the specified path.
     pub fn get_folder_merkle_hash(&self, path: VRPath) -> Result<String, VRError> {
-        let node = self.resource.as_trait_object().retrieve_node_at_path(path.clone())?;
+        let node = self
+            .resource
+            .as_trait_object()
+            .retrieve_node_at_path(path.clone(), None)?;
         match node.node.content {
             NodeContent::Resource(resource) => Ok(resource.as_trait_object().get_merkle_root()?),
             _ => Err(VRError::InvalidNodeType(format!(

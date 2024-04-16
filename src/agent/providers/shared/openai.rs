@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use serde::de::Deserializer;
-use serde::de::Error;
-use serde::de::{MapAccess, Visitor};
-use serde::ser::{SerializeMap, SerializeStruct, Serializer};
-use serde::{Deserialize, Serialize};
-use serde_json::{self, Map};
-use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use serde_json::Value as JsonValue;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
+use serde::de::Deserializer;
+use serde::de::Error;
+use serde::de::{MapAccess, Visitor};
+use serde::ser::{SerializeMap, SerializeStruct, Serializer};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use serde_json::{self, Map};
+use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -104,8 +104,16 @@ pub struct ApiPayload {
     max_tokens: usize,
 }
 
-pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<PromptResult, AgentError> {
-    let tiktoken_messages = prompt.generate_openai_messages(Some(total_tokens / 2))?;
+pub fn openai_prepare_messages(
+    model: &AgentLLMInterface,
+    model_type: String,
+    prompt: Prompt,
+    total_tokens: usize,
+) -> Result<PromptResult, AgentError> {
+    let half_total_tokens = total_tokens.checked_div(2).ok_or(AgentError::UnexpectedPromptResult(
+        "Failed dividing total_tokens.".to_string(),
+    ))?;
+    let tiktoken_messages = prompt.generate_openai_messages(Some(half_total_tokens))?;
 
     let filtered_tiktoken_messages: Vec<_> = tiktoken_messages
         .clone()
@@ -113,11 +121,13 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, pr
         .filter(|message| message.name.as_deref() != Some("image"))
         .collect();
 
-    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(
-        &filtered_tiktoken_messages,
-    ).map_err(AgentError::TokenizationError)?;
-    let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
-    max_tokens = std::cmp::min(max_tokens, ModelCapabilitiesManager::get_max_output_tokens(&model.clone()));
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&filtered_tiktoken_messages)
+        .map_err(AgentError::TokenizationError)?;
+    let mut max_tokens = std::cmp::max(5, total_tokens.saturating_sub(used_tokens));
+    max_tokens = std::cmp::min(
+        max_tokens,
+        ModelCapabilitiesManager::get_max_output_tokens(&model.clone()),
+    );
 
     let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
         .into_iter()

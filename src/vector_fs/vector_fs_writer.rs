@@ -297,7 +297,10 @@ impl VectorFS {
 
         {
             let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
-            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            internals
+                .permissions_index
+                .remove_path_permission(writer.path.clone())
+                .await;
             self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         let internals = self.get_profile_fs_internals_read_only(&writer.profile).await?;
@@ -488,7 +491,10 @@ impl VectorFS {
                 .insert_path_permission(new_item.path.clone(), read_permission, write_permission)
                 .await?;
             // Remove the original item's permissions
-            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            internals
+                .permissions_index
+                .remove_path_permission(writer.path.clone())
+                .await;
             self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
         Ok(new_item)
@@ -580,7 +586,10 @@ impl VectorFS {
                 .insert_path_permission(new_folder.path.clone(), read_permission, write_permission)
                 .await?;
             // Remove the original folder's permissions
-            internals.permissions_index.remove_path_permission(writer.path.clone()).await;
+            internals
+                .permissions_index
+                .remove_path_permission(writer.path.clone())
+                .await;
             self._update_fs_internals(writer.profile.clone(), internals).await?;
         }
 
@@ -706,7 +715,7 @@ impl VectorFS {
             read_permission = parent_permissions.read_permission;
             write_permission = parent_permissions.write_permission;
         }
-        
+
         // Add read/write permission for the folder path
         {
             let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
@@ -818,7 +827,9 @@ impl VectorFS {
             let parent_folder_path = base_path.append_path_cloned(&path.parent_path());
             let parent_folder_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self).await?;
             // Create the folders
-            let new_folders = self.create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone()).await?;
+            let new_folders = self
+                .create_new_folder_auto(&parent_folder_writer, parent_folder_path.clone())
+                .await?;
             // Save the VRKai in its final location
             self.save_vrkai_in_folder(&parent_folder_writer, vrkai).await?;
 
@@ -848,7 +859,8 @@ impl VectorFS {
                 .map(|(path, hash)| (path.clone(), hash.clone()))
                 .collect(),
             base_path.clone(),
-        ).await?;
+        )
+        .await?;
 
         Ok(())
     }
@@ -1185,7 +1197,7 @@ impl VectorFS {
 
                 let retrieved_node = internals
                     .fs_core_resource
-                    .retrieve_node_at_path(new_node_path.clone())?;
+                    .retrieve_node_at_path(new_node_path.clone(), None)?;
                 let new_item = FSItem::from_vr_header_node(
                     retrieved_node.node,
                     new_node_path.clone(),
@@ -1312,7 +1324,7 @@ impl VectorFS {
 
         let retrieved_node = internals
             .fs_core_resource
-            .retrieve_node_at_path(new_node_path.clone())?;
+            .retrieve_node_at_path(new_node_path.clone(), None)?;
         let folder =
             FSFolder::from_vector_resource_node(retrieved_node.node, new_node_path, &internals.last_read_index)?;
 
@@ -1357,7 +1369,9 @@ impl VectorFS {
     ) -> Result<(RetrievedNode, Embedding), VectorFSError> {
         let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
         let path = writer.path.push_cloned(node_id);
-        let result = internals.fs_core_resource.retrieve_node_and_embedding_at_path(path)?;
+        let result = internals
+            .fs_core_resource
+            .retrieve_node_and_embedding_at_path(path, None)?;
         Ok(result)
     }
 
@@ -1370,7 +1384,7 @@ impl VectorFS {
         let internals = self.get_profile_fs_internals_copy(&writer.profile).await?;
         let result = internals
             .fs_core_resource
-            .retrieve_node_and_embedding_at_path(writer.path.clone())?;
+            .retrieve_node_and_embedding_at_path(writer.path.clone(), None)?;
         Ok(result)
     }
 }

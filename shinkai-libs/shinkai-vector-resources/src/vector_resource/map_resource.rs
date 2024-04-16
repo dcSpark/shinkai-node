@@ -198,7 +198,7 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Retrieves a node's embedding given its key (id)
-    fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
+    fn get_root_embedding(&self, key: String) -> Result<Embedding, VRError> {
         let key = VRPath::clean_string(&key);
         Ok(self
             .embeddings
@@ -208,7 +208,7 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Retrieves a node given its key (id)
-    fn get_node(&self, key: String) -> Result<Node, VRError> {
+    fn get_root_node(&self, key: String) -> Result<Node, VRError> {
         let key = VRPath::clean_string(&key);
         self.nodes
             .get(&key)
@@ -249,7 +249,7 @@ impl VectorResourceCore for MapVectorResource {
         }
 
         // Insert node/embeddings
-        self._insert_node(updated_node.clone());
+        self._insert_root_node(updated_node.clone());
         self.embeddings.insert(updated_node.id.clone(), embedding);
 
         // Update indices
@@ -294,7 +294,7 @@ impl VectorResourceCore for MapVectorResource {
             .nodes
             .insert(id.to_string(), new_node.clone())
             .ok_or(VRError::InvalidNodeId(id.to_string()))?;
-        let old_embedding = self.get_embedding(id.clone())?;
+        let old_embedding = self.get_root_embedding(id.clone())?;
 
         // Then deletion of old node from indexes and addition of new node
         if old_node.data_tag_names != new_node.data_tag_names {
@@ -334,7 +334,7 @@ impl VectorResourceCore for MapVectorResource {
         };
 
         let id = VRPath::clean_string(&id);
-        let results = self.remove_node(&id);
+        let results = self.remove_root_node(&id);
         self.set_last_written_datetime(current_datetime);
 
         // Regenerate the Vector Resource's merkle root after updating its contents
@@ -566,7 +566,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.insert_node(key.to_string(), node, embedding.clone());
+        self.insert_root_node(key.to_string(), node, embedding.clone());
     }
 
     /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.
@@ -716,12 +716,12 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        self.replace_node(key.to_string(), new_node, embedding.clone())
+        self.replace_root_node(key.to_string(), new_node, embedding.clone())
     }
 
     /// Internal method for removing root node/embedding, and updating indexes.
-    fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
-        let deleted_node = self._remove_node(key)?;
+    fn remove_root_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_root_node(key)?;
         let deleted_embedding = self
             .embeddings
             .remove(key)
@@ -735,7 +735,7 @@ impl MapVectorResource {
     }
 
     /// Internal method. Node deletion from the hashmap
-    fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
+    fn _remove_root_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId(key.to_string()))?;
         self.update_last_written_to_now();
@@ -743,7 +743,7 @@ impl MapVectorResource {
     }
 
     // Internal method. Inserts a node into the nodes hashmap
-    fn _insert_node(&mut self, node: Node) {
+    fn _insert_root_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
         self.update_last_written_to_now();

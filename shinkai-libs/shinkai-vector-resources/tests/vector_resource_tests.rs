@@ -8,11 +8,11 @@ use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
 use shinkai_vector_resources::vector_resource::vrkai::VRKai;
 use shinkai_vector_resources::vector_resource::vrpack::VRPack;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
-use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
     FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
     VectorResourceCore, VectorResourceSearch,
 };
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::collections::HashMap;
 
 pub fn default_vector_resource_doc() -> DocumentVectorResource {
@@ -467,7 +467,7 @@ fn test_manual_resource_vector_search() {
         query_embedding1.clone(),
         100,
         TraversalMethod::Exhaustive,
-        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
@@ -476,11 +476,71 @@ fn test_manual_resource_vector_search() {
         query_embedding2.clone(),
         100,
         TraversalMethod::Exhaustive,
-        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 1))],
         None,
     );
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_eq!(res.len(), 3);
+
+    // The nodes are already included in the first top results proximity, so this checks that there's no more.
+    let res = fruit_doc.vector_search_customized(
+        query_embedding2.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(2, 1))],
+        None,
+    );
+    assert_eq!(res.len(), 3);
+
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+
+    println!("\n\nFruit doc:");
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
+
+    // Check that proximity window works
+    let query_string = "Whats an apple?";
+    let query_embedding_fruit = generator.generate_embedding_default_blocking(query_string).unwrap();
+
+    let res = fruit_doc.vector_search_customized(
+        query_embedding_fruit.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 2))],
+        None,
+    );
+    assert_eq!(res.len(), 5);
+
+    let res = fruit_doc.vector_search_customized(
+        query_embedding_fruit.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(2, 2))],
+        None,
+    );
+
+    assert_eq!(res.len(), 6);
+
+    // Verify proximity grouping is working
+    let res = fruit_doc.vector_search_customized(
+        query_embedding_fruit.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1, 2))],
+        None,
+    );
+
+    let grouped_results = RetrievedNode::group_proximity_results(&res).unwrap();
+
+    for (index, group) in grouped_results.iter().enumerate() {
+        println!("Group {}:", index);
+        for result in group {
+            println!("Result: {:?}", result.retrieval_path);
+        }
+    }
+    assert_eq!(grouped_results.len(), 2);
+    assert_eq!(grouped_results[0].len(), 3);
+    assert_eq!(grouped_results[1].len(), 2);
 
     // Check the metadata_index
     println!("Metdata index: {:?}", fruit_doc.metadata_index());

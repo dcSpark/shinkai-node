@@ -87,30 +87,33 @@ pub trait VectorResourceSearch: VectorResourceCore {
             let ret_path = node.retrieval_path;
             let path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
+            let node_id = node.node.id.clone();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
-                        s.chars().take(25).collect::<String>() + "..."
+                        format!("{} - {}", node_id, s.chars().take(25).collect::<String>() + "...")
                     } else {
-                        s.to_string()
+                        format!("{} - {}", node_id, s.to_string())
                     }
                 }
                 NodeContent::Resource(resource) => {
                     if path_depth == 1 {
                         println!(" ");
                     }
+                    // Decide what to print for start
                     format!(
-                        "{} <Vector Resource> - {} Nodes Held Inside",
+                        "{} - {} <Folder> - {} Nodes Held Inside",
+                        node_id,
                         resource.as_trait_object().name(),
                         resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    format!("{} <External Content>", external_content)
+                    format!("{} - {} <External Content>", node_id, external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    format!("{} <VRHeader>", header.reference_string())
+                    format!("{} - {} <VRHeader>", node_id, header.reference_string())
                 }
             };
             // Adding merkle hash if it exists to output string
@@ -294,7 +297,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
             if path != VRPath::root() {
-                match self.retrieve_node_at_path(path.clone()) {
+                match self.retrieve_node_at_path(path.clone(), None) {
                     Ok(ret_node) => {
                         if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
                             return resource.as_trait_object()._vector_search_customized_core(
@@ -353,18 +356,45 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         // Check if we need to adjust based on the ResultsMode
         if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
-            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
-                if let Some(first_result) = results.first() {
-                    if let Ok(new_results) =
-                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
-                    {
-                        results = new_results
+            if let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode {
+                let mut paths_checked = HashMap::new();
+                let mut new_results = Vec::new();
+                let mut new_top_results_added = 0;
+                let mut iter = results.iter().cloned();
+
+                while new_top_results_added < num_of_top_results as usize {
+                    if let Some(top_result) = iter.next() {
+                        // Check if the node has already been included, then skip
+                        if paths_checked.contains_key(&top_result.retrieval_path) {
+                            continue;
+                        }
+
+                        match self.proximity_retrieve_nodes_at_path(
+                            top_result.retrieval_path.clone(),
+                            proximity_window,
+                            Some(query.clone()),
+                        ) {
+                            Ok(mut proximity_results) => {
+                                let mut non_duplicates = vec![];
+                                for proximity_result in &mut proximity_results {
+                                    if !paths_checked.contains_key(&proximity_result.retrieval_path) {
+                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                        proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                        non_duplicates.push(proximity_result.clone());
+                                    }
+                                }
+
+                                new_results.append(&mut non_duplicates);
+                                new_top_results_added += 1;
+                            }
+                            Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
+                        }
                     } else {
-                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
-                        // then just return the single highest scored node as the failure case when using proximity search.
-                        results = vec![first_result.clone()]
+                        // Break the loop if there are no more top results to process
+                        break;
                     }
                 }
+                results = new_results;
             }
         }
 
@@ -400,7 +430,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             // If SyntacticVectorSearch is in traversal_options, fetch nodes with matching data tags
             let ids = self._syntactic_search_id_fetch(&data_tag_names);
             for id in ids {
-                if let Ok(embedding) = self.get_embedding(id) {
+                if let Ok(embedding) = self.get_root_embedding(id) {
                     embeddings_to_score.push(embedding);
                 }
             }
@@ -461,7 +491,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
-            if let Ok(node) = self.get_node(id.clone()) {
+            if let Ok(node) = self.get_root_node(id.clone()) {
                 // Perform validations based on Filter Mode
                 let filter_mode = traversal_options.get_set_filter_mode_option();
                 if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {

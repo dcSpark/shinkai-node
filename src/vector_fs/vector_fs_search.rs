@@ -162,7 +162,6 @@ impl VectorFS {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<FSItem>, VectorFSError> {
-        println!("Starting vector search fs_item----------------------");
         let ret_nodes = self
             ._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
             .await?;
@@ -171,11 +170,6 @@ impl VectorFS {
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
             if let NodeContent::VRHeader(_) = ret_node.node.content {
-                println!(
-                    "Merkle hash: {:?} -- Score: {}",
-                    ret_node.node.get_merkle_hash(),
-                    &ret_node.score
-                );
                 fs_items.push(FSItem::from_vr_header_node(
                     ret_node.node.clone(),
                     ret_node.retrieval_path,
@@ -343,7 +337,5 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
     // Initialize the PermissionsIndex struct
     let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
 
-    perm_index
-        .validate_read_access(&reader.requester_name, path)
-        .is_ok()
+    perm_index.validate_read_access(&reader.requester_name, path).is_ok()
 }
