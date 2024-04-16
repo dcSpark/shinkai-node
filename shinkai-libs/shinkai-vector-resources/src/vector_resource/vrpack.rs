@@ -870,4 +870,12 @@ impl VRPack {
             ._set_resource_merkle_hash_at_path(path, merkle_hash)?;
         Ok(())
     }
+
+    /// Generates 2 RetrievedNodes which contain either the description + 2nd node, or the first two nodes if no description is available.
+    ///  Sets their score to `1.0` with empty retrieval path & id. This is intended for job vector searches to prepend the intro text about relevant VRs.
+    /// Only works on OrderedVectorResources, errors otherwise.
+    pub fn get_vrkai_intro_ret_nodes(&self, path: VRPath) -> Result<Vec<RetrievedNode>, VRError> {
+        let vrkai = self.get_vrkai(path)?;
+        vrkai.resource.as_trait_object().generate_intro_ret_nodes()
+    }
 }

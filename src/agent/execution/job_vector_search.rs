@@ -211,7 +211,7 @@ impl JobManager {
     /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// If include_description is true then adds the description of the highest scored Vector Resource as an auto-included
     /// RetrievedNode at the front of the returned list.
-    pub async fn job_scope_vector_search(
+    async fn internal_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
@@ -223,7 +223,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let sorted_retrieved_node_groups = Self::internal_job_scope_vector_search_groups(
+        let results = Self::internal_job_scope_vector_search_groups(
             db,
             vector_fs,
             job_scope,
@@ -237,6 +237,7 @@ impl JobManager {
         )
         .await?;
 
+        let sorted_retrieved_node_groups = results.0;
         let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
         Ok(sorted_retrieved_nodes)
     }
@@ -273,7 +274,7 @@ impl JobManager {
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
         // Holds the intro text for each VR, where only the ones that have results with top scores will be used
-        let intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
+        let mut intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
 
         // Setup vars used across searches
         let deep_traversal_options = vec![
@@ -304,11 +305,11 @@ impl JobManager {
             let mut bare_results = vec![];
             for (ret_node, path) in vr_pack_results {
                 let ref_string = ret_node.resource_header.reference_string();
-                let intro_text = entry.vrpack.get_vrkai_intro_ret_nodes(path.clone());
-                intro_hashmap
-                    .entry(ref_string)
-                    .or_insert_with(Vec::new)
-                    .push(intro_text);
+                if !intro_hashmap.contains_key(&ref_string) {
+                    if let Ok(intro_nodes) = entry.vrpack.get_vrkai_intro_ret_nodes(path.clone()) {
+                        intro_hashmap.insert(ref_string, intro_nodes);
+                    }
+                }
                 bare_results.push(ret_node);
             }
 
