@@ -25,13 +25,13 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::{
+    embedding_generator::EmbeddingGenerator,
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
     vector_resource::{VRKai, VRPack, VRPath},
-    embedding_generator::{EmbeddingGenerator},
 };
 use tokio::sync::Mutex;
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -80,8 +80,9 @@ impl Node {
         Ok((input_payload, requester_name))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -163,7 +164,6 @@ impl Node {
         let result = vector_fs.retrieve_fs_path_simplified_json(&reader).await;
         let result = match result {
             Ok(result) => {
-                eprintln!("retrieve_fs_path_simplified_json result: {:?}", result);
                 let mut subscription_manager = ext_subscription_manager.lock().await;
                 let shared_folders_result = subscription_manager
                     .available_shared_folders(
@@ -1034,6 +1034,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -1138,7 +1139,9 @@ impl Node {
             let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
 
             let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()).await?;
+            let writer = vector_fs
+                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
+                .await?;
 
             if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
                 let _ = res
@@ -1151,7 +1154,38 @@ impl Node {
                 return Ok(());
             }
 
-            let success_message = format!("VRPack '{}' extracted/saved successfully.", filename);
+            // TODO: read information about the file to return to the user
+            let reader = vector_fs
+                .new_reader(requester_name.clone(), folder_path, requester_name.clone())
+                .await;
+            let reader = match reader {
+                Ok(reader) => reader,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create reader: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            let result = vector_fs.retrieve_vector_resource(&reader).await;
+            let result = match result {
+                Ok(result) => result,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve vector resource: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            let success_message = result.to_json()?;
             success_messages.push(success_message);
         }
 

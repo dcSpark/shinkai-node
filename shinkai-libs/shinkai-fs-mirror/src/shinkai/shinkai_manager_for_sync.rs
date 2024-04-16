@@ -231,15 +231,16 @@ impl ShinkaiManagerForSync {
             .unwrap();
 
             let message_creation = serde_json::json!(shinkai_message);
-            request_post(
+            let result = request_post(
                 node_address.clone(),
                 message_creation.to_string(),
-                "/v1/vec_fs/convert_files_and_save_to_folder",
+                "/v1/vec_fs/convert_files_and_save_to_folder", // TODO: can we return the merkle hash and extra info from here?
             )
             .await
             .map_err(|e| {
                 PostRequestError::RequestFailed(format!("Convert File HTTP request failed with err: {:?}", e))
             })?;
+            eprintln!("File upload and processing completed: {:?}", result);
 
             Ok::<(), PostRequestError>(())
         });
