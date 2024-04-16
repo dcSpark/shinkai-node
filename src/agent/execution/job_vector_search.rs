@@ -61,9 +61,10 @@ impl JobManager {
         num_of_top_results: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<(Vec<RetrievedNode>, Option<String>), ShinkaiDBError> {
+        let mut master_intro_hashmap = HashMap::new();
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
-        let mut ret_groups = JobManager::job_scope_vector_search_groups(
+        let (mut ret_groups, mut intro_hashmap) = JobManager::internal_job_scope_vector_search_groups(
             db.clone(),
             vector_fs.clone(),
             job_scope,
@@ -76,13 +77,9 @@ impl JobManager {
             max_tokens_in_prompt,
         )
         .await?;
-
-        // Extract the summary text if it exists (as a solo group)
-        let mut new_summary_node_text = None;
-        if let Some(group) = ret_groups.get(0) {
-            if group.len() == 1 {
-                new_summary_node_text = group[0].node.get_text_content().map(|s| s.to_string()).ok();
-            }
+        // Insert the contents of intro_hashmap into master_intro_hashmap
+        for (key, value) in intro_hashmap {
+            master_intro_hashmap.insert(key, value);
         }
 
         // Initialize included_vrs vector with the resource header id of the first node from each ret_node_group, if it exists
@@ -99,7 +96,7 @@ impl JobManager {
         // Now we proceed to keyword search chaining logic.
         for keyword in keywords {
             let keyword_query = generator.generate_embedding_default(&keyword).await?;
-            let keyword_ret_nodes_groups = JobManager::job_scope_vector_search_groups(
+            let keyword_ret_nodes_groups = JobManager::internal_job_scope_vector_search_groups(
                 db.clone(),
                 vector_fs.clone(),
                 job_scope,
@@ -167,7 +164,25 @@ impl JobManager {
 
         // Flatten the retrieved node groups into a single list
         let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
-        Ok((flatted_result_nodes, new_summary_node_text))
+
+        // For the top 20 results, fetch the intro and include them at the front of the list
+        let mut final_nodes = Vec::new();
+        let mut added_intros = HashMap::new();
+        let mut first_intro_text = None;
+        for node in flatted_result_nodes.iter().take(20) {
+            if let Some(intro_text) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
+                if !added_intros.contains_key(&node.resource_header.reference_string()) {
+                    final_nodes.push(RetrievedNode::new_intro_retrieved_node(intro_text));
+                    added_intros.insert(node.resource_header.reference_string(), true);
+                }
+                if first_intro_text.is_none() {
+                    first_intro_text = Some(intro_text.clone());
+                }
+            }
+        }
+        final_nodes.extend(flatted_result_nodes);
+
+        Ok((final_nodes, first_intro_text))
     }
 
     /// Extracts top N keywords from the given text.
@@ -197,7 +212,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let sorted_retrieved_node_groups = Self::job_scope_vector_search_groups(
+        let sorted_retrieved_node_groups = Self::internal_job_scope_vector_search_groups(
             db,
             vector_fs,
             job_scope,
@@ -231,7 +246,7 @@ impl JobManager {
     //
     /// Perform a proximity vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// Returns the proximity groups of retrieved nodes.
-    pub async fn job_scope_vector_search_groups(
+    async fn internal_job_scope_vector_search_groups(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
@@ -242,7 +257,7 @@ impl JobManager {
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
-    ) -> Result<Vec<Vec<RetrievedNode>>, ShinkaiDBError> {
+    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<Vec<RetrievedNode>>>), ShinkaiDBError> {
         let average_out_deep_search_scores = true;
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
@@ -372,22 +387,7 @@ impl JobManager {
         let mut sorted_retrieved_node_groups =
             RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
 
-        // Add a description retrieved node if available from the direct resources fetched. (Assumed direct VRs will be less in number, so makes sense to add a single summary node)
-        if !resources.is_empty() && !sorted_retrieved_node_groups.is_empty() {
-            if let Some(group) = sorted_retrieved_node_groups.get(0) {
-                if let Some(top_node) = group.get(0) {
-                    let description_node_vec = JobManager::generate_description_retrieved_node(
-                        include_description,
-                        top_node.clone(),
-                        &resources,
-                    )
-                    .await;
-                    sorted_retrieved_node_groups.insert(0, description_node_vec);
-                }
-            }
-        }
-
-        Ok(sorted_retrieved_node_groups)
+        Ok((sorted_retrieved_node_groups, intro_hashmap))
     }
 
     /// If include_description is true then adds the description of the Vector Resource
