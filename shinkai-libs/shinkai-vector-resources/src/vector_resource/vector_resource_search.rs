@@ -689,3 +689,24 @@ pub trait VectorResourceSearch: VectorResourceCore {
         ids
     }
 }
+
+/// Function used by deep searches to "average" out the scores of the retrieved nodes
+/// with the top level search score from the VRs themselves.
+/// Uses the input strings for more advanced detection for how much to weigh the VR score vs the node score.
+pub fn deep_search_scores_average_out(
+    query_text: Option<String>,
+    vr_score: f32,
+    vr_description: String,
+    node_score: f32,
+    node_content: String,
+) -> f32 {
+    // TODO: Later on do keyword extraction on query_text, and if the description or node content has any of the top 3, increase weighting accordingly
+    // This might be too intensive to run rake on all results, so re-think this over later/test it.
+
+    // Go with a simple additional approach rather than actual average, so that low vr_scores never decrease actual node scores
+    let vr_weight = 0.2;
+    let adjusted_vr_score = (vr_score * vr_weight).min(0.2);
+    let final_score = node_score + adjusted_vr_score;
+
+    final_score
+}

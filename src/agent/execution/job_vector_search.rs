@@ -243,6 +243,7 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<Vec<Vec<RetrievedNode>>, ShinkaiDBError> {
+        let average_out_deep_search_scores = true;
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
 
@@ -267,7 +268,7 @@ impl JobManager {
                     TraversalMethod::Exhaustive,
                     &deep_traversal_options,
                     generator.clone(),
-                    true,
+                    average_out_deep_search_scores,
                 )
                 .await?;
 
@@ -290,6 +291,7 @@ impl JobManager {
                         num_of_resources_to_search_into,
                         total_num_of_results,
                         deep_traversal_options.clone(),
+                        average_out_deep_search_scores,
                     )
                     .await?
                     .iter()

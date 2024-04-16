@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::{
-    BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption, VRKai, VRPath, VRSourceReference,
+    deep_search_scores_average_out, BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode,
+    ScoringMode, TraversalMethod, TraversalOption, VRKai, VRPath, VRSourceReference,
 };
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
@@ -511,12 +511,20 @@ impl VRPack {
             // If the average out deep search scores flag is set, we average the scores of the retrieved nodes
             if average_out_deep_search_scores {
                 for ret_node in &mut results {
-                    if ret_node.score > 0.0 && score > 0.0 {
-                        ret_node.score = (ret_node.score + score) / 2.0;
-                    }
+                    ret_node.score = deep_search_scores_average_out(
+                        None,
+                        score,
+                        vrkai
+                            .resource
+                            .as_trait_object()
+                            .description()
+                            .unwrap_or_else(|| "")
+                            .to_string(),
+                        ret_node.score,
+                        ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                    );
                 }
             }
-
             retrieved_nodes.extend(results);
         }
 
@@ -671,9 +679,18 @@ impl VRPack {
             // If the average out deep search scores flag is set, we average the scores of the retrieved nodes
             if average_out_deep_search_scores {
                 for ret_node in &mut results {
-                    if ret_node.score > 0.0 && score > 0.0 {
-                        ret_node.score = (ret_node.score + score) / 2.0;
-                    }
+                    ret_node.score = deep_search_scores_average_out(
+                        Some(input_query.clone()),
+                        score,
+                        vrkai
+                            .resource
+                            .as_trait_object()
+                            .description()
+                            .unwrap_or_else(|| "")
+                            .to_string(),
+                        ret_node.score,
+                        ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                    );
                 }
             }
 
