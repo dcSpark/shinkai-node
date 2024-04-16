@@ -152,16 +152,16 @@ impl JobManager {
             }
         }
 
-        println!(
-            "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
-            query_text
-        );
-        for group in &ret_groups {
-            eprintln!("Group Len: {}\n", group.len());
-            for node in group {
-                eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(500));
-            }
-        }
+        // println!(
+        //     "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
+        //     query_text
+        // );
+        // for group in &ret_groups {
+        //     eprintln!("Group Len: {}\n", group.len());
+        //     for node in group {
+        //         eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(500));
+        //     }
+        // }
 
         // Flatten the retrieved node groups into a single list
         let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
