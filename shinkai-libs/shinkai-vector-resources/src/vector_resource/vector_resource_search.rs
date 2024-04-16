@@ -586,7 +586,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
-        let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+        let mut new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
         // Create a new traversal path with the node id
         let new_traversal_path = traversal_path.push_cloned(node.id.clone());
 
@@ -617,11 +617,22 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
                 current_level_results.extend(sub_results);
             }
+            // If it's not a resource, it's a node which we need to return
             _ => {
                 let mut score = score;
                 for option in traversal_options {
                     if let TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring) = option {
-                        score = new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32;
+                        // Perform score "averaging" here. We go with a simple additional approach rather than actual average, so that low/many hierarchy scores does not kill an actually valuable node
+                        if let Some(current_score) = new_hierarchical_scores.pop() {
+                            let hierarchical_count = new_hierarchical_scores.len();
+                            let hierarchical_sum = new_hierarchical_scores.iter().sum::<f32>();
+                            let hierarchical_weight = 0.2;
+                            if hierarchical_count > 0 && hierarchical_sum > 0.0 {
+                                let hierarchical_score =
+                                    (hierarchical_sum / hierarchical_count as f32) * hierarchical_weight;
+                                score = current_score + hierarchical_score;
+                            }
+                        }
                         break;
                     }
                 }
