@@ -44,7 +44,12 @@ impl Embedding {
         let magnitude1 = self.magnitude(&self.vector);
         let magnitude2 = self.magnitude(&embedding2.vector);
 
-        dot_product / (magnitude1 * magnitude2)
+        let result = dot_product / (magnitude1 * magnitude2);
+        if result.is_nan() || result < 0.0 {
+            0.0
+        } else {
+            result
+        }
     }
 
     /// Calculate the dot product between two vectors.

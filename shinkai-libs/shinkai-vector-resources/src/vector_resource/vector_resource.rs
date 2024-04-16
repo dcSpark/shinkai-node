@@ -325,25 +325,41 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Retrieves a node and its embedding at any depth, given its path.
     /// If the path is invalid at any part, or empty, then method will error.
-    fn retrieve_node_and_embedding_at_path(&self, path: VRPath) -> Result<(RetrievedNode, Embedding), VRError> {
+    fn retrieve_node_and_embedding_at_path(
+        &self,
+        path: VRPath,
+        query_embedding: Option<Embedding>,
+    ) -> Result<(RetrievedNode, Embedding), VRError> {
         let results = self._internal_retrieve_node_at_path(path.clone(), None)?;
         if results.is_empty() {
             return Err(VRError::InvalidVRPath(path));
         }
+
+        // Score the retrieved node if a query embedding is provided
+        let (mut ret_node, embedding) = results[0].clone();
+        if let Some(query) = query_embedding {
+            let score = query.score_similarity(&embedding);
+            ret_node.score = score;
+        }
+
         Ok((results[0].0.clone(), results[0].1.clone()))
     }
 
     /// Retrieves a node at any depth, given its path.
     /// If the path is invalid at any part, or empty, then method will error.
-    fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
-        let (node, _) = self.retrieve_node_and_embedding_at_path(path)?;
+    fn retrieve_node_at_path(
+        &self,
+        path: VRPath,
+        query_embedding: Option<Embedding>,
+    ) -> Result<RetrievedNode, VRError> {
+        let (node, _) = self.retrieve_node_and_embedding_at_path(path, query_embedding)?;
         Ok(node)
     }
 
     /// Retrieves the embedding of a node at any depth, given its path.
     /// If the path is invalid at any part, or empty, then method will error.
     fn retrieve_embedding_at_path(&self, path: VRPath) -> Result<Embedding, VRError> {
-        let (_, embedding) = self.retrieve_node_and_embedding_at_path(path)?;
+        let (_, embedding) = self.retrieve_node_and_embedding_at_path(path, None)?;
         Ok(embedding)
     }
 
@@ -459,7 +475,7 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Boolean check to see if a node exists at a given path
     fn check_node_exists_at_path(&self, path: VRPath) -> bool {
-        self.retrieve_node_at_path(path).is_ok()
+        self.retrieve_node_at_path(path, None).is_ok()
     }
 
     /// Applies a mutator function on a node and its embedding at a given path, thereby enabling updating data within a specific node.
@@ -614,7 +630,7 @@ pub trait VectorResourceCore: Send + Sync {
             );
         } else {
             // Get the resource node at parent_path
-            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone(), None)?;
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
                 let ord_resource = resource.as_ordered_vector_resource()?;
                 return self.insert_node_at_path(
@@ -643,7 +659,7 @@ pub trait VectorResourceCore: Send + Sync {
             return self.remove_node_at_path(node_path, update_merkle_hashes);
         } else {
             // Get the resource node at parent_path
-            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone(), None)?;
             // Check if its a DocumentVectorResource
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
                 let ord_resource = resource.as_ordered_vector_resource_mut()?;

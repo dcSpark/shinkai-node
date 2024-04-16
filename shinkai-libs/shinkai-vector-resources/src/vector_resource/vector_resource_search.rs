@@ -297,7 +297,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
             if path != VRPath::root() {
-                match self.retrieve_node_at_path(path.clone()) {
+                match self.retrieve_node_at_path(path.clone(), None) {
                     Ok(ret_node) => {
                         if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
                             return resource.as_trait_object()._vector_search_customized_core(
