@@ -562,7 +562,7 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
-    let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_eq!(res.node.id, "3");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
@@ -579,33 +579,33 @@ fn test_manual_resource_vector_search() {
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 2);
     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 3);
     let test_path = VRPath::from_string("/doc_key/4/doc_key/1").unwrap();
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 2);
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 5000)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 5000, None)
         .unwrap();
     assert_eq!(res.len(), 3);
 
     // Check that no node is retrieved after removing it by path
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.remove_node_at_path(test_path.clone(), true);
-    let res = new_map_resource.retrieve_node_at_path(test_path.clone());
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None);
     assert!(!res.is_ok());
 
     // Replace an existing node in a Map Resource and validate it's been changed
     let test_path = VRPath::from_string("/doc_key/4/some_key").unwrap();
-    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
             test_path.clone(),
@@ -615,7 +615,7 @@ fn test_manual_resource_vector_search() {
             vec![],
         )
         .unwrap();
-    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value----".to_string()),
@@ -624,7 +624,7 @@ fn test_manual_resource_vector_search() {
 
     // Replace an existing node in a Doc Resource and validate it's been changed
     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
-    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
             test_path.clone(),
@@ -634,7 +634,7 @@ fn test_manual_resource_vector_search() {
             vec![],
         )
         .unwrap();
-    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value 2----".to_string()),
@@ -654,7 +654,7 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(test_path.clone()).unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_eq!(res.node.id, "4");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
@@ -662,14 +662,14 @@ fn test_manual_resource_vector_search() {
     let path = VRPath::from_string("/3/doc_key/").unwrap();
     fruit_doc.pop_node_at_path(path, true).unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(test_path.clone());
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None);
     assert_eq!(res.is_ok(), false);
 
     //
     // Merkelization Tests
     //
     let path = VRPath::from_string("/3/doc_key/2").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(path.clone()).unwrap();
+    let res = fruit_doc.retrieve_node_at_path(path.clone(), None).unwrap();
     let regened_merkle_hash = res.node._generate_merkle_hash().unwrap();
     assert_eq!(regened_merkle_hash, res.node.get_merkle_hash().unwrap());
 
