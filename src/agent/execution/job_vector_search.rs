@@ -161,22 +161,20 @@ impl JobManager {
         }
 
         // Flatten the retrieved node groups into a single list
-        let flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
+        let mut flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
 
         // For the top 15 results, fetch their VRs' intros and include them at the front of the list
         let mut final_nodes = Vec::new();
         let mut added_intros = HashMap::new();
         let mut first_intro_text = None;
-        for node in flattened_result_nodes.iter().take(15) {
-            println!("Processing result node for intro text: {}", node.retrieval_path);
+        for node in &mut flattened_result_nodes.iter().take(15) {
             if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
                 if !added_intros.contains_key(&node.resource_header.reference_string()) {
+                    // Add the intro nodes, and the ref string to added_intros
                     for intro_node in intro_text_nodes.iter() {
                         final_nodes.push(intro_node.clone());
                         added_intros.insert(node.resource_header.reference_string(), true);
                     }
-
-                    println!("Added intro nodes: {:?}", intro_text_nodes);
                 }
                 if first_intro_text.is_none() {
                     if let Some(intro_text_node) = intro_text_nodes.get(0) {
@@ -187,7 +185,17 @@ impl JobManager {
                 }
             }
         }
-        final_nodes.extend(flattened_result_nodes);
+
+        // Add the rest of the result nodes, skipping any that already are added up front
+        for node in flattened_result_nodes.iter() {
+            if !final_nodes
+                .iter()
+                .take(10)
+                .any(|result_node| result_node.node.content == node.node.content)
+            {
+                final_nodes.push(node.clone());
+            }
+        }
 
         println!(
             "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
@@ -329,6 +337,7 @@ impl JobManager {
                     )
                     .await?;
 
+                // Fetch the intros
                 let mut bare_results = vec![];
                 for result in results {
                     let ret_node = result.resource_retrieved_node.clone();
@@ -390,7 +399,19 @@ impl JobManager {
                 }
             }
 
-            let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
+            // Fetch the intros
+            let mut bare_results = vec![];
+            for ret_node in results {
+                let ref_string = ret_node.resource_header.reference_string();
+                if !intro_hashmap.contains_key(&ref_string) {
+                    if let Ok(intro_nodes) = resource.as_trait_object().generate_intro_ret_nodes() {
+                        intro_hashmap.insert(ref_string, intro_nodes);
+                    }
+                }
+                bare_results.push(ret_node);
+            }
+
+            let mut groups = RetrievedNode::group_proximity_results(&mut bare_results)?;
             retrieved_node_groups.append(&mut groups);
         }
 
@@ -401,7 +422,7 @@ impl JobManager {
         );
 
         // Sort the retrieved node groups by score, and generate a description if any direct VRs available
-        let mut sorted_retrieved_node_groups =
+        let sorted_retrieved_node_groups =
             RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
 
         Ok((sorted_retrieved_node_groups, intro_hashmap))
