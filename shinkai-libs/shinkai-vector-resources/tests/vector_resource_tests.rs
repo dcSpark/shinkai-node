@@ -912,7 +912,7 @@ async fn test_embeddings_coherence() {
 async fn local_txt_parsing_test() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "canada.txt";
-    let buffer = std::fs::read(format!("../../files/{}", source_file_name.clone())).unwrap();
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
     let resource = ShinkaiFileParser::process_file_into_resource(
         buffer,
         &generator,
@@ -937,4 +937,63 @@ async fn local_txt_parsing_test() {
         // println!("{}:{}", result.score, result.node.get_text_content().unwrap());
         assert!(result.node.get_text_content().unwrap().len() > 200);
     }
+}
+
+#[tokio::test]
+async fn local_csv_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "cars.csv";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Which car has 495 horsepower?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.5);
+    assert!(results[0].node.get_text_content().unwrap().contains("Corvette"));
+}
+
+#[tokio::test]
+async fn local_malformed_csv_parsing_test() {
+    let malformed_csv = "\
+    Year,Make,Model,Description,Price
+    1997,Ford,E350,\"ac, abs, moon\",3000
+    1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
+
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "cars.csv";
+    let buffer = malformed_csv.as_bytes().to_vec();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "What is the price of E350?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.5);
+    assert!(results[0].node.get_text_content().unwrap().contains("3000"));
 }

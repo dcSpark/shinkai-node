@@ -38,6 +38,7 @@ impl JobManager {
         job_message: JobForProcessing,
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
+        node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
@@ -52,11 +53,11 @@ impl JobManager {
         );
         // Fetch data we need to execute job step
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
-        let (mut full_job, agent_found, profile_name, user_profile) = match fetch_data_result {
+        let (mut full_job, agent_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e).await,
         };
-
+        
         // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,
@@ -65,6 +66,8 @@ impl JobManager {
                     .await
             }
         };
+
+        let user_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.node_name, user_profile.profile_name.unwrap_or_default()).unwrap();
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
@@ -94,7 +97,7 @@ impl JobManager {
             &job_message.job_message,
             agent_found.clone(),
             &mut full_job,
-            job_message.profile,
+            user_profile.clone(),
             None,
             generator.clone(),
             unstructured_api.clone(),
@@ -111,7 +114,6 @@ impl JobManager {
             job_message.job_message,
             full_job,
             agent_found.clone(),
-            profile_name.clone(),
             user_profile.clone(),
             generator,
         )
@@ -165,6 +167,7 @@ impl JobManager {
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
     #[instrument(skip(identity_secret_key, db, vector_fs, generator))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -172,10 +175,10 @@ impl JobManager {
         job_message: JobMessage,
         full_job: Job,
         agent_found: Option<SerializedAgent>,
-        profile_name: String,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<(), AgentError> {
+        let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -572,7 +575,7 @@ impl JobManager {
                     source: vrkai.resource.as_trait_object().source().clone(),
                 };
 
-                // TODO: Save to the vector_fs if not None
+                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
                 // let vector_fs = self.v
 
                 files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
@@ -592,7 +595,7 @@ impl JobManager {
                     path: folder_path.push_cloned(vrpack.name.clone()),
                 };
 
-                // TODO: Save to the vector_fs if not None
+                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
                 // let vector_fs = self.v
 
                 files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));
