@@ -213,6 +213,17 @@ impl JobManager {
         Ok(sorted_retrieved_nodes)
     }
 
+    /// Determines the proximity window size based on the max tokens supported by the model
+    fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
+        if max_tokens_in_prompt < 5000 {
+            1
+        } else if max_tokens_in_prompt < 33000 {
+            2
+        } else {
+            3
+        }
+    }
+
     //TODOs:
     // - Average the VR similarity score together with the node scores, so when users refer to a specific doc the results score higher
     // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
@@ -232,15 +243,8 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<Vec<Vec<RetrievedNode>>, ShinkaiDBError> {
-        let proximity_window_size = if max_tokens_in_prompt < 5000 {
-            1
-        } else if max_tokens_in_prompt < 33000 {
-            2
-        } else {
-            3
-        };
+        let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
-        let mut retrieved_node_groups = Vec::new();
 
         // Setup vars used across searches
         let deep_traversal_options = vec![
@@ -248,6 +252,7 @@ impl JobManager {
             TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(proximity_window_size, num_of_top_results)),
         ];
         let num_of_resources_to_search_into = 50;
+        let mut retrieved_node_groups = Vec::new();
 
         // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
@@ -262,6 +267,7 @@ impl JobManager {
                     TraversalMethod::Exhaustive,
                     &deep_traversal_options,
                     generator.clone(),
+                    true,
                 )
                 .await?;
 
