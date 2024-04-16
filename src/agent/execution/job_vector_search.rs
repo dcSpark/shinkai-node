@@ -161,17 +161,22 @@ impl JobManager {
         }
 
         // Flatten the retrieved node groups into a single list
-        let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
+        let flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
 
         // For the top 15 results, fetch their VRs' intros and include them at the front of the list
         let mut final_nodes = Vec::new();
         let mut added_intros = HashMap::new();
         let mut first_intro_text = None;
-        for node in flatted_result_nodes.iter().take(15) {
+        for node in flattened_result_nodes.iter().take(15) {
+            println!("Processing result node for intro text: {}", node.retrieval_path);
             if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
                 if !added_intros.contains_key(&node.resource_header.reference_string()) {
-                    final_nodes.extend(intro_text_nodes.clone());
-                    added_intros.insert(node.resource_header.reference_string(), true);
+                    for intro_node in intro_text_nodes.iter() {
+                        final_nodes.push(intro_node.clone());
+                        added_intros.insert(node.resource_header.reference_string(), true);
+                    }
+
+                    println!("Added intro nodes: {:?}", intro_text_nodes);
                 }
                 if first_intro_text.is_none() {
                     if let Some(intro_text_node) = intro_text_nodes.get(0) {
@@ -182,7 +187,7 @@ impl JobManager {
                 }
             }
         }
-        final_nodes.extend(flatted_result_nodes);
+        final_nodes.extend(flattened_result_nodes);
 
         println!(
             "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
@@ -242,17 +247,6 @@ impl JobManager {
         Ok(sorted_retrieved_nodes)
     }
 
-    /// Determines the proximity window size based on the max tokens supported by the model
-    fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
-        if max_tokens_in_prompt < 5000 {
-            1
-        } else if max_tokens_in_prompt < 33000 {
-            2
-        } else {
-            3
-        }
-    }
-
     //TODOs:
     // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
     //
@@ -286,7 +280,7 @@ impl JobManager {
 
         // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
-            let mut vr_pack_results = entry
+            let vr_pack_results = entry
                 .vrpack
                 .dynamic_deep_vector_search_with_vrkai_path_customized(
                     query_text.clone(),
@@ -319,7 +313,6 @@ impl JobManager {
 
         // Folder deep vector search
         {
-            // let mut vec_fs = vector_fs;
             for folder in &job_scope.vector_fs_folders {
                 let reader = vector_fs
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
@@ -334,12 +327,24 @@ impl JobManager {
                         deep_traversal_options.clone(),
                         average_out_deep_search_scores,
                     )
-                    .await?
-                    .iter()
-                    .map(|fs_node| fs_node.resource_retrieved_node.clone())
-                    .collect();
+                    .await?;
 
-                let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
+                let mut bare_results = vec![];
+                for result in results {
+                    let ret_node = result.resource_retrieved_node.clone();
+                    let ref_string = ret_node.resource_header.reference_string();
+                    if !intro_hashmap.contains_key(&ref_string) {
+                        let result_reader = reader
+                            .new_reader_copied_data(result.fs_item_path().clone(), &vector_fs)
+                            .await?;
+                        if let Ok(intro_nodes) = vector_fs._internal_get_vr_intro_ret_nodes(&result_reader).await {
+                            intro_hashmap.insert(ref_string, intro_nodes);
+                        }
+                    }
+                    bare_results.push(ret_node);
+                }
+
+                let mut groups = RetrievedNode::group_proximity_results(&mut bare_results)?;
 
                 retrieved_node_groups.append(&mut groups);
             }
@@ -400,6 +405,17 @@ impl JobManager {
             RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
 
         Ok((sorted_retrieved_node_groups, intro_hashmap))
+    }
+
+    /// Determines the proximity window size based on the max tokens supported by the model
+    fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
+        if max_tokens_in_prompt < 5000 {
+            1
+        } else if max_tokens_in_prompt < 33000 {
+            2
+        } else {
+            3
+        }
     }
 
     /// If include_description is true then adds the description of the Vector Resource
