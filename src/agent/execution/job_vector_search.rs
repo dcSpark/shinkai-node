@@ -50,7 +50,6 @@ impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
     /// Attempts to take at least 1 proximity group per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
-    ///
     pub async fn keyword_chained_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -61,10 +60,10 @@ impl JobManager {
         num_of_top_results: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<(Vec<RetrievedNode>, Option<String>), ShinkaiDBError> {
-        let mut master_intro_hashmap = HashMap::new();
+        let mut master_intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
-        let (mut ret_groups, mut intro_hashmap) = JobManager::internal_job_scope_vector_search_groups(
+        let (mut ret_groups, intro_hashmap) = JobManager::internal_job_scope_vector_search_groups(
             db.clone(),
             vector_fs.clone(),
             job_scope,
@@ -79,7 +78,9 @@ impl JobManager {
         .await?;
         // Insert the contents of intro_hashmap into master_intro_hashmap
         for (key, value) in intro_hashmap {
-            master_intro_hashmap.insert(key, value);
+            if !master_intro_hashmap.contains_key(&key) {
+                master_intro_hashmap.insert(key, value);
+            }
         }
 
         // Initialize included_vrs vector with the resource header id of the first node from each ret_node_group, if it exists
@@ -96,19 +97,27 @@ impl JobManager {
         // Now we proceed to keyword search chaining logic.
         for keyword in keywords {
             let keyword_query = generator.generate_embedding_default(&keyword).await?;
-            let keyword_ret_nodes_groups = JobManager::internal_job_scope_vector_search_groups(
-                db.clone(),
-                vector_fs.clone(),
-                job_scope,
-                keyword_query,
-                keyword.clone(),
-                num_of_top_results,
-                user_profile,
-                true,
-                generator.clone(),
-                max_tokens_in_prompt,
-            )
-            .await?;
+            let (keyword_ret_nodes_groups, keyword_intro_hashmap) =
+                JobManager::internal_job_scope_vector_search_groups(
+                    db.clone(),
+                    vector_fs.clone(),
+                    job_scope,
+                    keyword_query,
+                    keyword.clone(),
+                    num_of_top_results,
+                    user_profile,
+                    true,
+                    generator.clone(),
+                    max_tokens_in_prompt,
+                )
+                .await?;
+
+            // Insert the contents into master_intro_hashmap
+            for (key, value) in keyword_intro_hashmap {
+                if !master_intro_hashmap.contains_key(&key) {
+                    master_intro_hashmap.insert(key, value);
+                }
+            }
 
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
@@ -151,36 +160,38 @@ impl JobManager {
             }
         }
 
-        println!(
-            "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
-            query_text
-        );
-        for group in &ret_groups {
-            eprintln!("Group Len: {}\n", group.len());
-            for node in group {
-                eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(500));
-            }
-        }
-
         // Flatten the retrieved node groups into a single list
         let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
 
-        // For the top 20 results, fetch the intro and include them at the front of the list
+        // For the top 15 results, fetch their VRs' intros and include them at the front of the list
         let mut final_nodes = Vec::new();
         let mut added_intros = HashMap::new();
         let mut first_intro_text = None;
-        for node in flatted_result_nodes.iter().take(20) {
-            if let Some(intro_text) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
+        for node in flatted_result_nodes.iter().take(15) {
+            if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
                 if !added_intros.contains_key(&node.resource_header.reference_string()) {
-                    final_nodes.push(RetrievedNode::new_intro_retrieved_node(intro_text));
+                    final_nodes.extend(intro_text_nodes.clone());
                     added_intros.insert(node.resource_header.reference_string(), true);
                 }
                 if first_intro_text.is_none() {
-                    first_intro_text = Some(intro_text.clone());
+                    if let Some(intro_text_node) = intro_text_nodes.get(0) {
+                        if let Ok(intro_text) = intro_text_node.node.get_text_content() {
+                            first_intro_text = Some(intro_text.to_string());
+                        }
+                    }
                 }
             }
         }
         final_nodes.extend(flatted_result_nodes);
+
+        println!(
+            "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
+            query_text
+        );
+
+        for node in &final_nodes {
+            eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
+        }
 
         Ok((final_nodes, first_intro_text))
     }
@@ -257,12 +268,12 @@ impl JobManager {
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
-    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<Vec<RetrievedNode>>>), ShinkaiDBError> {
+    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {
         let average_out_deep_search_scores = true;
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
         // Holds the intro text for each VR, where only the ones that have results with top scores will be used
-        let intro_hashmap: HashMap<String, Vec<Vec<RetrievedNode>>> = HashMap::new();
+        let intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
 
         // Setup vars used across searches
         let deep_traversal_options = vec![
