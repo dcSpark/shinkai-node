@@ -971,6 +971,20 @@ impl Prompt {
         None
     }
 
+    /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
+    pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Result<(), AgentError> {
+        let mut current_token_count = self.generate_chat_completion_messages()?.1;
+        while current_token_count > max_prompt_tokens {
+            match self.remove_lowest_priority_sub_prompt() {
+                Some(removed_sub_prompt) => {
+                    current_token_count -= removed_sub_prompt.len();
+                }
+                None => break, // No more sub-prompts to remove, exit the loop
+            }
+        }
+        Ok(())
+    }
+
     /// Validates that there is at least one EBNF sub-prompt to ensure
     /// the LLM knows what to output.
     pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
@@ -1064,29 +1078,21 @@ impl Prompt {
     ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
         self.check_ebnf_included()?;
 
-        // We take about half of a default total 4097 if none is provided
-        let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
-        let mut prompt_copy = self.clone();
+        // We take about half of a default total 4097 if none is provided as a backup (should never happen)
+        let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
 
         // Remove sub-prompts until the total token count is under the specified limit
+        let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit)?;
+        println!(
+            "Before Subprompt Count: {}\nAfter Subprompt Count: {}",
+            self.sub_prompts.len(),
+            prompt_copy.sub_prompts.len()
+        );
+
+        // Generate the output chat completion request messages
         let output_messages = prompt_copy.generate_chat_completion_messages()?.0;
-
         Ok(output_messages)
-    }
-
-    /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
-    pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Result<(), AgentError> {
-        let mut current_token_count = self.generate_chat_completion_messages()?.1;
-        while current_token_count > max_prompt_tokens {
-            match self.remove_lowest_priority_sub_prompt() {
-                Some(removed_sub_prompt) => {
-                    current_token_count -= removed_sub_prompt.len();
-                }
-                None => break, // No more sub-prompts to remove, exit the loop
-            }
-        }
-        Ok(())
     }
 
     // First version of generic. Probably we will need to pass a model name and a max tokens
