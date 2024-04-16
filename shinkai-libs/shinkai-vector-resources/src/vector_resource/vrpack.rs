@@ -560,7 +560,7 @@ impl VRPack {
         embedding_generator: RemoteEmbeddingGenerator,
     ) -> Result<Vec<VRKai>, VRError> {
         let results = self
-            .dynamic_vector_search_vrkai_with_score_customized(
+            .dynamic_vector_search_vrkai_with_score_and_path_customized(
                 input_query,
                 num_of_results,
                 traversal_options,
@@ -568,7 +568,7 @@ impl VRPack {
                 embedding_generator,
             )
             .await?;
-        let vrkais: Vec<VRKai> = results.into_iter().map(|(vrkai, _)| vrkai).collect();
+        let vrkais: Vec<VRKai> = results.into_iter().map(|(vrkai, _, _)| vrkai).collect();
         Ok(vrkais)
     }
 
@@ -576,14 +576,14 @@ impl VRPack {
     /// Performs a dynamic vector search within the VRPack and returns the most similar (VRKai, score) based on the input query String.
     /// Supports customizing the search starting path/traversal options.
     /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
-    pub async fn dynamic_vector_search_vrkai_with_score_customized(
+    pub async fn dynamic_vector_search_vrkai_with_score_and_path_customized(
         &self,
         input_query: String,
         num_of_results: u64,
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
         embedding_generator: RemoteEmbeddingGenerator,
-    ) -> Result<Vec<(VRKai, f32)>, VRError> {
+    ) -> Result<Vec<(VRKai, f32, VRPath)>, VRError> {
         let retrieved_nodes = self
             .resource
             .as_trait_object()
@@ -597,12 +597,12 @@ impl VRPack {
             .await?;
 
         // Process the vrkais and the score
-        let vrkais_with_score: Vec<(VRKai, f32)> = retrieved_nodes
+        let vrkais_with_score: Vec<(VRKai, f32, VRPath)> = retrieved_nodes
             .into_iter()
             .filter_map(|node| {
                 let vrkai = Self::parse_node_to_vrkai(&node.node);
                 if let Ok(vrkai) = vrkai {
-                    Some((vrkai, node.score))
+                    Some((vrkai, node.score, node.retrieval_path))
                 } else {
                     None
                 }
@@ -654,8 +654,42 @@ impl VRPack {
         embedding_generator: RemoteEmbeddingGenerator,
         average_out_deep_search_scores: bool,
     ) -> Result<Vec<RetrievedNode>, VRError> {
+        self.dynamic_deep_vector_search_with_vrkai_path_customized(
+            input_query,
+            num_of_vrkais_to_search_into,
+            traversal_options,
+            vr_pack_starting_path,
+            num_of_results,
+            deep_traversal_method,
+            deep_traversal_options,
+            embedding_generator,
+            average_out_deep_search_scores,
+        )
+        .await
+        .map(|retrieved_nodes| retrieved_nodes.into_iter().map(|(ret_node, _)| ret_node).collect())
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
+    /// the VRKais stored in the VRPack (with the relative VRPath of the VRKai in the VRPack). This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
+    /// Customized allows specifying options for the first top-level search for VRKais, and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
+    /// average_out_deep_search_scores: If true, averages out the VRKai top level search score, with the scores found in the nodes inside the VRKai.
+    pub async fn dynamic_deep_vector_search_with_vrkai_path_customized(
+        &self,
+        input_query: String,
+        num_of_vrkais_to_search_into: u64,
+        traversal_options: &Vec<TraversalOption>,
+        vr_pack_starting_path: Option<VRPath>,
+        num_of_results: u64,
+        deep_traversal_method: TraversalMethod,
+        deep_traversal_options: &Vec<TraversalOption>,
+        embedding_generator: RemoteEmbeddingGenerator,
+        average_out_deep_search_scores: bool,
+    ) -> Result<Vec<(RetrievedNode, VRPath)>, VRError> {
+        let mut path_hashmap: HashMap<String, VRPath> = HashMap::new();
+
         let vrkai_results = self
-            .dynamic_vector_search_vrkai_with_score_customized(
+            .dynamic_vector_search_vrkai_with_score_and_path_customized(
                 input_query.clone(),
                 num_of_vrkais_to_search_into,
                 traversal_options,
@@ -666,7 +700,7 @@ impl VRPack {
 
         let mut retrieved_nodes = Vec::new();
         // Perform vector search on all VRKai resources
-        for (vrkai, score) in vrkai_results {
+        for (vrkai, score, path) in vrkai_results {
             let query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
             let mut results = vrkai.resource.as_trait_object().vector_search_customized(
                 query_embedding,
@@ -675,6 +709,10 @@ impl VRPack {
                 &deep_traversal_options,
                 None,
             );
+
+            // Populate the path hashmap with the VRKai header string as the key and the VRPath as the value
+            let vrkai_header = vrkai.resource.as_trait_object().generate_resource_header();
+            path_hashmap.entry(vrkai_header.reference_string()).or_insert(path);
 
             // If the average out deep search scores flag is set, we average the scores of the retrieved nodes
             if average_out_deep_search_scores {
@@ -700,7 +738,18 @@ impl VRPack {
         // Sort the retrieved nodes by score before returning
         let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
 
-        Ok(sorted_retrieved_nodes)
+        // Reattach the VRPath from the path hashmap
+        let retrieved_nodes_with_path = sorted_retrieved_nodes
+            .into_iter()
+            .map(|retrieved_node| {
+                let ref_string = retrieved_node.resource_header.reference_string();
+                let default_path = VRPath::root();
+                let path = path_hashmap.get(&ref_string).unwrap_or_else(|| &default_path).clone();
+                (retrieved_node, path)
+            })
+            .collect();
+
+        Ok(retrieved_nodes_with_path)
     }
 
     /// Counts the number of VRKais and folders in the BaseVectorResource.

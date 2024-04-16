@@ -462,7 +462,6 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         // Convert the results into retrieved nodes
-        println!("Self header ref string: {:?}", self_header.reference_string());
         let mut final_nodes = vec![];
         for n in retrieved_nodes {
             let mut node_path = path.pop_cloned();

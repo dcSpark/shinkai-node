@@ -12,6 +12,7 @@ use shinkai_vector_resources::vector_resource::{
     deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
     TraversalOption, VRHeader,
 };
+use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -93,7 +94,7 @@ impl JobManager {
         }
 
         // Extract top 3 keywords from the query_text
-        let keywords = Self::extract_keywords_from_text(&query_text, 3);
+        let keywords = Self::extract_keywords_from_text(&query_text, 0);
 
         // Now we proceed to keyword search chaining logic.
         for keyword in keywords {
@@ -226,9 +227,7 @@ impl JobManager {
     }
 
     //TODOs:
-    // - Average the VR similarity score together with the node scores, so when users refer to a specific doc the results score higher
     // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
-    // - Fix VecFS folder search to find the VR properly
     //
     /// Perform a proximity vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// Returns the proximity groups of retrieved nodes.
@@ -247,6 +246,8 @@ impl JobManager {
         let average_out_deep_search_scores = true;
         let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
         let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
+        // Holds the intro text for each VR, where only the ones that have results with top scores will be used
+        let intro_hashmap: HashMap<String, Vec<Vec<RetrievedNode>>> = HashMap::new();
 
         // Setup vars used across searches
         let deep_traversal_options = vec![
@@ -260,7 +261,7 @@ impl JobManager {
         for entry in &job_scope.local_vrpack {
             let mut vr_pack_results = entry
                 .vrpack
-                .dynamic_deep_vector_search_customized(
+                .dynamic_deep_vector_search_with_vrkai_path_customized(
                     query_text.clone(),
                     num_of_resources_to_search_into,
                     &vec![],
@@ -273,7 +274,19 @@ impl JobManager {
                 )
                 .await?;
 
-            let mut groups = RetrievedNode::group_proximity_results(&mut vr_pack_results)?;
+            // Fetch the VRKai intros and add them to hashmap
+            let mut bare_results = vec![];
+            for (ret_node, path) in vr_pack_results {
+                let ref_string = ret_node.resource_header.reference_string();
+                let intro_text = entry.vrpack.get_vrkai_intro_ret_nodes(path.clone());
+                intro_hashmap
+                    .entry(ref_string)
+                    .or_insert_with(Vec::new)
+                    .push(intro_text);
+                bare_results.push(ret_node);
+            }
+
+            let mut groups = RetrievedNode::group_proximity_results(&bare_results)?;
             retrieved_node_groups.append(&mut groups);
         }
 

@@ -130,10 +130,6 @@ impl VectorFS {
         for (item, score) in items_with_scores {
             if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self).await {
                 if let Ok(resource) = self.retrieve_vector_resource(&new_reader).await {
-                    println!(
-                        "\n\n\n01.reference string: {}",
-                        resource.as_trait_object().reference_string()
-                    );
                     fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
                     let generator = self._get_embedding_generator(&reader.profile).await?;
@@ -171,7 +167,6 @@ impl VectorFS {
 
         let mut final_results = vec![];
         for node in RetrievedNode::sort_by_score(&ret_nodes, num_of_results) {
-            println!("\n\n\n02.reference string: {}", node.resource_header.reference_string());
             let fs_path = fs_path_hashmap.get(&node.resource_header.reference_string()).ok_or(
                 VectorFSError::FailedGettingFSPathOfRetrievedNode(node.resource_header.reference_string()),
             )?;
