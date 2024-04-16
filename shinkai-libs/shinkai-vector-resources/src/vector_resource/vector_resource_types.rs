@@ -89,6 +89,7 @@ impl RetrievedNode {
                 .iter()
                 .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
             {
+                println!("Highest node score: {:?}", highest_node.score);
                 let highest_node_clone = highest_node.clone();
                 let id_ref_key = highest_node.generate_globally_unique_node_id();
                 highest_score_nodes.push(highest_node_clone);
@@ -103,6 +104,7 @@ impl RetrievedNode {
         let sorted_groups: Vec<Vec<RetrievedNode>> = sorted_highest_nodes
             .into_iter()
             .filter_map(|node| {
+                println!("Post-sort Highest node score: {:?}", node.score);
                 let id_ref_key = node.generate_globally_unique_node_id();
                 group_map.remove(&id_ref_key)
             })

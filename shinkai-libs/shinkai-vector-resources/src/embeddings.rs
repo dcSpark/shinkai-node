@@ -38,7 +38,7 @@ impl Embedding {
         println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);
     }
 
-    /// Calculate the cosine similarity between Self and the input Embedding
+    /// Calculate the cosine similarity score between the self embedding and the input embedding.
     pub fn cosine_similarity(&self, embedding2: &Embedding) -> f32 {
         let dot_product = self.dot(&self.vector, &embedding2.vector);
         let magnitude1 = self.magnitude(&self.vector);
@@ -55,6 +55,12 @@ impl Embedding {
     /// Calculate the magnitude of a vector.
     fn magnitude(&self, v: &[f32]) -> f32 {
         v.iter().map(|&x| x * x).sum::<f32>().sqrt()
+    }
+
+    /// Calculate the cosine similarity score between the self embedding and the input embedding.
+    /// This function is equivalent to `.cosine_similarity()`
+    pub fn score_similarity(&self, embedding: &Embedding) -> f32 {
+        self.cosine_similarity(embedding)
     }
 
     /// Calculate the cosine similarity score between the self embedding

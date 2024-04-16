@@ -369,11 +369,15 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             continue;
                         }
 
-                        match self.proximity_retrieve_node_at_path(top_result.retrieval_path.clone(), proximity_window)
-                        {
+                        match self.proximity_retrieve_nodes_at_path(
+                            top_result.retrieval_path.clone(),
+                            proximity_window,
+                            Some(query.clone()),
+                        ) {
                             Ok(mut proximity_results) => {
                                 let mut non_duplicates = vec![];
                                 for proximity_result in &mut proximity_results {
+                                    println!("Proximity result score: {}", proximity_result.score);
                                     if !paths_checked.contains_key(&proximity_result.retrieval_path) {
                                         paths_checked.insert(proximity_result.retrieval_path.clone(), true);
                                         proximity_result.set_proximity_group_id(new_top_results_added.to_string());

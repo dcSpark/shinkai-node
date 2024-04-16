@@ -348,14 +348,37 @@ pub trait VectorResourceCore: Send + Sync {
     }
 
     /// Retrieves a node and `proximity_window` number of nodes before/after it, given a path.
+    /// If query_embedding is Some, also scores the retrieved nodes by using it (otherwise their scores default to 0.0);
     /// If the path is invalid at any part, or empty, then method will error.
-    fn proximity_retrieve_node_at_path(
+    fn proximity_retrieve_nodes_at_path(
         &self,
         path: VRPath,
         proximity_window: u64,
+        query_embedding: Option<Embedding>,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        self._internal_retrieve_node_at_path(path.clone(), Some(proximity_window))
+        self.proximity_retrieve_nodes_and_embeddings_at_path(path, proximity_window, query_embedding)
             .map(|nodes| nodes.into_iter().map(|(node, _)| node).collect())
+    }
+
+    /// Retrieves a node and `proximity_window` number of nodes before/after it (including their embeddings), given a path.
+    /// If query_embedding is Some, also scores the retrieved nodes by using it (otherwise their scores default to 0.0);
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn proximity_retrieve_nodes_and_embeddings_at_path(
+        &self,
+        path: VRPath,
+        proximity_window: u64,
+        query_embedding: Option<Embedding>,
+    ) -> Result<Vec<(RetrievedNode, Embedding)>, VRError> {
+        let mut ret_nodes_embeddings = self._internal_retrieve_node_at_path(path.clone(), Some(proximity_window))?;
+
+        if let Some(query) = query_embedding {
+            for (ret_node, embedding) in ret_nodes_embeddings.iter_mut() {
+                let score = query.score_similarity(embedding);
+                ret_node.score = score;
+            }
+        }
+
+        Ok(ret_nodes_embeddings)
     }
 
     /// Internal method shared by retrieved node at path methods
