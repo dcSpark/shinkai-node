@@ -219,22 +219,23 @@ impl RetrievedNode {
         match &self.node.metadata {
             Some(metadata) => {
                 if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
-                    format!("Pgs: {}", page_numbers)
-                } else {
-                    // If from a Document Vector Resource, then we can create a relative position based on parents
-                    // as all node ids in Docs are integers.
-                    if self.resource_header.resource_base_type == VRBaseType::Document {
-                        let section_string = self
-                            .retrieval_path
-                            .path_ids
-                            .iter()
-                            .map(|id| id.to_string())
-                            .collect::<Vec<String>>()
-                            .join(".");
-                        format!("Section: {}", section_string)
-                    } else {
-                        String::new()
+                    if !page_numbers.is_empty() {
+                        return format!("Pgs: {}", page_numbers);
                     }
+                }
+                // If from a Document Vector Resource, then we can create a relative position based on parents
+                // as all node ids in Docs are integers.
+                if self.resource_header.resource_base_type == VRBaseType::Document {
+                    let section_string = self
+                        .retrieval_path
+                        .path_ids
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<String>>()
+                        .join(".");
+                    format!("Section: {}", section_string)
+                } else {
+                    String::new()
                 }
             }
             None => String::new(),

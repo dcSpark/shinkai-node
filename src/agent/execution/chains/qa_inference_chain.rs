@@ -56,7 +56,7 @@ impl JobManager {
         // Vector Search if the scope isn't empty.
         let scope_is_empty = full_job.scope().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
-        let mut summary_node_text = String::new();
+        let mut summary_node_text = None;
         if !scope_is_empty {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
@@ -112,7 +112,7 @@ impl JobManager {
                 generator,
                 user_profile,
                 summary_text,
-                Some(summary_node_text),
+                summary_node_text,
                 iteration_count,
                 max_iterations,
                 max_tokens_in_prompt,
@@ -234,7 +234,7 @@ async fn no_json_object_retry_logic(
     generator: RemoteEmbeddingGenerator,
     user_profile: ShinkaiName,
     summary_text: Option<String>,
-    summary_node_text: Option<String>,
+    new_summary_node_text: Option<String>,
     iteration_count: u64,
     max_iterations: u64,
     max_tokens_in_prompt: usize,
@@ -279,7 +279,7 @@ async fn no_json_object_retry_logic(
             // Else use the VR summary.
             else {
                 let mut _temp_resp = JsonValue::Null;
-                if let Some(text) = summary_node_text {
+                if let Some(text) = new_summary_node_text {
                     if text.len() > 2 {
                         summary_answer = text.to_string();
                     } else {

@@ -45,9 +45,10 @@ impl JobManager {
         Ok(resources)
     }
 
-    /// Performs multiple vector searches within the job scope based on extracting keywords from the query text.
-    /// Attempts to take at least 1 retrieved node per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
+    /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
+    /// Attempts to take at least 1 proximity group per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
+    ///
     pub async fn keyword_chained_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -55,9 +56,9 @@ impl JobManager {
         query_text: String,
         user_profile: &ShinkaiName,
         generator: RemoteEmbeddingGenerator,
-        num_of_results: u64,
+        num_of_top_results: u64,
         max_tokens_in_prompt: usize,
-    ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
+    ) -> Result<(Vec<RetrievedNode>, Option<String>), ShinkaiDBError> {
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
         let mut ret_groups = JobManager::job_scope_vector_search_groups(
@@ -66,7 +67,7 @@ impl JobManager {
             job_scope,
             query,
             query_text.clone(),
-            num_of_results,
+            num_of_top_results,
             user_profile,
             true,
             generator.clone(),
@@ -75,10 +76,10 @@ impl JobManager {
         .await?;
 
         // Extract the summary text if it exists (as a solo group)
-        let mut summary_node_text = String::new();
+        let mut new_summary_node_text = None;
         if let Some(group) = ret_groups.get(0) {
             if group.len() == 1 {
-                summary_node_text = group[0].node.get_text_content().unwrap_or_default().to_string();
+                new_summary_node_text = group[0].node.get_text_content().map(|s| s.to_string()).ok();
             }
         }
 
@@ -102,7 +103,7 @@ impl JobManager {
                 job_scope,
                 keyword_query,
                 keyword.clone(),
-                num_of_results,
+                num_of_top_results,
                 user_profile,
                 true,
                 generator.clone(),
@@ -164,7 +165,7 @@ impl JobManager {
 
         // Flatten the retrieved node groups into a single list
         let flatted_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
-        Ok((flatted_result_nodes, summary_node_text))
+        Ok((flatted_result_nodes, new_summary_node_text))
     }
 
     /// Extracts top N keywords from the given text.
@@ -212,7 +213,12 @@ impl JobManager {
         Ok(sorted_retrieved_nodes)
     }
 
-    /// Perform a vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
+    //TODOs:
+    // - Average the VR similarity score together with the node scores, so when users refer to a specific doc the results score higher
+    // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
+    // - Fix VecFS folder search to find the VR properly
+    //
+    /// Perform a proximity vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
     /// Returns the proximity groups of retrieved nodes.
     pub async fn job_scope_vector_search_groups(
         db: Arc<ShinkaiDB>,
