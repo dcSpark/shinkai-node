@@ -101,22 +101,25 @@ impl ParsingHelper {
         )
         .await?;
 
-        let mut desc = String::new();
+        let mut desc = None;
         if let Some(actual_agent) = agent {
-            desc = Self::generate_description(&text_groups, actual_agent, max_node_text_size).await?;
+            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size).await?);
         } else {
-            desc = ShinkaiFileParser::process_groups_into_description(
+            let description_text = ShinkaiFileParser::process_groups_into_description(
                 &text_groups,
                 max_node_text_size as usize,
                 max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );
+            if !description_text.trim().is_empty() {
+                desc = Some(description_text);
+            }
         }
 
         Ok(ShinkaiFileParser::process_groups_into_resource(
             text_groups,
             generator,
             cleaned_name,
-            Some(desc),
+            desc,
             source,
             parsing_tags,
             max_node_text_size,
