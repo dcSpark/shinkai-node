@@ -1120,65 +1120,35 @@ impl Node {
                 .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
                 .await?;
 
-            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai).await {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Error saving '{}' in folder: {}", filename, e),
-                    }))
-                    .await;
-                return Ok(());
-            }
-
-            // TODO: read information about the file to return to the user
-            let mut file_path = folder_path.clone();
-            let filename_without_extension = filename.trim_end_matches(|c: char| c != '.').trim_end_matches('.').to_string();
-            file_path.push(filename_without_extension.clone());
-            let reader = vector_fs
-                .new_reader(requester_name.clone(), file_path.clone(), requester_name.clone())
-                .await;
-            let reader = match reader {
-                Ok(reader) => reader,
+            let save_result = vector_fs.save_vrkai_in_folder(&writer, vrkai).await;
+            let fs_item = match save_result {
+                Ok(fs_item) => fs_item,
                 Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create reader: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Error saving '{}' in folder: {}", filename, e),
+                        }))
+                        .await;
                     return Ok(());
                 }
             };
 
-            let result = vector_fs.retrieve_vector_resource(&reader).await;
-            let result = match result {
-                Ok(result) => result,
-                Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to retrieve vector resource: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
-
-            #[derive(Serialize)]
+            #[derive(Serialize, Debug)]
             struct VectorResourceInfo {
                 name: String,
                 path: String,
                 merkle_hash: String,
             }
 
-            let result_trait = result.as_trait_object();
-
             let resource_info = VectorResourceInfo {
-                name: filename_without_extension.to_string(),
-                path: file_path.to_string(),
-                merkle_hash: result_trait.get_merkle_root().unwrap_or_default(),
+                name: filename.to_string(),
+                path: fs_item.path.to_string(),
+                merkle_hash: fs_item.merkle_hash,
             };
+
+            eprintln!("Resource info: {:?}", resource_info);
 
             let success_message = match serde_json::to_value(&resource_info) {
                 Ok(json) => json,
