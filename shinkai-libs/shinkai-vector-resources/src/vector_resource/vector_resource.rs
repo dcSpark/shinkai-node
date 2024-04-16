@@ -407,6 +407,7 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
         // Fetch the node at root depth directly, then iterate through the rest
+        let self_header = self.generate_resource_header();
         let mut node = self.get_root_node(path.path_ids[0].clone())?;
         let mut embedding = self.get_root_embedding(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header();
@@ -461,14 +462,12 @@ pub trait VectorResourceCore: Send + Sync {
         }
 
         // Convert the results into retrieved nodes
+        println!("Self header ref string: {:?}", self_header.reference_string());
         let mut final_nodes = vec![];
         for n in retrieved_nodes {
             let mut node_path = path.pop_cloned();
             node_path.push(n.0.id.clone());
-            final_nodes.push((
-                RetrievedNode::new(n.0, 0.0, last_resource_header.clone(), node_path),
-                n.1,
-            ));
+            final_nodes.push((RetrievedNode::new(n.0, 0.0, self_header.clone(), node_path), n.1));
         }
         Ok(final_nodes)
     }

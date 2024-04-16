@@ -323,7 +323,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             vec![],
             VRPath::new(),
-            root_vr_header,
+            root_vr_header.clone(),
         );
 
         // After getting all results from the vector search, perform final filtering
@@ -378,8 +378,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
                                 let mut non_duplicates = vec![];
                                 for proximity_result in &mut proximity_results {
                                     if !paths_checked.contains_key(&proximity_result.retrieval_path) {
-                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                        proximity_result.resource_header = root_vr_header.clone();
                                         proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
                                         non_duplicates.push(proximity_result.clone());
                                     }
                                 }
