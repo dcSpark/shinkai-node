@@ -9,7 +9,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption, VRHeader,
+    deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
+    TraversalOption, VRHeader,
 };
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -314,6 +315,11 @@ impl JobManager {
 
         // Perform vector search on all direct resources
         for resource in &resources {
+            // First get the resource embedding, and score vs the query
+            let resource_embedding = resource.as_trait_object().resource_embedding();
+            let resource_score = query.score_similarity(&resource_embedding);
+
+            // Do the search
             let mut results = resource.as_trait_object().vector_search_customized(
                 query.clone(),
                 total_num_of_results,
@@ -322,8 +328,24 @@ impl JobManager {
                 None,
             );
 
-            let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
+            // Average out the node scores together with the resource_score
+            if average_out_deep_search_scores {
+                for ret_node in &mut results {
+                    ret_node.score = deep_search_scores_average_out(
+                        None,
+                        resource_score,
+                        resource
+                            .as_trait_object()
+                            .description()
+                            .unwrap_or_else(|| "")
+                            .to_string(),
+                        ret_node.score,
+                        ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                    );
+                }
+            }
 
+            let mut groups = RetrievedNode::group_proximity_results(&mut results)?;
             retrieved_node_groups.append(&mut groups);
         }
 
@@ -336,6 +358,8 @@ impl JobManager {
         // Sort the retrieved node groups by score, and generate a description if any direct VRs available
         let mut sorted_retrieved_node_groups =
             RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
+
+        // Add a description retrieved node if available from the direct resources fetched. (Assumed direct VRs will be less in number, so makes sense to add a single summary node)
         if !resources.is_empty() && !sorted_retrieved_node_groups.is_empty() {
             if let Some(group) = sorted_retrieved_node_groups.get(0) {
                 if let Some(top_node) = group.get(0) {
