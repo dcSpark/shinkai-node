@@ -1084,11 +1084,6 @@ impl Prompt {
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit)?;
-        println!(
-            "Before Subprompt Count: {}\nAfter Subprompt Count: {}",
-            self.sub_prompts.len(),
-            prompt_copy.sub_prompts.len()
-        );
 
         // Generate the output chat completion request messages
         let output_messages = prompt_copy.generate_chat_completion_messages()?.0;

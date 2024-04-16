@@ -163,11 +163,12 @@ impl JobManager {
         // Flatten the retrieved node groups into a single list
         let mut flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
 
-        // For the top 15 results, fetch their VRs' intros and include them at the front of the list
+        // For the top 25 results, fetch their VRs' intros and include them at the front of the list
+        // TODO: Slight efficiency improvement if we use the first 5 unflattened groups. Improve later.
         let mut final_nodes = Vec::new();
         let mut added_intros = HashMap::new();
         let mut first_intro_text = None;
-        for node in &mut flattened_result_nodes.iter().take(15) {
+        for node in &mut flattened_result_nodes.iter().take(25) {
             if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
                 if !added_intros.contains_key(&node.resource_header.reference_string()) {
                     // Add the intro nodes, and the ref string to added_intros
@@ -197,14 +198,14 @@ impl JobManager {
             }
         }
 
-        println!(
-            "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
-            query_text
-        );
+        // println!(
+        //     "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
+        //     query_text
+        // );
 
-        for node in &final_nodes {
-            eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
-        }
+        // for node in &final_nodes {
+        //     eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
+        // }
 
         Ok((final_nodes, first_intro_text))
     }
