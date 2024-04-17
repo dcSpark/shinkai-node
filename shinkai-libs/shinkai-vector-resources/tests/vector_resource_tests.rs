@@ -1,7 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -10,8 +9,8 @@ use shinkai_vector_resources::vector_resource::vrkai::VRKai;
 use shinkai_vector_resources::vector_resource::vrpack::VRPack;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::{
-    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
-    VectorResourceCore, VectorResourceSearch,
+    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResourceCore,
+    VectorResourceSearch,
 };
 use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::collections::HashMap;
@@ -970,9 +969,9 @@ async fn local_csv_parsing_test() {
 #[tokio::test]
 async fn local_malformed_csv_parsing_test() {
     let malformed_csv = "\
-    Year,Make,Model,Description,Price
-    1997,Ford,E350,\"ac, abs, moon\",3000
-    1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
+        Year,Make,Model,Description,Price
+        1997,Ford,E350,\"ac, abs, moon\",3000
+        1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
 
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "cars.csv";
@@ -1000,19 +999,66 @@ async fn local_malformed_csv_parsing_test() {
 }
 
 #[tokio::test]
-async fn metadata_parsing_test() {
-    let mut tg1 = TextGroup::new("String without metadata".to_string(), vec![], vec![], None);
-    let mut tg2 = TextGroup::new("String with metadata timestamp: {{{timestamp:2022-09-18T02:17:59Z}}}".to_string(), vec![], vec![], None);
-    let mut tg3 = TextGroup::new("String with metadata timestamp: {{{timestamp:2024-01-01T23:41:30Z}}} and page numbers: {{{pg_nums:[19, 20]}}}".to_string(), vec![], vec![], None);
-    let mut tg4 = TextGroup::new("String with invalid metadata timestamp: {{{timestamp:br0K3n}}}".to_string(), vec![], vec![], None);
+async fn local_txt_metadata_parsing_test() {
+    let input_text = "\
+        This is a test content with metadata
+        timestamp: {{{timestamp:2024-04-17T23:41:30Z}}}
+        Username: {{{username:myCoolUsername}}}
 
-    let md1 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg1);
-    let md2 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg2);
-    let md3 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg3);
-    let md4 = ShinkaiFileParser::parse_and_replace_metadata(&mut tg4);
+        Main content should remain unaffected.
 
-    assert!(md1.is_empty());
-    assert!(!md2.is_empty());
-    assert!(!md3.is_empty());
-    assert!(md4.is_empty());
+        Custom {{{metadata-key:metadata-value}}} should be parsed correctly.
+        
+        Likes: {{{likes:999}}}
+        Reposts: {{{reposts:99}}}
+        Replies: {{{replies:9}}}
+
+        Invalid metadata values should be ignored. {{{timestamp:br0K3n}}}
+        
+        Pure metadata should be removed !{{{pg_nums:[19, 20]}}}!
+        
+        Make this long enough to exceed max node text size and add more metadata.
+        Datetime {{{datetime:2000-01-02T02:17:59Z}}} should be parsed too.";
+
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "test_input.txt";
+    let buffer = input_text.as_bytes().to_vec();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "What is my username?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].node.get_text_content().unwrap().contains("myCoolUsername"));
+    assert!(!results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("{{{timestamp:2024-04-17T23:41:30Z}}}"));
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("2024-04-17T23:41:30Z"));
+    assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
+
+    // Perform another vector search
+    let query_string2 = "What is the parsed datetime?".to_string();
+    let query_embedding2 = generator.generate_embedding_default(&query_string2).await.unwrap();
+    let results2 = resource.as_trait_object().vector_search(query_embedding2, 3);
+
+    assert!(results2[0].node.get_text_content().unwrap().contains("2000"));
+    assert!(results2[0].node.metadata.as_ref().unwrap().contains_key("datetime"));
 }

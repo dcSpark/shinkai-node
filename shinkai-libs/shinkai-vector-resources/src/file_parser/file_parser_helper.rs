@@ -1,7 +1,11 @@
+use blake3::Hasher;
+use chrono::{DateTime, Utc};
+use regex::{Captures, Regex};
+use std::collections::HashMap;
+
 use super::file_parser::ShinkaiFileParser;
 use super::file_parser_types::TextGroup;
 use crate::vector_resource::SourceFileType;
-use blake3::Hasher;
 
 impl ShinkaiFileParser {
     /// Key of page numbers metadata
@@ -17,6 +21,21 @@ impl ShinkaiFileParser {
     /// Key of timestamp metadata
     pub fn timestamp_metadata_key() -> String {
         "timestamp".to_string()
+    }
+
+    // Key of likes metadata
+    pub fn likes_metadata_key() -> String {
+        "likes".to_string()
+    }
+
+    // Key of reposts metadata
+    pub fn reposts_metadata_key() -> String {
+        "reposts".to_string()
+    }
+
+    // Key of replies metadata
+    pub fn replies_metadata_key() -> String {
+        "replies".to_string()
     }
 
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
@@ -128,5 +147,123 @@ impl ShinkaiFileParser {
         hasher.update(buffer);
         let result = hasher.finalize();
         result.to_hex().to_string()
+    }
+
+    // Parse and extract metadata in a text
+    // Returns the parsed text and a hashmap of metadata
+    pub fn parse_and_extract_metadata(input_text: &str) -> (String, HashMap<String, String>) {
+        let mut metadata = HashMap::new();
+        let pure_metadata_re = Regex::new(r"!\{\{\{([\w-]+):((?:[^}]*\}{0,2}[^}]*))\}\}\}!").unwrap();
+        let replaceable_metadata_re = Regex::new(r"\{\{\{([\w-]+):((?:[^}]*\}{0,2}[^}]*))\}\}\}").unwrap();
+
+        let pure_result = pure_metadata_re.replace_all(input_text, |caps: &Captures| {
+            Self::extract_metadata_from_capture(&mut metadata, caps, true)
+        });
+
+        let parsed_result = replaceable_metadata_re.replace_all(&pure_result, |caps: &Captures| {
+            Self::extract_metadata_from_capture(&mut metadata, caps, false)
+        });
+
+        (parsed_result.to_string(), metadata)
+    }
+
+    // Helper function to extract metadata from a capture
+    // is_pure is used to determine if the metadata should be removed from the text
+    fn extract_metadata_from_capture(metadata: &mut HashMap<String, String>, caps: &Captures, is_pure: bool) -> String {
+        let key = caps.get(1).unwrap().as_str();
+        let value = caps.get(2).unwrap().as_str();
+
+        // 1. Verify supported key value constraints and ignore invalid ones
+        // 2. Replace any matched metadata or remove if it's pure
+        match key {
+            // timestamp or datetime: RFC3339 formatted date string
+            _ if key == ShinkaiFileParser::datetime_metadata_key()
+                || key == ShinkaiFileParser::timestamp_metadata_key() =>
+            {
+                let datetime = chrono::DateTime::parse_from_rfc3339(value);
+
+                match datetime {
+                    Ok(_) => {
+                        metadata.insert(key.to_string(), value.to_string());
+
+                        if is_pure {
+                            "".to_string()
+                        } else {
+                            value.to_string()
+                        }
+                    }
+                    Err(_) => {
+                        // Attempt to parse timestamp in a less strict format
+                        let datetime = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.3fZ");
+
+                        match datetime {
+                            Ok(parsed_datetime) => {
+                                let formatted_datetime = DateTime::<Utc>::from_utc(parsed_datetime, Utc).to_rfc3339();
+                                metadata.insert(key.to_string(), formatted_datetime.clone());
+
+                                if is_pure {
+                                    "".to_string()
+                                } else {
+                                    formatted_datetime
+                                }
+                            }
+                            Err(_) => {
+                                caps.get(0).unwrap().as_str().to_string()
+                            }
+                        }
+                    }
+                }
+            }
+            // pg_nums: Array of integers
+            _ if key == ShinkaiFileParser::page_numbers_metadata_key() => {
+                let page_numbers: Result<Vec<u32>, _> = value
+                    .trim_matches(|c| c == '[' || c == ']')
+                    .split(",")
+                    .map(|n| n.trim().parse::<u32>())
+                    .collect();
+
+                match page_numbers {
+                    Ok(_) => {
+                        metadata.insert(key.to_string(), value.to_string());
+
+                        if is_pure {
+                            "".to_string()
+                        } else {
+                            value.to_string()
+                        }
+                    }
+                    Err(_) => caps.get(0).unwrap().as_str().to_string(),
+                }
+            }
+            // likes, reposts, replies: Integer
+            _ if key == ShinkaiFileParser::likes_metadata_key()
+                || key == ShinkaiFileParser::reposts_metadata_key()
+                || key == ShinkaiFileParser::replies_metadata_key() =>
+            {
+                let number = value.parse::<u32>();
+
+                match number {
+                    Ok(_) => {
+                        metadata.insert(key.to_string(), value.to_string());
+
+                        if is_pure {
+                            "".to_string()
+                        } else {
+                            value.to_string()
+                        }
+                    }
+                    Err(_) => caps.get(0).unwrap().as_str().to_string(),
+                }
+            }
+            _ => {
+                metadata.insert(key.to_string(), value.to_string());
+
+                if is_pure {
+                    "".to_string()
+                } else {
+                    value.to_string()
+                }
+            }
+        }
     }
 }

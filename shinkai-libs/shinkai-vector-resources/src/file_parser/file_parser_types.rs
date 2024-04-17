@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
 
 /// An intermediary type for processing content into Node's held in VectorResources
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextGroup {
     pub text: String,
+    pub metadata: HashMap<String, String>,
     pub page_numbers: Vec<u32>,
     pub sub_groups: Vec<TextGroup>,
     pub embedding: Option<Embedding>,
@@ -11,9 +14,16 @@ pub struct TextGroup {
 
 impl TextGroup {
     /// Creates a new instance of TextGroup
-    pub fn new(text: String, page_numbers: Vec<u32>, sub_groups: Vec<TextGroup>, embedding: Option<Embedding>) -> Self {
+    pub fn new(
+        text: String,
+        metadata: HashMap<String, String>,
+        page_numbers: Vec<u32>,
+        sub_groups: Vec<TextGroup>,
+        embedding: Option<Embedding>,
+    ) -> Self {
         TextGroup {
             text,
+            metadata,
             page_numbers,
             sub_groups,
             embedding,
@@ -24,6 +34,7 @@ impl TextGroup {
     pub fn new_empty() -> Self {
         TextGroup {
             text: String::new(),
+            metadata: HashMap::new(),
             page_numbers: Vec::new(),
             sub_groups: Vec::new(),
             embedding: None,

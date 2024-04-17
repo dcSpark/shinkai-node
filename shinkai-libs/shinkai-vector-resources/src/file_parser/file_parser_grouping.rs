@@ -6,7 +6,6 @@ use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
-use regex::{Captures, Regex};
 use std::collections::HashMap;
 
 impl ShinkaiFileParser {
@@ -187,11 +186,19 @@ impl ShinkaiFileParser {
         let has_sub_groups = !grouped_text.sub_groups.is_empty();
         let new_name = grouped_text.text.clone();
         let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
-        let mut metadata = HashMap::new();
-        metadata.insert(
-            ShinkaiFileParser::page_numbers_metadata_key(),
-            grouped_text.format_page_num_string(),
-        );
+
+        let metadata = if grouped_text.metadata.is_empty() {
+            // TODO: Unstructured parser is wired with page numbers, should be removed in the future
+            let mut metadata = HashMap::new();
+            metadata.insert(
+                ShinkaiFileParser::page_numbers_metadata_key(),
+                grouped_text.format_page_num_string(),
+            );
+            metadata
+        } else {
+            grouped_text.metadata.clone()
+        };
+
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
     }
 
@@ -283,51 +290,5 @@ impl ShinkaiFileParser {
             desc.push('\n'); // Add a line break after each element's text
         }
         desc.trim_end().to_string() // Trim any trailing space before returning
-    }
-
-    // Parse and replace metadata in a text group
-    // Initial implementation for testing, will be refactored to parse and replace metadata during content parsing
-    pub fn parse_and_replace_metadata(text_group: &mut TextGroup) -> HashMap<String, String> {
-        let mut metadata = HashMap::new();
-        let re = Regex::new(r"\{\{\{(\w+):((?:[^}]*\}{0,2}[^}]*))\}\}\}").unwrap();
-        let result = re.replace_all(&text_group.text, |caps: &Captures| {
-            let key = caps.get(1).unwrap().as_str();
-            let value = caps.get(2).unwrap().as_str();
-
-            match key {
-                _ if key == ShinkaiFileParser::page_numbers_metadata_key() => {
-                    let page_numbers: Result<Vec<u32>, _> = value
-                        .trim_matches(|c| c == '[' || c == ']')
-                        .split(",")
-                        .map(|n| n.parse::<u32>())
-                        .collect();
-
-                    match page_numbers {
-                        Ok(_) => {
-                            metadata.insert(key.to_string(), value.to_string());
-                            value.to_string()
-                        }
-                        Err(_) => caps.get(0).unwrap().as_str().to_string(),
-                    }
-                }
-                _ if key == ShinkaiFileParser::datetime_metadata_key()
-                    || key == ShinkaiFileParser::timestamp_metadata_key() =>
-                {
-                    let datetime = chrono::DateTime::parse_from_rfc3339(value);
-
-                    match datetime {
-                        Ok(_) => {
-                            metadata.insert(key.to_string(), value.to_string());
-                            value.to_string()
-                        }
-                        Err(_) => caps.get(0).unwrap().as_str().to_string(),
-                    }
-                }
-                _ => caps.get(0).unwrap().as_str().to_string(),
-            }
-        });
-
-        text_group.text = result.to_string();
-        metadata
     }
 }
