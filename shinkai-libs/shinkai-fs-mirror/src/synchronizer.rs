@@ -711,7 +711,7 @@ impl FilesystemSynchronizer {
         let datetime_from_name_or_parent = Self::extract_datetime_from_path(file_path)
             .or_else(|| file_path.parent().and_then(Self::extract_datetime_from_path));
 
-        let file_metadata_datetime = file_path.metadata().and_then(|metadata| metadata.created()).ok();
+        let file_metadata_datetime = file_path.metadata().and_then(|metadata| metadata.modified()).ok();
 
         match (datetime_from_name_or_parent, file_metadata_datetime) {
             (Some(datetime_str), Some(metadata_datetime)) => {
