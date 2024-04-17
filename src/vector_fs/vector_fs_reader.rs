@@ -359,4 +359,15 @@ impl VectorFS {
             .await
             .map(|_| ())
     }
+
+    /// Generates 2 RetrievedNodes which contain either the description + 2nd node, or the first two nodes if no description is available.
+    ///  Sets their score to `1.0` with empty retrieval path & id. This is intended for job vector searches to prepend the intro text about relevant VRs.
+    /// Only works on OrderedVectorResources, errors otherwise.
+    pub async fn _internal_get_vr_intro_ret_nodes(
+        &self,
+        reader: &VFSReader,
+    ) -> Result<Vec<RetrievedNode>, VectorFSError> {
+        let vr = self.retrieve_vector_resource(&reader).await?;
+        Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
+    }
 }

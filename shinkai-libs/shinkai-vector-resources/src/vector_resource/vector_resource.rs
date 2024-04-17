@@ -23,6 +23,7 @@ pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
 use blake3::Hash;
 use chrono::{DateTime, Utc};
+use hex::decode_to_slice;
 use std::any::Any;
 
 #[async_trait]
@@ -407,6 +408,7 @@ pub trait VectorResourceCore: Send + Sync {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
         // Fetch the node at root depth directly, then iterate through the rest
+        let self_header = self.generate_resource_header();
         let mut node = self.get_root_node(path.path_ids[0].clone())?;
         let mut embedding = self.get_root_embedding(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header();
@@ -465,10 +467,7 @@ pub trait VectorResourceCore: Send + Sync {
         for n in retrieved_nodes {
             let mut node_path = path.pop_cloned();
             node_path.push(n.0.id.clone());
-            final_nodes.push((
-                RetrievedNode::new(n.0, 0.0, last_resource_header.clone(), node_path),
-                n.1,
-            ));
+            final_nodes.push((RetrievedNode::new(n.0, 0.0, self_header.clone(), node_path), n.1));
         }
         Ok(final_nodes)
     }
@@ -655,16 +654,25 @@ pub trait VectorResourceCore: Send + Sync {
         // If the path is root, then immediately pop from self at root path to avoid error.
         if parent_path.is_empty() {
             let ord_resource = self.as_ordered_vector_resource_mut()?;
-            let node_path = parent_path.push_cloned(ord_resource.last_node_id());
-            return self.remove_node_at_path(node_path, update_merkle_hashes);
+            if let Some(last_node_id) = ord_resource.last_node_id() {
+                let node_path = parent_path.push_cloned(last_node_id);
+                return self.remove_node_at_path(node_path, update_merkle_hashes);
+            } else {
+                return Err(VRError::InvalidNodeId("Last node id not found".to_string()));
+            }
         } else {
             // Get the resource node at parent_path
             let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone(), None)?;
             // Check if its a DocumentVectorResource
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
                 let ord_resource = resource.as_ordered_vector_resource_mut()?;
-                let node_path = parent_path.push_cloned(ord_resource.last_node_id());
-                self.remove_node_at_path(node_path.clone(), update_merkle_hashes)
+
+                if let Some(last_node_id) = ord_resource.last_node_id() {
+                    let node_path = parent_path.push_cloned(last_node_id);
+                    self.remove_node_at_path(node_path.clone(), update_merkle_hashes)
+                } else {
+                    Err(VRError::InvalidNodeId("Last node id not found".to_string()))
+                }
             } else {
                 Err(VRError::InvalidVRPath(parent_path.clone()))
             }
@@ -795,5 +803,38 @@ pub trait VectorResourceCore: Send + Sync {
         } else {
             self.created_datetime()
         }
+    }
+
+    /// Generates 2 RetrievedNodes which contain either the description + 2nd node, or the first two nodes if no description is available.
+    ///  Sets their score to `1.0` with empty retrieval path & id. This is intended for job vector searches to prepend the intro text about relevant VRs.
+    /// Only works on OrderedVectorResources, errors otherwise.
+    fn generate_intro_ret_nodes(&self) -> Result<Vec<RetrievedNode>, VRError> {
+        let self_header = self.generate_resource_header();
+        let mut description_node = None;
+
+        // Create the description RetrievedNode if description exists
+        if let Some(desc) = self.description() {
+            let node = Node::new_text("".to_string(), desc.to_string(), None, &vec![]);
+            description_node = Some(RetrievedNode::new(node, 1.0, self_header.clone(), VRPath::new()));
+        }
+
+        if let Ok(ord_resource) = self.as_ordered_vector_resource() {
+            if let Some(second_node) = ord_resource.get_second_node() {
+                let second_node_ret = RetrievedNode::new(second_node, 1.0, self_header.clone(), VRPath::new());
+                if let Some(desc) = description_node.clone() {
+                    return Ok(vec![desc, second_node_ret]);
+                } else {
+                    if let Some(first_node) = ord_resource.get_first_node() {
+                        let first_node_ret = RetrievedNode::new(first_node, 1.0, self_header.clone(), VRPath::new());
+                        return Ok(vec![first_node_ret, second_node_ret]);
+                    }
+                }
+            }
+        } else if let Some(node) = description_node {
+            return Ok(vec![node]);
+        }
+        return Err(VRError::InvalidNodeType(
+            "Expected an OrderedVectorResource or a description".to_string(),
+        ));
     }
 }

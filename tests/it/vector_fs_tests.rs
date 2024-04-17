@@ -167,7 +167,7 @@ async fn test_vrkai_vrpack_vector_search() {
     // Validate search results are equal
     assert_eq!(vrkai_search_results.len(), vrpack_search_results.len());
     for (vrkai_result, vrpack_result) in vrkai_search_results.iter().zip(vrpack_search_results.iter()) {
-        assert_eq!(vrkai_result.score, vrpack_result.score);
+        assert_eq!(vrkai_result.retrieval_path, vrpack_result.retrieval_path);
     }
 }
 

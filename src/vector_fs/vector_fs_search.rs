@@ -5,7 +5,8 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader, VRKai,
+    deep_search_scores_average_out, BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
+    VRKai,
 };
 use shinkai_vector_resources::{
     embeddings::Embedding,
@@ -97,6 +98,7 @@ impl VectorFS {
             num_of_resources_to_search_into,
             num_of_results,
             vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+            true,
         )
         .await
     }
@@ -105,6 +107,7 @@ impl VectorFS {
     /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
     /// Allows specifying custom deep_traversal_options which are used when searching into the VRs themselves.
+    /// average_out_deep_search_scores: If true, averages out the VR top level search score across the VectorFS, with the scores of the nodes inside the VR.
     pub async fn deep_vector_search_customized(
         &self,
         reader: &VFSReader,
@@ -112,6 +115,7 @@ impl VectorFS {
         num_of_resources_to_search_into: u64,
         num_of_results: u64,
         deep_traversal_options: Vec<TraversalOption>,
+        average_out_deep_search_scores: bool,
     ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
         let query = self
             .generate_query_embedding_using_reader(query_text.clone(), reader)
@@ -119,17 +123,17 @@ impl VectorFS {
 
         let mut ret_nodes = Vec::new();
         let mut fs_path_hashmap = HashMap::new();
-        let items = self
-            .vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)
+        let items_with_scores = self
+            .vector_search_fs_item_with_score(reader, query.clone(), num_of_resources_to_search_into)
             .await?;
 
-        for item in items {
+        for (item, score) in items_with_scores {
             if let Ok(new_reader) = reader.new_reader_copied_data(item.path.clone(), self).await {
                 if let Ok(resource) = self.retrieve_vector_resource(&new_reader).await {
                     fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
 
                     let generator = self._get_embedding_generator(&reader.profile).await?;
-                    let results = resource
+                    let mut results = resource
                         .as_trait_object()
                         .dynamic_vector_search_customized(
                             query_text.clone(),
@@ -139,6 +143,23 @@ impl VectorFS {
                             generator,
                         )
                         .await?;
+
+                    // If the average out deep search scores flag is set, we average the scores of the retrieved nodes
+                    if average_out_deep_search_scores {
+                        for ret_node in &mut results {
+                            ret_node.score = deep_search_scores_average_out(
+                                Some(query_text.clone()),
+                                score,
+                                resource
+                                    .as_trait_object()
+                                    .description()
+                                    .unwrap_or_else(|| "")
+                                    .to_string(),
+                                ret_node.score,
+                                ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                            );
+                        }
+                    }
                     ret_nodes.extend(results);
                 }
             }
@@ -162,22 +183,38 @@ impl VectorFS {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<FSItem>, VectorFSError> {
+        let fs_items_with_scores = self
+            .vector_search_fs_item_with_score(reader, query, num_of_results)
+            .await?;
+        let fs_items = fs_items_with_scores.iter().map(|(item, _)| item.clone()).collect();
+        Ok(fs_items)
+    }
+
+    /// Performs a vector search into the VectorFS starting at the reader's path,
+    /// returning the retrieved (FSItem, score) pairs extracted from the VRHeader-holding nodes
+    pub async fn vector_search_fs_item_with_score(
+        &self,
+        reader: &VFSReader,
+        query: Embedding,
+        num_of_results: u64,
+    ) -> Result<Vec<(FSItem, f32)>, VectorFSError> {
         let ret_nodes = self
             ._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
             .await?;
         let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
 
-        let mut fs_items = vec![];
+        let mut fs_items_with_scores = vec![];
         for ret_node in ret_nodes {
             if let NodeContent::VRHeader(_) = ret_node.node.content {
-                fs_items.push(FSItem::from_vr_header_node(
+                let item = FSItem::from_vr_header_node(
                     ret_node.node.clone(),
                     ret_node.retrieval_path,
                     &internals.last_read_index,
-                )?)
+                )?;
+                fs_items_with_scores.push((item, ret_node.score));
             }
         }
-        Ok(fs_items)
+        Ok(fs_items_with_scores)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,

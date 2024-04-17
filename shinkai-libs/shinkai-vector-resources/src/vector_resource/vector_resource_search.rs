@@ -323,7 +323,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             vec![],
             VRPath::new(),
-            root_vr_header,
+            root_vr_header.clone(),
         );
 
         // After getting all results from the vector search, perform final filtering
@@ -378,8 +378,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
                                 let mut non_duplicates = vec![];
                                 for proximity_result in &mut proximity_results {
                                     if !paths_checked.contains_key(&proximity_result.retrieval_path) {
-                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                        proximity_result.resource_header = root_vr_header.clone();
                                         proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
                                         non_duplicates.push(proximity_result.clone());
                                     }
                                 }
@@ -585,7 +586,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
-        let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+        let mut new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
         // Create a new traversal path with the node id
         let new_traversal_path = traversal_path.push_cloned(node.id.clone());
 
@@ -616,11 +617,22 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
                 current_level_results.extend(sub_results);
             }
+            // If it's not a resource, it's a node which we need to return
             _ => {
                 let mut score = score;
                 for option in traversal_options {
                     if let TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring) = option {
-                        score = new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32;
+                        // Perform score "averaging" here. We go with a simple additional approach rather than actual average, so that low/many hierarchy scores does not kill an actually valuable node
+                        if let Some(current_score) = new_hierarchical_scores.pop() {
+                            let hierarchical_count = new_hierarchical_scores.len();
+                            let hierarchical_sum = new_hierarchical_scores.iter().sum::<f32>();
+                            let hierarchical_weight = 0.2;
+                            if hierarchical_count > 0 && hierarchical_sum > 0.0 {
+                                let hierarchical_score =
+                                    (hierarchical_sum / hierarchical_count as f32) * hierarchical_weight;
+                                score = current_score + hierarchical_score;
+                            }
+                        }
                         break;
                     }
                 }
@@ -687,4 +699,25 @@ pub trait VectorResourceSearch: VectorResourceCore {
         }
         ids
     }
+}
+
+/// Function used by deep searches to "average" out the scores of the retrieved nodes
+/// with the top level search score from the VRs themselves.
+/// Uses the input strings for more advanced detection for how much to weigh the VR score vs the node score.
+pub fn deep_search_scores_average_out(
+    query_text: Option<String>,
+    vr_score: f32,
+    vr_description: String,
+    node_score: f32,
+    node_content: String,
+) -> f32 {
+    // TODO: Later on do keyword extraction on query_text, and if the description or node content has any of the top 3, increase weighting accordingly
+    // This might be too intensive to run rake on all results, so re-think this over later/test it.
+
+    // Go with a simple additional approach rather than actual average, so that low vr_scores never decrease actual node scores
+    let vr_weight = 0.2;
+    let adjusted_vr_score = (vr_score * vr_weight).min(0.2);
+    let final_score = node_score + adjusted_vr_score;
+
+    final_score
 }
