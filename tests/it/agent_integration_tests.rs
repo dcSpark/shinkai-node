@@ -457,7 +457,6 @@ fn node_agent_registration() {
             }
             {
                 // Send an old message
-                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
                 let past_time_2_secs = ShinkaiStringTime::generate_time_in_past_with_secs(10);
 
                 let job_id_clone = job_id.clone();
@@ -476,7 +475,6 @@ fn node_agent_registration() {
                     .unwrap()
                     .to_string();
 
-                eprintln!("inbox: {:?}", inbox);
                 let job_message = ShinkaiMessageBuilder::new(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -499,7 +497,6 @@ fn node_agent_registration() {
                 .message_schema_type(MessageSchemaType::JobMessageSchema)
                 .build()
                 .unwrap();
-                eprintln!("Old message job_message: {:?}", job_message);
 
                 let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -511,6 +508,8 @@ fn node_agent_registration() {
                     .unwrap();
                 let node_job_message = res_message_job_receiver.recv().await.unwrap();
                 eprintln!("Old message node_job_message: {:?}", node_job_message);
+
+                tokio::time::sleep(Duration::from_millis(2500)).await;
             }
             {
                 // Send a scheduled message
