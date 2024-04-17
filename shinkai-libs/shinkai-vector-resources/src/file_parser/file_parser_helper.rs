@@ -1,5 +1,5 @@
 use blake3::Hasher;
-use chrono::{DateTime, Utc};
+use chrono::{TimeZone, Utc};
 use regex::{Captures, Regex};
 use std::collections::HashMap;
 
@@ -198,7 +198,7 @@ impl ShinkaiFileParser {
 
                         match datetime {
                             Ok(parsed_datetime) => {
-                                let formatted_datetime = DateTime::<Utc>::from_utc(parsed_datetime, Utc).to_rfc3339();
+                                let formatted_datetime = Utc.from_utc_datetime(&parsed_datetime).to_rfc3339();
                                 metadata.insert(key.to_string(), formatted_datetime.clone());
 
                                 if is_pure {
@@ -207,9 +207,7 @@ impl ShinkaiFileParser {
                                     formatted_datetime
                                 }
                             }
-                            Err(_) => {
-                                caps.get(0).unwrap().as_str().to_string()
-                            }
+                            Err(_) => caps.get(0).unwrap().as_str().to_string(),
                         }
                     }
                 }

@@ -1018,7 +1018,7 @@ async fn local_txt_metadata_parsing_test() {
         Pure metadata should be removed !{{{pg_nums:[19, 20]}}}!
         
         Make this long enough to exceed max node text size and add more metadata.
-        Datetime {{{datetime:2000-01-02T02:17:59Z}}} should be parsed too.";
+        Datetime {{{datetime:2000-01-2T02:17:59Z}}} should be parsed too.";
 
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "test_input.txt";
@@ -1053,6 +1053,12 @@ async fn local_txt_metadata_parsing_test() {
         .unwrap()
         .contains("2024-04-17T23:41:30Z"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
+    assert!(!results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("pg_nums"));
+    assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();
