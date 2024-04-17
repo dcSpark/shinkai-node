@@ -1,5 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_node::agent::execution::job_task_parser::ParsedJobTask;
 use shinkai_node::agent::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
@@ -1102,25 +1103,30 @@ async fn test_vector_fs_operations() {
     assert!(simplified_folder.is_ok());
 }
 
-// #[tokio::test]
-// async fn test_remove_code_blocks() {
-//     // Example strings containing code blocks
-//     let example1 = "Here is some text.\n```\nlet x = 10;\n```\nAnd here is more text.";
-//     let example2 = "Another example with a `single backtick`, and a code block:\n```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\nEnd of example.";
-//     let example3 = "Text before code block 1.\n```\nCode Block 1\n```\nText between code block 1 and 2.\n```\nCode Block 2\n```\nText between code block 2 and 3.\n```\nCode Block 3\n```\nText after code block 3.";
+#[tokio::test]
+async fn test_remove_code_blocks_with_parsed_job_task() {
+    // Example strings containing code blocks
+    let example1 = "Here is some text.\n```\nlet x = 10;\n```\nAnd here is more text.";
+    let example2 = "Another example with a `single backtick`, and a code block:\n```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\nEnd of example.";
+    let example3 = "Text before code block 1.\n```\nCode Block 1\n```\nText between code block 1 and 2.\n```\nCode Block 2\n```\nText between code block 2 and 3.\n```\nCode Block 3\n```\nText after code block 3.";
 
-//     // Expected output after removing code blocks
-//     let expected1 = "Here is some text.\n \nAnd here is more text.";
-//     let expected2 = "Another example with a `single backtick`, and a code block: End of example.";
-//     let expected3 = "Text before code block 1. Text between code block 1 and 2. Text between code block 2 and 3. Text after code block 3.";
+    // Create a parsed job task for each example
+    let parsed_job_task1 = ParsedJobTask::new(example1.to_string());
+    let parsed_job_task2 = ParsedJobTask::new(example2.to_string());
+    let parsed_job_task3 = ParsedJobTask::new(example3.to_string());
 
-//     // Use the remove_code_blocks method to process the example strings
-//     let result1 = ParsingHelper::remove_code_blocks(example1);
-//     let result2 = ParsingHelper::remove_code_blocks(example2);
-//     let result3 = ParsingHelper::remove_code_blocks(example3);
+    // Extract only the code blocks from each parsed job task
+    let code_blocks1 = parsed_job_task1.get_output_string_filtered(true, false);
+    let code_blocks2 = parsed_job_task2.get_output_string_filtered(true, false);
+    let code_blocks3 = parsed_job_task3.get_output_string_filtered(true, false);
 
-//     // Assert that the code blocks were removed correctly
-//     assert_eq!(result1, expected1);
-//     assert_eq!(result2, expected2);
-//     assert_eq!(result3, expected3);
-// }
+    // Expected code blocks strings
+    let expected_code_blocks1 = "```\nlet x = 10;\n```";
+    let expected_code_blocks2 = "```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+    let expected_code_blocks3 = "```\nCode Block 1\n``` ```\nCode Block 2\n``` ```\nCode Block 3\n```";
+
+    // Assert that the extracted code blocks match the expected strings
+    assert_eq!(code_blocks1, expected_code_blocks1);
+    assert_eq!(code_blocks2, expected_code_blocks2);
+    assert_eq!(code_blocks3, expected_code_blocks3);
+}
