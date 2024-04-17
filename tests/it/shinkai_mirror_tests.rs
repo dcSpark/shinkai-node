@@ -64,10 +64,33 @@ fn folder_setup() -> (PathBuf, TempDir) {
 fn modify_file_content(temp_dir: PathBuf) {
     let file_path = temp_dir.join("knowledge/test.txt");
     if file_path.exists() {
+        // Debug
+        // let before_content = fs::read_to_string(&file_path).unwrap_or_else(|_| "Failed to read file".to_string());
+        // eprintln!("Content before modification: {}", before_content);
+
+        // // Get and print the last modified time before modification
+        // if let Ok(metadata) = fs::metadata(&file_path) {
+        //     if let Ok(last_modified) = metadata.modified() {
+        //         eprintln!("Last modified before modification: {:?}", last_modified);
+        //     }
+        // }
+
         let _ = fs::write(
             &file_path,
             "Shinkai whitepaper was written by Nico and Rob. Shinkai is an AI-Powered Operating System.",
         );
+
+        // Debug
+        // // Read and log the content after modification
+        // let after_content = fs::read_to_string(&file_path).unwrap_or_else(|_| "Failed to read file".to_string());
+        // eprintln!("Content after modification: {}", after_content);
+
+        // // Get and print the last modified time after modification
+        // if let Ok(metadata) = fs::metadata(&file_path) {
+        //     if let Ok(last_modified) = metadata.modified() {
+        //         eprintln!("Last modified after modification: {:?}", last_modified);
+        //     }
+        // }
     }
 
     eprintln!("Modified file content");
@@ -363,11 +386,11 @@ fn mirror_sync_tests() {
                 assert_eq!(results, vec![], "The results should be an empty vec");
             }
             {
-                let resp = syncing_folders
-                    .shinkai_manager_for_sync
-                    .retrieve_vector_resource("/knowledge/test")
-                    .await
-                    .unwrap();
+                // let resp = syncing_folders
+                //     .shinkai_manager_for_sync
+                //     .retrieve_vector_resource("/knowledge/test")
+                //     .await
+                //     .unwrap();
                 // eprintln!("(before) data_string: {:?}", resp.data);
 
                 // we modify just one file /knowledge/test.txt
