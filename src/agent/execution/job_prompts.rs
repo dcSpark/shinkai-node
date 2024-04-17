@@ -217,7 +217,7 @@ impl JobPromptGenerator {
         };
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand using paragraphs, blocks, and bulletpoint lists. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked:", this_clause),
+            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
             SubPromptType::System,
             98
         );
