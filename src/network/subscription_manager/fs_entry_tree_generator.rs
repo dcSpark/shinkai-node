@@ -21,8 +21,6 @@ impl FSEntryTreeGenerator {
         full_requester_profile_subidentity: ShinkaiName,
         path: String,
     ) -> Result<FSEntryTree, SubscriberManagerError> {
-        eprintln!("shared_folders_to_tree: path: {}", path);
-
         // Acquire VectorFS
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
             "VectorFS instance is not available".to_string(),
@@ -30,7 +28,6 @@ impl FSEntryTreeGenerator {
 
         // Create Reader and find paths with read permissions
         let vr_path = VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-        eprintln!("shared_folders_to_tree: vr_path: {:#?}", vr_path);
 
         // Use the full origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
         let perms_reader = vector_fs
@@ -44,7 +41,6 @@ impl FSEntryTreeGenerator {
         let shared_folders = vector_fs
             .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
             .await?;
-        eprintln!("shared_folders (items + folders): {:#?}", shared_folders);
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
@@ -85,7 +81,6 @@ impl FSEntryTreeGenerator {
             children: root_children,
         };
 
-        eprintln!("\n\n shared_folders_to_tree: tree: {:#?}", tree);
         Ok(tree)
     }
 
