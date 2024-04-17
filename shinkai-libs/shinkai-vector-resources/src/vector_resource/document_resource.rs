@@ -40,14 +40,65 @@ impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}
 
 impl OrderedVectorResource for DocumentVectorResource {
+    /// Id of the first node held internally
+    fn first_node_id(&self) -> Option<String> {
+        if self.node_count > 0 {
+            Some("1".to_string())
+        } else {
+            None
+        }
+    }
+
     /// Id of the last node held internally
-    fn last_node_id(&self) -> String {
-        self.node_count.to_string()
+    fn last_node_id(&self) -> Option<String> {
+        if self.node_count > 0 {
+            Some(self.node_count.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve the first node held internally
+    fn get_first_node(&self) -> Option<Node> {
+        self.nodes.first().cloned()
+    }
+
+    /// Retrieve the second node held internally
+    fn get_second_node(&self) -> Option<Node> {
+        if self.nodes.len() >= 2 {
+            Some(self.nodes[1].clone())
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve the third node held internally
+    fn get_third_node(&self) -> Option<Node> {
+        if self.nodes.len() >= 3 {
+            Some(self.nodes[2].clone())
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve the last node held internally
+    fn get_last_node(&self) -> Option<Node> {
+        self.nodes.last().cloned()
     }
 
     /// Id to be used when pushing a new node
     fn new_push_node_id(&self) -> String {
         (self.node_count + 1).to_string()
+    }
+
+    /// Takes the first N nodes held internally and returns them as references
+    fn take(&self, n: usize) -> Vec<&Node> {
+        self.nodes.iter().take(n).collect()
+    }
+
+    /// Takes the first N nodes held internally and returns cloned copies of them
+    fn take_cloned(&self, n: usize) -> Vec<Node> {
+        self.nodes.iter().take(n).cloned().collect()
     }
 
     /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth.
@@ -212,6 +263,10 @@ impl VectorResourceCore for DocumentVectorResource {
 
     fn to_json(&self) -> Result<String, VRError> {
         Ok(serde_json::to_string(self)?)
+    }
+
+    fn to_json_value(&self) -> Result<serde_json::Value, VRError> {
+        Ok(serde_json::to_value(self)?)
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {

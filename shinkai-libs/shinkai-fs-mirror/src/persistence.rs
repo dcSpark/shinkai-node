@@ -1,8 +1,9 @@
 use rocksdb::Error as RocksDBError;
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, LogLevel, Options, DB};
-use std::{fmt, path::Path, sync::Arc};
+use std::{fmt, path::Path};
 use std::{path::PathBuf, time::Instant};
 
+use crate::http_requests::PostRequestError;
 use crate::synchronizer::SyncingFolder;
 
 #[derive(Debug)]
@@ -11,6 +12,7 @@ pub enum ShinkaiMirrorDBError {
     SerializationError(String),
     DeserializationError(String),
     DBError(RocksDBError),
+    PostRequestError(PostRequestError),
 }
 
 impl fmt::Display for ShinkaiMirrorDBError {
@@ -22,6 +24,7 @@ impl fmt::Display for ShinkaiMirrorDBError {
             ShinkaiMirrorDBError::SerializationError(err) => write!(f, "Serialization error: {}", err),
             ShinkaiMirrorDBError::DeserializationError(err) => write!(f, "Deserialization error: {}", err),
             ShinkaiMirrorDBError::DBError(err) => write!(f, "RocksDB error: {}", err),
+            ShinkaiMirrorDBError::PostRequestError(err) => write!(f, "Post request error: {:?}", err),
         }
     }
 }
@@ -38,6 +41,12 @@ impl std::error::Error for ShinkaiMirrorDBError {
 impl From<RocksDBError> for ShinkaiMirrorDBError {
     fn from(err: RocksDBError) -> ShinkaiMirrorDBError {
         ShinkaiMirrorDBError::DBError(err)
+    }
+}
+
+impl From<PostRequestError> for ShinkaiMirrorDBError {
+    fn from(err: PostRequestError) -> ShinkaiMirrorDBError {
+        ShinkaiMirrorDBError::PostRequestError(err)
     }
 }
 
@@ -183,6 +192,46 @@ impl ShinkaiMirrorDB {
         }
     }
 
+    pub fn delete_keys_with_profile_and_prefix(
+        &self,
+        profile_name: &str,
+        key_prefix: &Path,
+    ) -> Result<(), ShinkaiMirrorDBError> {
+        let cf_handle = self
+            .db
+            .cf_handle(MirrorTopic::FileMirror.as_str())
+            .ok_or_else(|| ShinkaiMirrorDBError::ColumnFamilyNotFound(MirrorTopic::FileMirror.as_str().to_string()))?;
+    
+        let prefix = format!("{}_{}",  profile_name, key_prefix.to_string_lossy());
+        eprintln!("Deleting keys with prefix: {}", prefix);
+    
+        let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+    
+        while let Some(result) = iter.next() {
+            match result {
+                Ok((key, _)) => {
+                    let key_str = match serde_json::from_slice::<String>(&key) {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+    
+                    eprintln!("Considering key for deletion: {:?}", key_str);
+                    eprintln!("Against prefix: {:?}", prefix);
+    
+                    if key_str.starts_with(&prefix) {
+                        eprintln!("they match");
+                        self.db.delete_cf(cf_handle, &key).map_err(ShinkaiMirrorDBError::from)?;
+                    } else {
+                        eprintln!("they don't match");
+                    }
+                }
+                Err(e) => return Err(ShinkaiMirrorDBError::from(e)),
+            }
+        }
+    
+        Ok(())
+    }
+
     // Retrieves the states of all file mirrors with a profile name
     pub fn all_file_mirror_states(&self) -> Result<Vec<(PathBuf, SyncingFolder)>, ShinkaiMirrorDBError> {
         let cf_handle = self
@@ -205,5 +254,23 @@ impl ShinkaiMirrorDB {
             }
         }
         Ok(results)
+    }
+
+    pub fn delete_file_mirror_state(
+        &self,
+        profile_name: String,
+        key: PathBuf,
+    ) -> Result<(), ShinkaiMirrorDBError> {
+        let cf_handle = self
+            .db
+            .cf_handle(MirrorTopic::FileMirror.as_str())
+            .ok_or_else(|| ShinkaiMirrorDBError::ColumnFamilyNotFound(MirrorTopic::FileMirror.as_str().to_string()))?;
+        let combined_key = format!("{}_{}", profile_name, key.to_string_lossy());
+        let serialized_key = serde_json::to_vec(&combined_key)
+            .map_err(|_| ShinkaiMirrorDBError::SerializationError(combined_key.clone()))?;
+        self.db
+            .delete_cf(cf_handle, serialized_key)
+            .map_err(ShinkaiMirrorDBError::from)?;
+        Ok(())
     }
 }

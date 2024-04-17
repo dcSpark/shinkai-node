@@ -224,6 +224,7 @@ async fn main() {
             minimum_time_delegated_hours,
             monthly_payment,
             is_free,
+            folder_description: "".to_string(), // Update to cli description
         };
 
         match subscription_manager.share_folder(path.to_string(), req).await {

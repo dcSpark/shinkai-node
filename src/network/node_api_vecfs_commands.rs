@@ -11,27 +11,28 @@ use crate::{
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,
-            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems,
-            MessageSchemaType,
+            APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVRObject, APIVecFSRetrieveVectorResource,
+            APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+            APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
         },
     },
 };
 use shinkai_vector_resources::{
+    embedding_generator::EmbeddingGenerator,
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
     vector_resource::{VRKai, VRPack, VRPath},
-    embedding_generator::{EmbeddingGenerator},
 };
 use tokio::sync::Mutex;
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn validate_and_extract_payload<T: DeserializeOwned>(
@@ -80,15 +81,16 @@ impl Node {
         Ok((input_payload, requester_name))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
@@ -160,10 +162,10 @@ impl Node {
             }
         }
 
-        let result = vector_fs.retrieve_fs_path_simplified_json(&reader).await;
+        let result = vector_fs.retrieve_fs_path_simplified_json_value(&reader).await;
         let result = match result {
-            Ok(result) => {
-                eprintln!("retrieve_fs_path_simplified_json result: {:?}", result);
+            Ok(result_value) => {
+                let mut result_value = result_value;
                 let mut subscription_manager = ext_subscription_manager.lock().await;
                 let shared_folders_result = subscription_manager
                     .available_shared_folders(
@@ -188,20 +190,8 @@ impl Node {
                         return Ok(());
                     }
                 };
-                let mut result_value: serde_json::Value = match serde_json::from_str(&result) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to parse JSON result: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
                 add_shared_folder_info(&mut result_value, &shared_folders_result);
-                result
+                result_value
             }
             Err(e) => {
                 let api_error = APIError {
@@ -219,7 +209,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_search_items(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -298,7 +288,7 @@ impl Node {
 
     // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -398,7 +388,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_create_folder(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -470,7 +460,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_folder(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -554,7 +544,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_folder(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -639,7 +629,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_item(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -711,7 +701,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_folder(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -783,7 +773,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_item(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -868,7 +858,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_item(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -952,13 +942,13 @@ impl Node {
     }
 
     pub async fn api_vec_fs_retrieve_vector_resource(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIVecFSRetrieveVectorResource>(
@@ -1018,7 +1008,7 @@ impl Node {
             }
         };
 
-        let json_resp = match result.to_json() {
+        let json_resp = match result.to_json_value() {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -1034,8 +1024,9 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1043,7 +1034,7 @@ impl Node {
         embedding_generator: Arc<EmbeddingGenerator>,
         unstructured_api: Arc<UnstructuredAPI>,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIConvertFilesAndSaveToFolder>(
@@ -1115,21 +1106,49 @@ impl Node {
         for (filename, vrkai) in processed_vrkais {
             let folder_path = destination_path.clone();
             let writer = vector_fs
-                .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
                 .await?;
 
-            if let Err(e) = vector_fs.save_vrkai_in_folder(&writer, vrkai).await {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Error saving '{}' in folder: {}", filename, e),
-                    }))
-                    .await;
-                return Ok(());
+            let save_result = vector_fs.save_vrkai_in_folder(&writer, vrkai).await;
+            let fs_item = match save_result {
+                Ok(fs_item) => fs_item,
+                Err(e) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Error saving '{}' in folder: {}", filename, e),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            };
+
+            #[derive(Serialize, Debug)]
+            struct VectorResourceInfo {
+                name: String,
+                path: String,
+                merkle_hash: String,
             }
 
-            let success_message = format!("Vector Resource '{}' saved in folder successfully.", filename);
+            let resource_info = VectorResourceInfo {
+                name: filename.to_string(),
+                path: fs_item.path.to_string(),
+                merkle_hash: fs_item.merkle_hash,
+            };
+
+            let success_message = match serde_json::to_value(&resource_info) {
+                Ok(json) => json,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to convert vector resource info to JSON: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
             success_messages.push(success_message);
         }
 
@@ -1138,7 +1157,9 @@ impl Node {
             let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
 
             let folder_path = destination_path.clone();
-            let writer = vector_fs.new_writer(requester_name.clone(), folder_path, requester_name.clone()).await?;
+            let writer = vector_fs
+                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
+                .await?;
 
             if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
                 let _ = res
@@ -1150,11 +1171,7 @@ impl Node {
                     .await;
                 return Ok(());
             }
-
-            let success_message = format!("VRPack '{}' extracted/saved successfully.", filename);
-            success_messages.push(success_message);
         }
-
         {
             // remove inbox
             match vector_fs.db.remove_inbox(&input_payload.file_inbox) {
@@ -1173,6 +1190,172 @@ impl Node {
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn retrieve_vr_kai(
+        _db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFSRetrieveVRObject>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsRetrieveVRPack,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let vr_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
+        let reader = match reader {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let result = vector_fs.retrieve_vrkai(&reader).await;
+        let result = match result {
+            Ok(result) => result,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve vector resource: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let json_resp = match result.to_json_value() {
+            Ok(result) => result,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert vector resource to json: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn retrieve_vr_pack(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFSRetrieveVRObject>(
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::VecFsRetrieveVRPack,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let vr_path = match VRPath::from_string(&input_payload.path) {
+            Ok(path) => path,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to convert path to VRPath: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let reader = vector_fs
+            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+            .await;
+        let reader = match reader {
+            Ok(reader) => reader,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create reader: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let result = vector_fs.retrieve_vrpack(&reader).await;
+        let result = match result {
+            Ok(result) => result,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve vector resource: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let json_resp = match result.to_json_value() {
+            Ok(result) => result,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert vector resource to json: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
         Ok(())
     }
 }

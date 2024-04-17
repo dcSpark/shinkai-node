@@ -3,7 +3,7 @@ use super::network_manager::network_job_manager::{
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo};
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -22,11 +22,11 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
-use std::collections::HashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
+use serde_json::Value;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
@@ -43,6 +43,7 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::vector_resource::VRPack;
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
@@ -274,11 +275,11 @@ pub enum NodeCommand {
     },
     APIVecFSRetrievePathSimplifiedJson {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     APIVecFSRetrieveVectorResource {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     APIVecFSRetrieveVectorSearchSimplifiedJson {
         msg: ShinkaiMessage,
@@ -286,7 +287,7 @@ pub enum NodeCommand {
     },
     APIConvertFilesAndSaveToFolder {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Vec<Value>, APIError>>,
     },
     APIVecFSCreateFolder {
         msg: ShinkaiMessage,
@@ -322,11 +323,11 @@ pub enum NodeCommand {
     },
     APIAvailableSharedItems {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     APIAvailableSharedItemsOpen {
         msg: APIAvailableSharedItems,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     APICreateShareableFolder {
         msg: ShinkaiMessage,
@@ -350,11 +351,19 @@ pub enum NodeCommand {
     },
     APIMySubscriptions {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     APIGetMySubscribers {
         msg: ShinkaiMessage,
         res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    },
+    RetrieveVRKai {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    RetrieveVRPack {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
     },
 }
 
@@ -1730,7 +1739,7 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        // NodeCommand::APIUnsubscribe { msg, res } => self.api_unsubscribe_my_subscriptions(msg, res).await, 
+                                        // NodeCommand::APIUnsubscribe { msg, res } => self.api_unsubscribe_my_subscriptions(msg, res).await,
                                         NodeCommand::APIUnsubscribe { msg, res } => {
                                             let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
@@ -1759,6 +1768,44 @@ impl Node {
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
                                                     ext_subscription_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::RetrieveVRKai { msg, res } => self.retrieve_vr_kai(msg, res).await,
+                                        NodeCommand::RetrieveVRKai { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::retrieve_vr_kai(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::RetrieveVRPack { msg, res } => self.retrieve_vr_pack(msg, res).await,
+                                        NodeCommand::RetrieveVRPack { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::retrieve_vr_pack(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
                                                     msg,
                                                     res,
                                                 ).await;

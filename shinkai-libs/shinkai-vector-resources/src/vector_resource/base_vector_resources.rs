@@ -56,6 +56,11 @@ impl BaseVectorResource {
         self.as_trait_object().to_json()
     }
 
+    /// Converts the BaseVectorResource into a JSON Value (without the enum wrapping JSON)
+    pub fn to_json_value(&self) -> Result<serde_json::Value, VRError> {
+        self.as_trait_object().to_json_value()
+    }
+
     /// Creates a BaseVectorResource from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VRError> {
         let value: JsonValue = serde_json::from_str(json)?;
