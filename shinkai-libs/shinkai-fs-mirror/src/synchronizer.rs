@@ -3,15 +3,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use chrono::TimeZone;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
-use warp::filters::path::full;
 
 use crate::http_requests::PostRequestError;
 use crate::persistence::{ShinkaiMirrorDB, ShinkaiMirrorDBError};
-use crate::shinkai::api_schemas::FileUploadResponse;
+use crate::shinkai::api_schemas::{DistributionInfo, FileInfo, FileUploadResponse};
 use crate::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -184,7 +185,7 @@ impl FilesystemSynchronizer {
             match syncing_folders.get_file_mirror_state(profile_name.to_string(), path.clone()) {
                 Ok(Some(syncing_folder)) => {
                     // If the file exists and the modified time is greater than the last synchronized time, add it to the update list
-                    if modified_time != syncing_folder.local_last_synchronized_file_datetime {
+                    if modified_time > syncing_folder.local_last_synchronized_file_datetime {
                         eprintln!(
                             "File {:?} has been modified. Last synchronized time: {:?}, Current time: {:?}",
                             path, syncing_folder.local_last_synchronized_file_datetime, modified_time
@@ -194,6 +195,7 @@ impl FilesystemSynchronizer {
                 }
                 Ok(None) => {
                     // If the file does not exist in the database, add it to the update list
+                    eprintln!("File {:?} is not in the database.", path);
                     files_to_update.push((full_path, modified_time));
                 }
                 Err(e) => {
@@ -207,6 +209,7 @@ impl FilesystemSynchronizer {
 
     pub fn scan_folders(folder_to_watch: &PathBuf) -> HashMap<PathBuf, SystemTime> {
         let mut folder_files = HashMap::new();
+
         fn scan_path(path: PathBuf, folder_files: &mut HashMap<PathBuf, SystemTime>) {
             if path.is_dir() {
                 if let Ok(paths) = std::fs::read_dir(&path) {
@@ -215,9 +218,13 @@ impl FilesystemSynchronizer {
                         scan_path(path, folder_files); // Recursively scan the path
                     }
                 }
-            } else if let Ok(metadata) = path.metadata() {
-                if let Ok(modified) = metadata.modified() {
-                    folder_files.insert(path, modified);
+            } else {
+                // Use creation_datetime_extraction to get the modified date
+                if let Ok(Some(datetime_str)) = FilesystemSynchronizer::creation_datetime_extraction(&path) {
+                    if let Ok(datetime) = chrono::DateTime::parse_from_rfc3339(&datetime_str) {
+                        let system_time: SystemTime = datetime.into();
+                        folder_files.insert(path, system_time);
+                    }
                 }
             }
         }
@@ -341,7 +348,7 @@ impl FilesystemSynchronizer {
                         // Construct the full path for the database, ensuring there's a "/" between destination_path and file_path_for_db if necessary
                         let file_path_for_db = destination_dir.join(filename).with_extension("");
 
-                        let mut db = syncing_folders_db.lock().await;
+                        let db = syncing_folders_db.lock().await;
                         let syncing_folder = SyncingFolder {
                             local_last_synchronized_file_datetime: modified_time,
                             merkle_hash: Some(response.merkle_hash.clone()),
@@ -373,6 +380,8 @@ impl FilesystemSynchronizer {
 
     /// Deletes the local entries (not files) which are not found in the Node
     /// This could happen if files were deleted in the Node, the local entries need to be synced with the Node
+    /// It also updates the local entries that are found in the Node but dont exist local registry
+    /// This could happen if the local registry was deleted or the file was added to the Node
     pub async fn sync_local_with_node_folder(
         destination_path: PathBuf,
         profile_name: &str,
@@ -385,10 +394,11 @@ impl FilesystemSynchronizer {
         // Attempt to retrieve the folder from the node to ensure it exists
         match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
             Ok(result) => {
-                let paths_and_hashes = Self::extract_paths_and_hashes(&result);
+                // eprintln!(">> Node folder exists: {:?}", result);
+                let paths_and_file_info = Self::extract_paths_and_hashes(&result);
 
                 // If the folder exists on the node, proceed with synchronization
-                let mut db = syncing_folders_db.lock().await;
+                let db = syncing_folders_db.lock().await;
 
                 // Get all file mirror states before synchronization
                 let all_file_mirror_states = db.all_file_mirror_states().unwrap();
@@ -396,6 +406,69 @@ impl FilesystemSynchronizer {
                     .into_iter()
                     .filter(|(path, _)| path.starts_with(&*destination_path_str))
                     .collect();
+
+                // Iterate through each file found on the node
+                for (node_path, file_info) in paths_and_file_info.iter() {
+
+                    let local_path_without_extension = Path::new(node_path).with_extension("");
+                    // Check if the file exists locally and in the registry
+                    match db.get_file_mirror_state(profile_name.to_string(), local_path_without_extension.clone()) {
+                        Ok(Some(syncing_folder)) => {
+                            // Determine the correct file_modified_time
+                            let file_modified_time = file_info.distribution_info.as_ref().map_or_else(
+                                || {
+                                    Utc.datetime_from_str(&file_info.last_written_datetime, "%+")
+                                        .unwrap_or_else(|_| Utc::now())
+                                },
+                                |di| Utc.datetime_from_str(&di.datetime, "%+").unwrap_or_else(|_| Utc::now()),
+                            );
+
+                            // Convert DateTime<Utc> to SystemTime to compare with syncing_folder.local_last_synchronized_file_datetime
+                            let file_modified_time_system = file_modified_time.into();
+
+                            if file_modified_time_system != syncing_folder.local_last_synchronized_file_datetime {
+                                let syncing_folder = SyncingFolder {
+                                    local_last_synchronized_file_datetime: file_modified_time_system,
+                                    merkle_hash: Some(file_info.merkle_hash.clone()),
+                                };
+                                db.add_or_update_file_mirror_state(
+                                    profile_name.to_string(),
+                                    local_path_without_extension,
+                                    syncing_folder,
+                                )?;
+                            }
+                        }
+                        Ok(None) => {
+                            // If the file exists locally but not in the registry, add it
+                            let file_modified_time = file_info.distribution_info.as_ref().map_or_else(
+                                || {
+                                    Utc.datetime_from_str(&file_info.created_datetime, "%+")
+                                        .unwrap_or_else(|_| Utc::now())
+                                },
+                                |di| Utc.datetime_from_str(&di.datetime, "%+").unwrap_or_else(|_| Utc::now()),
+                            );
+
+                            // Convert DateTime<Utc> to SystemTime for consistency with the rest of the system
+                            let file_modified_time_system = file_modified_time.into();
+
+                            let syncing_folder = SyncingFolder {
+                                local_last_synchronized_file_datetime: file_modified_time_system,
+                                merkle_hash: Some(file_info.merkle_hash.clone()),
+                            };
+                            db.add_or_update_file_mirror_state(
+                                profile_name.to_string(),
+                                local_path_without_extension,
+                                syncing_folder,
+                            )?;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Error accessing database for file {:?}: {}",
+                                local_path_without_extension, e
+                            );
+                        }
+                    }
+                }
 
                 // Delete local entries that do not exist on the server
                 for (path, _) in filtered_states.iter() {
@@ -409,7 +482,7 @@ impl FilesystemSynchronizer {
                     let path_without_extension_buf = Path::new(comparable_path_str).with_extension("");
                     let path_without_extension = path_without_extension_buf.to_str().unwrap_or(comparable_path_str);
 
-                    if !paths_and_hashes.contains_key(path_without_extension) {
+                    if !paths_and_file_info.contains_key(path_without_extension) {
                         eprintln!("Deleting local entry not found on server: {:?}", comparable_path_str);
                         if let Err(e) = db.delete_file_mirror_state(profile_name.to_string(), PathBuf::from(path)) {
                             eprintln!("Failed to delete local entry not found on server {:?}: {}", path, e);
@@ -422,7 +495,7 @@ impl FilesystemSynchronizer {
             Err(e) => {
                 eprintln!("Failed to get node folder: {:?}", e);
                 if let PostRequestError::FSFolderNotFound(_) = e {
-                    let mut db = syncing_folders_db.lock().await;
+                    let db = syncing_folders_db.lock().await;
                     let _ = db.delete_keys_with_profile_and_prefix(&profile_name, &destination_path);
                     eprintln!(
                         "Deleted all keys for profile: '{}' with prefix: '{}' due to FS folder not found.",
@@ -451,7 +524,7 @@ impl FilesystemSynchronizer {
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
             Ok(_health_status) => {
-                eprintln!("Scanning folders and removing old files...");
+                eprintln!("Scanning folders for changes and removing outdated files from registry...");
                 let _ = Self::scan_folders_and_remove_old_files(
                     destination_path.clone(),
                     folder_to_watch,
@@ -471,6 +544,7 @@ impl FilesystemSynchronizer {
                 .await;
 
                 // Proceed with the updates if the health check is successful
+                eprintln!("Scanning folders for changes and calculating differences...");
                 let files_to_update = Self::scan_folders_and_calculate_difference(
                     destination_path.clone(),
                     folder_to_watch,
@@ -547,43 +621,68 @@ impl FilesystemSynchronizer {
         db.delete_keys_with_profile_and_prefix(&self.profile_name, key_prefix)
     }
 
-    fn extract_paths_and_hashes(result: &Value) -> HashMap<String, String> {
-        let mut paths_and_hashes = HashMap::new();
-        // Check if the result is a string and attempt to parse it as JSON
+    pub fn extract_paths_and_hashes(result: &Value) -> HashMap<String, FileInfo> {
+        let mut paths_and_file_info = HashMap::new();
         if let Value::String(result_str) = result {
             if let Ok(parsed_result) = serde_json::from_str::<Value>(result_str) {
-                Self::extract_paths_and_hashes_recursive(&parsed_result, &mut paths_and_hashes);
+                Self::extract_paths_and_hashes_recursive(&parsed_result, &mut paths_and_file_info);
             } else {
                 eprintln!("Failed to parse result string as JSON.");
             }
         } else {
-            // Proceed assuming result is already the correct structure
-            Self::extract_paths_and_hashes_recursive(result, &mut paths_and_hashes);
+            Self::extract_paths_and_hashes_recursive(result, &mut paths_and_file_info);
         }
 
-        paths_and_hashes
+        paths_and_file_info
     }
 
-    fn extract_paths_and_hashes_recursive(value: &Value, paths_and_hashes: &mut HashMap<String, String>) {
+    fn extract_paths_and_hashes_recursive(value: &Value, paths_and_file_info: &mut HashMap<String, FileInfo>) {
         match value {
             Value::Object(obj) => {
                 if let Some(Value::String(path)) = obj.get("path") {
                     if let Some(Value::String(merkle_hash)) = obj.get("merkle_hash") {
-                        paths_and_hashes.insert(path.clone(), merkle_hash.clone());
+                        let name = obj.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+                        let source_file_map_last_saved_datetime = obj
+                            .get("source_file_map_last_saved_datetime")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        let created_datetime = obj
+                            .get("created_datetime")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        let last_written_datetime = obj
+                            .get("last_written_datetime")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        let distribution_info = obj
+                            .get("distribution_info")
+                            .and_then(|di| serde_json::from_value::<DistributionInfo>(di.clone()).ok());
+
+                        let file_info = FileInfo {
+                            merkle_hash: merkle_hash.clone(),
+                            name,
+                            source_file_map_last_saved_datetime,
+                            distribution_info,
+                            created_datetime,
+                            last_written_datetime,
+                        };
+
+                        paths_and_file_info.insert(path.clone(), file_info);
                     }
                 }
 
-                // Recursively handle child folders
                 if let Some(Value::Array(child_folders)) = obj.get("child_folders") {
                     for child_folder in child_folders {
-                        Self::extract_paths_and_hashes_recursive(child_folder, paths_and_hashes);
+                        Self::extract_paths_and_hashes_recursive(child_folder, paths_and_file_info);
                     }
                 }
 
-                // Optionally, handle child items in a similar manner if needed
                 if let Some(Value::Array(child_items)) = obj.get("child_items") {
                     for child_item in child_items {
-                        Self::extract_paths_and_hashes_recursive(child_item, paths_and_hashes);
+                        Self::extract_paths_and_hashes_recursive(child_item, paths_and_file_info);
                     }
                 }
             }
