@@ -4,6 +4,7 @@ use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
@@ -102,6 +103,13 @@ impl VectorFS {
     pub async fn retrieve_fs_path_simplified_json(&self, reader: &VFSReader) -> Result<String, VectorFSError> {
         let entry = self.retrieve_fs_entry(reader).await?;
         entry.to_json_simplified()
+    }
+
+    /// Retrieves a simplified JSON Value representation of the FSEntry at the reader's path in the VectorFS.
+    /// This is the representation that should be sent to frontends to visualize the VectorFS.
+    pub async fn retrieve_fs_path_simplified_json_value(&self, reader: &VFSReader) -> Result<Value, VectorFSError> {
+        let entry = self.retrieve_fs_entry(reader).await?;
+        entry.to_json_simplified_value()
     }
 
     /// Retrieves the FSEntry for the reader's path in the VectorFS.

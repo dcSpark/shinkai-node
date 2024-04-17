@@ -4,6 +4,7 @@ use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use chrono::{DateTime, TimeZone, Utc};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId};
 use core::panic;
 use std::collections::HashMap;
@@ -1002,8 +1003,8 @@ fn subscription_manager_test() {
                 // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<String, APIError>>,
-                    async_channel::Receiver<Result<String, APIError>>,
+                    async_channel::Sender<Result<Value, APIError>>,
+                    async_channel::Receiver<Result<Value, APIError>>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender

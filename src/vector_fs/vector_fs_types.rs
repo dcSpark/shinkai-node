@@ -1,5 +1,6 @@
 use super::vector_fs_error::VectorFSError;
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName, shinkai_utils::job_scope::VectorFSItemScopeEntry,
 };
@@ -58,6 +59,15 @@ impl FSEntry {
             FSEntry::Item(item) => item.to_json_simplified(),
             FSEntry::Folder(folder) => folder.to_json_simplified(),
             FSEntry::Root(root) => root.to_json_simplified(),
+        }
+    }
+
+    /// Converts the FSEntry to a "simplified" JSON Value by calling simplified methods on items/folders/roots
+    pub fn to_json_simplified_value(&self) -> Result<Value, VectorFSError> {
+        match self {
+            FSEntry::Item(item) => item.to_json_simplified_value(),
+            FSEntry::Folder(folder) => folder.to_json_simplified_value(),
+            FSEntry::Root(root) => root.to_json_simplified_value(),
         }
     }
 
@@ -125,6 +135,16 @@ impl FSRoot {
             *child_folder = serde_json::from_str(&child_folder.to_json_simplified()?)?;
         }
         Ok(serde_json::to_string(&root)?)
+    }
+
+    /// Converts the FSRoot to a "simplified" JSON Value without embeddings in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_simplified_value(&self) -> Result<serde_json::Value, VectorFSError> {
+        let mut root = self.clone();
+        for child_folder in &mut root.child_folders {
+            *child_folder = serde_json::from_value(child_folder.to_json_simplified_value()?)?;
+        }
+        Ok(serde_json::to_value(&root)?)
     }
 }
 
@@ -331,6 +351,20 @@ impl FSFolder {
         }
         Ok(serde_json::to_string(&folder)?)
     }
+
+    /// Converts the FSFolder to a "simplified" JSON Value without embeddings in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_simplified_value(&self) -> Result<serde_json::Value, VectorFSError> {
+        let mut folder = self.clone();
+        for item in &mut folder.child_items {
+            item.vr_header.resource_embedding = None;
+            item.vr_header.resource_keywords.keywords_embedding = None;
+        }
+        for child_folder in &mut folder.child_folders {
+            *child_folder = serde_json::from_value(child_folder.to_json_simplified_value()?)?;
+        }
+        Ok(serde_json::to_value(&folder)?)
+    }
 }
 
 /// An external facing "file" abstraction used to make interacting with the VectorFS easier.
@@ -487,6 +521,14 @@ impl FSItem {
         item.vr_header.resource_embedding = None;
         item.vr_header.resource_keywords = VRKeywords::new();
         Ok(serde_json::to_string(&item)?)
+    }
+
+    /// Converts the FSItem to a "simplified" JSON Value without embeddings and keywords
+    pub fn to_json_simplified_value(&self) -> Result<Value, VectorFSError> {
+        let mut item = self.clone();
+        item.vr_header.resource_embedding = None;
+        item.vr_header.resource_keywords = VRKeywords::new();
+        Ok(serde_json::to_value(&item)?)
     }
 
     /// Process the two last_saved datetimes in a Node from the VectorFS core resource.

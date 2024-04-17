@@ -6,14 +6,12 @@ use super::{
     node_api::APIError,
     node_error::NodeError,
     subscription_manager::{
-        external_subscriber_manager::ExternalSubscriberManager,
-        my_subscription_manager::{self, MySubscriptionsManager},
+        external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
     },
     Node,
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde_json::to_string;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription},
     shinkai_message::{
@@ -25,7 +23,7 @@ use shinkai_message_primitives::{
     },
 };
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
     pub async fn api_unsubscribe_my_subscriptions(
@@ -108,12 +106,12 @@ impl Node {
 
     pub async fn api_subscription_my_subscriptions(
         db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         let (_, requester_name) = match Self::validate_and_extract_payload::<String>(
             node_name.clone(),
@@ -146,9 +144,9 @@ impl Node {
 
         match db_result {
             Ok(subscriptions) => {
-                match to_string(&subscriptions) {
-                    Ok(json_string) => {
-                        let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+                match serde_json::to_value(&subscriptions) {
+                    Ok(json_value) => {
+                        let _ = res.send(Ok(json_value)).await.map_err(|_| ());
                     }
                     Err(e) => {
                         // Handle serialization error
@@ -174,16 +172,17 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_available_shared_items(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _db: Arc<ShinkaiDB>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAvailableSharedItems>(
             node_name.clone(),
@@ -242,9 +241,9 @@ impl Node {
 
             match result {
                 Ok(result) => {
-                    match to_string(&result) {
-                        Ok(json_string) => {
-                            let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+                    match serde_json::to_value(&result) {
+                        Ok(json_value) => {
+                            let _ = res.send(Ok(json_value)).await.map_err(|_| ());
                         }
                         Err(e) => {
                             // Handle serialization error
@@ -277,9 +276,9 @@ impl Node {
                     let result = my_subscription_manager.get_shared_folder(&ext_node_name).await;
                     match result {
                         Ok(result) => {
-                            match to_string(&result) {
-                                Ok(json_string) => {
-                                    let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+                            match serde_json::to_value(&result) {
+                                Ok(json_value) => {
+                                    let _ = res.send(Ok(json_value)).await.map_err(|_| ());
                                 }
                                 Err(e) => {
                                     // Handle serialization error
@@ -320,7 +319,7 @@ impl Node {
         node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         input_payload: APIAvailableSharedItems,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
             let mut subscription_manager = ext_subscription_manager.lock().await;
@@ -328,9 +327,9 @@ impl Node {
             let path = "/";
             let shared_folder_infos = subscription_manager.get_cached_shared_folder_tree(path).await;
 
-            match to_string(&shared_folder_infos) {
-                Ok(json_string) => {
-                    let _ = res.send(Ok(json_string)).await.map_err(|_| ());
+            match serde_json::to_value(&shared_folder_infos) {
+                Ok(json_value) => {
+                    let _ = res.send(Ok(json_value)).await.map_err(|_| ());
                 }
                 Err(e) => {
                     // Handle serialization error
@@ -355,9 +354,10 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_subscribe_to_shared_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _db: Arc<ShinkaiDB>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -399,7 +399,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = my_subscription_manager.lock().await;
+        let subscription_manager = my_subscription_manager.lock().await;
         let result = subscription_manager
             .subscribe_to_shared_folder(
                 streamer_full_name.extract_node(),
@@ -426,9 +426,10 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_create_shareable_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _db: Arc<ShinkaiDB>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -486,9 +487,10 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_update_shareable_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _db: Arc<ShinkaiDB>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -512,7 +514,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = ext_subscription_manager.lock().await;
+        let subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
             .update_shareable_folder_requirements(input_payload.path, requester_name, input_payload.subscription)
             .await;
@@ -537,9 +539,10 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_subscription_unshare_folder(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
+        _db: Arc<ShinkaiDB>,
+        _vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -612,7 +615,7 @@ impl Node {
             }
         };
 
-        let mut subscription_manager = ext_subscription_manager.lock().await;
+        let subscription_manager = ext_subscription_manager.lock().await;
         let subscribers_result = subscription_manager
             .get_node_subscribers(Some(input_payload.path))
             .await;
