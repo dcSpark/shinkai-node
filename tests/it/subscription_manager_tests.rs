@@ -336,7 +336,7 @@ async fn retrieve_file_info(
     profile_name: &str,
     path: &str,
     is_simple: bool,
-) -> String {
+) -> Value {
     let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
 
     let msg = generate_message_with_payload(
@@ -362,14 +362,14 @@ async fn retrieve_file_info(
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
 
     if is_simple {
-        print_tree_simple(&resp);
+        print_tree_simple(resp.clone());
     } else {
         eprintln!("resp for current file system files: {}", resp);
     }
     resp
 }
 
-fn print_tree_simple(json_str: &str) {
+fn print_tree_simple(json: Value) {
     // TODO: fix there is some extra space
     // /
     // ├── private_test_folder
@@ -381,23 +381,19 @@ fn print_tree_simple(json_str: &str) {
     // eprintln!("print_tree_simple JSON: {}", json_str);
     // Parse the JSON string into a serde_json::Value
 
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-        eprintln!("/");
-        if let Some(folders) = val["child_folders"].as_array() {
-            let folders_len = folders.len();
-            for (index, folder) in folders.iter().enumerate() {
-                let folder_name = folder["name"].as_str().unwrap_or("Unknown Folder");
-                let prefix = if index < folders_len - 1 {
-                    "├── "
-                } else {
-                    "└── "
-                };
-                eprintln!("{}{}", prefix, folder_name);
-                print_subtree(folder, "    ", index == folders_len - 1);
-            }
+    eprintln!("/");
+    if let Some(folders) = json["child_folders"].as_array() {
+        let folders_len = folders.len();
+        for (index, folder) in folders.iter().enumerate() {
+            let folder_name = folder["name"].as_str().unwrap_or("Unknown Folder");
+            let prefix = if index < folders_len - 1 {
+                "├── "
+            } else {
+                "└── "
+            };
+            eprintln!("{}{}", prefix, folder_name);
+            print_subtree(folder, "    ", index == folders_len - 1);
         }
-    } else {
-        eprintln!("Failed to parse JSON");
     }
 }
 
@@ -1057,8 +1053,8 @@ fn subscription_manager_test() {
                 // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<String, APIError>>,
-                    async_channel::Receiver<Result<String, APIError>>,
+                    async_channel::Sender<Result<Value, APIError>>,
+                    async_channel::Receiver<Result<Value, APIError>>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender
@@ -1122,8 +1118,7 @@ fn subscription_manager_test() {
                     }
                 });
 
-                let mut actual_response: serde_json::Value =
-                    serde_json::from_str(&send_result.clone().unwrap()).expect("Failed to parse send_result as JSON");
+                let mut actual_response: serde_json::Value = send_result.clone().unwrap();
 
                 // Remove timestamps from both expected and actual responses using the new function
                 remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
@@ -1197,8 +1192,8 @@ fn subscription_manager_test() {
             
                 // Prepare the response channel
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<String, APIError>>,
-                    async_channel::Receiver<Result<String, APIError>>,
+                    async_channel::Sender<Result<Value, APIError>>,
+                    async_channel::Receiver<Result<Value, APIError>>,
                 ) = async_channel::bounded(1);
             
                 // Send the command
@@ -1210,11 +1205,8 @@ fn subscription_manager_test() {
                 .await
                 .unwrap();
 
-                let resp = res_send_msg_receiver.recv().await.unwrap().expect("Failed to receive response");    
+                let mut actual_resp_json = res_send_msg_receiver.recv().await.unwrap().expect("Failed to receive response");    
                 
-                // Parse the actual response to JSON for comparison
-                let mut actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
-
                 // Expected response template without dates for comparison
                 let expected_resp_template = r#"[{
                     "subscription_id": {
@@ -1277,7 +1269,7 @@ fn subscription_manager_test() {
                         .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
                         .await
                         .unwrap();
-                    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     // print_tree_simple(&resp);
 
                    let expected_structure = serde_json::json!({
@@ -1310,7 +1302,6 @@ fn subscription_manager_test() {
                         "child_items": []
                     });
 
-                    let actual_resp_json: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse response JSON");
                     structure_matched = check_structure(&actual_resp_json, &expected_structure);
                     if structure_matched {
                         eprintln!("The actual folder structure matches the expected structure.");

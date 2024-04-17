@@ -1,28 +1,24 @@
 use async_channel::{bounded, Receiver, Sender};
 use chrono::Utc;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use fs_extra::dir::{self, CopyOptions};
 use serde_json::Value;
 use shinkai_fs_mirror::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 use shinkai_fs_mirror::synchronizer::{FilesystemSynchronizer, SyncInterval};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::network::node_api::{self, APIError};
 use shinkai_node::schemas::identity::{Identity, IdentityType};
-use shinkai_vector_resources::resource_errors::VRError;
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::{fs, path::Path};
 use tempfile::{tempdir, TempDir};
 use tokio::runtime::Runtime;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCreateFolder, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions,
-    MessageSchemaType, RegistrationCodeType,
+    APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
@@ -336,7 +332,7 @@ fn mirror_sync_tests() {
                         .await
                         .unwrap();
                     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                    let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                    let mut parsed_resp = parse_and_extract_file_paths(resp);
                     parsed_resp.sort();
 
                     let mut expected_paths = vec![
@@ -433,7 +429,7 @@ fn mirror_sync_tests() {
                         .await
                         .unwrap();
                     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                    let mut parsed_resp = parse_and_extract_file_paths(&resp);
+                    let mut parsed_resp = parse_and_extract_file_paths(resp);
                     parsed_resp.sort();
 
                     let mut expected_paths = vec![
@@ -704,10 +700,6 @@ fn extract_files_paths(folder: &Value, base_path: PathBuf) -> Vec<PathBuf> {
     paths
 }
 
-fn parse_and_extract_file_paths(json_str: &str) -> Vec<PathBuf> {
-    if let Ok(val) = serde_json::from_str::<Value>(json_str) {
-        extract_files_paths(&val, PathBuf::from("/"))
-    } else {
-        Vec::new() // Return an empty vector if parsing fails
-    }
+fn parse_and_extract_file_paths(json: Value) -> Vec<PathBuf> {
+    extract_files_paths(&json, PathBuf::from("/"))
 }

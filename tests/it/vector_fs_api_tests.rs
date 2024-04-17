@@ -343,14 +343,18 @@ fn vector_fs_api_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 // eprintln!("resp for current file system files: {}", resp);
 
+                // Assuming `resp` is now a serde_json::Value
+                let resp_json = serde_json::to_string(&resp).expect("Failed to convert response to string");
+                // eprintln!("resp for current file system files: {}", resp_json);
+
                 // TODO: convert to json and then compare
                 let expected_path = "/test_folder/shinkai_intro";
                 assert!(
-                    resp.contains(expected_path),
+                    resp_json.contains(expected_path),
                     "Response does not contain the expected file path: {}",
                     expected_path
                 );
-                retrieved_fs_json = resp;
+                retrieved_fs_json = resp_json;
             }
             {
                 // Upload .pdf file to inbox
@@ -444,16 +448,18 @@ fn vector_fs_api_tests() {
                 let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("resp for current file system files: {:?}", resp);
 
-                // TODO: convert to json and then compare
+                // Convert `resp` from serde_json::Value to String for comparison
+                let resp_json = serde_json::to_string(&resp).expect("Failed to convert response to string");
+
                 let expected_path = "/test_folder/shinkai_intro";
                 assert!(
-                    resp.contains(expected_path),
+                    resp_json.contains(expected_path),
                     "Response does not contain the expected file path: {}",
                     expected_path
                 );
                 // Assert that after updating the fs item with a new VR generated from the PDF (overwriting the one from the .vrkai),
                 // the filesystem json is different (because different timestamps/id on the item).
-                assert_ne!(resp, retrieved_fs_json);
+                assert_ne!(resp_json, retrieved_fs_json);
             }
 
             {
@@ -602,8 +608,8 @@ fn vector_fs_api_tests() {
                     .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
                     .await
                     .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("resp for current file system files: {:?}", resp);
+                let parsed_resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                // eprintln!("resp for current file system files: {:?}", parsed_resp);
 
                 /*
                 /
@@ -613,9 +619,6 @@ fn vector_fs_api_tests() {
                 │   └── shinkai_intro
                 └── test_folder3
                  */
-
-                // Assuming `resp` is a String containing the JSON response
-                let parsed_resp: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse JSON");
 
                 // Assert the root contains 'test_folder2' and 'test_folder3'
                 assert!(
@@ -851,9 +854,7 @@ fn vector_fs_api_tests() {
                     .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
                     .await
                     .unwrap();
-                let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-
-                let parsed_resp: serde_json::Value = serde_json::from_str(&resp).expect("Failed to parse JSON");
+                let parsed_resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
 
                 // Assert root contains 'test_folder2' and 'test_folder3'
                 let root_folders = parsed_resp["child_folders"]
