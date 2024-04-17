@@ -46,8 +46,6 @@ pub async fn local_registration_profile_node(
         )
         .unwrap();
 
-        eprintln!("code_message: {:?}", code_message);
-
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);

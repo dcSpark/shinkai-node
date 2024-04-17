@@ -1,31 +1,21 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
-use tokio::task::AbortHandle;
+
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
-};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
-};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
+use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
 use std::pin::Pin;
-use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
+use tokio::task::AbortHandle;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct TestEnvironment {
@@ -75,13 +65,13 @@ where
         let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
-            node1_identity_name.clone().to_string(),
+            node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_sk.clone(),
@@ -124,14 +114,14 @@ where
             node1_device_identity_pk,
             node1_device_encryption_sk,
             node1_device_encryption_pk,
-            node1_abort_handler
+            node1_abort_handler,
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));
 
         let result = tokio::try_join!(node1_handler, interactions_handler);
         match result {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
