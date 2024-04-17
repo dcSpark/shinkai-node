@@ -562,7 +562,7 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
-    let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_eq!(res.node.id, "3");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
@@ -579,33 +579,33 @@ fn test_manual_resource_vector_search() {
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 2);
     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 3);
     let test_path = VRPath::from_string("/doc_key/4/doc_key/1").unwrap();
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
         .unwrap();
     assert_eq!(res.len(), 2);
     let res = new_map_resource
-        .proximity_retrieve_node_at_path(test_path.clone(), 5000)
+        .proximity_retrieve_nodes_at_path(test_path.clone(), 5000, None)
         .unwrap();
     assert_eq!(res.len(), 3);
 
     // Check that no node is retrieved after removing it by path
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.remove_node_at_path(test_path.clone(), true);
-    let res = new_map_resource.retrieve_node_at_path(test_path.clone());
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None);
     assert!(!res.is_ok());
 
     // Replace an existing node in a Map Resource and validate it's been changed
     let test_path = VRPath::from_string("/doc_key/4/some_key").unwrap();
-    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
             test_path.clone(),
@@ -615,7 +615,7 @@ fn test_manual_resource_vector_search() {
             vec![],
         )
         .unwrap();
-    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value----".to_string()),
@@ -624,7 +624,7 @@ fn test_manual_resource_vector_search() {
 
     // Replace an existing node in a Doc Resource and validate it's been changed
     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
-    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
             test_path.clone(),
@@ -634,7 +634,7 @@ fn test_manual_resource_vector_search() {
             vec![],
         )
         .unwrap();
-    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value 2----".to_string()),
@@ -654,7 +654,7 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(test_path.clone()).unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None).unwrap();
     assert_eq!(res.node.id, "4");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
@@ -662,14 +662,14 @@ fn test_manual_resource_vector_search() {
     let path = VRPath::from_string("/3/doc_key/").unwrap();
     fruit_doc.pop_node_at_path(path, true).unwrap();
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(test_path.clone());
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None);
     assert_eq!(res.is_ok(), false);
 
     //
     // Merkelization Tests
     //
     let path = VRPath::from_string("/3/doc_key/2").unwrap();
-    let res = fruit_doc.retrieve_node_at_path(path.clone()).unwrap();
+    let res = fruit_doc.retrieve_node_at_path(path.clone(), None).unwrap();
     let regened_merkle_hash = res.node._generate_merkle_hash().unwrap();
     assert_eq!(regened_merkle_hash, res.node.get_merkle_hash().unwrap());
 
@@ -912,7 +912,7 @@ async fn test_embeddings_coherence() {
 async fn local_txt_parsing_test() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "canada.txt";
-    let buffer = std::fs::read(format!("../../files/{}", source_file_name.clone())).unwrap();
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
     let resource = ShinkaiFileParser::process_file_into_resource(
         buffer,
         &generator,
@@ -937,4 +937,63 @@ async fn local_txt_parsing_test() {
         // println!("{}:{}", result.score, result.node.get_text_content().unwrap());
         assert!(result.node.get_text_content().unwrap().len() > 200);
     }
+}
+
+#[tokio::test]
+async fn local_csv_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "cars.csv";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Which car has 495 horsepower?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.5);
+    assert!(results[0].node.get_text_content().unwrap().contains("Corvette"));
+}
+
+#[tokio::test]
+async fn local_malformed_csv_parsing_test() {
+    let malformed_csv = "\
+    Year,Make,Model,Description,Price
+    1997,Ford,E350,\"ac, abs, moon\",3000
+    1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
+
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "cars.csv";
+    let buffer = malformed_csv.as_bytes().to_vec();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "What is the price of E350?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.5);
+    assert!(results[0].node.get_text_content().unwrap().contains("3000"));
 }

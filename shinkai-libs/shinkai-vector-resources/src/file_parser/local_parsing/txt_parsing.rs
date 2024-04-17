@@ -2,8 +2,6 @@ use super::LocalFileParser;
 use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::file_parser::file_parser_types::TextGroup;
 use crate::resource_errors::VRError;
-use crate::source::VRSourceReference;
-use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.

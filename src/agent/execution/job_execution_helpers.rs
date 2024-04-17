@@ -141,6 +141,7 @@ impl JobManager {
     }
 
     /// Fetches boilerplate/relevant data required for a job to process a step
+    /// it may return an outdated node_name
     pub async fn fetch_relevant_job_data(
         job_id: &str,
         db: Arc<ShinkaiDB>

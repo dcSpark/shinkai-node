@@ -832,11 +832,9 @@ impl ExternalSubscriberManager {
             let results = vector_fs
                 .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
                 .await?;
-            eprintln!("available_shared_folders> results: {:?}", results);
 
             // Use the new function to filter results to only include top-level folders
             let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
-            eprintln!("available_shared_folders> filtered_results: {:?}", filtered_results);
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -866,7 +864,6 @@ impl ExternalSubscriberManager {
                     tree,
                     subscription_requirement,
                 };
-                eprintln!("SharedFolderInfo> result: {:?}", result);
 
                 let shared_folder_key = format!("{}{}", streamer_profile, path_str);
 
@@ -887,13 +884,8 @@ impl ExternalSubscriberManager {
                 converted_results.push(result.clone());
 
                 self.shared_folders_trees.insert(shared_folder_key, result);
-                eprintln!(
-                    "available_shared_folders> shared_folders_trees: {:?}",
-                    self.shared_folders_trees
-                );
             }
         }
-        eprintln!("available_shared_folders> converted_results: {:?}", converted_results);
 
         Ok(converted_results)
     }
