@@ -87,30 +87,33 @@ pub trait VectorResourceSearch: VectorResourceCore {
             let ret_path = node.retrieval_path;
             let path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
+            let node_id = node.node.id.clone();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
-                        s.chars().take(25).collect::<String>() + "..."
+                        format!("{} - {}", node_id, s.chars().take(25).collect::<String>() + "...")
                     } else {
-                        s.to_string()
+                        format!("{} - {}", node_id, s.to_string())
                     }
                 }
                 NodeContent::Resource(resource) => {
                     if path_depth == 1 {
                         println!(" ");
                     }
+                    // Decide what to print for start
                     format!(
-                        "{} <Vector Resource> - {} Nodes Held Inside",
+                        "{} - {} <Folder> - {} Nodes Held Inside",
+                        node_id,
                         resource.as_trait_object().name(),
                         resource.as_trait_object().get_root_embeddings().len()
                     )
                 }
                 NodeContent::ExternalContent(external_content) => {
-                    format!("{} <External Content>", external_content)
+                    format!("{} - {} <External Content>", node_id, external_content)
                 }
 
                 NodeContent::VRHeader(header) => {
-                    format!("{} <VRHeader>", header.reference_string())
+                    format!("{} - {} <VRHeader>", node_id, header.reference_string())
                 }
             };
             // Adding merkle hash if it exists to output string
@@ -294,7 +297,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
             if path != VRPath::root() {
-                match self.retrieve_node_at_path(path.clone()) {
+                match self.retrieve_node_at_path(path.clone(), None) {
                     Ok(ret_node) => {
                         if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
                             return resource.as_trait_object()._vector_search_customized_core(
@@ -320,7 +323,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             vec![],
             VRPath::new(),
-            root_vr_header,
+            root_vr_header.clone(),
         );
 
         // After getting all results from the vector search, perform final filtering
@@ -353,18 +356,46 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         // Check if we need to adjust based on the ResultsMode
         if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
-            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
-                if let Some(first_result) = results.first() {
-                    if let Ok(new_results) =
-                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
-                    {
-                        results = new_results
+            if let ResultsMode::ProximitySearch(proximity_window, num_of_top_results) = result_mode {
+                let mut paths_checked = HashMap::new();
+                let mut new_results = Vec::new();
+                let mut new_top_results_added = 0;
+                let mut iter = results.iter().cloned();
+
+                while new_top_results_added < num_of_top_results as usize {
+                    if let Some(top_result) = iter.next() {
+                        // Check if the node has already been included, then skip
+                        if paths_checked.contains_key(&top_result.retrieval_path) {
+                            continue;
+                        }
+
+                        match self.proximity_retrieve_nodes_at_path(
+                            top_result.retrieval_path.clone(),
+                            proximity_window,
+                            Some(query.clone()),
+                        ) {
+                            Ok(mut proximity_results) => {
+                                let mut non_duplicates = vec![];
+                                for proximity_result in &mut proximity_results {
+                                    if !paths_checked.contains_key(&proximity_result.retrieval_path) {
+                                        proximity_result.resource_header = root_vr_header.clone();
+                                        proximity_result.set_proximity_group_id(new_top_results_added.to_string());
+                                        paths_checked.insert(proximity_result.retrieval_path.clone(), true);
+                                        non_duplicates.push(proximity_result.clone());
+                                    }
+                                }
+
+                                new_results.append(&mut non_duplicates);
+                                new_top_results_added += 1;
+                            }
+                            Err(_) => new_results.push(top_result), // Keep the original result if proximity retrieval fails
+                        }
                     } else {
-                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
-                        // then just return the single highest scored node as the failure case when using proximity search.
-                        results = vec![first_result.clone()]
+                        // Break the loop if there are no more top results to process
+                        break;
                     }
                 }
+                results = new_results;
             }
         }
 
@@ -400,7 +431,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             // If SyntacticVectorSearch is in traversal_options, fetch nodes with matching data tags
             let ids = self._syntactic_search_id_fetch(&data_tag_names);
             for id in ids {
-                if let Ok(embedding) = self.get_embedding(id) {
+                if let Ok(embedding) = self.get_root_embedding(id) {
                     embeddings_to_score.push(embedding);
                 }
             }
@@ -461,7 +492,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
-            if let Ok(node) = self.get_node(id.clone()) {
+            if let Ok(node) = self.get_root_node(id.clone()) {
                 // Perform validations based on Filter Mode
                 let filter_mode = traversal_options.get_set_filter_mode_option();
                 if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {
@@ -555,7 +586,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
-        let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+        let mut new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
         // Create a new traversal path with the node id
         let new_traversal_path = traversal_path.push_cloned(node.id.clone());
 
@@ -586,11 +617,22 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
                 current_level_results.extend(sub_results);
             }
+            // If it's not a resource, it's a node which we need to return
             _ => {
                 let mut score = score;
                 for option in traversal_options {
                     if let TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring) = option {
-                        score = new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32;
+                        // Perform score "averaging" here. We go with a simple additional approach rather than actual average, so that low/many hierarchy scores does not kill an actually valuable node
+                        if let Some(current_score) = new_hierarchical_scores.pop() {
+                            let hierarchical_count = new_hierarchical_scores.len();
+                            let hierarchical_sum = new_hierarchical_scores.iter().sum::<f32>();
+                            let hierarchical_weight = 0.2;
+                            if hierarchical_count > 0 && hierarchical_sum > 0.0 {
+                                let hierarchical_score =
+                                    (hierarchical_sum / hierarchical_count as f32) * hierarchical_weight;
+                                score = current_score + hierarchical_score;
+                            }
+                        }
                         break;
                     }
                 }
@@ -657,4 +699,25 @@ pub trait VectorResourceSearch: VectorResourceCore {
         }
         ids
     }
+}
+
+/// Function used by deep searches to "average" out the scores of the retrieved nodes
+/// with the top level search score from the VRs themselves.
+/// Uses the input strings for more advanced detection for how much to weigh the VR score vs the node score.
+pub fn deep_search_scores_average_out(
+    query_text: Option<String>,
+    vr_score: f32,
+    vr_description: String,
+    node_score: f32,
+    node_content: String,
+) -> f32 {
+    // TODO: Later on do keyword extraction on query_text, and if the description or node content has any of the top 3, increase weighting accordingly
+    // This might be too intensive to run rake on all results, so re-think this over later/test it.
+
+    // Go with a simple additional approach rather than actual average, so that low vr_scores never decrease actual node scores
+    let vr_weight = 0.2;
+    let adjusted_vr_score = (vr_score * vr_weight).min(0.2);
+    let final_score = node_score + adjusted_vr_score;
+
+    final_score
 }

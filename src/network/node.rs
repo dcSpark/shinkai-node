@@ -3,7 +3,7 @@ use super::network_manager::network_job_manager::{
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo};
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;

@@ -4,6 +4,7 @@ use crate::agent::job::Job;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -53,6 +54,8 @@ impl JobManager {
         match chosen_chain {
             InferenceChain::QAChain => {
                 if let Some(agent) = agent_found {
+                    let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
+
                     // TODO: Make this scaled based on model capabilities
                     let qa_iteration_count = if full_job.scope.contains_significant_content() {
                         3
@@ -72,6 +75,7 @@ impl JobManager {
                         None,
                         1,
                         qa_iteration_count,
+                        max_tokens_in_prompt as usize,
                     )
                     .await?;
                 } else {

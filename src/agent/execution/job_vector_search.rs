@@ -8,7 +8,11 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
+use shinkai_vector_resources::vector_resource::{
+    deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
+    TraversalOption, VRHeader,
+};
+use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -32,7 +36,9 @@ impl JobManager {
         }
 
         for fs_item in &job_scope.vector_fs_items {
-            let reader = vector_fs.new_reader(profile.clone(), fs_item.path.clone(), profile.clone()).await?;
+            let reader = vector_fs
+                .new_reader(profile.clone(), fs_item.path.clone(), profile.clone())
+                .await?;
 
             let ret_resource = vector_fs.retrieve_vector_resource(&reader).await?;
             resources.push(ret_resource);
@@ -41,8 +47,8 @@ impl JobManager {
         Ok(resources)
     }
 
-    /// Performs multiple vector searches within the job scope based on extracting keywords from the query text.
-    /// Attempts to take at least 1 retrieved node per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
+    /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
+    /// Attempts to take at least 1 proximity group per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
     pub async fn keyword_chained_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
@@ -51,100 +57,157 @@ impl JobManager {
         query_text: String,
         user_profile: &ShinkaiName,
         generator: RemoteEmbeddingGenerator,
-        num_of_results: u64,
-    ) -> Result<(Vec<RetrievedNode>, String), ShinkaiDBError> {
+        num_of_top_results: u64,
+        max_tokens_in_prompt: usize,
+    ) -> Result<(Vec<RetrievedNode>, Option<String>), ShinkaiDBError> {
+        let mut master_intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
         // First perform a standard job scope vector search using the whole query text
         let query = generator.generate_embedding_default(&query_text).await?;
-        let mut ret_nodes = JobManager::job_scope_vector_search(
+        let (mut ret_groups, intro_hashmap) = JobManager::internal_job_scope_vector_search_groups(
             db.clone(),
             vector_fs.clone(),
             job_scope,
             query,
             query_text.clone(),
-            num_of_results,
+            num_of_top_results,
             user_profile,
             true,
             generator.clone(),
+            max_tokens_in_prompt,
         )
         .await?;
+        // Insert the contents of intro_hashmap into master_intro_hashmap
+        for (key, value) in intro_hashmap {
+            if !master_intro_hashmap.contains_key(&key) {
+                master_intro_hashmap.insert(key, value);
+            }
+        }
 
-        // Extract the summary text from the most similar
-        let summary_node_text = ret_nodes
-            .get(0)
-            .and_then(|node| node.node.get_text_content().ok())
-            .map(|text| text.to_string())
-            .unwrap_or_default();
-
-        // Initialize included_vrs vector with the resource header id of the first node, if it exists
-        let mut included_vrs = ret_nodes
-            .get(0)
-            .map(|node| vec![node.resource_header.reference_string()])
-            .unwrap_or_else(Vec::new);
+        // Initialize included_vrs vector with the resource header id of the first node from each ret_node_group, if it exists
+        let mut included_vrs: Vec<String> = Vec::new();
+        for ret_node_group in ret_groups.iter() {
+            if let Some(first_node) = ret_node_group.get(0) {
+                included_vrs.push(first_node.resource_header.reference_string());
+            }
+        }
 
         // Extract top 3 keywords from the query_text
-        let keywords = Self::extract_keywords_from_text(&query_text, 3);
+        let keywords = Self::extract_keywords_from_text(&query_text, 0);
 
         // Now we proceed to keyword search chaining logic.
         for keyword in keywords {
             let keyword_query = generator.generate_embedding_default(&keyword).await?;
-            let keyword_ret_nodes = JobManager::job_scope_vector_search(
-                db.clone(),
-                vector_fs.clone(),
-                job_scope,
-                keyword_query,
-                keyword.clone(),
-                num_of_results,
-                user_profile,
-                true,
-                generator.clone(),
-            )
-            .await?;
+            let (keyword_ret_nodes_groups, keyword_intro_hashmap) =
+                JobManager::internal_job_scope_vector_search_groups(
+                    db.clone(),
+                    vector_fs.clone(),
+                    job_scope,
+                    keyword_query,
+                    keyword.clone(),
+                    num_of_top_results,
+                    user_profile,
+                    true,
+                    generator.clone(),
+                    max_tokens_in_prompt,
+                )
+                .await?;
+
+            // Insert the contents into master_intro_hashmap
+            for (key, value) in keyword_intro_hashmap {
+                if !master_intro_hashmap.contains_key(&key) {
+                    master_intro_hashmap.insert(key, value);
+                }
+            }
 
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
             let mut from_unique_vr = false;
-            for keyword_node in keyword_ret_nodes {
-                if !ret_nodes
-                    .iter()
-                    .any(|node| node.node.content == keyword_node.node.content)
-                {
-                    // If the node is unique and we haven't inserted any keyword node yet
-                    if !keyword_node_inserted {
-                        // Insert the first node that is not in ret_nodes
-                        if ret_nodes.len() >= 3 {
-                            ret_nodes.insert(3, keyword_node.clone()); // Insert at the 3rd position
+            for group in keyword_ret_nodes_groups.iter() {
+                if let Some(first_group_node) = group.get(0) {
+                    if !ret_groups.iter().any(|ret_group| group == ret_group) {
+                        // If the node is unique and we haven't inserted any keyword node yet
+                        if !keyword_node_inserted {
+                            // Insert the first node that is not in ret_nodes
+                            if ret_groups.len() >= 3 {
+                                ret_groups.insert(3, group.clone()); // Insert at the 3rd position
+                            } else {
+                                ret_groups.push(group.clone()); // If less than 3 nodes, just append
+                            }
+                            keyword_node_inserted = true;
+
+                            // Check if this keyword node is from a unique VR
+                            from_unique_vr =
+                                !included_vrs.contains(&first_group_node.resource_header.reference_string());
+                            // Update the included_vrs
+                            included_vrs.push(first_group_node.resource_header.reference_string());
+
+                            // If the first unique node is from a unique VR, no need to continue going through rest of the keyword_nodes
+                            if from_unique_vr {
+                                break;
+                            }
                         } else {
-                            ret_nodes.push(keyword_node.clone()); // If less than 3 nodes, just append
-                        }
-                        keyword_node_inserted = true;
-
-                        // Check if this keyword node is from a unique VR
-                        from_unique_vr = !included_vrs.contains(&keyword_node.resource_header.reference_string());
-                        // Update the included_vrs
-                        included_vrs.push(keyword_node.resource_header.reference_string());
-
-                        // If the first unique node is from a unique VR, no need to continue going through rest of the keyword_nodes
-                        if from_unique_vr {
+                            // If we're attempting to insert a unique VR node and found one
+                            if ret_groups.len() >= 4 {
+                                ret_groups.insert(4, group.clone()); // Insert at the 4th position if possible
+                            } else {
+                                ret_groups.push(group.clone()); // Otherwise, just append
+                            }
+                            // Once a unique VR node is inserted, no need to continue for this keyword
                             break;
                         }
-                    } else {
-                        // If we're attempting to insert a unique VR node and found one
-                        if ret_nodes.len() >= 4 {
-                            ret_nodes.insert(4, keyword_node); // Insert at the 4th position if possible
-                        } else {
-                            ret_nodes.push(keyword_node); // Otherwise, just append
-                        }
-                        // Once a unique VR node is inserted, no need to continue for this keyword
-                        break;
                     }
                 }
             }
         }
 
-        // Remove the extra lowest scored search results to ensure the list does not exceed num_of_results
-        ret_nodes.truncate(num_of_results as usize);
+        // Flatten the retrieved node groups into a single list
+        let mut flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
 
-        Ok((ret_nodes, summary_node_text))
+        // For the top 25 results, fetch their VRs' intros and include them at the front of the list
+        // TODO: Slight efficiency improvement if we use the first 5 unflattened groups. Improve later.
+        let mut final_nodes = Vec::new();
+        let mut added_intros = HashMap::new();
+        let mut first_intro_text = None;
+        for node in &mut flattened_result_nodes.iter().take(25) {
+            if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
+                if !added_intros.contains_key(&node.resource_header.reference_string()) {
+                    // Add the intro nodes, and the ref string to added_intros
+                    for intro_node in intro_text_nodes.iter() {
+                        final_nodes.push(intro_node.clone());
+                        added_intros.insert(node.resource_header.reference_string(), true);
+                    }
+                }
+                if first_intro_text.is_none() {
+                    if let Some(intro_text_node) = intro_text_nodes.get(0) {
+                        if let Ok(intro_text) = intro_text_node.node.get_text_content() {
+                            first_intro_text = Some(intro_text.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add the rest of the result nodes, skipping any that already are added up front
+        for node in flattened_result_nodes.iter() {
+            if !final_nodes
+                .iter()
+                .take(10)
+                .any(|result_node| result_node.node.content == node.node.content)
+            {
+                final_nodes.push(node.clone());
+            }
+        }
+
+        // println!(
+        //     "\n\n\nDone Vector Searching: {}\n------------------------------------------------",
+        //     query_text
+        // );
+
+        // for node in &final_nodes {
+        //     eprintln!("{:?} - {:?}\n", node.score as f32, node.format_for_prompt(3500));
+        // }
+
+        Ok((final_nodes, first_intro_text))
     }
 
     /// Extracts top N keywords from the given text.
@@ -163,41 +226,138 @@ impl JobManager {
     /// If include_description is true then adds the description of the highest scored Vector Resource as an auto-included
     /// RetrievedNode at the front of the returned list.
     #[allow(clippy::too_many_arguments)]
-    pub async fn job_scope_vector_search(
+    async fn internal_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         query: Embedding,
         query_text: String,
-        num_of_results: u64,
+        num_of_top_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
         generator: RemoteEmbeddingGenerator,
+        max_tokens_in_prompt: usize,
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let mut retrieved_nodes = Vec::new();
+        let results = Self::internal_job_scope_vector_search_groups(
+            db,
+            vector_fs,
+            job_scope,
+            query,
+            query_text,
+            num_of_top_results,
+            profile,
+            include_description,
+            generator,
+            max_tokens_in_prompt,
+        )
+        .await?;
+
+        let sorted_retrieved_node_groups = results.0;
+        let sorted_retrieved_nodes = sorted_retrieved_node_groups.into_iter().flatten().collect::<Vec<_>>();
+        Ok(sorted_retrieved_nodes)
+    }
+
+    //TODOs:
+    // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
+    //
+    /// Perform a proximity vector search on all local & VectorFS-held Vector Resources specified in the JobScope.
+    /// Returns the proximity groups of retrieved nodes.
+    async fn internal_job_scope_vector_search_groups(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        job_scope: &JobScope,
+        query: Embedding,
+        query_text: String,
+        num_of_top_results: u64,
+        profile: &ShinkaiName,
+        include_description: bool,
+        generator: RemoteEmbeddingGenerator,
+        max_tokens_in_prompt: usize,
+    ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {
+        let average_out_deep_search_scores = true;
+        let proximity_window_size = Self::determine_proximity_window_size(max_tokens_in_prompt);
+        let total_num_of_results = (num_of_top_results * proximity_window_size * 2) + num_of_top_results;
+        // Holds the intro text for each VR, where only the ones that have results with top scores will be used
+        let mut intro_hashmap: HashMap<String, Vec<RetrievedNode>> = HashMap::new();
+
+        // Setup vars used across searches
+        let deep_traversal_options = vec![
+            TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
+            TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(proximity_window_size, num_of_top_results)),
+        ];
+        let num_of_resources_to_search_into = 50;
+        let mut retrieved_node_groups = Vec::new();
 
         // VRPack deep vector search
         for entry in &job_scope.local_vrpack {
-            let mut vr_pack_results = entry
+            let vr_pack_results = entry
                 .vrpack
-                .dynamic_deep_vector_search(query_text.clone(), 20, num_of_results, generator.clone())
+                .dynamic_deep_vector_search_with_vrkai_path_customized(
+                    query_text.clone(),
+                    num_of_resources_to_search_into,
+                    &vec![],
+                    None,
+                    total_num_of_results,
+                    TraversalMethod::Exhaustive,
+                    &deep_traversal_options,
+                    generator.clone(),
+                    average_out_deep_search_scores,
+                )
                 .await?;
-            retrieved_nodes.append(&mut vr_pack_results);
+
+            // Fetch the VRKai intros and add them to hashmap
+            let mut bare_results = vec![];
+            for (ret_node, path) in vr_pack_results {
+                let ref_string = ret_node.resource_header.reference_string();
+                if !intro_hashmap.contains_key(&ref_string) {
+                    if let Ok(intro_nodes) = entry.vrpack.get_vrkai_intro_ret_nodes(path.clone()) {
+                        intro_hashmap.insert(ref_string, intro_nodes);
+                    }
+                }
+                bare_results.push(ret_node);
+            }
+
+            let mut groups = RetrievedNode::group_proximity_results(&bare_results)?;
+            retrieved_node_groups.append(&mut groups);
         }
 
         // Folder deep vector search
         {
-            // let mut vec_fs = vector_fs;
             for folder in &job_scope.vector_fs_folders {
-                let reader = vector_fs.new_reader(profile.clone(), folder.path.clone(), profile.clone()).await?;
-
-                let ret_fs_nodes = vector_fs
-                    .deep_vector_search(&reader, query_text.clone(), 10, num_of_results)
+                let reader = vector_fs
+                    .new_reader(profile.clone(), folder.path.clone(), profile.clone())
                     .await?;
 
-                for fs_node in ret_fs_nodes {
-                    retrieved_nodes.push(fs_node.resource_retrieved_node);
+                let mut results = vector_fs
+                    .deep_vector_search_customized(
+                        &reader,
+                        query_text.clone(),
+                        num_of_resources_to_search_into,
+                        total_num_of_results,
+                        deep_traversal_options.clone(),
+                        average_out_deep_search_scores,
+                    )
+                    .await?;
+
+                // Fetch the intros
+                let mut bare_results = vec![];
+                for result in results {
+                    let ret_node = result.resource_retrieved_node.clone();
+                    let ref_string = ret_node.resource_header.reference_string();
+                    if !intro_hashmap.contains_key(&ref_string) {
+                        let result_reader = reader
+                            .new_reader_copied_data(result.fs_item_path().clone(), &vector_fs)
+                            .await?;
+                        if let Ok(intro_nodes) = vector_fs._internal_get_vr_intro_ret_nodes(&result_reader).await {
+                            intro_hashmap.insert(ref_string, intro_nodes);
+                        }
+                    }
+                    bare_results.push(ret_node);
                 }
+
+                let mut groups = RetrievedNode::group_proximity_results(&mut bare_results)?;
+
+                retrieved_node_groups.append(&mut groups);
             }
         }
 
@@ -211,37 +371,88 @@ impl JobManager {
 
         // Perform vector search on all direct resources
         for resource in &resources {
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_nodes.extend(results);
+            // First get the resource embedding, and score vs the query
+            let resource_embedding = resource.as_trait_object().resource_embedding();
+            let resource_score = query.score_similarity(&resource_embedding);
+
+            // Do the search
+            let mut results = resource.as_trait_object().vector_search_customized(
+                query.clone(),
+                total_num_of_results,
+                TraversalMethod::Exhaustive,
+                &deep_traversal_options,
+                None,
+            );
+
+            // Average out the node scores together with the resource_score
+            if average_out_deep_search_scores {
+                for ret_node in &mut results {
+                    ret_node.score = deep_search_scores_average_out(
+                        None,
+                        resource_score,
+                        resource
+                            .as_trait_object()
+                            .description()
+                            .unwrap_or_else(|| "")
+                            .to_string(),
+                        ret_node.score,
+                        ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                    );
+                }
+            }
+
+            // Fetch the intros
+            let mut bare_results = vec![];
+            for ret_node in results {
+                let ref_string = ret_node.resource_header.reference_string();
+                if !intro_hashmap.contains_key(&ref_string) {
+                    if let Ok(intro_nodes) = resource.as_trait_object().generate_intro_ret_nodes() {
+                        intro_hashmap.insert(ref_string, intro_nodes);
+                    }
+                }
+                bare_results.push(ret_node);
+            }
+
+            let mut groups = RetrievedNode::group_proximity_results(&mut bare_results)?;
+            retrieved_node_groups.append(&mut groups);
         }
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
-            &format!("Num of nodes retrieved: {}", retrieved_nodes.len()),
+            &format!("Num of node groups retrieved: {}", retrieved_node_groups.len()),
         );
 
-        // Sort the retrieved nodes by score before returning
-        let sorted_retrieved_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results);
-        let updated_nodes =
-            JobManager::include_description_retrieved_node(include_description, sorted_retrieved_nodes, &resources)
-                .await;
+        // Sort the retrieved node groups by score, and generate a description if any direct VRs available
+        let sorted_retrieved_node_groups =
+            RetrievedNode::sort_by_score_groups(&retrieved_node_groups, total_num_of_results);
 
-        Ok(updated_nodes)
+        Ok((sorted_retrieved_node_groups, intro_hashmap))
+    }
+
+    /// Determines the proximity window size based on the max tokens supported by the model
+    fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
+        if max_tokens_in_prompt < 5000 {
+            1
+        } else if max_tokens_in_prompt < 33000 {
+            2
+        } else {
+            3
+        }
     }
 
     /// If include_description is true then adds the description of the Vector Resource
     /// that the top scored retrieved node is from, by prepending a fake RetrievedNode
     /// with the description inside. Removes the lowest scored node to preserve list length.
-    async fn include_description_retrieved_node(
+    async fn generate_description_retrieved_node(
         include_description: bool,
-        sorted_retrieved_nodes: Vec<RetrievedNode>,
+        top_node: RetrievedNode,
         resources: &[BaseVectorResource],
     ) -> Vec<RetrievedNode> {
-        let mut new_nodes = sorted_retrieved_nodes.clone();
+        let mut new_nodes = vec![];
 
-        if include_description && !sorted_retrieved_nodes.is_empty() {
-            let resource_header = sorted_retrieved_nodes[0].resource_header.clone();
+        if include_description {
+            let resource_header = top_node.resource_header.clone();
 
             // Iterate through resources until we find one with a matching resource reference string
             for resource in resources {
@@ -253,7 +464,7 @@ impl JobManager {
                             Node::new_text(String::new(), description.to_string(), None, &vec![]),
                             1.0 as f32,
                             resource_header,
-                            sorted_retrieved_nodes[0].retrieval_path.clone(),
+                            top_node.retrieval_path.clone(),
                         );
                         new_nodes.insert(0, description_node);
                         new_nodes.pop(); // Remove the last element to maintain the same length

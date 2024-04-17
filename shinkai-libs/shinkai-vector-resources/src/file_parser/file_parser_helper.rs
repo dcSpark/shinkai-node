@@ -4,6 +4,16 @@ use crate::vector_resource::SourceFileType;
 use blake3::Hasher;
 
 impl ShinkaiFileParser {
+    /// Key of page numbers metadata
+    pub fn page_numbers_metadata_key() -> String {
+        "pg_nums".to_string()
+    }
+
+    /// Key of page numbers metadata
+    pub fn datetime_metadata_key() -> String {
+        "datetime".to_string()
+    }
+
     /// Clean's the file name of auxiliary data (file extension, url in front of file name, etc.)
     pub fn clean_name(name: &str) -> String {
         // Decode URL-encoded characters to simplify processing.

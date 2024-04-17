@@ -3,6 +3,7 @@ use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
+use async_recursion::async_recursion;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -13,7 +14,6 @@ use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, NodeContent, RetrievedNode, VRKai, VRPack, VectorResourceCore,
 };
-use async_recursion::async_recursion;
 
 /// A struct that represents having access rights to read the VectorFS under a profile/at a specific path.
 /// If a VFSReader struct is constructed, that means the `requester_name` has passed
@@ -45,7 +45,11 @@ impl VFSReader {
         }
 
         // Validate that the path exists
-        if vector_fs.validate_path_points_to_entry(path.clone(), &profile).await.is_err() {
+        if vector_fs
+            .validate_path_points_to_entry(path.clone(), &profile)
+            .await
+            .is_err()
+        {
             return Err(VectorFSError::NoEntryAtPath(path));
         }
 
@@ -124,7 +128,9 @@ impl VectorFS {
         }
 
         // Otherwise retrieve the node and process it
-        let ret_node = internals.fs_core_resource.retrieve_node_at_path(reader.path.clone())?;
+        let ret_node = internals
+            .fs_core_resource
+            .retrieve_node_at_path(reader.path.clone(), None)?;
         match ret_node.node.content {
             NodeContent::Resource(_) => {
                 let fs_folder = FSFolder::from_vector_resource_node(
@@ -198,7 +204,8 @@ impl VectorFS {
                             reader,
                             vec_fs_base_path.clone(),
                             folder_merkle_hash_map,
-                        ).await?;
+                        )
+                        .await?;
                     }
                 }
                 FSEntry::Folder(folder) => {
@@ -214,7 +221,8 @@ impl VectorFS {
                             reader,
                             vec_fs_base_path.clone(),
                             folder_merkle_hash_map,
-                        ).await?;
+                        )
+                        .await?;
                     }
                     for child in &folder.child_items {
                         let entry = FSEntry::Item(child.clone());
@@ -226,7 +234,8 @@ impl VectorFS {
                             reader,
                             vec_fs_base_path.clone(),
                             folder_merkle_hash_map,
-                        ).await?;
+                        )
+                        .await?;
                     }
 
                     folder_merkle_hash_map.insert(inner_path.clone(), folder.merkle_hash.to_string());
@@ -253,7 +262,8 @@ impl VectorFS {
             reader,
             vec_fs_base_path_parent,
             &mut folder_merkle_hash_map,
-        ).await?;
+        )
+        .await?;
 
         // Traverse through the sorted list and call the set merkle hash method on all
         let mut kv_pairs: Vec<(&VRPath, &String)> = folder_merkle_hash_map.iter().collect();
@@ -274,7 +284,9 @@ impl VectorFS {
         reader: &VFSReader,
         item_name: String,
     ) -> Result<BaseVectorResource, VectorFSError> {
-        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self).await?;
+        let new_reader = reader
+            .new_reader_copied_data(reader.path.push_cloned(item_name), self)
+            .await?;
         self.retrieve_vector_resource(&new_reader).await
     }
 
@@ -286,14 +298,22 @@ impl VectorFS {
         reader: &VFSReader,
         item_name: String,
     ) -> Result<SourceFileMap, VectorFSError> {
-        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self).await?;
+        let new_reader = reader
+            .new_reader_copied_data(reader.path.push_cloned(item_name), self)
+            .await?;
         self.retrieve_source_file_map(&new_reader).await
     }
 
     /// Attempts to retrieve a VRKai from inside an FSItem within the folder specified at reader path.
     /// If a VectorResource is not saved at this path, an error will be returned.
-    pub async fn retrieve_vrkai_in_folder(&self, reader: &VFSReader, item_name: String) -> Result<VRKai, VectorFSError> {
-        let new_reader = reader.new_reader_copied_data(reader.path.push_cloned(item_name), self).await?;
+    pub async fn retrieve_vrkai_in_folder(
+        &self,
+        reader: &VFSReader,
+        item_name: String,
+    ) -> Result<VRKai, VectorFSError> {
+        let new_reader = reader
+            .new_reader_copied_data(reader.path.push_cloned(item_name), self)
+            .await?;
         self.retrieve_vrkai(&new_reader).await
     }
 
@@ -306,12 +326,16 @@ impl VectorFS {
         let internals = self.get_profile_fs_internals_read_only(profile).await?;
         internals
             .fs_core_resource
-            .retrieve_node_at_path(path.clone())
+            .retrieve_node_at_path(path.clone(), None)
             .map_err(|_| VectorFSError::NoEntryAtPath(path.clone()))
     }
 
     /// Validates that the path points to a FSFolder
-    pub async fn validate_path_points_to_folder(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+    pub async fn validate_path_points_to_folder(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<(), VectorFSError> {
         let ret_node = self._retrieve_core_resource_node_at_path(path.clone(), profile).await?;
 
         match ret_node.node.content {
@@ -331,10 +355,27 @@ impl VectorFS {
     }
 
     /// Validates that the path points to any FSEntry, meaning that something exists at that path. Also returns `Ok()` for root `/`.
-    pub async fn validate_path_points_to_entry(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+    pub async fn validate_path_points_to_entry(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<(), VectorFSError> {
         if path == VRPath::root() {
             return Ok(());
         }
-        self._retrieve_core_resource_node_at_path(path, profile).await.map(|_| ())
+        self._retrieve_core_resource_node_at_path(path, profile)
+            .await
+            .map(|_| ())
+    }
+
+    /// Generates 2 RetrievedNodes which contain either the description + 2nd node, or the first two nodes if no description is available.
+    ///  Sets their score to `1.0` with empty retrieval path & id. This is intended for job vector searches to prepend the intro text about relevant VRs.
+    /// Only works on OrderedVectorResources, errors otherwise.
+    pub async fn _internal_get_vr_intro_ret_nodes(
+        &self,
+        reader: &VFSReader,
+    ) -> Result<Vec<RetrievedNode>, VectorFSError> {
+        let vr = self.retrieve_vector_resource(&reader).await?;
+        Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
     }
 }
