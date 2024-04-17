@@ -29,7 +29,7 @@ impl ParsingHelper {
         agent: SerializedAgent,
         max_node_text_size: u64,
     ) -> Result<String, AgentError> {
-        let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 3000, 300);
+        let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
         let mut extracted_answer: Option<String> = None;
