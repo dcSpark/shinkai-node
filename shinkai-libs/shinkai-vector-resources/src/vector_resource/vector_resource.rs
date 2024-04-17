@@ -112,6 +112,8 @@ pub trait VectorResourceCore: Send + Sync {
     fn set_metadata_index(&mut self, metadata_index: MetadataIndex);
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
+    // Note we cannot add from_json in the trait due to trait object limitations
+    fn to_json_value(&self) -> Result<serde_json::Value, VRError>;
     // Convert the VectorResource into a &dyn Any
     fn as_any(&self) -> &dyn Any;
     // Convert the VectorResource into a &dyn Any

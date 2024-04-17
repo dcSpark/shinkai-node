@@ -628,6 +628,24 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| get_my_subscribers_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/retrieve_vrkai
+    let retrieve_vrkai = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "retrieve_vrkai")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| retrieve_vrkai_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/retrieve_vrpack
+    let retrieve_vrpack = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "retrieve_vrpack")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| retrieve_vrpack_handler(node_commands_sender.clone(), message))
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -677,8 +695,11 @@ pub async fn run_api(
         .or(api_update_shareable_folder)
         .or(api_unshare_folder)
         .or(my_subscriptions)
+        .or(get_my_subscribers)
         .or(subscribe_to_shared_folder)
         .or(unsubscribe)
+        .or(retrieve_vrkai)
+        .or(retrieve_vrpack)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -729,34 +750,6 @@ where
     }
 }
 
-async fn handle_node_command_without_message<T, U>(
-    node_commands_sender: Sender<NodeCommand>,
-    command: T,
-) -> Result<Box<dyn warp::Reply>, warp::Rejection>
-where
-    T: FnOnce(Sender<NodeCommand>, Sender<Result<U, APIError>>) -> NodeCommand,
-    U: Serialize,
-{
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .clone()
-        .send(command(node_commands_sender, res_sender))
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(message) => Ok(Box::new(warp::reply::with_status(
-            warp::reply::json(&json!({"status": "success", "data": message})),
-            StatusCode::OK,
-        )) as Box<dyn warp::Reply>),
-        Err(error) => Ok(Box::new(warp::reply::with_status(
-            warp::reply::json(&json!({"status": "error", "error": error})),
-            StatusCode::from_u16(error.code).unwrap(),
-        )) as Box<dyn warp::Reply>),
-    }
-}
-
 async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
     match node_commands_sender.send(NodeCommand::PingAll).await {
         Ok(_) => Ok(warp::reply::json(&json!({
@@ -775,7 +768,7 @@ async fn api_subscription_available_shared_items_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItems {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItems {
             msg: message,
             res: res_sender,
         },
@@ -790,7 +783,7 @@ async fn api_subscription_available_shared_items_open_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItemsOpen {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAvailableSharedItemsOpen {
             msg: message,
             res: res_sender,
         },
@@ -805,7 +798,7 @@ async fn api_subscription_create_shareable_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateShareableFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APICreateShareableFolder {
             msg: message,
             res: res_sender,
         },
@@ -820,7 +813,7 @@ async fn api_subscription_update_shareable_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateShareableFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUpdateShareableFolder {
             msg: message,
             res: res_sender,
         },
@@ -835,7 +828,7 @@ async fn api_subscription_unshare_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUnshareFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUnshareFolder {
             msg: message,
             res: res_sender,
         },
@@ -850,7 +843,37 @@ async fn add_toolkit_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAddToolkit {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIAddToolkit {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn retrieve_vrkai_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::RetrieveVRKai {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn retrieve_vrpack_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::RetrieveVRPack {
             msg: message,
             res: res_sender,
         },
@@ -865,7 +888,7 @@ async fn api_vec_fs_retrieve_path_simplified_json_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrievePathSimplifiedJson {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrievePathSimplifiedJson {
             msg: message,
             res: res_sender,
         },
@@ -880,7 +903,7 @@ async fn api_vec_fs_retrieve_vector_search_simplified_json_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson {
             msg: message,
             res: res_sender,
         },
@@ -895,37 +918,7 @@ async fn api_vec_fs_search_item_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSSearchItems {
-            msg: message,
-            res: res_sender,
-        },
-    )
-    .await
-}
-
-async fn api_vec_fs_delete_folder_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteFolder {
-            msg: message,
-            res: res_sender,
-        },
-    )
-    .await
-}
-
-async fn api_vec_fs_delete_item_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteItem {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSSearchItems {
             msg: message,
             res: res_sender,
         },
@@ -940,7 +933,7 @@ async fn api_vec_fs_create_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSCreateFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSCreateFolder {
             msg: message,
             res: res_sender,
         },
@@ -955,7 +948,7 @@ async fn api_vec_fs_move_item_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSMoveItem {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSMoveItem {
             msg: message,
             res: res_sender,
         },
@@ -970,7 +963,7 @@ async fn api_vec_fs_copy_item_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSCopyItem {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSCopyItem {
             msg: message,
             res: res_sender,
         },
@@ -985,7 +978,7 @@ async fn api_vec_fs_remove_item_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteItem {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteItem {
             msg: message,
             res: res_sender,
         },
@@ -1000,7 +993,7 @@ async fn api_vec_fs_move_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSMoveFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSMoveFolder {
             msg: message,
             res: res_sender,
         },
@@ -1015,7 +1008,7 @@ async fn api_vec_fs_remove_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSDeleteFolder {
             msg: message,
             res: res_sender,
         },
@@ -1030,7 +1023,7 @@ async fn api_vec_fs_copy_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSCopyFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSCopyFolder {
             msg: message,
             res: res_sender,
         },
@@ -1045,7 +1038,7 @@ async fn api_vec_fs_retrieve_vector_resource_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrieveVectorResource {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrieveVectorResource {
             msg: message,
             res: res_sender,
         },
@@ -1060,7 +1053,7 @@ async fn api_convert_files_and_save_to_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIConvertFilesAndSaveToFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIConvertFilesAndSaveToFolder {
             msg: message,
             res: res_sender,
         },
@@ -1075,7 +1068,7 @@ async fn subscribe_to_shared_folder_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APISubscribeToSharedFolder {
+        |_node_commands_sender, message, res_sender| NodeCommand::APISubscribeToSharedFolder {
             msg: message,
             res: res_sender,
         },
@@ -1090,7 +1083,7 @@ async fn unsubscribe_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUnsubscribe {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIUnsubscribe {
             msg: message,
             res: res_sender,
         },
@@ -1118,7 +1111,7 @@ async fn api_my_subscriptions_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIMySubscriptions {
+        |_node_commands_sender, message, res_sender| NodeCommand::APIMySubscriptions {
             msg: message,
             res: res_sender,
         },
@@ -1132,9 +1125,9 @@ async fn get_my_subscribers_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::APIGetMySubscribers { 
+        .send(NodeCommand::APIGetMySubscribers {
             msg: message,
-            res: res_sender 
+            res: res_sender,
         })
         .await
         .map_err(|_| warp::reject::reject())?;
@@ -1290,8 +1283,8 @@ async fn get_public_key_handler(
         .map_err(|_| warp::reject::reject())?; // Send the command to Node
     let (signature_public_key, encryption_public_key) =
         res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    let signature_public_key_string = signature_public_key_to_string(signature_public_key.clone());
-    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key.clone());
+    let signature_public_key_string = signature_public_key_to_string(signature_public_key);
+    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key);
     Ok(warp::reply::json(&GetPublicKeysResponse {
         signature_public_key: signature_public_key_string,
         encryption_public_key: encryption_public_key_string,
@@ -1612,10 +1605,10 @@ async fn get_all_subidentities_handler(
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
     if let Some(api_error) = err.find::<APIError>() {
         let json = warp::reply::json(api_error);
-        return Ok(warp::reply::with_status(
+        Ok(warp::reply::with_status(
             json,
             StatusCode::from_u16(api_error.code).unwrap(),
-        ));
+        ))
     } else if err.is_not_found() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::NOT_FOUND,

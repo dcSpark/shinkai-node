@@ -265,6 +265,10 @@ impl VectorResourceCore for DocumentVectorResource {
         Ok(serde_json::to_string(self)?)
     }
 
+    fn to_json_value(&self) -> Result<serde_json::Value, VRError> {
+        Ok(serde_json::to_value(self)?)
+    }
+
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
         self.update_last_written_to_now();
         self.embedding_model_used_string = model_type.to_string();

@@ -147,6 +147,11 @@ impl VRPack {
         serde_json::to_string(self)
     }
 
+    /// Parses the VRPack into human-readable JSON Value (intended for readability in non-production use cases)
+    pub fn to_json_value(&self) -> Result<serde_json::Value, serde_json::Error> {
+        serde_json::to_value(self)
+    }
+
     /// Parses into a VRPack from human-readable JSON (intended for readability in non-production use cases)
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)

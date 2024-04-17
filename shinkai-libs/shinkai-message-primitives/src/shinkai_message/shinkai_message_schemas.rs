@@ -29,6 +29,8 @@ pub enum MessageSchemaType {
     Empty,
     VecFsRetrievePathSimplifiedJson,
     VecFsRetrieveVectorResource,
+    VecFsRetrieveVRKai,
+    VecFsRetrieveVRPack,
     VecFsRetrieveVectorSearchSimplifiedJson,
     VecFsSearchItems,
     VecFsCreateFolder,
@@ -76,6 +78,8 @@ impl MessageSchemaType {
             "" => Some(Self::Empty),
             "VecFsRetrievePathSimplifiedJson" => Some(Self::VecFsRetrievePathSimplifiedJson),
             "VecFsRetrieveVectorResource" => Some(Self::VecFsRetrieveVectorResource),
+            "VecFsRetrieveVRKai" => Some(Self::VecFsRetrieveVRKai),
+            "VecFsRetrieveVRPack" => Some(Self::VecFsRetrieveVRPack),
             "VecFsRetrieveVectorSearchSimplifiedJson" => Some(Self::VecFsRetrieveVectorSearchSimplifiedJson),
             "VecFsSearchItems" => Some(Self::VecFsSearchItems),
             "VecFsCreateFolder" => Some(Self::VecFsCreateFolder),
@@ -123,6 +127,8 @@ impl MessageSchemaType {
             Self::APIFinishJob => "APIFinishJob",
             Self::VecFsRetrievePathSimplifiedJson => "VecFsRetrievePathSimplifiedJson",
             Self::VecFsRetrieveVectorResource => "VecFsRetrieveVectorResource",
+            Self::VecFsRetrieveVRKai => "VecFsRetrieveVRKai",
+            Self::VecFsRetrieveVRPack => "VecFsRetrieveVRPack",
             Self::VecFsRetrieveVectorSearchSimplifiedJson => "VecFsRetrieveVectorSearchSimplifiedJson",
             Self::VecFsSearchItems => "VecFsSearchItems",
             Self::VecFsCreateFolder => "VecFsCreateFolder",
@@ -330,6 +336,11 @@ pub struct APIConvertFilesAndSaveToFolder {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFSRetrieveVectorResource {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIVecFSRetrieveVRObject {
     pub path: String,
 }
 
