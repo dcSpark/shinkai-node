@@ -153,9 +153,9 @@ pub async fn initialize_node() -> Result<
     let initial_agents = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
-    let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
+    let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key);
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
-    let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
+    let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key);
 
     // Initialize Embedding Generator & Unstructured API
     let embedding_generator = init_embedding_generator(&node_env);

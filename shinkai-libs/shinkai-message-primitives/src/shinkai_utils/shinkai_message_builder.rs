@@ -1,22 +1,15 @@
-use crate::{shinkai_message::shinkai_message::NodeApiData, shinkai_utils::job_scope::JobScope};
+use crate::shinkai_message::shinkai_message::NodeApiData;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{
-        agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
-        shinkai_time::ShinkaiStringTime,
-    },
+    schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime},
     shinkai_message::{
         shinkai_message::{
             ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
             ShinkaiVersion,
         },
-        shinkai_message_schemas::{
-            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
-        },
+        shinkai_message_schemas::MessageSchemaType,
     },
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
@@ -25,7 +18,7 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string},
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
@@ -89,11 +82,13 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn message_schema_type(mut self, content: MessageSchemaType) -> Self {
         self.message_content_schema = content.clone();
         self
     }
 
+    #[allow(dead_code)]
     pub fn internal_metadata(
         mut self,
         sender_subidentity: ShinkaiNameString,
@@ -113,6 +108,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn internal_metadata_with_inbox(
         mut self,
         sender_subidentity: ShinkaiNameString,
@@ -217,6 +213,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn external_metadata_with_other_and_intra_sender(
         mut self,
         recipient: ShinkaiNameString,
@@ -257,6 +254,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn external_metadata_with_schedule(
         mut self,
         recipient: ShinkaiNameString,
@@ -277,6 +275,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn update_intra_sender(mut self, intra_sender: String) -> Self {
         if let Some(external_metadata) = &mut self.external_metadata {
             external_metadata.intra_sender = intra_sender;
@@ -284,6 +283,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn update_node_api_data(mut self, node_api_data: NodeApiData) -> Self {
         if let Some(internal_metadata) = &mut self.internal_metadata {
             internal_metadata.node_api_data = Some(node_api_data);
@@ -291,6 +291,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    #[allow(dead_code)]
     pub fn set_optional_second_public_key_receiver_node(
         mut self,
         optional_second_public_key_receiver_node: EncryptionPublicKey,
@@ -423,7 +424,7 @@ impl ShinkaiMessageBuilder {
                 let encrypted_body = MessageBody::encrypt_message_body(
                     &signed_body,
                     &new_self.my_encryption_secret_key,
-                    &second_public_key,
+                    second_public_key,
                 )
                 .expect("Failed to encrypt body");
 
@@ -454,11 +455,11 @@ impl ShinkaiMessageBuilder {
 impl std::fmt::Debug for ShinkaiMessageBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let encryption_sk_string = encryption_secret_key_to_string(self.my_encryption_secret_key.clone());
-        let encryption_pk_string = encryption_public_key_to_string(self.my_encryption_public_key.clone());
+        let encryption_pk_string = encryption_public_key_to_string(self.my_encryption_public_key);
         let signature_sk_clone = clone_signature_secret_key(&self.my_signature_secret_key);
         let signature_sk_string = signature_secret_key_to_string(signature_sk_clone);
-        let signature_pk_string = signature_public_key_to_string(self.my_signature_public_key.clone());
-        let receiver_pk_string = encryption_public_key_to_string(self.receiver_public_key.clone());
+        let signature_pk_string = signature_public_key_to_string(self.my_signature_public_key);
+        let receiver_pk_string = encryption_public_key_to_string(self.receiver_public_key);
 
         f.debug_struct("ShinkaiMessageBuilder")
             .field("message_raw_content", &self.message_raw_content)

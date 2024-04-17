@@ -537,8 +537,6 @@ pub async fn api_registration_device_node_profile_main(
         )
         .unwrap();
 
-        eprintln!("code_message: {:?}", code_message);
-
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);

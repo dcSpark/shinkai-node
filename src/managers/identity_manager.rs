@@ -38,10 +38,7 @@ impl Clone for Box<dyn IdentityManagerTrait + Send> {
 }
 
 impl IdentityManager {
-    pub async fn new(
-        db: Weak<ShinkaiDB>,
-        local_node_name: ShinkaiName,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(db: Weak<ShinkaiDB>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
@@ -210,10 +207,7 @@ impl IdentityManager {
                 shinkai_log(
                     ShinkaiLogOption::Identity,
                     ShinkaiLogLevel::Error,
-                    format!(
-                        "external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false"
-                    )
-                    .as_str(),
+                    "external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false",
                 );
                 return Err(format!(
                     "Failed to convert profile name to ShinkaiName: {}",
@@ -233,11 +227,11 @@ impl IdentityManager {
                 Ok(first_address) => {
                     let encryption_key = match identity_network_manager.encryption_public_key() {
                         Ok(key) => key,
-                        Err(e) => return Err(format!("Failed to get encryption public key: {}", e.to_string())),
+                        Err(e) => return Err(format!("Failed to get encryption public key: {}", e)),
                     };
                     let signature_key = match identity_network_manager.signature_verifying_key() {
                         Ok(key) => key,
-                        Err(e) => return Err(format!("Failed to get signature verifying key: {}", e.to_string())),
+                        Err(e) => return Err(format!("Failed to get signature verifying key: {}", e)),
                     };
                     Ok(StandardIdentity::new(
                         full_identity_name.extract_node(),
@@ -358,13 +352,13 @@ impl IdentityManager {
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
-            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()),
+            Identity::Standard(std_identity) => std_identity.profile_signature_public_key,
+            Identity::Device(std_device) => Some(std_device.device_signature_public_key),
             Identity::Agent(_) => {
                 shinkai_log(
                     ShinkaiLogOption::Identity,
                     ShinkaiLogLevel::Error,
-                    format!("signature check > Agent identities cannot send onionized messages").as_str(),
+                    "signature check > Agent identities cannot send onionized messages",
                 );
                 return Ok(());
             }
@@ -381,7 +375,8 @@ impl IdentityManager {
                 .as_str(),
             );
             return Err(NodeError {
-                message: format!("Failed to verify message signature. Signature public key doesn't exist for identity"),
+                message: "Failed to verify message signature. Signature public key doesn't exist for identity"
+                    .to_string(),
             });
         }
 
@@ -391,15 +386,11 @@ impl IdentityManager {
                 shinkai_log(
                     ShinkaiLogOption::Identity,
                     ShinkaiLogLevel::Error,
-                    format!(
-                        "signature check > Failed to verify message signature: {}",
-                        e.to_string()
-                    )
-                    .as_str(),
+                    format!("signature check > Failed to verify message signature: {}", e).as_str(),
                 );
-                return Err(NodeError {
-                    message: format!("Failed to verify message signature: {}", e.to_string()),
-                });
+                Err(NodeError {
+                    message: format!("Failed to verify message signature: {}", e),
+                })
             }
         }
     }
