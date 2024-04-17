@@ -1101,3 +1101,26 @@ async fn test_vector_fs_operations() {
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());
 }
+
+// #[tokio::test]
+// async fn test_remove_code_blocks() {
+//     // Example strings containing code blocks
+//     let example1 = "Here is some text.\n```\nlet x = 10;\n```\nAnd here is more text.";
+//     let example2 = "Another example with a `single backtick`, and a code block:\n```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\nEnd of example.";
+//     let example3 = "Text before code block 1.\n```\nCode Block 1\n```\nText between code block 1 and 2.\n```\nCode Block 2\n```\nText between code block 2 and 3.\n```\nCode Block 3\n```\nText after code block 3.";
+
+//     // Expected output after removing code blocks
+//     let expected1 = "Here is some text.\n \nAnd here is more text.";
+//     let expected2 = "Another example with a `single backtick`, and a code block: End of example.";
+//     let expected3 = "Text before code block 1. Text between code block 1 and 2. Text between code block 2 and 3. Text after code block 3.";
+
+//     // Use the remove_code_blocks method to process the example strings
+//     let result1 = ParsingHelper::remove_code_blocks(example1);
+//     let result2 = ParsingHelper::remove_code_blocks(example2);
+//     let result3 = ParsingHelper::remove_code_blocks(example3);
+
+//     // Assert that the code blocks were removed correctly
+//     assert_eq!(result1, expected1);
+//     assert_eq!(result2, expected2);
+//     assert_eq!(result3, expected3);
+// }

@@ -226,8 +226,64 @@ impl ParsingHelper {
         cleaned_string
     }
 
-    /// Splits the LLM's response answer text into sentences based on periods, ignoring code blocks.
-    pub fn split_llm_response_text_into_sentences(text: &str) -> Vec<String> {
+    /// Splits the text into segments based on code blocks delineated by triple backticks.
+    /// Code block strings start and end with triple backticks, while other strings do not contain them.
+    pub fn split_text_on_code_blocks(text: &str) -> Vec<String> {
+        let mut segments = Vec::new();
+        let mut current_segment = String::new();
+        let mut in_code_block = false;
+        let mut backtick_sequence = 0;
+
+        for c in text.chars() {
+            current_segment.push(c);
+
+            if c == '`' {
+                backtick_sequence += 1;
+            } else {
+                backtick_sequence = 0;
+            }
+
+            // When encountering three backticks, toggle the in_code_block flag
+            if backtick_sequence == 3 {
+                if in_code_block {
+                    // End of a code block, push the segment including the closing backticks
+                    segments.push(current_segment);
+                    current_segment = String::new();
+                } else {
+                    // Start of a code block, remove the opening backticks from the previous segment
+                    // and prepare the new segment starting with backticks
+                    if !current_segment.is_empty() {
+                        let non_code_segment = current_segment[..current_segment.len() - 3].to_string();
+                        if !non_code_segment.trim().is_empty() {
+                            segments.push(non_code_segment);
+                        }
+                    }
+                    current_segment = "```".to_string();
+                }
+                in_code_block = !in_code_block;
+                backtick_sequence = 0; // Reset backtick sequence after processing
+            }
+        }
+
+        // Add the last segment if it's not empty
+        if !current_segment.trim().is_empty() {
+            segments.push(current_segment);
+        }
+
+        segments
+    }
+
+    /// Removes code blocks from the text, keeping only non-code segments.
+    pub fn remove_code_blocks(text: &str) -> String {
+        Self::split_text_on_code_blocks(text)
+            .into_iter()
+            .filter(|segment| !segment.starts_with("```"))
+            .collect::<Vec<String>>()
+            .join(" ")
+    }
+
+    /// Splits the text into sentences based on periods, ignoring any periods inside of back ticks/code blocks.
+    pub fn split_text_into_sentences_ignoring_back_ticks(text: &str) -> Vec<String> {
         let mut sentences = Vec::new();
         let mut current_sentence = String::new();
         let mut backtick_block = false;
@@ -276,7 +332,7 @@ impl ParsingHelper {
 
     /// Adds line breaks after sentences exceed a certain character limit.
     pub fn add_paragraph_line_breaks(string: &str) -> String {
-        let sentences = Self::split_llm_response_text_into_sentences(string);
+        let sentences = Self::split_text_into_sentences_ignoring_back_ticks(string);
         let max_chars = 450;
         let mut result_string = String::new();
         let mut current_paragraph = String::new();
