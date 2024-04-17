@@ -80,7 +80,7 @@ pub trait LLMProvider {
 
         // Extra linebreak replaces
         response_string = response_string.replace("\"\n}\n``` ", "\"}");
-        response_string = response_string.replace("\\n", " ");
+        // response_string = response_string.replace("\\n", " ");
         response_string = response_string.replace("{\" \"", "{ \"");
         response_string = response_string.replace("\" \"}", "\" }");
 

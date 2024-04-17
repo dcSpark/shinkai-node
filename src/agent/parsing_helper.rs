@@ -29,7 +29,7 @@ impl ParsingHelper {
         agent: SerializedAgent,
         max_node_text_size: u64,
     ) -> Result<String, AgentError> {
-        let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 3000, 300);
+        let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
         let mut extracted_answer: Option<String> = None;
@@ -216,6 +216,94 @@ impl ParsingHelper {
         }
 
         cleaned_string
+    }
+
+    /// Attempts to clean up the answer response from the LLM for basic inferencing where the response is primarily English text
+    pub fn basic_inference_text_answer_cleanup(string: &str) -> String {
+        let flattened = ParsingHelper::flatten_to_content_if_json(&string);
+        let stripped_string = ParsingHelper::ending_stripper(&flattened);
+        let cleaned_string = ParsingHelper::add_paragraph_line_breaks(&stripped_string);
+        cleaned_string
+    }
+
+    /// Splits the LLM's response answer text into sentences based on periods, ignoring code blocks.
+    pub fn split_llm_response_text_into_sentences(text: &str) -> Vec<String> {
+        let mut sentences = Vec::new();
+        let mut current_sentence = String::new();
+        let mut backtick_block = false;
+        let mut backtick_count = 0;
+
+        let mut chars = text.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            current_sentence.push(c);
+
+            if c == '`' {
+                backtick_count += 1;
+                // Check if entering or exiting a backtick block
+                if backtick_count == 1 || (backtick_block && backtick_count == 3) {
+                    if let Some(&next_char) = chars.peek() {
+                        if next_char != '`' {
+                            // If it's a single backtick or the end of a triple backtick block
+                            backtick_block = !backtick_block;
+                            backtick_count = 0;
+                        }
+                    }
+                }
+                // Reset backtick count if it's a triple backtick block
+                if backtick_count == 3 {
+                    backtick_count = 0;
+                }
+            } else {
+                // Reset backtick count on any character that's not a backtick
+                backtick_count = 0;
+            }
+
+            // If not in a backtick block and the character is a period, consider it the end of a sentence
+            if !backtick_block && c == '.' {
+                sentences.push(current_sentence.trim().to_string());
+                current_sentence.clear();
+            }
+        }
+
+        // Add any remaining text as a sentence
+        if !current_sentence.trim().is_empty() {
+            sentences.push(current_sentence.trim().to_string());
+        }
+
+        sentences
+    }
+
+    /// Adds line breaks after sentences exceed a certain character limit.
+    pub fn add_paragraph_line_breaks(string: &str) -> String {
+        let sentences = Self::split_llm_response_text_into_sentences(string);
+        let max_chars = 450;
+        let mut result_string = String::new();
+        let mut current_paragraph = String::new();
+
+        for sentence in sentences {
+            // Check if adding the next sentence exceeds the max_chars limit
+            if current_paragraph.len() + sentence.len() > max_chars {
+                // If the current paragraph is not empty, add it to the result with a line break
+                if !current_paragraph.is_empty() {
+                    result_string.push_str(&format!("{}\n", current_paragraph.trim()));
+                    current_paragraph.clear();
+                }
+                // Start a new paragraph with the current sentence
+                current_paragraph.push_str(&sentence);
+            } else {
+                // If adding the sentence doesn't exceed the limit, just add it to the current paragraph
+                current_paragraph.push_str(" ");
+                current_paragraph.push_str(&sentence);
+            }
+        }
+
+        // Add any remaining paragraph to the result
+        if !current_paragraph.is_empty() {
+            result_string.push_str(&format!("{}\n", current_paragraph.trim()));
+        }
+
+        result_string.trim().to_string()
     }
 
     /// Given an input string, if the whole string parses into a JSON Value, then

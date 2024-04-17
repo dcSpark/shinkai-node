@@ -817,17 +817,17 @@ pub trait VectorResourceCore: Send + Sync {
         // Create the description RetrievedNode if description exists
         if let Some(desc) = self.description() {
             let node = Node::new_text("".to_string(), desc.to_string(), None, &vec![]);
-            description_node = Some(RetrievedNode::new(node, 1.0, self_header.clone(), VRPath::new()));
+            description_node = Some(flatten_and_convert_into_intro_retrieved_node(node, &self_header));
         }
 
         if let Ok(ord_resource) = self.as_ordered_vector_resource() {
             if let Some(second_node) = ord_resource.get_second_node() {
-                let second_node_ret = RetrievedNode::new(second_node, 1.0, self_header.clone(), VRPath::new());
+                let second_node_ret = flatten_and_convert_into_intro_retrieved_node(second_node, &self_header);
                 if let Some(desc) = description_node.clone() {
                     return Ok(vec![desc, second_node_ret]);
                 } else {
                     if let Some(first_node) = ord_resource.get_first_node() {
-                        let first_node_ret = RetrievedNode::new(first_node, 1.0, self_header.clone(), VRPath::new());
+                        let first_node_ret = flatten_and_convert_into_intro_retrieved_node(first_node, &self_header);
                         return Ok(vec![first_node_ret, second_node_ret]);
                     }
                 }
@@ -838,5 +838,34 @@ pub trait VectorResourceCore: Send + Sync {
         return Err(VRError::InvalidNodeType(
             "Expected an OrderedVectorResource or a description".to_string(),
         ));
+    }
+}
+
+/// Takes an intro node, flattens it if it holds a VR , and converts it into a RetrievedNode.
+fn flatten_and_convert_into_intro_retrieved_node(intro_node: Node, header: &VRHeader) -> RetrievedNode {
+    let node_id = intro_node.id.clone();
+
+    if let NodeContent::Resource(resource) = &intro_node.content {
+        let mut flattened_node_text = resource.as_trait_object().name().to_string();
+        for node in resource.as_trait_object().get_root_nodes() {
+            if flattened_node_text.len() > 500 {
+                break;
+            }
+            if let Ok(text) = node.get_text_content() {
+                flattened_node_text += " ";
+                flattened_node_text += text;
+            }
+            if let Ok(_) = node.get_vector_resource_content() {
+                flatten_and_convert_into_intro_retrieved_node(node, header);
+            }
+        }
+
+        // Now create a new node with the flattened text
+        let mut new_node = intro_node.clone();
+        new_node.content = NodeContent::Text(flattened_node_text);
+
+        RetrievedNode::new(new_node, 1.0, header.clone(), VRPath::new().push_cloned(node_id))
+    } else {
+        RetrievedNode::new(intro_node, 1.0, header.clone(), VRPath::new().push_cloned(node_id))
     }
 }

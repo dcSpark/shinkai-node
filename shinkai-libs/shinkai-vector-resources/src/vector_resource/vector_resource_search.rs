@@ -365,7 +365,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 while new_top_results_added < num_of_top_results as usize {
                     if let Some(top_result) = iter.next() {
                         // Check if the node has already been included, then skip
-                        if paths_checked.contains_key(&top_result.retrieval_path) {
+                        if paths_checked.contains_key(&top_result.retrieval_path.clone()) {
                             continue;
                         }
 
@@ -376,7 +376,16 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         ) {
                             Ok(mut proximity_results) => {
                                 let mut non_duplicates = vec![];
+                                let top_result_path = top_result.retrieval_path.clone();
                                 for proximity_result in &mut proximity_results {
+                                    // Replace the retrieved node with the actual top result node (to preserve results from other scoring logic, ie. hierarchical)
+                                    let mut proximity_result = if top_result_path == proximity_result.retrieval_path {
+                                        top_result.clone()
+                                    } else {
+                                        proximity_result.clone()
+                                    };
+
+                                    // Update the proximity result and push it into the list of non duplicate results
                                     if !paths_checked.contains_key(&proximity_result.retrieval_path) {
                                         proximity_result.resource_header = root_vr_header.clone();
                                         proximity_result.set_proximity_group_id(new_top_results_added.to_string());

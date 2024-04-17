@@ -160,41 +160,47 @@ impl JobManager {
             }
         }
 
-        // Flatten the retrieved node groups into a single list
-        let mut flattened_result_nodes = ret_groups.into_iter().flatten().collect::<Vec<_>>();
-
-        // For the top 25 results, fetch their VRs' intros and include them at the front of the list
-        // TODO: Slight efficiency improvement if we use the first 5 unflattened groups. Improve later.
+        // For the top N groups, fetch their VRs' intros and include them at the front of the list
+        // We do this by iterating in reverse order (ex. 5th, 4th, 3rd, 2nd, 1st), so highest scored VR intro will be at the top.
+        let num_groups = Self::determine_num_groups_for_intro_fetch(max_tokens_in_prompt);
         let mut final_nodes = Vec::new();
         let mut added_intros = HashMap::new();
         let mut first_intro_text = None;
-        for node in &mut flattened_result_nodes.iter().take(25) {
-            if let Some(intro_text_nodes) = master_intro_hashmap.get(&node.resource_header.reference_string()) {
-                if !added_intros.contains_key(&node.resource_header.reference_string()) {
-                    // Add the intro nodes, and the ref string to added_intros
-                    for intro_node in intro_text_nodes.iter() {
-                        final_nodes.push(intro_node.clone());
-                        added_intros.insert(node.resource_header.reference_string(), true);
+
+        for group in ret_groups.iter().take(num_groups).rev() {
+            // Take the first 5 groups and reverse the order
+            if let Some(first_node) = group.first() {
+                // Take the first node of the group
+                if let Some(intro_text_nodes) = master_intro_hashmap.get(&first_node.resource_header.reference_string())
+                {
+                    if !added_intros.contains_key(&first_node.resource_header.reference_string()) {
+                        // Add the intro nodes, and the ref string to added_intros
+                        for intro_node in intro_text_nodes.iter() {
+                            final_nodes.push(intro_node.clone());
+                            added_intros.insert(first_node.resource_header.reference_string(), true);
+                        }
                     }
-                }
-                if first_intro_text.is_none() {
-                    if let Some(intro_text_node) = intro_text_nodes.get(0) {
-                        if let Ok(intro_text) = intro_text_node.node.get_text_content() {
-                            first_intro_text = Some(intro_text.to_string());
+                    if first_intro_text.is_none() {
+                        if let Some(intro_text_node) = intro_text_nodes.get(0) {
+                            if let Ok(intro_text) = intro_text_node.node.get_text_content() {
+                                first_intro_text = Some(intro_text.to_string());
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Add the rest of the result nodes, skipping any that already are added up front
-        for node in flattened_result_nodes.iter() {
-            if !final_nodes
-                .iter()
-                .take(10)
-                .any(|result_node| result_node.node.content == node.node.content)
-            {
-                final_nodes.push(node.clone());
+        // Now go through the groups and add the actual result nodes, skipping any that already are added up front from the intros
+        for group in ret_groups.iter() {
+            for node in group.iter() {
+                if !final_nodes
+                    .iter()
+                    .take(10)
+                    .any(|result_node| result_node.node.content == node.node.content)
+                {
+                    final_nodes.push(node.clone());
+                }
             }
         }
 
@@ -208,6 +214,17 @@ impl JobManager {
         // }
 
         Ok((final_nodes, first_intro_text))
+    }
+
+    /// Determines the number of grouped proximity retrieved nodes to check for intro fetching
+    fn determine_num_groups_for_intro_fetch(max_tokens_in_prompt: usize) -> usize {
+        if max_tokens_in_prompt < 5000 {
+            5
+        } else if max_tokens_in_prompt < 33000 {
+            6
+        } else {
+            7
+        }
     }
 
     /// Extracts top N keywords from the given text.
