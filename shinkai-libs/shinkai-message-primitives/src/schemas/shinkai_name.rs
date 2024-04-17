@@ -134,7 +134,7 @@ impl ShinkaiName {
 
         for (index, part) in parts.iter().enumerate() {
             if index == 0 {
-                if part.contains("/") {
+                if part.contains('/') {
                     shinkai_log(
                         ShinkaiLogOption::Identity,
                         ShinkaiLogLevel::Info,

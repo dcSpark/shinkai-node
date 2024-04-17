@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-use super::utils::test_boilerplate::run_test_one_node_network;
 use crate::it::utils::node_test_api::api_registration_device_node_profile_main;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::shinkai_utils::{
