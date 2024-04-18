@@ -13,10 +13,12 @@ impl ParsedJobTask {
         // Clean the original job task string by removing trailing newlines/whitespace
         let original_job_task_string = original_job_task_string.trim_end_matches('\n').trim().to_string();
         let elements = Self::parse_original_job_task_string(&original_job_task_string);
-        ParsedJobTask {
+        let pjt = ParsedJobTask {
             original_job_task_string,
             elements,
-        }
+        };
+        println!("ParsedJobTask: {:?}", pjt);
+        pjt
     }
 
     /// Creates a new `ParsedJobTask` using the given elements (recreates original job task string)
@@ -52,8 +54,11 @@ impl ParsedJobTask {
             }
         }
 
-        // Parses the list point elements out of the text elements, and preserves ordering
-        let elements = parse_list_point_elements_from_text_elements(elements);
+        // TODO: Fix
+        // // Parses the list point elements out of the text elements, and preserves ordering
+        // let elements = parse_list_point_elements_from_text_elements(elements);
+
+        //TODO: Convert list points to ListTaskElement
 
         elements
     }
@@ -308,7 +313,7 @@ fn get_list_item_patterns() -> Vec<String> {
     patterns
 }
 
-/// Parses list elements from text elements and intersperses them in the original order
+// TODO: Fix later
 fn parse_list_point_elements_from_text_elements(elements: Vec<JobTaskElement>) -> Vec<JobTaskElement> {
     let mut new_elements = Vec::new();
     let list_item_patterns = get_list_item_patterns();
@@ -316,19 +321,24 @@ fn parse_list_point_elements_from_text_elements(elements: Vec<JobTaskElement>) -
     for element in elements.into_iter() {
         match element {
             JobTaskElement::Text(text_element) => {
-                let mut text = text_element.content.clone();
+                let text = text_element.content.clone();
                 let mut last_pos = 0;
                 let mut list_items = Vec::new();
 
                 for pattern in &list_item_patterns {
                     let mut pos = text[last_pos..].find(pattern);
-                    while pos.is_some() {
-                        let start = last_pos + pos.unwrap();
+                    while let Some(p) = pos {
+                        let start = last_pos + p;
+                        // Find the end of the list item or use the end of the string if no newline is found
                         let end = text[start..].find('\n').map_or(text.len(), |p| start + p);
-                        // Adjust to extract the list item content correctly, trimming the pattern if necessary
-                        let item_content = text[start + pattern.len()..end].trim().to_string();
-                        list_items.push((start, item_content));
-                        last_pos = end;
+                        // Ensure start is not beyond the end of the string
+                        if start < text.len() {
+                            let item_content = text[start + pattern.len()..end].trim().to_string();
+                            if !item_content.is_empty() {
+                                list_items.push((start, item_content, pattern.len()));
+                            }
+                        }
+                        last_pos = end + 1; // Move past the newline character for the next search
                         pos = text[last_pos..].find(pattern);
                     }
                 }
@@ -336,19 +346,19 @@ fn parse_list_point_elements_from_text_elements(elements: Vec<JobTaskElement>) -
                 list_items.sort_by(|a, b| a.0.cmp(&b.0));
                 let mut current_pos = 0;
 
-                for (start, item_content) in list_items {
-                    if start > current_pos {
-                        // Push text before the list item as a new Text element
+                for (start, item_content, pattern_length) in list_items {
+                    if start > current_pos && current_pos < text.len() {
+                        // Ensure slicing does not go beyond the string's length
+                        let slice_end = std::cmp::min(start, text.len());
                         new_elements.push(JobTaskElement::Text(TextTaskElement::new(
-                            text[current_pos..start].to_string(),
+                            text[current_pos..slice_end].to_string(),
                         )));
                     }
-                    // Push the list item as a new ListPoint element
                     new_elements.push(JobTaskElement::ListPoint(ListPoint::new(item_content.clone())));
-                    current_pos = start + item_content.len() + 1; // Adjust for the newline character
+                    current_pos = start + item_content.len() + pattern_length;
                 }
 
-                // If there's remaining text after the last list item, add it as a new Text element
+                // Handle any remaining text after the last list item
                 if current_pos < text.len() {
                     new_elements.push(JobTaskElement::Text(TextTaskElement::new(
                         text[current_pos..].to_string(),
