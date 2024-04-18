@@ -1130,3 +1130,48 @@ async fn test_remove_code_blocks_with_parsed_job_task() {
     assert_eq!(code_blocks2, expected_code_blocks2);
     assert_eq!(code_blocks3, expected_code_blocks3);
 }
+
+// #[tokio::test]
+// async fn test_parse_list_elements() {
+//     // Example strings containing different types of lists
+//     let example1 = "Here is some text.\n- Item 1\n- Item 2\nAnd here is more text.";
+//     let example2 = "Another example text.\n* Item 1\n* Item 2\n* Item 3\nEnd of example.";
+//     let example3 = "Text before numbered list.\n1. Item 1\n2. Item 2\n3. Item 3\nText after numbered list.";
+
+//     // Create a parsed job task for each example
+//     let parsed_job_task1 = ParsedJobTask::new(example1.to_string());
+//     let parsed_job_task2 = ParsedJobTask::new(example2.to_string());
+//     let parsed_job_task3 = ParsedJobTask::new(example3.to_string());
+
+//     // Assuming a method to count list elements in the parsed job task
+//     let list_count1 = parsed_job_task1.get_elements_filtered(true, true, false).len();
+//     let list_count2 = parsed_job_task2.get_elements_filtered(true, true, false).len();
+//     let list_count3 = parsed_job_task3.get_elements_filtered(true, true, false).len();
+
+//     // Expected number of list elements
+//     let expected_list_count1 = 2;
+//     let expected_list_count2 = 3;
+//     let expected_list_count3 = 3;
+
+//     // Assert that the counted list elements match the expected numbers
+//     assert_eq!(
+//         list_count1, expected_list_count1,
+//         "List count in example1 does not match."
+//     );
+//     assert_eq!(
+//         list_count2, expected_list_count2,
+//         "List count in example2 does not match."
+//     );
+//     assert_eq!(
+//         list_count3, expected_list_count3,
+//         "List count in example3 does not match."
+//     );
+
+//     // Print each list element for visual inspection (assuming a method to iterate and print list elements)
+//     println!("List elements in example1:");
+//     parsed_job_task1.print_list_elements();
+//     println!("List elements in example2:");
+//     parsed_job_task2.print_list_elements();
+//     println!("List elements in example3:");
+//     parsed_job_task3.print_list_elements();
+// }

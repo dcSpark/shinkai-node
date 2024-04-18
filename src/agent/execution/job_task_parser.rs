@@ -25,7 +25,8 @@ impl ParsedJobTask {
             .iter()
             .map(|element| match element {
                 JobTaskElement::Text(text) => text.content.clone(),
-                JobTaskElement::CodeBlock(code_block) => code_block.content.clone(),
+                JobTaskElement::CodeBlock(code_block) => code_block.get_output_string(),
+                JobTaskElement::ListPoint(list_point) => list_point.get_output_string(),
             })
             .collect::<Vec<String>>()
             .join(" ");
@@ -49,6 +50,9 @@ impl ParsedJobTask {
                 elements.push(JobTaskElement::Text(TextTaskElement::new(text)));
             }
         }
+
+        // Parses the list point elements out of the text elements, and preserves ordering
+        let elements = parse_list_point_elements_from_text_elements(elements);
 
         elements
     }
@@ -84,6 +88,7 @@ impl ParsedJobTask {
             .map(|element| match element {
                 JobTaskElement::Text(text) => format!("{} ", text.content.clone()),
                 JobTaskElement::CodeBlock(code_block) => format!("{} ", code_block.content.clone()),
+                JobTaskElement::ListPoint(list_point) => format!("{} ", list_point.get_output_string()),
             })
             .collect::<Vec<String>>()
             .join("")
@@ -103,6 +108,8 @@ impl ParsedJobTask {
 pub enum JobTaskElement {
     Text(TextTaskElement),
     CodeBlock(CodeBlockTaskElement),
+    ListPoint(ListPoint),
+    List(ListTaskElement),
 }
 
 impl JobTaskElement {
@@ -111,6 +118,7 @@ impl JobTaskElement {
         match self {
             JobTaskElement::Text(text_element) => text_element.len(),
             JobTaskElement::CodeBlock(code_block_element) => code_block_element.len(),
+            JobTaskElement::ListPoint(list_point_element) => list_point_element.len(),
         }
     }
 }
@@ -152,6 +160,34 @@ impl CodeBlockTaskElement {
     /// Returns the length of the code block
     pub fn len(&self) -> usize {
         self.content.len()
+    }
+
+    /// Returns a string representation of the code block
+    pub fn get_output_string(&self) -> String {
+        format!("{}", self.content)
+    }
+}
+
+/// Represents a list item in a job task
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListPoint {
+    pub content: String,
+}
+
+impl ListPoint {
+    /// Creates a new `ListTaskElement`
+    pub fn new(content: String) -> Self {
+        ListPoint { content }
+    }
+
+    /// Returns the length of the list point content
+    pub fn len(&self) -> usize {
+        self.content.len()
+    }
+
+    /// Returns a string representation of the code block
+    pub fn get_output_string(&self) -> String {
+        format!("\n- {}", self.content)
     }
 }
 
@@ -200,4 +236,88 @@ fn split_text_on_code_blocks(text: &str) -> Vec<String> {
     }
 
     segments
+}
+
+/// Generates list item patterns including '-', '*', and '1.' to '20.' with various spacings
+fn get_list_item_patterns() -> Vec<String> {
+    let mut patterns = Vec::new();
+
+    // Patterns for unordered lists
+    let unordered_markers = vec!["-", "*"];
+
+    // Generate patterns for unordered list markers with various spacings
+    for marker in unordered_markers.iter() {
+        patterns.extend(vec![
+            format!("\n{} ", marker),
+            format!("\n {} ", marker),
+            format!("\n  {} ", marker),
+            format!(". {} ", marker),
+            format!(".  {} ", marker),
+        ]);
+    }
+
+    // Generate patterns for ordered list numbers 1 to 20 with various spacings
+    for i in 1..=20 {
+        patterns.extend(vec![
+            format!("\n{}. ", i),
+            format!("\n {}. ", i),
+            format!("\n  {}. ", i),
+        ]);
+    }
+
+    patterns
+}
+
+/// Parses list elements from text elements and intersperses them in the original order
+fn parse_list_point_elements_from_text_elements(elements: Vec<JobTaskElement>) -> Vec<JobTaskElement> {
+    let mut new_elements = Vec::new();
+    let list_item_patterns = get_list_item_patterns();
+
+    for element in elements.into_iter() {
+        match element {
+            JobTaskElement::Text(text_element) => {
+                let mut text = text_element.content.clone();
+                let mut last_pos = 0;
+                let mut list_items = Vec::new();
+
+                for pattern in &list_item_patterns {
+                    let mut pos = text[last_pos..].find(pattern);
+                    while pos.is_some() {
+                        let start = last_pos + pos.unwrap();
+                        let end = text[start..].find('\n').map_or(text.len(), |p| start + p);
+                        // Adjust to extract the list item content correctly, trimming the pattern if necessary
+                        let item_content = text[start + pattern.len()..end].trim().to_string();
+                        list_items.push((start, item_content));
+                        last_pos = end;
+                        pos = text[last_pos..].find(pattern);
+                    }
+                }
+
+                list_items.sort_by(|a, b| a.0.cmp(&b.0));
+                let mut current_pos = 0;
+
+                for (start, item_content) in list_items {
+                    if start > current_pos {
+                        // Push text before the list item as a new Text element
+                        new_elements.push(JobTaskElement::Text(TextTaskElement::new(
+                            text[current_pos..start].to_string(),
+                        )));
+                    }
+                    // Push the list item as a new ListPoint element
+                    new_elements.push(JobTaskElement::ListPoint(ListPoint::new(item_content.clone())));
+                    current_pos = start + item_content.len() + 1; // Adjust for the newline character
+                }
+
+                // If there's remaining text after the last list item, add it as a new Text element
+                if current_pos < text.len() {
+                    new_elements.push(JobTaskElement::Text(TextTaskElement::new(
+                        text[current_pos..].to_string(),
+                    )));
+                }
+            }
+            _ => new_elements.push(element),
+        }
+    }
+
+    new_elements
 }
