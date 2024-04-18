@@ -91,14 +91,15 @@ impl LocalFileParser {
         text.split("\n")
             .filter(|line| !line.trim().is_empty() && line.trim().len() > 1) // Filter out empty or nearly empty lines
             .flat_map(|line| {
+                let trimmed_line = line.trim();
+
                 let re = Regex::new(ShinkaiFileParser::PURE_METADATA_REGEX).unwrap();
-                let is_pure_metadata = re.is_match(line)
+                let is_pure_metadata = re.is_match(trimmed_line)
                     && re
-                        .find(line)
-                        .map(|m| m.start() == 0 && m.end() == line.len())
+                        .find(trimmed_line)
+                        .map(|m| m.start() == 0 && m.end() == trimmed_line.len())
                         .unwrap_or(false);
 
-                let trimmed_line = line.trim();
                 // Ensure each line ends with a punctuation mark, defaulting to '.'
                 let line_with_ending =
                     if is_pure_metadata || punctuation_marks.iter().any(|&mark| trimmed_line.ends_with(mark)) {
