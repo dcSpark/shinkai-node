@@ -89,7 +89,7 @@ impl ShinkaiDB {
         let ext_metadata = message.external_metadata.clone();
 
         // Get the scheduled time or calculate current time
-        let time_key = match ext_metadata.scheduled_time.is_empty() {
+        let mut time_key = match ext_metadata.scheduled_time.is_empty() {
             true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
@@ -111,6 +111,19 @@ impl ShinkaiDB {
                 }
             }
         };
+
+        // Previous code was here
+        if let InboxName::JobInbox { .. } = inbox_name_manager {
+            if let Some(parent_key) = &parent_key.clone() {
+                let (parent_message, _) = self.fetch_message_and_hash(parent_key)?;
+                let parent_time = parent_message.external_metadata.scheduled_time;
+                let parsed_time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
+                let parsed_parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
+                if parsed_time_key < parsed_parent_time {
+                    time_key = ShinkaiStringTime::generate_time_now();
+                }
+            }
+        }
 
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash_for_pagination();

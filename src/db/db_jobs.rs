@@ -615,7 +615,7 @@ impl ShinkaiDB {
         message: &ShinkaiMessage,
         parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        self.unsafe_insert_inbox_message(&message, parent_message_key).await?;
+        self.unsafe_insert_inbox_message(message, parent_message_key).await?;
         Ok(())
     }
 }

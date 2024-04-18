@@ -62,8 +62,8 @@ fn node_agent_registration() {
         let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
 
         // Agent pre-creation
 
@@ -470,7 +470,7 @@ fn node_agent_registration() {
                     .map_err(|_| "Failed to serialize job message to JSON")
                     .unwrap();
 
-                let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+                let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone.clone())
                     .map_err(|_| "Failed to get job inbox name")
                     .unwrap()
                     .to_string();
@@ -509,7 +509,40 @@ fn node_agent_registration() {
                 let node_job_message = res_message_job_receiver.recv().await.unwrap();
                 eprintln!("Old message node_job_message: {:?}", node_job_message);
 
-                tokio::time::sleep(Duration::from_millis(2500)).await;
+                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
+
+                let mut node1_last_messages = vec![];
+                let mut is_message_found = false;
+                for _ in 0..30 {
+                    let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
+                        clone_static_secret_key(&node1_profile_encryption_sk),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk,
+                        inbox.to_string(),
+                        4,
+                        None,
+                        "".to_string(),
+                        sender.clone(),
+                        node1_identity_name.to_string(),
+                    )
+                    .unwrap();
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res: res1_sender })
+                        .await
+                        .unwrap();
+                    node1_last_messages = res1_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                    // eprintln!("*** node2_last_messages: {:?}", node2_last_messages);
+                    if node1_last_messages.len() >= 4 {
+                        is_message_found = true;
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                eprintln!("### node1_last_messages: {:?}", node1_last_messages);
+                assert!(is_message_found);
+
             }
             {
                 // Send a scheduled message

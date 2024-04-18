@@ -120,8 +120,11 @@ fn change_nodes_name_test() {
         });
 
         let _result = tokio::try_join!(node1_handler, interactions_handler);
+        
     });
+    rt.shutdown_background();
 
+    let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let new_node_name = "@@change_node_test.sepolia-shinkai";
 
@@ -187,4 +190,5 @@ fn change_nodes_name_test() {
 
         let _result = tokio::try_join!(node1_handler, interactions_handler);
     });
+    rt.shutdown_background();
 }
