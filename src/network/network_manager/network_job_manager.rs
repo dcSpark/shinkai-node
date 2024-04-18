@@ -601,9 +601,19 @@ impl NetworkJobManager {
             .lock()
             .await
             .external_profile_to_global_identity(&sender_profile_name_string)
-            .await
-            .unwrap();
+            .await;
 
+        if let Err(e) = sender_identity {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("{} > Failed to get sender identity: {:?}", receiver_address, e),
+            );
+            return Ok(());
+        }
+
+        let sender_identity = sender_identity.unwrap();
+            
         verify_message_signature(sender_identity.node_signature_public_key, &message)?;
 
         shinkai_log(
