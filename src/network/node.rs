@@ -1904,6 +1904,11 @@ impl Node {
                                 return; // Skip processing for unknown message types
                             }
                         };
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            &format!("Received message of type {:?} from: {:?}", message_type, addr),
+                        );
 
                         let destination_socket = socket.peer_addr().expect("Failed to get peer address");
                         let network_job = NetworkJobQueue {
