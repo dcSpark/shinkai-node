@@ -4,7 +4,7 @@ use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_types::FSItem;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::source::SourceFileMap;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRHeader};
+use shinkai_vector_resources::vector_resource::VRHeader;
 
 impl VectorFSDB {
     /// Saves the `SourceFileMap` into the SourceFiles topic.
@@ -16,28 +16,14 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_source_file_map(source_file_map)?;
 
-        // Log the size of the value
-        eprintln!("Saving source map with size: {} bytes", bytes.len());
-
-        // Measure the time it takes to execute pb_put_cf
-        let start_time = std::time::Instant::now();
-
         // Insert into the "SourceFileMaps" column family
         batch.pb_put_cf(cf, db_key, &bytes);
-
-        eprintln!(
-            "pb_put_cf executed in: {:?} seconds",
-            start_time.elapsed().as_secs_f32()
-        );
 
         Ok(())
     }
 
     /// Prepares the `SourceFileMap` for saving into the FSDB in the SourceFiles topic.
-    fn _prepare_source_file_map(
-        &self,
-        source_file_map: &SourceFileMap,
-    ) -> Result<(Vec<u8>, &str), VectorFSError> {
+    fn _prepare_source_file_map(&self, source_file_map: &SourceFileMap) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = source_file_map.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "SourceFiles" column family

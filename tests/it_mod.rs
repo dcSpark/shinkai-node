@@ -34,4 +34,5 @@ mod it {
     // mod websocket_tests;
     mod subscription_manager_tests;
     mod shinkai_mirror_tests;
+    mod change_nodes_name_tests;
 }

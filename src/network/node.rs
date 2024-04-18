@@ -63,6 +63,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: async_channel::Sender<Result<SendResponseBodyData, APIError>>,
     },
+    GetNodeName {
+        res: Sender<String>,
+    },
     // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code through the API. The sender will receive the code.
@@ -171,16 +174,19 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<String>,
     },
+    #[allow(dead_code)]
     APIRemoveInboxPermission {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[allow(dead_code)]
     RemoveInboxPermission {
         inbox_name: String,
         perm_type: String,
         identity: String,
         res: Sender<String>,
     },
+    #[allow(dead_code)]
     HasInboxPermission {
         inbox_name: String,
         perm_type: String,
@@ -191,6 +197,7 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[allow(dead_code)]
     CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
@@ -214,18 +221,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    #[allow(dead_code)]
     JobMessage {
         shinkai_message: ShinkaiMessage,
-        res: Sender<(String, String)>,
-    },
-    APIJobPreMessage {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    JobPreMessage {
-        tool_calls: Vec<JobToolCall>,
-        content: String,
-        recipient: String,
         res: Sender<(String, String)>,
     },
     APIAddAgent {
@@ -467,8 +465,8 @@ impl Node {
         {
             match db_arc.update_local_node_keys(
                 node_name.clone(),
-                encryption_public_key.clone(),
-                identity_public_key.clone(),
+                encryption_public_key,
+                identity_public_key,
             ) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
@@ -1336,6 +1334,13 @@ impl Node {
                                                 let _ = Self::local_is_pristine(db_clone, res).await;
                                             });
                                         },
+                                        // NodeCommand::GetNodeName { res: Sender<String> },
+                                        NodeCommand::GetNodeName { res } => {
+                                            let node_name = self.node_name.clone();
+                                            tokio::spawn(async move {
+                                                let _ = res.send(node_name.node_name).await;
+                                            });
+                                        },
                                         // NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => self.api_get_last_messages_from_inbox_with_branches(msg, res).await,
                                         NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
@@ -1396,6 +1401,7 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let embedding_generator_clone = self.embedding_generator.clone();
                                             let unstructured_api_clone = self.unstructured_api.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_convert_files_and_save_to_folder(
                                                     db_clone,
@@ -1405,6 +1411,7 @@ impl Node {
                                                     encryption_secret_key_clone,
                                                     Arc::new(embedding_generator_clone),
                                                     Arc::new(unstructured_api_clone),
+                                                    ext_subscription_manager_clone,
                                                     msg,
                                                     res,
                                                 ).await;
@@ -1873,11 +1880,11 @@ impl Node {
             }
 
             let socket = Arc::new(Mutex::new(socket));
-            let db = Arc::clone(&self.db);
-            let identity_manager = Arc::clone(&self.identity_manager);
-            let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
-            let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
-            let node_profile_name_clone = self.node_name.clone();
+            let _db = Arc::clone(&self.db);
+            let _identity_manager = Arc::clone(&self.identity_manager);
+            let _encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
+            let _identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
+            let _node_profile_name_clone = self.node_name.clone();
             let network_job_manager = Arc::clone(&self.network_job_manager);
 
             tokio::spawn(async move {
@@ -1899,6 +1906,11 @@ impl Node {
                                 return; // Skip processing for unknown message types
                             }
                         };
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            &format!("Received message of type {:?} from: {:?}", message_type, addr),
+                        );
 
                         let destination_socket = socket.peer_addr().expect("Failed to get peer address");
                         let network_job = NetworkJobQueue {

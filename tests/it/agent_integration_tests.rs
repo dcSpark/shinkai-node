@@ -4,10 +4,9 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    clone_static_secret_key, unsafe_deterministic_encryption_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
     init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
