@@ -1015,7 +1015,8 @@ async fn local_txt_metadata_parsing_test() {
 
         Invalid metadata values should be ignored. {{{timestamp:br0K3n}}}
         
-        Pure metadata should be removed !{{{pg_nums:[19, 20]}}}!
+        Pure metadata should be removed.
+        !{{{pg_nums:[19, 20]}}}!
         
         Make this long enough to exceed max node text size and add more metadata.
         Datetime {{{datetime:2000-01-2T02:17:59Z}}} should be parsed too.";
@@ -1055,6 +1056,7 @@ async fn local_txt_metadata_parsing_test() {
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
     assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
+    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();

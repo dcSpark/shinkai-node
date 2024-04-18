@@ -218,7 +218,7 @@ impl ShinkaiFileParser {
                                     formatted_datetime
                                 }
                             }
-                            Err(_) => caps.get(0).unwrap().as_str().to_string(),
+                            Err(_) => value.to_string(),
                         }
                     }
                 }
@@ -241,7 +241,7 @@ impl ShinkaiFileParser {
                             value.to_string()
                         }
                     }
-                    Err(_) => caps.get(0).unwrap().as_str().to_string(),
+                    Err(_) => value.to_string(),
                 }
             }
             // likes, reposts, replies: Integer
@@ -261,7 +261,7 @@ impl ShinkaiFileParser {
                             value.to_string()
                         }
                     }
-                    Err(_) => caps.get(0).unwrap().as_str().to_string(),
+                    Err(_) => value.to_string(),
                 }
             }
             _ => {

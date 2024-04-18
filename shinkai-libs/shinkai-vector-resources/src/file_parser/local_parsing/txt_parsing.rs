@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use regex::Regex;
+
 use super::LocalFileParser;
 use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::file_parser::file_parser_types::TextGroup;
@@ -89,13 +91,21 @@ impl LocalFileParser {
         text.split("\n")
             .filter(|line| !line.trim().is_empty() && line.trim().len() > 1) // Filter out empty or nearly empty lines
             .flat_map(|line| {
+                let re = Regex::new(ShinkaiFileParser::PURE_METADATA_REGEX).unwrap();
+                let is_pure_metadata = re.is_match(line)
+                    && re
+                        .find(line)
+                        .map(|m| m.start() == 0 && m.end() == line.len())
+                        .unwrap_or(false);
+
                 let trimmed_line = line.trim();
                 // Ensure each line ends with a punctuation mark, defaulting to '.'
-                let line_with_ending = if punctuation_marks.iter().any(|&mark| trimmed_line.ends_with(mark)) {
-                    trimmed_line.to_string()
-                } else {
-                    format!("{}.", trimmed_line)
-                };
+                let line_with_ending =
+                    if is_pure_metadata || punctuation_marks.iter().any(|&mark| trimmed_line.ends_with(mark)) {
+                        trimmed_line.to_string()
+                    } else {
+                        format!("{}\n", trimmed_line)
+                    };
 
                 Self::split_line_into_sentences(&line_with_ending)
             })
