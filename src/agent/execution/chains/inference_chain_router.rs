@@ -1,5 +1,6 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
+use crate::agent::execution::job_task_parser::ParsedJobTask;
 use crate::agent::job::Job;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
@@ -9,6 +10,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -20,6 +22,7 @@ use super::cron_execution_chain::CronExecutionChainResponse;
 
 pub enum InferenceChain {
     QAChain,
+    SummaryChain,
     ToolExecutionChain,
     CodingChain,
     CronCreationChain,
@@ -43,44 +46,53 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
-        // TODO: Later implement inference chain decision making here before choosing which chain to use.
-        // For now we just use qa inference chain by default.
-        let chosen_chain = InferenceChain::QAChain;
+        // Initializations
         let mut inference_response_content = String::new();
         let mut new_execution_context = HashMap::new();
-        // Trim `\n` to prevent dumb models from responding with crappy results
-        let job_message_content = job_message.content.trim_end_matches('\n');
+        let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
+        let parsed_job_task = ParsedJobTask::new(job_message.content.to_string());
 
+        // Choose the inference chain based on the job task
+        let chosen_chain = choose_inference_chain(parsed_job_task.clone(), generator.clone(), &full_job.scope).await;
         match chosen_chain {
+            InferenceChain::SummaryChain => {
+                inference_response_content = JobManager::start_summary_inference_chain(
+                    db,
+                    vector_fs,
+                    full_job,
+                    parsed_job_task,
+                    agent,
+                    prev_execution_context,
+                    generator,
+                    user_profile,
+                    3,
+                    max_tokens_in_prompt,
+                )
+                .await?
+            }
             InferenceChain::QAChain => {
-                if let Some(agent) = agent_found {
-                    let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
-
-                    // TODO: Make this scaled based on model capabilities
-                    let qa_iteration_count = if full_job.scope.contains_significant_content() {
-                        3
-                    } else {
-                        2
-                    };
-                    inference_response_content = JobManager::start_qa_inference_chain(
-                        db,
-                        vector_fs,
-                        full_job,
-                        job_message_content.to_string(),
-                        agent,
-                        prev_execution_context,
-                        generator,
-                        user_profile,
-                        None,
-                        None,
-                        1,
-                        qa_iteration_count,
-                        max_tokens_in_prompt as usize,
-                    )
-                    .await?;
+                let qa_iteration_count = if full_job.scope.contains_significant_content() {
+                    3
                 } else {
-                    return Err(AgentError::AgentNotFound);
-                }
+                    2
+                };
+                inference_response_content = JobManager::start_qa_inference_chain(
+                    db,
+                    vector_fs,
+                    full_job,
+                    parsed_job_task.get_output_string(),
+                    agent,
+                    prev_execution_context,
+                    generator,
+                    user_profile,
+                    None,
+                    None,
+                    1,
+                    qa_iteration_count,
+                    max_tokens_in_prompt as usize,
+                )
+                .await?;
             }
             // Add other chains here
             _ => {}
@@ -214,5 +226,19 @@ impl JobManager {
             _ => {}
         }
         Ok((inference_response_content, new_execution_context))
+    }
+}
+
+/// Chooses the inference chain based on the job task
+async fn choose_inference_chain(
+    parsed_job_task: ParsedJobTask,
+    generator: RemoteEmbeddingGenerator,
+    job_scope: &JobScope,
+) -> InferenceChain {
+    eprintln!("Choosing inference chain");
+    if JobManager::validate_job_task_requests_summary(parsed_job_task, generator.clone(), job_scope).await {
+        InferenceChain::SummaryChain
+    } else {
+        InferenceChain::QAChain
     }
 }
