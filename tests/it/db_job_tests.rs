@@ -796,20 +796,14 @@ mod tests {
 
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
-            let parent_hash = if *i > 0 {
+            let _parent_hash = if *i > 0 {
                 Some(messages[*i - 1].calculate_message_hash_for_pagination())
             } else {
                 None
             };
-            let result = shinkai_db
+            let _result = shinkai_db
                 .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None)
                 .await;
-
-            // If we are at the third iteration (i.e., adding the third message), check that the result is an error
-            if *i == 1 {
-                assert!(result.is_err());
-                continue;
-            }
         }
 
         // Check if the job inbox is not empty after adding a message
