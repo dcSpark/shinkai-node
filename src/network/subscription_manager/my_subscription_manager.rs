@@ -27,6 +27,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::vector_resource::VRPath;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -590,7 +591,7 @@ impl MySubscriptionsManager {
 
         let full_subscriber =
             ShinkaiName::from_node_and_profile_names(subscriber_node.clone().node_name, subscriber_profile.clone())?;
-        
+
         // Acquire VectorFS
         let vector_fs = self
             .vector_fs
@@ -599,14 +600,38 @@ impl MySubscriptionsManager {
                 "VectorFS instance is not available".to_string(),
             ))?;
 
-        let vr_path = VRPath::from_string(&folder_path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+        let vr_path =
+            VRPath::from_string(&folder_path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-        let reader = vector_fs
+        let reader_result = vector_fs
             .new_reader(full_subscriber.clone(), vr_path, full_subscriber.clone())
-            .await?;
+            .await;
 
-        let result = vector_fs.retrieve_fs_entry(&reader).await?;
-        let result = FSEntryTreeGenerator::fs_entry_to_tree(result)?;
+        let result = match reader_result {
+            Ok(reader) => match vector_fs.retrieve_fs_entry(&reader).await {
+                Ok(entry) => match FSEntryTreeGenerator::fs_entry_to_tree(entry) {
+                    Ok(tree) => tree,
+                    Err(_) => FSEntryTree {
+                        name: "/".to_string(),
+                        path: folder_path.clone(),
+                        last_modified: Utc::now(),
+                        children: HashMap::new(),
+                    },
+                },
+                Err(_) => FSEntryTree {
+                    name: "/".to_string(),
+                    path: folder_path.clone(),
+                    last_modified: Utc::now(),
+                    children: HashMap::new(),
+                },
+            },
+            Err(_) => FSEntryTree {
+                name: "/".to_string(),
+                path: folder_path.clone(),
+                last_modified: Utc::now(),
+                children: HashMap::new(),
+            },
+        };
 
         let result_json =
             serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
