@@ -27,6 +27,7 @@ impl ParsedJobTask {
                 JobTaskElement::Text(text) => text.content.clone(),
                 JobTaskElement::CodeBlock(code_block) => code_block.get_output_string(),
                 JobTaskElement::ListPoint(list_point) => list_point.get_output_string(),
+                JobTaskElement::List(list) => list.get_output_string(),
             })
             .collect::<Vec<String>>()
             .join(" ");
@@ -86,9 +87,10 @@ impl ParsedJobTask {
         self.elements
             .iter()
             .map(|element| match element {
-                JobTaskElement::Text(text) => format!("{} ", text.content.clone()),
-                JobTaskElement::CodeBlock(code_block) => format!("{} ", code_block.content.clone()),
-                JobTaskElement::ListPoint(list_point) => format!("{} ", list_point.get_output_string()),
+                JobTaskElement::Text(text) => format!("{} ", text.get_output_string()),
+                JobTaskElement::CodeBlock(code_block) => format!("{}", code_block.get_output_string()),
+                JobTaskElement::ListPoint(list_point) => format!("{}", list_point.get_output_string()),
+                JobTaskElement::List(list) => format!("{}", list.get_output_string()),
             })
             .collect::<Vec<String>>()
             .join("")
@@ -140,6 +142,11 @@ impl TextTaskElement {
     pub fn content_len(&self) -> usize {
         self.content.len()
     }
+
+    /// Returns the text content
+    pub fn get_output_string(&self) -> String {
+        self.content.clone()
+    }
 }
 
 /// A code block from the original job task string
@@ -163,9 +170,9 @@ impl CodeBlockTaskElement {
         self.content.len()
     }
 
-    /// Returns a string representation of the code block
+    /// Returns the code block with newlines added before/after
     pub fn get_output_string(&self) -> String {
-        format!("{}", self.content)
+        format!("\n{}\n", self.content)
     }
 }
 
@@ -186,7 +193,7 @@ impl ListPoint {
         self.content.len()
     }
 
-    /// Returns a string representation of the code block
+    /// Returns a string representation of the list point
     pub fn get_output_string(&self) -> String {
         format!("\n- {}", self.content)
     }
@@ -200,22 +207,27 @@ pub struct ListTaskElement {
 
 impl ListTaskElement {
     /// Creates a new `ListTaskElement`
-    pub fn new(content: String) -> Self {
-        ListPoint { content }
+    pub fn new(list_points: Vec<ListPoint>) -> Self {
+        ListTaskElement { list_points }
     }
 
     /// Returns the number of list points in the list
     pub fn len(&self) -> usize {
         self.list_points.len()
     }
-    /// Returns the length of the list point content
+    /// Returns the total length of all of the content in the list points
     pub fn content_len(&self) -> usize {
         self.list_points.iter().map(|list_point| list_point.content_len()).sum()
     }
 
-    /// Returns a string representation of the code block
+    /// Returns the list points as a string, with newlines added between each point
     pub fn get_output_string(&self) -> String {
-        format!("\n- {}", self.content)
+        self.list_points
+            .iter()
+            .map(|list_point| list_point.get_output_string())
+            .collect::<Vec<String>>()
+            .join("")
+            + "\n"
     }
 }
 
