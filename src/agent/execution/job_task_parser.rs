@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::{
+    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+    embeddings::Embedding,
+    resource_errors::VRError,
+};
 
 /// Represents an analyzed/parsed initial message which triggered the job to run (aka. job task)
 /// Holds an ordered list of elements, which are pieces of the original job task string with parsed metadata about them
@@ -74,12 +79,12 @@ impl ParsedJobTask {
     }
 
     /// Returns a copy of the elements of the job task, filtered by the given parameters
-    pub fn get_elements_filtered(&self, exclude_text: bool, exclude_code_blocks: bool) -> Vec<JobTaskElement> {
+    pub fn get_elements_filtered(&self, remove_text: bool, remove_code_blocks: bool) -> Vec<JobTaskElement> {
         self.elements
             .iter()
             .filter_map(|element| match element {
-                JobTaskElement::Text(_) if !exclude_text => Some(element.clone()),
-                JobTaskElement::CodeBlock(_) if !exclude_code_blocks => Some(element.clone()),
+                JobTaskElement::Text(_) if !remove_text => Some(element.clone()),
+                JobTaskElement::CodeBlock(_) if !remove_code_blocks => Some(element.clone()),
                 _ => None,
             })
             .collect()
@@ -104,9 +109,28 @@ impl ParsedJobTask {
     }
 
     /// Returns a string representation of the job task, filtered by the given parameters
-    pub fn get_output_string_filtered(&self, exclude_text: bool, exclude_code_blocks: bool) -> String {
-        let filtered_elements = self.get_elements_filtered(exclude_text, exclude_code_blocks);
+    pub fn get_output_string_filtered(&self, remove_text: bool, remove_code_blocks: bool) -> String {
+        let filtered_elements = self.get_elements_filtered(remove_text, remove_code_blocks);
         ParsedJobTask::new_from_elements(filtered_elements).get_output_string()
+    }
+
+    /// Generates an embedding for the job task using it's entire output string, with a default empty id
+    pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Embedding, VRError> {
+        let embedding = generator.generate_embedding_default(&self.get_output_string()).await?;
+        Ok(embedding)
+    }
+
+    /// Generates an embedding for the job task using the filtered output string, with a default empty id
+    pub async fn generate_embedding_filtered(
+        &self,
+        generator: RemoteEmbeddingGenerator,
+        remove_text: bool,
+        remove_code_blocks: bool,
+    ) -> Result<Embedding, VRError> {
+        let embedding = generator
+            .generate_embedding_default(&self.get_output_string_filtered(remove_text, remove_code_blocks))
+            .await?;
+        Ok(embedding)
     }
 }
 

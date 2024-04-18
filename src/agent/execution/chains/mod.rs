@@ -1,3 +1,4 @@
+pub mod chain_detection_embeddings;
 pub mod cron_creation_chain;
 pub mod cron_execution_chain;
 pub mod image_analysis_chain;
