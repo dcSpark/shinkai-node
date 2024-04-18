@@ -4,7 +4,7 @@ use crate::{
     resource_errors::VRError,
 };
 use csv::ReaderBuilder;
-use std::{collections::HashMap, io::Cursor};
+use std::io::Cursor;
 
 impl LocalFileParser {
     /// Attempts to process the provided csv file into a list of TextGroups.
