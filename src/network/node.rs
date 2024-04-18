@@ -1401,6 +1401,7 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let embedding_generator_clone = self.embedding_generator.clone();
                                             let unstructured_api_clone = self.unstructured_api.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_convert_files_and_save_to_folder(
                                                     db_clone,
@@ -1410,6 +1411,7 @@ impl Node {
                                                     encryption_secret_key_clone,
                                                     Arc::new(embedding_generator_clone),
                                                     Arc::new(unstructured_api_clone),
+                                                    ext_subscription_manager_clone,
                                                     msg,
                                                     res,
                                                 ).await;
