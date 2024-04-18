@@ -63,7 +63,6 @@ impl PartialOrd for SubscriptionWithTree {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SharedFolderInfo {
     pub path: String,
-    pub profile: String,
     pub permission: String,
     pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
@@ -881,7 +880,6 @@ impl ExternalSubscriberManager {
 
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
-                    profile: streamer_profile.clone(),
                     permission: permission_str,
                     tree,
                     subscription_requirement,
