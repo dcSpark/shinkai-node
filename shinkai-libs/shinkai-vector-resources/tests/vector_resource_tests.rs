@@ -1102,6 +1102,7 @@ async fn local_csv_metadata_parsing_test() {
     assert!(results[0].score > 0.4);
     assert!(results[0].node.get_text_content().unwrap().contains("600"));
     assert!(!results[0].node.get_text_content().unwrap().contains("{{{price:600}}}"));
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().get("price").unwrap(), "600");
 
     // Perform another vector search
     let query_string2 = "Which airline goes to Sydney?".to_string();
@@ -1111,4 +1112,5 @@ async fn local_csv_metadata_parsing_test() {
     assert!(results2[0].score > 0.4);
     assert!(results2[0].node.get_text_content().unwrap().contains("Qantas"));
     assert!(!results2[0].node.get_text_content().unwrap().contains("!{{{carry_pets:true}}}!"));
+    assert_eq!(results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(), "true");
 }
