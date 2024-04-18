@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
     node_api::APIError, node_error::NodeError,
-    subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
+    subscription_manager::external_subscriber_manager::{self, ExternalSubscriberManager}, Node,
 };
 use crate::{
     agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
@@ -1033,6 +1033,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         embedding_generator: Arc<EmbeddingGenerator>,
         unstructured_api: Arc<UnstructuredAPI>,
+        external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1187,6 +1188,12 @@ impl Node {
                     return Ok(());
                 }
             }
+        }
+
+        // We need to force ext_manager to update their cache
+        {
+            let mut ext_manager = external_subscriber_manager.lock().await;
+            ext_manager.update_shared_folders();
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());

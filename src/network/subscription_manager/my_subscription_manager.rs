@@ -23,8 +23,11 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, random_aes_encryption_key,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_resources::vector_resource::VRPath;
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -117,7 +120,11 @@ impl MySubscriptionsManager {
         name: ShinkaiName,
         folders: Vec<SharedFolderInfo>,
     ) -> Result<(), SubscriberManagerError> {
-        eprintln!("insert_shared_folder>: name: {:?}", name);
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!("Inserting shared folder: {}", name.get_node_name_string()).as_str(),
+        );
         let shared_folder_sm = SharedFoldersExternalNodeSM::new_with_folders_info(name.clone(), folders);
         let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
         external_node_shared_folders.put(name, shared_folder_sm);
@@ -254,9 +261,21 @@ impl MySubscriptionsManager {
         my_profile: String,
         folder_name: String,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Unsubscribing from shared folder: {} from {} {}",
+                folder_name, streamer_node_name.node_name, streamer_profile
+            )
+            .as_str(),
+        );
         // Check locally if I'm already subscribed to the folder using the DB
         let subscription_id = {
-            let db_lock = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()))?;
+            let db_lock = self
+                .db
+                .upgrade()
+                .ok_or(SubscriberManagerError::DatabaseError("Unable to access DB".to_string()))?;
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
             let subscription_id = SubscriptionId::new(
                 streamer_node_name.clone(),
@@ -270,6 +289,11 @@ impl MySubscriptionsManager {
                 Ok(_) => subscription_id, // Subscription exists, proceed with unsubscribe
                 Err(ShinkaiDBError::DataNotFound) => {
                     // Subscription does not exist, cannot unsubscribe
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Error,
+                        format!("Subscription does not exist: {}", subscription_id.get_unique_id()).as_str(),
+                    );
                     return Err(SubscriberManagerError::SubscriptionNotFound(
                         "Subscription does not exist.".to_string(),
                     ));
@@ -324,6 +348,11 @@ impl MySubscriptionsManager {
             )
             .await?;
 
+            shinkai_log(
+                ShinkaiLogOption::MySubscriptions,
+                ShinkaiLogLevel::Debug,
+                format!("Unsubscribed from shared folder: {}", folder_name).as_str(),
+            );
             Ok(())
         } else {
             // Handle the case where the identity manager is no longer available
@@ -339,6 +368,15 @@ impl MySubscriptionsManager {
         folder_name: String,
         payment: SubscriptionPayment,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Subscribing to shared folder: {} from {} {}",
+                folder_name, streamer_node_name.node_name, streamer_profile
+            )
+            .as_str(),
+        );
         // Check locally if I'm already subscribed to the folder using the DB
         if let Some(db_lock) = self.db.upgrade() {
             let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
@@ -398,7 +436,7 @@ impl MySubscriptionsManager {
 
             // Update local status
             let new_subscription = ShinkaiSubscription::new(
-                folder_name,
+                folder_name.clone(),
                 streamer_node_name,
                 streamer_profile,
                 self.node_name.clone(),
@@ -424,6 +462,12 @@ impl MySubscriptionsManager {
             )
             .await?;
 
+            shinkai_log(
+                ShinkaiLogOption::MySubscriptions,
+                ShinkaiLogLevel::Debug,
+                format!("Subscribed to shared folder: {}", folder_name).as_str(),
+            );
+
             Ok(())
         } else {
             // Handle the case where the identity manager is no longer available
@@ -439,10 +483,19 @@ impl MySubscriptionsManager {
         action: MessageSchemaType,
         payload: SubscriptionGenericResponse,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Updating subscription status for {} {} with action {:?}",
+                streamer_node_name.node_name, streamer_profile, action
+            )
+            .as_str(),
+        );
         let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
         let subscription_id = SubscriptionId::new(
-            streamer_node_name,
-            streamer_profile,
+            streamer_node_name.clone(),
+            streamer_profile.clone(),
             payload.shared_folder.clone(),
             my_node_name,
             my_profile,
@@ -455,7 +508,7 @@ impl MySubscriptionsManager {
                     .db
                     .upgrade()
                     .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
-                let subscription_result = db.get_my_subscription(&subscription_id.get_unique_id())?;
+                let subscription_result = db.get_my_subscription(subscription_id.get_unique_id())?;
                 if subscription_result.state != ShinkaiSubscriptionStatus::SubscriptionRequested {
                     // return error
                     return Err(SubscriberManagerError::SubscriptionFailed(
@@ -470,6 +523,15 @@ impl MySubscriptionsManager {
                 // For other actions, do nothing
             }
         }
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Subscription status updated for {} {} with action {:?}",
+                streamer_node_name.node_name, streamer_profile, action
+            )
+            .as_str(),
+        );
         Ok(())
     }
 
@@ -481,6 +543,15 @@ impl MySubscriptionsManager {
         subscriber_profile: String,
         subscription_id: String,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Sharing local shared folder copy state with {} {}",
+                subscriber_node.node_name, subscriber_profile
+            )
+            .as_str(),
+        );
         let mut subscription_folder_path: Option<String> = None;
         let mut subscription_shared_path: String;
         {
@@ -518,28 +589,52 @@ impl MySubscriptionsManager {
             SubscriberManagerError::SubscriptionNotFound("Subscription folder path not found".to_string())
         })?;
 
-        let full_requester =
+        let full_subscriber =
             ShinkaiName::from_node_and_profile_names(subscriber_node.clone().node_name, subscriber_profile.clone())?;
-        let full_origin =
-            ShinkaiName::from_node_and_profile_names(streamer_node.clone().node_name, streamer_profile.clone())?;
 
-        let result = FSEntryTreeGenerator::shared_folders_to_tree(
-            self.vector_fs.clone(),
-            full_origin,
-            full_requester,
-            folder_path,
-        )
-        .await
-        .or_else(|e| {
-            if e.to_string().contains("Supplied path does not exist in the VectorFS") {
-                Ok(FSEntryTree::new_empty())
-            } else {
-                Err(SubscriberManagerError::OperationFailed(e.to_string()))
-            }
-        });
+        // Acquire VectorFS
+        let vector_fs = self
+            .vector_fs
+            .upgrade()
+            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                "VectorFS instance is not available".to_string(),
+            ))?;
+
+        let vr_path =
+            VRPath::from_string(&folder_path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+        let reader_result = vector_fs
+            .new_reader(full_subscriber.clone(), vr_path, full_subscriber.clone())
+            .await;
+
+        let result = match reader_result {
+            Ok(reader) => match vector_fs.retrieve_fs_entry(&reader).await {
+                Ok(entry) => match FSEntryTreeGenerator::fs_entry_to_tree(entry) {
+                    Ok(tree) => tree,
+                    Err(_) => FSEntryTree {
+                        name: "/".to_string(),
+                        path: folder_path.clone(),
+                        last_modified: Utc::now(),
+                        children: HashMap::new(),
+                    },
+                },
+                Err(_) => FSEntryTree {
+                    name: "/".to_string(),
+                    path: folder_path.clone(),
+                    last_modified: Utc::now(),
+                    children: HashMap::new(),
+                },
+            },
+            Err(_) => FSEntryTree {
+                name: "/".to_string(),
+                path: folder_path.clone(),
+                last_modified: Utc::now(),
+                children: HashMap::new(),
+            },
+        };
 
         let result_json =
-            serde_json::to_string(&result?).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+            serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
@@ -555,7 +650,7 @@ impl MySubscriptionsManager {
                 .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
 
             match Node::process_symmetric_key(symmetric_sk.clone(), db).await {
-                Ok(hash_hex) => {
+                Ok(_hash_hex) => {
                     // Prepare metadata hashmap
                     let mut metadata = std::collections::HashMap::new();
                     metadata.insert("folder_state".to_string(), result_json);
@@ -567,8 +662,18 @@ impl MySubscriptionsManager {
                         status: SubscriptionResponseStatus::Success,
                         shared_folder: subscription_shared_path,
                         error: None,
-                        metadata: Some(metadata),
+                        metadata: Some(metadata.clone()),
                     };
+
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Debug,
+                        format!(
+                            "Shared local shared folder copy state to {} with metadata: {:?}",
+                            streamer_node.node_name, metadata
+                        )
+                        .as_str(),
+                    );
 
                     let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
                         response,
@@ -576,7 +681,7 @@ impl MySubscriptionsManager {
                         clone_signature_secret_key(&self.my_signature_secret_key),
                         receiver_public_key,
                         subscriber_node.get_node_name_string(),
-                        subscriber_profile,
+                        subscriber_profile.clone(),
                         streamer_node.get_node_name_string(),
                         streamer_profile,
                     )
@@ -601,7 +706,15 @@ impl MySubscriptionsManager {
         } else {
             return Err(SubscriberManagerError::IdentityManagerUnavailable);
         }
-
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Shared local shared folder copy state with {} {}",
+                subscriber_node.node_name, subscriber_profile
+            )
+            .as_str(),
+        );
         Ok(())
     }
 
@@ -612,6 +725,15 @@ impl MySubscriptionsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Sending message to peer: {}",
+                receiver_identity.full_identity_name.extract_node()
+            )
+            .as_str(),
+        );
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
             SubscriberManagerError::AddressUnavailable(
@@ -646,7 +768,7 @@ impl MySubscriptionsManager {
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         thread_number: usize,
-        process_job: impl Fn(
+        _process_job: impl Fn(
             ShinkaiSubscription,
             Weak<ShinkaiDB>,
             Weak<VectorFS>,
@@ -684,8 +806,8 @@ impl MySubscriptionsManager {
     // Correct the return type of the function to match the expected type
     fn process_subscription_job_message_queued(
         job: ShinkaiSubscription,
-        db: Weak<ShinkaiDB>,
-        vector_fs: Weak<VectorFS>,
+        _db: Weak<ShinkaiDB>,
+        _vector_fs: Weak<VectorFS>,
     ) -> Box<dyn std::future::Future<Output = ()> + Send + 'static> {
         Box::new(async move {
             // Placeholder logic for processing a queued job message
