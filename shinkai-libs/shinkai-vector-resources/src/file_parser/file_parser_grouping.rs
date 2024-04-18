@@ -188,17 +188,7 @@ impl ShinkaiFileParser {
         let new_name = grouped_text.text.clone();
         let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
 
-        let metadata = if grouped_text.metadata.is_empty() {
-            // TODO: Unstructured parser is wired with page numbers, should be removed in the future
-            let mut metadata = HashMap::new();
-            metadata.insert(
-                ShinkaiFileParser::page_numbers_metadata_key(),
-                grouped_text.format_page_num_string(),
-            );
-            metadata
-        } else {
-            grouped_text.metadata.clone()
-        };
+        let metadata = grouped_text.metadata.clone();
 
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
     }
