@@ -103,6 +103,15 @@ pub struct OnchainIdentity {
 
 impl OnchainIdentity {
     pub async fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
+        shinkai_log(
+            ShinkaiLogOption::CryptoIdentity,
+            ShinkaiLogLevel::Info,
+            format!(
+                "Getting first address for identity: {} with addresses: {:?}",
+                self.shinkai_identity, self.address_or_proxy_nodes
+            )
+            .as_str(),
+        );
         if let Some(first_address) = self.address_or_proxy_nodes.first() {
             let address = first_address.replace("http://", "").replace("https://", "");
 
