@@ -114,11 +114,12 @@ pub enum JobTaskElement {
 
 impl JobTaskElement {
     /// Returns the length of the underlying text or code block
-    pub fn len(&self) -> usize {
+    pub fn content_len(&self) -> usize {
         match self {
-            JobTaskElement::Text(text_element) => text_element.len(),
-            JobTaskElement::CodeBlock(code_block_element) => code_block_element.len(),
-            JobTaskElement::ListPoint(list_point_element) => list_point_element.len(),
+            JobTaskElement::Text(text_element) => text_element.content_len(),
+            JobTaskElement::CodeBlock(code_block_element) => code_block_element.content_len(),
+            JobTaskElement::ListPoint(list_point_element) => list_point_element.content_len(),
+            JobTaskElement::List(list_element) => list_element.content_len(),
         }
     }
 }
@@ -136,7 +137,7 @@ impl TextTaskElement {
     }
 
     /// Returns the length of the text
-    pub fn len(&self) -> usize {
+    pub fn content_len(&self) -> usize {
         self.content.len()
     }
 }
@@ -158,7 +159,7 @@ impl CodeBlockTaskElement {
     }
 
     /// Returns the length of the code block
-    pub fn len(&self) -> usize {
+    pub fn content_len(&self) -> usize {
         self.content.len()
     }
 
@@ -181,8 +182,35 @@ impl ListPoint {
     }
 
     /// Returns the length of the list point content
-    pub fn len(&self) -> usize {
+    pub fn content_len(&self) -> usize {
         self.content.len()
+    }
+
+    /// Returns a string representation of the code block
+    pub fn get_output_string(&self) -> String {
+        format!("\n- {}", self.content)
+    }
+}
+
+/// Represents a list item in a job task
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListTaskElement {
+    pub list_points: Vec<ListPoint>,
+}
+
+impl ListTaskElement {
+    /// Creates a new `ListTaskElement`
+    pub fn new(content: String) -> Self {
+        ListPoint { content }
+    }
+
+    /// Returns the number of list points in the list
+    pub fn len(&self) -> usize {
+        self.list_points.len()
+    }
+    /// Returns the length of the list point content
+    pub fn content_len(&self) -> usize {
+        self.list_points.iter().map(|list_point| list_point.content_len()).sum()
     }
 
     /// Returns a string representation of the code block
