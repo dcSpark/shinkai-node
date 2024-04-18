@@ -38,7 +38,6 @@ impl LocalFileParser {
                         current_text.clone(),
                         current_metadata.clone(),
                         vec![],
-                        vec![],
                         None,
                     ));
                     current_text.clear();
@@ -55,7 +54,7 @@ impl LocalFileParser {
 
                     for chunk in chunks {
                         let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-                        text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], vec![], None));
+                        text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
                     }
                 } else {
                     current_text = parsed_line;
@@ -72,13 +71,7 @@ impl LocalFileParser {
 
         // Don't forget to add the last accumulated text as a TextGroup if it's not empty
         if !current_text.is_empty() {
-            text_groups.push(TextGroup::new(
-                current_text,
-                current_metadata.clone(),
-                vec![],
-                vec![],
-                None,
-            ));
+            text_groups.push(TextGroup::new(current_text, current_metadata.clone(), vec![], None));
         }
 
         text_groups

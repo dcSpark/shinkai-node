@@ -26,19 +26,19 @@ impl LocalFileParser {
 
                 if let Some(first_chunk) = chunks.first() {
                     let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&first_chunk);
-                    let mut line_group = TextGroup::new(parsed_chunk.to_owned(), metadata, vec![], vec![], None);
+                    let mut line_group = TextGroup::new(parsed_chunk.to_owned(), metadata, vec![], None);
 
                     if chunks.len() > 1 {
                         for chunk in chunks.into_iter().skip(1) {
                             let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-                            line_group.push_sub_group(TextGroup::new(parsed_chunk, metadata, vec![], vec![], None));
+                            line_group.push_sub_group(TextGroup::new(parsed_chunk, metadata, vec![], None));
                         }
                     }
 
                     text_groups.push(line_group);
                 }
             } else {
-                text_groups.push(TextGroup::new(parsed_line, metadata, vec![], vec![], None));
+                text_groups.push(TextGroup::new(parsed_line, metadata, vec![], None));
             }
         }
 
