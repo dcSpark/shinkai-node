@@ -607,7 +607,7 @@ impl NetworkJobManager {
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Error,
-                &format!("{} > Failed to get sender identity: {:?}", receiver_address, e),
+                &format!("{} > Failed to get sender identity: {:?} {:?}", sender_profile_name_string, receiver_address, e),
             );
             return Ok(());
         }
