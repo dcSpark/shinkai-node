@@ -44,9 +44,16 @@ impl LocalFileParser {
                 }
                 if parsed_line.len() as u64 > max_node_text_size {
                     // If the line itself exceeds max_node_text_size, split it into chunks
-                    let chunks = ShinkaiFileParser::split_into_chunks(&parsed_line, max_node_text_size as usize);
+                    // Split the unparsed line into chunks and parse metadata in each chunk
+                    let chunks = if metadata.is_empty() {
+                        ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
+                    } else {
+                        ShinkaiFileParser::split_into_chunks_with_metadata(&line, max_node_text_size as usize)
+                    };
+
                     for chunk in chunks {
-                        text_groups.push(TextGroup::new(chunk, metadata.clone(), vec![], vec![], None));
+                        let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                        text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], vec![], None));
                     }
                 } else {
                     current_text = parsed_line;

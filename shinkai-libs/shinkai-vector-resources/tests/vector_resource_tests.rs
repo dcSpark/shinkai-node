@@ -1053,11 +1053,7 @@ async fn local_txt_metadata_parsing_test() {
         .unwrap()
         .contains("2024-04-17T23:41:30Z"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
-    assert!(!results[0]
-        .node
-        .get_text_content()
-        .unwrap()
-        .contains("pg_nums"));
+    assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
 
     // Perform another vector search

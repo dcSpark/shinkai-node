@@ -8,6 +8,9 @@ use super::file_parser_types::TextGroup;
 use crate::vector_resource::SourceFileType;
 
 impl ShinkaiFileParser {
+    pub const PURE_METADATA_REGEX: &'static str = r"!\{\{\{([^:}]+):((?:[^}]*\}{0,2}[^}]+))\}\}\}!";
+    pub const METADATA_REGEX: &'static str = r"\{\{\{([^:}]+):((?:[^}]*\}{0,2}[^}]+))\}\}\}";
+
     /// Key of page numbers metadata
     pub fn page_numbers_metadata_key() -> String {
         "pg_nums".to_string()
@@ -153,8 +156,8 @@ impl ShinkaiFileParser {
     // Returns the parsed text and a hashmap of metadata
     pub fn parse_and_extract_metadata(input_text: &str) -> (String, HashMap<String, String>) {
         let mut metadata = HashMap::new();
-        let pure_metadata_re = Regex::new(r"!\{\{\{([\w-]+):((?:[^}]*\}{0,2}[^}]*))\}\}\}!").unwrap();
-        let replaceable_metadata_re = Regex::new(r"\{\{\{([\w-]+):((?:[^}]*\}{0,2}[^}]*))\}\}\}").unwrap();
+        let pure_metadata_re = Regex::new(Self::PURE_METADATA_REGEX).unwrap();
+        let replaceable_metadata_re = Regex::new(Self::METADATA_REGEX).unwrap();
 
         let pure_result = pure_metadata_re.replace_all(input_text, |caps: &Captures| {
             Self::extract_metadata_from_capture(&mut metadata, caps, true)
@@ -170,8 +173,16 @@ impl ShinkaiFileParser {
     // Helper function to extract metadata from a capture
     // is_pure is used to determine if the metadata should be removed from the text
     fn extract_metadata_from_capture(metadata: &mut HashMap<String, String>, caps: &Captures, is_pure: bool) -> String {
-        let key = caps.get(1).unwrap().as_str();
-        let value = caps.get(2).unwrap().as_str();
+        // In case extracting the capture groups fails, return the original text which is guaranteed to be valid
+        let key = match caps.get(1) {
+            Some(key) => key.as_str(),
+            None => return caps.get(0).unwrap().as_str().to_string(),
+        };
+
+        let value = match caps.get(2) {
+            Some(value) => value.as_str(),
+            None => return caps.get(0).unwrap().as_str().to_string(),
+        };
 
         // 1. Verify supported key value constraints and ignore invalid ones
         // 2. Replace any matched metadata or remove if it's pure
@@ -184,7 +195,7 @@ impl ShinkaiFileParser {
 
                 match datetime {
                     Ok(_) => {
-                        metadata.insert(key.to_string(), value.to_string());
+                        metadata.insert(ShinkaiFileParser::datetime_metadata_key(), value.to_string());
 
                         if is_pure {
                             "".to_string()
