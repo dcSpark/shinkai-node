@@ -9,8 +9,8 @@ use shinkai_vector_resources::vector_resource::vrkai::VRKai;
 use shinkai_vector_resources::vector_resource::vrpack::VRPack;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::{
-    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
-    VectorResourceCore, VectorResourceSearch,
+    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResourceCore,
+    VectorResourceSearch,
 };
 use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::collections::HashMap;
@@ -969,9 +969,9 @@ async fn local_csv_parsing_test() {
 #[tokio::test]
 async fn local_malformed_csv_parsing_test() {
     let malformed_csv = "\
-    Year,Make,Model,Description,Price
-    1997,Ford,E350,\"ac, abs, moon\",3000
-    1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
+        Year,Make,Model,Description,Price
+        1997,Ford,E350,\"ac, abs, moon\",3000
+        1999,Chevy,\"Venture \"\"Extended Edition\"\"\",\"\"";
 
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "cars.csv";
@@ -996,4 +996,73 @@ async fn local_malformed_csv_parsing_test() {
 
     assert!(results[0].score > 0.5);
     assert!(results[0].node.get_text_content().unwrap().contains("3000"));
+}
+
+#[tokio::test]
+async fn local_txt_metadata_parsing_test() {
+    let input_text = "\
+        This is a test content with metadata
+        timestamp: {{{timestamp:2024-04-17T23:41:30Z}}}
+        Username: {{{username:myCoolUsername}}}
+
+        Main content should remain unaffected.
+
+        Custom {{{metadata-key:metadata-value}}} should be parsed correctly.
+        
+        Likes: {{{likes:999}}}
+        Reposts: {{{reposts:99}}}
+        Replies: {{{replies:9}}}
+
+        Invalid metadata values should be ignored. {{{timestamp:br0K3n}}}
+        
+        Pure metadata should be removed.
+        !{{{pg_nums:[19, 20]}}}!
+        
+        Make this long enough to exceed max node text size and add more metadata.
+        Datetime {{{datetime:2000-01-2T02:17:59Z}}} should be parsed too.";
+
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "test_input.txt";
+    let buffer = input_text.as_bytes().to_vec();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "What is my username?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].node.get_text_content().unwrap().contains("myCoolUsername"));
+    assert!(!results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("{{{timestamp:2024-04-17T23:41:30Z}}}"));
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("2024-04-17T23:41:30Z"));
+    assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
+    assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
+    assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
+    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
+
+    // Perform another vector search
+    let query_string2 = "What is the parsed datetime?".to_string();
+    let query_embedding2 = generator.generate_embedding_default(&query_string2).await.unwrap();
+    let results2 = resource.as_trait_object().vector_search(query_embedding2, 3);
+
+    assert!(results2[0].node.get_text_content().unwrap().contains("2000"));
+    assert!(results2[0].node.metadata.as_ref().unwrap().contains_key("datetime"));
 }
