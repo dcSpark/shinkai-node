@@ -18,9 +18,6 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
-};
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -64,6 +61,7 @@ impl PartialOrd for SubscriptionWithTree {
 pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
+    pub profile: String,
     pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
 }
@@ -77,7 +75,7 @@ pub struct ExternalSubscriberManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
-    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (profile, shared_folder)
     pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
     /// and the `usize` is the last sync version of the folder. The version is a counter that increments
@@ -410,7 +408,7 @@ impl ExternalSubscriberManager {
 
             let local_shared_folder_state = {
                 let key_shared_folder = format!(
-                    "{}{}",
+                    "{}:::{}",
                     subscription_with_tree.subscription.streaming_profile, shared_folder
                 );
                 shinkai_log(
@@ -828,6 +826,27 @@ impl ExternalSubscriberManager {
         let full_streamer_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile.clone())?;
 
+         // Before proceeding, remove all keys starting with the same profile from shared_folders_trees
+         let profile_prefix = format!("{}:::", streamer_profile);
+         let keys_to_remove: Vec<String> = self.shared_folders_trees
+             .iter()
+             .filter_map(|entry| {
+                 let key = entry.key();
+                 if key.starts_with(&profile_prefix) {
+                     Some(key.clone())
+                 } else {
+                     None
+                 }
+             })
+             .collect();
+ 
+         for key in keys_to_remove {
+             self.shared_folders_trees.remove(&key);
+            // we don't remove the ephemeral keys bc they are used to
+            // check if a subscription is already sync and it could potentially reset them
+            // for a key that's getting updated later on
+         }
+
         let mut converted_results = Vec::new();
         {
             let vector_fs = self
@@ -881,11 +900,12 @@ impl ExternalSubscriberManager {
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
                     permission: permission_str,
+                    profile: streamer_profile.clone(),
                     tree,
                     subscription_requirement,
                 };
 
-                let shared_folder_key = format!("{}{}", streamer_profile, path_str);
+                let shared_folder_key = format!("{}:::{}", streamer_profile, path_str);
 
                 // Check if the value of shared_folders_trees is different than the new value inserted
                 let should_update_version = self
@@ -1127,7 +1147,7 @@ impl ExternalSubscriberManager {
         }
 
         if let Some(profile_name) = requester_shinkai_identity.get_profile_name_string() {
-            let key_shared_folder = format!("{}{}", profile_name, path);
+            let key_shared_folder = format!("{}:::{}", profile_name, path);
             self.shared_folders_trees.remove(&key_shared_folder);
             Ok(true)
         } else {
