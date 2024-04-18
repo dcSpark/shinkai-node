@@ -4,7 +4,6 @@ use dashmap::DashMap;
 use ed25519_dalek::VerifyingKey;
 use ethers::abi::Abi;
 use ethers::prelude::*;
-use hex;
 use lazy_static::lazy_static;
 use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
@@ -18,6 +17,7 @@ use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::{Duration, UNIX_EPOCH};
+use tokio::net::lookup_host;
 use tokio::task;
 use x25519_dalek::PublicKey;
 
@@ -102,11 +102,18 @@ pub struct OnchainIdentity {
 }
 
 impl OnchainIdentity {
-    pub fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
+    pub async fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
+        shinkai_log(
+            ShinkaiLogOption::CryptoIdentity,
+            ShinkaiLogLevel::Info,
+            format!(
+                "Getting first address for identity: {} with addresses: {:?}",
+                self.shinkai_identity, self.address_or_proxy_nodes
+            )
+            .as_str(),
+        );
         if let Some(first_address) = self.address_or_proxy_nodes.first() {
-            let address = first_address
-                .replace("http://", "")
-                .replace("https://", "");
+            let address = first_address.replace("http://", "").replace("https://", "");
 
             let address = if address.starts_with("localhost:") {
                 address.replacen("localhost", "127.0.0.1", 1)
@@ -114,7 +121,20 @@ impl OnchainIdentity {
                 address.to_string()
             };
 
-            address.parse().map_err(ShinkaiRegistryError::from)
+            // Try to parse the address directly first
+            match address.parse::<SocketAddr>() {
+                Ok(addr) => Ok(addr),
+                Err(_) => {
+                    // If direct parsing fails, attempt DNS resolution
+                    let resolved_addresses = lookup_host(address)
+                        .await
+                        .map_err(|e| ShinkaiRegistryError::CustomError(format!("DNS resolution error: {}", e)))?;
+                    resolved_addresses
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| ShinkaiRegistryError::CustomError("No address resolved".to_string()))
+                }
+            }
         } else {
             Err(ShinkaiRegistryError::CustomError("No address available".to_string()))
         }

@@ -10,15 +10,14 @@ use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::{Arc, Weak};
-
 pub struct FSEntryTreeGenerator {}
 
 impl FSEntryTreeGenerator {
     /// Builds an FSEntryTree for a profile's VectorFS starting at a specific path
     pub async fn shared_folders_to_tree(
         vector_fs: Weak<VectorFS>,
-        full_origin_profile_subidentity: ShinkaiName,
-        full_requester_profile_subidentity: ShinkaiName,
+        full_streamer_profile_subidentity: ShinkaiName,
+        full_subscriber_profile_subidentity: ShinkaiName,
         path: String,
     ) -> Result<FSEntryTree, SubscriberManagerError> {
         // Acquire VectorFS
@@ -32,9 +31,9 @@ impl FSEntryTreeGenerator {
         // Use the full origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
         let perms_reader = vector_fs
             .new_reader(
-                full_origin_profile_subidentity.clone(),
+                full_streamer_profile_subidentity.clone(),
                 vr_path,
-                full_origin_profile_subidentity.clone(),
+                full_streamer_profile_subidentity.clone(),
             )
             .await
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
@@ -48,9 +47,9 @@ impl FSEntryTreeGenerator {
         for (path, _permission) in filtered_results {
             // Now use the requester subidentity for actual perm checking. Required for whitelist perms in the future.
             if let Ok(reader) = vector_fs.new_reader(
-                full_requester_profile_subidentity.clone(),
+                full_subscriber_profile_subidentity.clone(),
                 path.clone(),
-                full_origin_profile_subidentity.clone(),
+                full_streamer_profile_subidentity.clone(),
             ).await {
                 let fs_entry = vector_fs.retrieve_fs_entry(&reader).await?;
 
@@ -196,6 +195,27 @@ impl FSEntryTreeGenerator {
             }
         }
         filtered_results
+    }
+
+    pub fn fs_entry_to_tree(entry: FSEntry) -> Result<FSEntryTree, SubscriberManagerError> {
+        match entry {
+            FSEntry::Folder(fs_folder) => {
+                // Use the existing process_folder function to correctly handle folders and their children
+                let folder_tree = Self::process_folder(&fs_folder, &fs_folder.path.clone().format_to_string())?;
+                Ok(folder_tree)
+            },
+            FSEntry::Item(fs_item) => {
+                // Process items as before, since they do not have children
+                let item_tree = FSEntryTree {
+                    name: fs_item.name.clone(),
+                    path: fs_item.path.clone().format_to_string(), // Use the item's path directly
+                    last_modified: fs_item.last_written_datetime,
+                    children: HashMap::new(), // Items do not have children
+                };
+                Ok(item_tree)
+            },
+            _ => Err(SubscriberManagerError::InvalidRequest("Unsupported FSEntry type".to_string())),
+        }
     }
 }
 
