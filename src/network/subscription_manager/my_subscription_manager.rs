@@ -492,8 +492,8 @@ impl MySubscriptionsManager {
         );
         let my_node_name = ShinkaiName::new(self.node_name.get_node_name_string())?;
         let subscription_id = SubscriptionId::new(
-            streamer_node_name,
-            streamer_profile,
+            streamer_node_name.clone(),
+            streamer_profile.clone(),
             payload.shared_folder.clone(),
             my_node_name,
             my_profile,

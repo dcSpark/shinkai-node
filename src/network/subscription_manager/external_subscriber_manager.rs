@@ -63,6 +63,7 @@ impl PartialOrd for SubscriptionWithTree {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SharedFolderInfo {
     pub path: String,
+    pub profile: String,
     pub permission: String,
     pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
@@ -381,15 +382,15 @@ impl ExternalSubscriberManager {
     #[allow(clippy::too_many_arguments)]
     fn process_subscription_job_message_queued(
         subscription_with_tree: SubscriptionWithTree,
-        db: Weak<ShinkaiDB>,
+        _db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
-        node_name: ShinkaiName,
-        my_signature_secret_key: SigningKey,
-        my_encryption_secret_key: EncryptionStaticKey,
+        _node_name: ShinkaiName,
+        _my_signature_secret_key: SigningKey,
+        _my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
-        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
-        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        _subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        _shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
@@ -797,6 +798,15 @@ impl ExternalSubscriberManager {
         requester_profile: String,
         path: String,
     ) -> Result<Vec<SharedFolderInfo>, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "ExternalSubscriberManager::available_shared_folders for streamer_profile {:?} and path {:?}",
+                streamer_profile, path
+            )
+            .as_str(),
+        );
         if streamer_profile.is_empty() {
             return Err(SubscriberManagerError::InvalidRequest(
                 "Streamer profile cannot be empty".to_string(),
@@ -860,6 +870,7 @@ impl ExternalSubscriberManager {
 
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
+                    profile: streamer_profile.clone(),
                     permission: permission_str,
                     tree,
                     subscription_requirement,
@@ -886,6 +897,15 @@ impl ExternalSubscriberManager {
                 self.shared_folders_trees.insert(shared_folder_key, result);
             }
         }
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "ExternalSubscriberManager::available_shared_folders for streamer_profile {:?} and path {:?} converted_results #: {:?}",
+                streamer_profile, path, converted_results.len()
+            )
+            .as_str(),
+        );
 
         Ok(converted_results)
     }
@@ -896,6 +916,15 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "update_shareable_folder_requirements> path: {:?}, requester_shinkai_identity: {:?}, subscription_requirement: {:?}",
+                path, requester_shinkai_identity, subscription_requirement
+            )
+            .as_str(),
+        );
         let vector_fs = self
             .vector_fs
             .upgrade()
@@ -927,6 +956,15 @@ impl ExternalSubscriberManager {
         db.set_folder_requirements(&path, subscription_requirement)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "update_shareable_folder_requirements> set_folder_requirements result: {:?}",
+                result
+            )
+            .as_str(),
+        );
         Ok(true)
     }
 
@@ -936,6 +974,15 @@ impl ExternalSubscriberManager {
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
     ) -> Result<bool, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "create_shareable_folder> path: {:?}, requester_shinkai_identity: {:?}, subscription_requirement: {:?}",
+                path, requester_shinkai_identity, subscription_requirement
+            )
+            .as_str(),
+        );
         {
             let vector_fs = self
                 .vector_fs
@@ -982,6 +1029,12 @@ impl ExternalSubscriberManager {
             );
             result?
         }
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!("Create shareable folder successful: {:?}", path).as_str(),
+        );
+
         {
             // Assuming we have validated the admin and permissions, we proceed to update the DB
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
@@ -1015,6 +1068,11 @@ impl ExternalSubscriberManager {
         path: String,
         requester_shinkai_identity: ShinkaiName,
     ) -> Result<bool, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!("Unsharing folder: {:?}", path).as_str(),
+        );
         {
             let vector_fs = self
                 .vector_fs
@@ -1082,6 +1140,15 @@ impl ExternalSubscriberManager {
         shared_folder: String,
         subscription_requirement: SubscriptionPayment,
     ) -> Result<bool, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "subscribe_to_shared_folder> requester_shinkai_identity: {:?}, streamer_shinkai_identity: {:?}, shared_folder: {:?}, subscription_requirement: {:?}",
+                requester_shinkai_identity, streamer_shinkai_identity, shared_folder, subscription_requirement
+            )
+            .as_str(),
+        );
         // Validate that the requester actually did the alleged payment
         match subscription_requirement.clone() {
             SubscriptionPayment::Free => {
@@ -1162,6 +1229,17 @@ impl ExternalSubscriberManager {
         db.add_subscriber_subscription(subscription)
             .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Info,
+            format!(
+                "Someone successfully subscribed to shared folder: {} with subscription ID: {}",
+                shared_folder,
+                subscription_id.get_unique_id()
+            )
+            .as_str(),
+        );
+
         // Check if we are in testing mode and update subscription_ids_are_sync accordingly
         if std::env::var("IS_TESTING").unwrap_or_default() == "1" {
             let subscription_id_str = subscription_id.get_unique_id().to_string();
@@ -1181,6 +1259,15 @@ impl ExternalSubscriberManager {
         streamer_shinkai_identity: ShinkaiName,
         shared_folder: String,
     ) -> Result<bool, SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "Unsubscribing from shared folder: {:?}, requester_shinkai_identity: {:?}, streamer_shinkai_identity: {:?}",
+                requester_shinkai_identity, streamer_shinkai_identity, shared_folder
+            )
+            .as_str(),
+        );
         let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
             SubscriberManagerError::IdentityProfileNotFound("Profile name not found for requester".to_string()),
         )?;
@@ -1217,6 +1304,14 @@ impl ExternalSubscriberManager {
                 let subscription_id_str = subscription_id.get_unique_id().to_string();
                 self.subscription_ids_are_sync.remove(&subscription_id_str);
 
+                shinkai_log(
+                    ShinkaiLogOption::ExtSubscriptions,
+                    ShinkaiLogLevel::Debug,
+                    &format!(
+                        "Removed subscription ID: {} from subscription_ids_are_sync",
+                        subscription_id_str
+                    ),
+                );
                 Ok(true)
             }
             Err(e) => {
@@ -1242,6 +1337,14 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Create and send request updated state for subscription ID: {}",
+                subscription_id.get_unique_id()
+            ),
+        );
         let subscription = {
             let db = db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
@@ -1294,6 +1397,14 @@ impl ExternalSubscriberManager {
             return Err(SubscriberManagerError::IdentityManagerUnavailable);
         }
 
+        shinkai_log(
+            ShinkaiLogOption::ExtSubscriptions,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "Request updated state sent for subscription ID: {}",
+                subscription_id.get_unique_id()
+            ),
+        );
         Ok(())
     }
 
@@ -1424,6 +1535,9 @@ mod tests {
             Some(10.0)
         );
         assert!(!subscription_requirement.is_free);
-        assert_eq!(subscription_requirement.folder_description, "Dummy description for testing purposes");
+        assert_eq!(
+            subscription_requirement.folder_description,
+            "Dummy description for testing purposes"
+        );
     }
 }
