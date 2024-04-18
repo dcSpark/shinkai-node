@@ -223,7 +223,7 @@ impl IdentityManager {
             .external_identity_to_profile_data(node_name.to_string())
             .await
         {
-            Ok(identity_network_manager) => match identity_network_manager.first_address() {
+            Ok(identity_network_manager) => match identity_network_manager.first_address().await {
                 Ok(first_address) => {
                     let encryption_key = match identity_network_manager.encryption_public_key() {
                         Ok(key) => key,
@@ -281,7 +281,7 @@ impl IdentityManagerTrait for IdentityManager {
                 .external_identity_to_profile_data(full_identity_name.to_string())
                 .await
             {
-                Ok(identity_network_manager) => match identity_network_manager.first_address() {
+                Ok(identity_network_manager) => match identity_network_manager.first_address().await {
                     Ok(first_address) => {
                         let encryption_key = match identity_network_manager.encryption_public_key() {
                             Ok(key) => key,
