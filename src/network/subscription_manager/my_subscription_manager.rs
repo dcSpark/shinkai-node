@@ -26,6 +26,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_resources::vector_resource::VRPath;
 use std::env;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -587,28 +588,28 @@ impl MySubscriptionsManager {
             SubscriberManagerError::SubscriptionNotFound("Subscription folder path not found".to_string())
         })?;
 
-        let full_requester =
+        let full_subscriber =
             ShinkaiName::from_node_and_profile_names(subscriber_node.clone().node_name, subscriber_profile.clone())?;
-        let full_origin =
-            ShinkaiName::from_node_and_profile_names(streamer_node.clone().node_name, streamer_profile.clone())?;
+        
+        // Acquire VectorFS
+        let vector_fs = self
+            .vector_fs
+            .upgrade()
+            .ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                "VectorFS instance is not available".to_string(),
+            ))?;
 
-        let result = FSEntryTreeGenerator::shared_folders_to_tree(
-            self.vector_fs.clone(),
-            full_origin,
-            full_requester,
-            folder_path,
-        )
-        .await
-        .or_else(|e| {
-            if e.to_string().contains("Supplied path does not exist in the VectorFS") {
-                Ok(FSEntryTree::new_empty())
-            } else {
-                Err(SubscriberManagerError::OperationFailed(e.to_string()))
-            }
-        });
+        let vr_path = VRPath::from_string(&folder_path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+
+        let reader = vector_fs
+            .new_reader(full_subscriber.clone(), vr_path, full_subscriber.clone())
+            .await?;
+
+        let result = vector_fs.retrieve_fs_entry(&reader).await?;
+        let result = FSEntryTreeGenerator::fs_entry_to_tree(result)?;
 
         let result_json =
-            serde_json::to_string(&result?).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
+            serde_json::to_string(&result).map_err(|e| SubscriberManagerError::OperationFailed(e.to_string()))?;
         if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_lock.lock().await;
             let standard_identity = identity_manager
@@ -624,7 +625,7 @@ impl MySubscriptionsManager {
                 .ok_or(SubscriberManagerError::DatabaseError("DB not available".to_string()))?;
 
             match Node::process_symmetric_key(symmetric_sk.clone(), db).await {
-                Ok(hash_hex) => {
+                Ok(_hash_hex) => {
                     // Prepare metadata hashmap
                     let mut metadata = std::collections::HashMap::new();
                     metadata.insert("folder_state".to_string(), result_json);
@@ -636,8 +637,18 @@ impl MySubscriptionsManager {
                         status: SubscriptionResponseStatus::Success,
                         shared_folder: subscription_shared_path,
                         error: None,
-                        metadata: Some(metadata),
+                        metadata: Some(metadata.clone()),
                     };
+
+                    shinkai_log(
+                        ShinkaiLogOption::MySubscriptions,
+                        ShinkaiLogLevel::Debug,
+                        format!(
+                            "Shared local shared folder copy state to {} with metadata: {:?}",
+                            streamer_node.node_name, metadata
+                        )
+                        .as_str(),
+                    );
 
                     let msg_request_subscription = ShinkaiMessageBuilder::vecfs_share_current_shared_folder_state(
                         response,
