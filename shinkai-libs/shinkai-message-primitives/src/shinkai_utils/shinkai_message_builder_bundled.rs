@@ -1,18 +1,12 @@
-use crate::shinkai_utils::job_scope::JobScope;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use crate::{schemas::shinkai_name::ShinkaiName, shinkai_utils::job_scope::JobScope};
+use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{
-        agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
-        shinkai_time::ShinkaiStringTime,
-    },
+    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
-        shinkai_message::{
-            ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
-            ShinkaiVersion,
-        },
+        shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
             JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
@@ -25,12 +19,12 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
+    encryption::unsafe_deterministic_encryption_keypair,
     shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
-    signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
 impl ShinkaiMessageBuilder {
+    #[allow(dead_code)]
     pub fn ack_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -46,6 +40,7 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(dead_code)]
     pub fn ping_pong_message(
         message: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -65,6 +60,37 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn change_node_name(
+        new_name: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        node_sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let new_name = ShinkaiName::new(new_name).map_err(|_| "Failed to create new name")?;
+        ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .message_raw_content(new_name.node_name)
+            .internal_metadata_with_schema(
+                sender_subidentity.to_string(),
+                node_receiver_subidentity.clone(),
+                "".to_string(),
+                MessageSchemaType::ChangeNodesName,
+                EncryptionMethod::None,
+                None,
+            )
+            .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+            .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
+            .build()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn job_creation(
         scope: JobScope,
         is_hidden: bool,
@@ -97,6 +123,8 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn job_message(
         job_id: String,
         content: String,
@@ -138,6 +166,7 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(dead_code)]
     pub fn job_message_from_agent(
         job_id: String,
         content: String,
@@ -181,6 +210,7 @@ impl ShinkaiMessageBuilder {
         .build()
     }
 
+    #[allow(dead_code)]
     pub fn terminate_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -196,6 +226,8 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn request_code_registration(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -220,6 +252,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn use_code_registration_for_profile(
         profile_encryption_sk: EncryptionStaticKey,
         profile_signature_sk: SigningKey,
@@ -258,6 +292,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn use_code_registration_for_device(
         my_device_encryption_sk: EncryptionStaticKey,
         my_device_signature_sk: SigningKey,
@@ -301,6 +337,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn initial_registration_with_no_code_for_device(
         my_device_encryption_sk: EncryptionStaticKey,
         my_device_signature_sk: SigningKey,
@@ -348,6 +386,8 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn create_files_inbox_with_sym_key(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -377,6 +417,8 @@ impl ShinkaiMessageBuilder {
         .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn get_all_inboxes_for_profile(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -405,6 +447,8 @@ impl ShinkaiMessageBuilder {
         .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -435,6 +479,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn get_last_unread_messages_from_inbox(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -465,6 +511,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn request_add_agent(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -488,6 +536,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn read_up_to_time(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -513,6 +563,8 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn create_custom_shinkai_message_to_node<T: Serialize>(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
@@ -546,6 +598,8 @@ impl ShinkaiMessageBuilder {
         .build()
     }
 
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn error_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,

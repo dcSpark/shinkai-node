@@ -2122,6 +2122,7 @@ impl Node {
         Ok(hash_hex)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_get_filenames_in_inbox(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -2270,11 +2271,6 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
-        // TODO: check if name is valid and exists in the blockchain
-        // Send message back to the API
-        // 1 sec later? panic! and exit the program
-        // Validate the message
-
         let validation_result = Self::validate_message(
             encryption_secret_key.clone(),
             identity_manager.clone(),
@@ -2349,6 +2345,7 @@ impl Node {
         // Write to .secret file
         match update_global_identity_name(new_node_name.get_node_name_string().as_str()) {
             Ok(_) => {
+                eprintln!("Node name changed successfully. Restarting server...");
                 let _ = res.send(Ok(())).await;
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 panic!("Node name changed successfully. Restarting server...");
