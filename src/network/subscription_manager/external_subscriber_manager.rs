@@ -349,12 +349,16 @@ impl ExternalSubscriberManager {
                 }
                 // Now we send requests to the subscribers to get their current state
                 for subscription_id in post_filtered_subscription_ids.clone() {
-                    // print node name
-                    eprintln!(
-                        ">> (process_subscription_request_state_updates) Sending request to subscriber: {:?}",
-                        subscription_id.get_unique_id().to_string()
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Debug,
+                        format!(
+                            "Sending request to subscriber: {:?} from: {:?}",
+                            subscription_id.get_unique_id().to_string(),
+                            node_name
+                        )
+                        .as_str(),
                     );
-                    eprintln!("Node name: {:?}", node_name);
                     let _ = Self::create_and_send_request_updated_state(
                         subscription_id,
                         db.clone(),
@@ -468,8 +472,6 @@ impl ExternalSubscriberManager {
 
                 let vr_path_shared_folder = VRPath::from_string(&shared_folder)
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-
-                println!("Shared folder path: {}", vr_path_shared_folder);
 
                 // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
                 let subscription_id = subscription_with_tree.subscription.subscription_id.clone();
