@@ -445,6 +445,15 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Local shared folder state: {:?}", local_shared_folder_state).as_str(),
             );
+            shinkai_log(
+                ShinkaiLogOption::ExtSubscriptions,
+                ShinkaiLogLevel::Debug,
+                format!(
+                    "Subscriber folder state: {:?}",
+                    subscription_with_tree.subscriber_folder_tree
+                )
+                .as_str(),
+            );
             // Calculate diff
             let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
