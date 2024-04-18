@@ -240,6 +240,48 @@ impl RemoteEmbeddingGenerator {
         input_strings: Vec<String>,
         ids: Vec<String>,
     ) -> Result<Vec<Embedding>, VRError> {
+        if input_strings.is_empty() {
+            return Err(VRError::RequestFailed(
+                "Cannot generate embeddings for empty input strings".to_string(),
+            ));
+        }
+
+        // Define the maximum number of input strings to process in a single batch.
+        const MAX_BATCH_SIZE: usize = 32;
+
+        // Chunk both input_strings and ids
+        let input_chunks: Vec<Vec<String>> = input_strings
+            .chunks(MAX_BATCH_SIZE)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        let id_chunks: Vec<Vec<String>> = ids.chunks(MAX_BATCH_SIZE).map(|chunk| chunk.to_vec()).collect();
+
+        // Ensure we have the same number of chunks for both inputs and ids
+        if input_chunks.len() != id_chunks.len() {
+            return Err(VRError::RequestFailed(
+                "Mismatch between the number of input string chunks and id chunks".to_string(),
+            ));
+        }
+
+        // Process each pair of input and id chunks, then concatenate the results
+        let mut all_embeddings = Vec::new();
+        for (input_chunk, id_chunk) in input_chunks.into_iter().zip(id_chunks.into_iter()) {
+            let embeddings_chunk = self.internal_generate_embedding_tei(input_chunk, id_chunk).await?;
+            all_embeddings.extend(embeddings_chunk);
+        }
+
+        Ok(all_embeddings)
+    }
+
+    #[async_recursion]
+    #[cfg(feature = "native-http")]
+    /// Generates embeddings using Hugging Face's Text Embedding Interface server
+    async fn internal_generate_embedding_tei(
+        &self,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
+    ) -> Result<Vec<Embedding>, VRError> {
         // Prepare the request body
         let request_body = EmbeddingArrayRequestBody {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),
