@@ -1123,7 +1123,7 @@ async fn test_remove_code_blocks_with_parsed_job_task() {
     // Expected code blocks strings
     let expected_code_blocks1 = "```\nlet x = 10;\n```";
     let expected_code_blocks2 = "```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
-    let expected_code_blocks3 = "```\nCode Block 1\n``` ```\nCode Block 2\n``` ```\nCode Block 3\n```";
+    let expected_code_blocks3 = "```\nCode Block 1\n```\n\n```\nCode Block 2\n```\n\n```\nCode Block 3\n```";
 
     // Assert that the extracted code blocks match the expected strings
     assert_eq!(code_blocks1, expected_code_blocks1);
