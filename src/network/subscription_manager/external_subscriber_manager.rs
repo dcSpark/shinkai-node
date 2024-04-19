@@ -1567,7 +1567,7 @@ mod tests {
 
     #[test]
     fn test_convert_string_to_shared_folder_info() {
-        let json_str = r#"[{"path":"/shared_test_folder","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false, "folder_description":"Dummy description for testing purposes"}}]"#;
+        let json_str = r#"[{"path":"/shared_test_folder","profile": "main","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false,"folder_description":"Dummy description for testing purposes"}}]"#;
 
         let shared_folder_info: Vec<SharedFolderInfo> = from_str(json_str).unwrap();
 
@@ -1575,6 +1575,7 @@ mod tests {
         let folder_info = &shared_folder_info[0];
         assert_eq!(folder_info.path, "/shared_test_folder");
         assert_eq!(folder_info.permission, "Public");
+        assert_eq!(folder_info.profile, "main");
         assert!(folder_info.subscription_requirement.is_some());
         let subscription_requirement = folder_info.subscription_requirement.as_ref().unwrap();
         assert_eq!(subscription_requirement.minimum_token_delegation, Some(100));
