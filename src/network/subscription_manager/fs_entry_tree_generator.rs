@@ -223,6 +223,7 @@ impl FSEntryTreeGenerator {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use shinkai_vector_resources::vector_resource::VRPath;
 
     fn create_test_tree() -> FSEntryTree {
         let shinkai_intro_crypto = FSEntryTree {
@@ -418,5 +419,48 @@ mod tests {
             Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
             "Expected 'zeko_intro' last_modified date in differences to match the server's date"
         );
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let results = vec![];
+        let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+        assert!(filtered.is_empty(), "Expected no results for empty input");
+    }
+
+    #[test]
+    fn test_no_subpaths() {
+        let results = vec![
+            (VRPath::from_string("/folder1").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder2").unwrap(), ReadPermission::Public),
+        ];
+        let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+        assert_eq!(filtered.len(), 2, "Expected all unique paths to be returned");
+    }
+
+    #[test]
+    fn test_with_subpaths() {
+        let results = vec![
+            (VRPath::from_string("/folder").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder/subfolder1").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/another_folder").unwrap(), ReadPermission::Public),
+        ];
+        let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+        assert_eq!(filtered.len(), 2, "Expected only top-level paths to be returned");
+    }
+
+    #[test]
+    fn test_with_complex_hierarchy() {
+        let results = vec![
+            (VRPath::from_string("/folder/subfolder1").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/another_folder").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/independent_folder").unwrap(), ReadPermission::Public),
+            (VRPath::from_string("/folder/subfolder3").unwrap(), ReadPermission::Public),
+        ];
+        let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+        assert_eq!(filtered.len(), 3, "Expected only distinct top-level paths to be returned");
     }
 }

@@ -18,9 +18,6 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus,
-};
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -64,6 +61,7 @@ impl PartialOrd for SubscriptionWithTree {
 pub struct SharedFolderInfo {
     pub path: String,
     pub permission: String,
+    pub profile: String,
     pub tree: FSEntryTree,
     pub subscription_requirement: Option<FolderSubscription>,
 }
@@ -77,7 +75,7 @@ pub struct ExternalSubscriberManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
-    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
+    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (profile, shared_folder)
     pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
     /// and the `usize` is the last sync version of the folder. The version is a counter that increments
@@ -410,7 +408,7 @@ impl ExternalSubscriberManager {
 
             let local_shared_folder_state = {
                 let key_shared_folder = format!(
-                    "{}{}",
+                    "{}:::{}",
                     subscription_with_tree.subscription.streaming_profile, shared_folder
                 );
                 shinkai_log(
@@ -822,11 +820,45 @@ impl ExternalSubscriberManager {
                 "Streamer profile cannot be empty".to_string(),
             ));
         };
+        // Review that path is one of the available shared folders
+        if !self
+            .shared_folders_trees
+            .contains_key(&format!("{}:::{}", streamer_profile, path))
+            && path != "/"
+        {
+            return Ok(vec![]);
+        }
 
         let full_requester_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
         let full_streamer_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile.clone())?;
+
+        // Only clean up keys for profile if path is "/"
+        // we do this just to remove folders that may had been unshared
+        if path == "/" {
+            // Before proceeding, remove all keys starting with the same profile from shared_folders_trees
+            let profile_prefix = format!("{}:::", streamer_profile);
+            let keys_to_remove: Vec<String> = self
+                .shared_folders_trees
+                .iter()
+                .filter_map(|entry| {
+                    let key = entry.key();
+                    if key.starts_with(&profile_prefix) {
+                        Some(key.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for key in keys_to_remove {
+                self.shared_folders_trees.remove(&key);
+                // we don't remove the ephemeral keys bc they are used to
+                // check if a subscription is already sync and it could potentially reset them
+                // for a key that's getting updated later on
+            }
+        }
 
         let mut converted_results = Vec::new();
         {
@@ -840,21 +872,29 @@ impl ExternalSubscriberManager {
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-            // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
-            let perms_reader = vector_fs
-                .new_reader(
-                    full_requester_profile_subidentity.clone(),
-                    vr_path,
-                    full_streamer_profile_subidentity.clone(),
-                )
-                .await
-                .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let results = vector_fs
-                .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
-                .await?;
+            // Initialize filtered_results
+            let filtered_results: Vec<(VRPath, ReadPermission)>;
 
-            // Use the new function to filter results to only include top-level folders
-            let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+            if path != "/" {
+                // If the path is not "/", assume it is public and directly use it
+                filtered_results = vec![(vr_path.clone(), ReadPermission::Public)];
+            } else {
+                // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+                let perms_reader = vector_fs
+                    .new_reader(
+                        full_requester_profile_subidentity.clone(),
+                        vr_path,
+                        full_streamer_profile_subidentity.clone(),
+                    )
+                    .await
+                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+                let results = vector_fs
+                    .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                    .await?;
+
+                // Use the new function to filter results to only include top-level folders
+                filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+            }
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
@@ -881,11 +921,12 @@ impl ExternalSubscriberManager {
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
                     permission: permission_str,
+                    profile: streamer_profile.clone(),
                     tree,
                     subscription_requirement,
                 };
 
-                let shared_folder_key = format!("{}{}", streamer_profile, path_str);
+                let shared_folder_key = format!("{}:::{}", streamer_profile, path_str);
 
                 // Check if the value of shared_folders_trees is different than the new value inserted
                 let should_update_version = self
@@ -1127,7 +1168,7 @@ impl ExternalSubscriberManager {
         }
 
         if let Some(profile_name) = requester_shinkai_identity.get_profile_name_string() {
-            let key_shared_folder = format!("{}{}", profile_name, path);
+            let key_shared_folder = format!("{}:::{}", profile_name, path);
             self.shared_folders_trees.remove(&key_shared_folder);
             Ok(true)
         } else {
@@ -1524,7 +1565,7 @@ mod tests {
 
     #[test]
     fn test_convert_string_to_shared_folder_info() {
-        let json_str = r#"[{"path":"/shared_test_folder","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false, "folder_description":"Dummy description for testing purposes"}}]"#;
+        let json_str = r#"[{"path":"/shared_test_folder","profile": "main","permission":"Public","tree":{"name":"/","path":"/shared_test_folder","last_modified":"2024-03-24T00:11:29.958427+00:00","children":{"crypto":{"name":"crypto","path":"/shared_test_folder/crypto","last_modified":"2024-03-24T00:11:27.905905+00:00","children":{"shinkai_intro":{"name":"shinkai_intro","path":"/shared_test_folder/crypto/shinkai_intro","last_modified":"2024-02-26T23:06:00.019065981+00:00","children":{}}}}}},"subscription_requirement":{"minimum_token_delegation":100,"minimum_time_delegated_hours":100,"monthly_payment":{"USD":10.0},"is_free":false,"folder_description":"Dummy description for testing purposes"}}]"#;
 
         let shared_folder_info: Vec<SharedFolderInfo> = from_str(json_str).unwrap();
 
@@ -1532,6 +1573,7 @@ mod tests {
         let folder_info = &shared_folder_info[0];
         assert_eq!(folder_info.path, "/shared_test_folder");
         assert_eq!(folder_info.permission, "Public");
+        assert_eq!(folder_info.profile, "main");
         assert!(folder_info.subscription_requirement.is_some());
         let subscription_requirement = folder_info.subscription_requirement.as_ref().unwrap();
         assert_eq!(subscription_requirement.minimum_token_delegation, Some(100));

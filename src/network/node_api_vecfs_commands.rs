@@ -1193,7 +1193,7 @@ impl Node {
         // We need to force ext_manager to update their cache
         {
             let mut ext_manager = external_subscriber_manager.lock().await;
-            ext_manager.update_shared_folders();
+            let _ = ext_manager.update_shared_folders().await;
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());

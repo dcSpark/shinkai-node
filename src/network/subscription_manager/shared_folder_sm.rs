@@ -204,6 +204,7 @@ mod tests {
         // Adjusted to create SharedFolderInfo instances
         let shared_folder_info_1 = SharedFolderInfo {
             path: "/path/to/file1".to_string(),
+            profile: "profile1".to_string(),
             permission: "read_write".to_string(),
             tree: item_tree_1,
             subscription_requirement: None, // Assuming None for simplicity; adjust as needed
@@ -211,6 +212,7 @@ mod tests {
 
         let shared_folder_info_2 = SharedFolderInfo {
             path: "/path/to/file2".to_string(),
+            profile: "profile2".to_string(),
             permission: "read_only".to_string(),
             tree: item_tree_2,
             subscription_requirement: None, // Assuming None for simplicity; adjust as needed
