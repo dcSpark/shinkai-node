@@ -5,8 +5,8 @@ use shinkai_vector_resources::{
     resource_errors::VRError,
 };
 
-/// Represents an analyzed/parsed initial message which triggered the job to run (aka. job task)
-/// Holds an ordered list of elements, which are pieces of the original job task string with parsed metadata about them
+/// Represents an analyzed/parsed initial message which triggered the job to run (aka. user message)
+/// Holds an ordered list of elements, which are pieces of the original user message string with parsed metadata about them
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParsedUserMessage {
     pub original_user_message_string: String,
@@ -15,7 +15,7 @@ pub struct ParsedUserMessage {
 
 impl ParsedUserMessage {
     pub fn new(original_user_message_string: String) -> Self {
-        // Clean the original job task string by removing trailing newlines/whitespace
+        // Clean the original user message string by removing trailing newlines/whitespace
         let original_user_message_string = original_user_message_string.trim_end_matches('\n').trim().to_string();
         let elements = Self::parse_original_user_message_string(&original_user_message_string);
         let pjt = ParsedUserMessage {
@@ -26,7 +26,7 @@ impl ParsedUserMessage {
         pjt
     }
 
-    /// Creates a new `ParsedUserMessage` using the given elements (recreates original job task string)
+    /// Creates a new `ParsedUserMessage` using the given elements (recreates original user message string)
     pub fn new_from_elements(elements: Vec<JobTaskElement>) -> Self {
         let orig_text = elements
             .iter()
@@ -44,7 +44,7 @@ impl ParsedUserMessage {
         }
     }
 
-    /// Parses the original job task string into a list of job task elements
+    /// Parses the original user message string into a list of user message elements
     fn parse_original_user_message_string(original_user_message_string: &str) -> Vec<JobTaskElement> {
         let mut elements = Vec::new();
 
@@ -68,17 +68,17 @@ impl ParsedUserMessage {
         elements
     }
 
-    /// Returns a reference to the elements of the job task
+    /// Returns a reference to the elements of the user message
     pub fn get_elements(&self) -> &Vec<JobTaskElement> {
         &self.elements
     }
 
-    /// Returns a copy of the elements of the job task
+    /// Returns a copy of the elements of the user message
     pub fn get_elements_cloned(&self) -> Vec<JobTaskElement> {
         self.elements.clone()
     }
 
-    /// Returns a copy of the elements of the job task, filtered by the given parameters
+    /// Returns a copy of the elements of the user message, filtered by the given parameters
     pub fn get_elements_filtered(&self, remove_text: bool, remove_code_blocks: bool) -> Vec<JobTaskElement> {
         self.elements
             .iter()
@@ -90,8 +90,18 @@ impl ParsedUserMessage {
             .collect()
     }
 
-    /// Returns a string representation of the job task.
-    /// Currently should be equivalent to the original job task string, but in future extra parsed
+    /// Returns a copy of the text elements of the user message
+    pub fn get_text_elements(&self) -> Vec<JobTaskElement> {
+        self.get_elements_filtered(false, true)
+    }
+
+    /// Returns a copy of the codeblock elements of the user message
+    pub fn get_code_block_elements(&self) -> Vec<JobTaskElement> {
+        self.get_elements_filtered(true, false)
+    }
+
+    /// Returns a string representation of the user message.
+    /// Currently should be equivalent to the original user message string, but in future extra parsed
     /// data may be added.
     pub fn get_output_string(&self) -> String {
         self.elements
@@ -108,19 +118,19 @@ impl ParsedUserMessage {
             .to_string()
     }
 
-    /// Returns a string representation of the job task, filtered by the given parameters
+    /// Returns a string representation of the user message, filtered by the given parameters
     pub fn get_output_string_filtered(&self, remove_text: bool, remove_code_blocks: bool) -> String {
         let filtered_elements = self.get_elements_filtered(remove_text, remove_code_blocks);
         ParsedUserMessage::new_from_elements(filtered_elements).get_output_string()
     }
 
-    /// Generates an embedding for the job task using it's entire output string, with a default empty id
+    /// Generates an embedding for the user message using it's entire output string, with a default empty id
     pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Embedding, VRError> {
         let embedding = generator.generate_embedding_default(&self.get_output_string()).await?;
         Ok(embedding)
     }
 
-    /// Generates an embedding for the job task using the filtered output string, with a default empty id
+    /// Generates an embedding for the user message using the filtered output string, with a default empty id
     pub async fn generate_embedding_filtered(
         &self,
         generator: RemoteEmbeddingGenerator,
@@ -134,7 +144,7 @@ impl ParsedUserMessage {
     }
 }
 
-/// A parsed element from the original job task string
+/// A parsed element from the original user message string
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JobTaskElement {
     Text(TextTaskElement),
@@ -155,7 +165,7 @@ impl JobTaskElement {
     }
 }
 
-/// A piece of text from the original job task string
+/// A piece of text from the original user message string
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextTaskElement {
     pub content: String,
@@ -178,7 +188,7 @@ impl TextTaskElement {
     }
 }
 
-/// A code block from the original job task string
+/// A code block from the original user message string
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CodeBlockTaskElement {
     pub content: String,
@@ -205,7 +215,7 @@ impl CodeBlockTaskElement {
     }
 }
 
-/// Represents a list item in a job task
+/// Represents a list item in a user message
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ListPoint {
     pub content: String,
@@ -228,7 +238,7 @@ impl ListPoint {
     }
 }
 
-/// Represents a list item in a job task
+/// Represents a list item in a user message
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ListTaskElement {
     pub list_points: Vec<ListPoint>,

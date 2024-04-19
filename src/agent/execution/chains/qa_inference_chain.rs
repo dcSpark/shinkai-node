@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use tracing::instrument;
 
 impl JobManager {
-    /// An inference chain for question-answer job tasks which vector searches the Vector Resources
+    /// An inference chain for question-answer user messages which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]

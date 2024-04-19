@@ -197,13 +197,13 @@ fn passing_score(generator: &RemoteEmbeddingGenerator) -> f32 {
     }
 }
 
-/// Checks if the job task's similarity score passes for any of the "these" summary strings
+/// Checks if the user message's similarity score passes for any of the "these" summary strings
 async fn these_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
 ) -> Result<(bool, f32), AgentError> {
-    // Get job task embedding, without code blocks for clarity in task
+    // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
@@ -213,14 +213,14 @@ async fn these_check(
     Ok((these_score > passing && !job_scope.is_empty(), these_score))
 }
 
-/// Checks if the job task's similarity score passes for any of the "this" summary strings
+/// Checks if the user message's similarity score passes for any of the "this" summary strings
 async fn this_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
 ) -> Result<(bool, f32), AgentError> {
-    // Get job task embedding, without code blocks for clarity in task
+    // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
@@ -229,29 +229,30 @@ async fn this_check(
     let this_score = top_score_summarize_this_embeddings(generator.clone(), &user_message_embedding).await?;
     println!("Top This score: {:.2}", this_score);
 
-    // Get current job task code block count, and the previous job task's code block count if it exists in step history
-    let current_code_block_count = user_message.get_elements_filtered(true, false).len();
+    // Get current user message code block count, and the previous user message's code block count if it exists in step history
+    let current_code_block_count = user_message.get_code_block_elements().len();
+    let previous_code_block_count = step_history
+        .last()
+        .and_then(|step| {
+            step.get_latest_user_message_parsed()
+                .map(|message| message.get_code_block_elements().len())
+        })
+        .unwrap_or(0);
 
-    let previous_message = step_history.last().map(|step| step.latest_user_message());
-
-    // let previous_user_message = step_history.last().map(|step| step.).unwrap_or_default();
-    // let previous_code_block_count = previous_user_message.get_elements_filtered(true, false).len();
-
-    // Old check. Potentially reuse this if we decide to go with a custom code block summarizer.
-    // let check = (this_score > passing && !job_scope.is_empty()) && code_block_count < 1);
-
-    // Only pass if there are VRs in scope, and no code blocks in job task. This is to allow QA chain to deal with codeblock summary for now.
-    let check = (this_score > passing && !job_scope.is_empty()) && current_code_block_count < 1;
+    // Check if the user message and the previous user message have code blocks
+    let code_block_exists = current_code_block_count > 0 && previous_code_block_count > 0;
+    // Only pass if there are VRs in scope, and no code blocks. This is to allow QA chain to deal with codeblock summary for now.
+    let check = this_score > passing && !job_scope.is_empty() && !code_block_exists;
 
     Ok((check, this_score))
 }
 
-/// Checks if the job task's similarity score passes for the "message history" summary string
+/// Checks if the user message's similarity score passes for the "message history" summary string
 async fn message_history_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
 ) -> Result<(bool, f32), AgentError> {
-    // Get job task embedding, without code blocks for clarity in task
+    // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;

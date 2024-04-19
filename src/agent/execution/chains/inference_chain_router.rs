@@ -53,7 +53,7 @@ impl JobManager {
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
-        // Choose the inference chain based on the job task
+        // Choose the inference chain based on the user message
         let chosen_chain = choose_inference_chain(
             parsed_user_message.clone(),
             generator.clone(),
@@ -235,7 +235,7 @@ impl JobManager {
     }
 }
 
-/// Chooses the inference chain based on the job task
+/// Chooses the inference chain based on the user message
 async fn choose_inference_chain(
     parsed_user_message: ParsedUserMessage,
     generator: RemoteEmbeddingGenerator,
