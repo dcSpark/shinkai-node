@@ -1079,6 +1079,7 @@ fn subscription_manager_test() {
                         "/shared_test_folder": {
                             "path": "/shared_test_folder",
                             "permission": "Public",
+                            "profile": "main",
                             "tree": {
                                 "name": "/",
                                 "path": "/shared_test_folder",
