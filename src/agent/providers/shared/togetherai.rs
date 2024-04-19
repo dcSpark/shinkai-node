@@ -1,7 +1,7 @@
 use crate::{
     agent::{
         error::AgentError,
-        execution::job_prompts::{Prompt, SubPrompt},
+        execution::prompts::prompts::{Prompt, SubPrompt},
     },
     managers::model_capabilities_manager::{Base64ImageString, PromptResult, PromptResultEnum},
 };

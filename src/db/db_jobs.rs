@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
+use crate::agent::execution::prompts::prompts::{Prompt, SubPromptType};
 use crate::agent::job::{Job, JobLike, JobStepResult};
 use async_std::eprint;
 use rocksdb::{IteratorMode, Options, WriteBatch};

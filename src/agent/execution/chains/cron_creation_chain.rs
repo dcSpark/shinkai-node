@@ -1,6 +1,6 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::JobPromptGenerator;
+use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::parsing_helper::ParsingHelper;

@@ -1,4 +1,4 @@
-use super::job_prompts::{JobPromptGenerator, Prompt};
+use super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
 use crate::agent::parsing_helper::ParsingHelper;

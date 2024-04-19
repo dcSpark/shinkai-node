@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::Prompt;
+use crate::agent::execution::prompts::prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;

@@ -1,5 +1,5 @@
 use super::execution::{
-    job_prompts::{Prompt, SubPrompt, SubPromptType},
+    prompts::prompts::{Prompt, SubPrompt, SubPromptType},
     user_message_parser::ParsedUserMessage,
 };
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -48,7 +48,10 @@ impl LLMProvider for ShinkaiBackend {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
                 let messages_json = match self.model_type.as_str() {
-                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE" => {
+                    "PREMIUM_TEXT_INFERENCE"
+                    | "PREMIUM_VISION_INFERENCE"
+                    | "STANDARD_TEXT_INFERENCE"
+                    | "FREE_TEXT_INFERENCE" => {
                         let open_ai = OpenAI {
                             model_type: self.model_type.clone(),
                         };

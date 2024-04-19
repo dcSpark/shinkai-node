@@ -63,7 +63,6 @@ impl JobManager {
                 execution_context,
                 generator,
                 user_profile,
-                max_iterations,
                 max_tokens_in_prompt,
             )
             .await
@@ -77,7 +76,6 @@ impl JobManager {
                 execution_context,
                 generator,
                 user_profile,
-                max_iterations,
                 max_tokens_in_prompt,
             )
             .await
@@ -94,7 +92,6 @@ impl JobManager {
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
-        max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         let scope = full_job.scope();
@@ -118,9 +115,15 @@ impl JobManager {
             let resource_count = resources.len();
 
             // Create a future for each resource in the chunk
-            let futures = resources
-                .into_iter()
-                .map(|resource| Self::generate_detailed_summary_for_resource(resource, &generator));
+            let futures = resources.into_iter().map(|resource| {
+                Self::generate_detailed_summary_for_resource(
+                    resource,
+                    generator.clone(),
+                    user_message.clone(),
+                    agent.clone(),
+                    max_tokens_in_prompt,
+                )
+            });
             let results = futures::future::join_all(futures).await;
 
             // Handle each future's result individually
@@ -147,7 +150,10 @@ impl JobManager {
 
     pub async fn generate_detailed_summary_for_resource(
         resource: BaseVectorResource,
-        generator: &RemoteEmbeddingGenerator,
+        generator: RemoteEmbeddingGenerator,
+        user_message: ParsedUserMessage,
+        agent: SerializedAgent,
+        max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         // TODO: Implement logic
         Ok(format!(

@@ -1,7 +1,7 @@
 use crate::{
     agent::{
         error::AgentError,
-        execution::job_prompts::Prompt,
+        execution::prompts::prompts::Prompt,
         providers::shared::{
             openai::openai_prepare_messages,
             togetherai::{llama_prepare_messages, llava_prepare_messages},
@@ -279,7 +279,9 @@ impl ModelCapabilitiesManager {
                 }
             }
             AgentLLMInterface::GenericAPI(genericapi) => {
-                if genericapi.model_type.starts_with("togethercomputer/llama-2") ||  genericapi.model_type.starts_with("meta-llama/Llama-3") {
+                if genericapi.model_type.starts_with("togethercomputer/llama-2")
+                    || genericapi.model_type.starts_with("meta-llama/Llama-3")
+                {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;

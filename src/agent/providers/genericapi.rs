@@ -1,6 +1,6 @@
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;

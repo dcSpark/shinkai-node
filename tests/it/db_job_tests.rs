@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::agent::execution::job_prompts::SubPromptType::{Assistant, User};
+use shinkai_node::agent::execution::prompts::prompts::SubPromptType::{Assistant, User};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
 use tokio::time::{sleep, Duration};
@@ -74,7 +74,7 @@ mod tests {
         },
         shinkai_utils::{signatures::clone_signature_secret_key, utils::hash_string},
     };
-    use shinkai_node::{agent::execution::job_prompts::SubPrompt, db::db_errors::ShinkaiDBError};
+    use shinkai_node::{agent::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
 
     use super::*;
 

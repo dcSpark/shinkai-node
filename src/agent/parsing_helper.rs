@@ -1,6 +1,6 @@
 use super::error::AgentError;
 use super::execution::chains::tool_execution_chain;
-use super::execution::job_prompts::{JobPromptGenerator, Prompt};
+use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
 use csv::Reader;
 use lazy_static::lazy_static;

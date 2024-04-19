@@ -1,5 +1,5 @@
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::JobPromptGenerator;
+use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::parsing_helper::ParsingHelper;
@@ -76,7 +76,7 @@ impl JobManager {
         // Use the default prompt if not reached final iteration count, else use final prompt
         let is_not_final = iteration_count < max_iterations && !scope_is_empty;
         let filled_prompt = if is_not_final {
-            JobPromptGenerator::response_prompt_with_vector_search(
+            JobPromptGenerator::qa_response_prompt_with_vector_search(
                 user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),
@@ -84,7 +84,7 @@ impl JobManager {
                 Some(full_job.step_history.clone()),
             )
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(
+            JobPromptGenerator::qa_response_prompt_with_vector_search_final(
                 user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),

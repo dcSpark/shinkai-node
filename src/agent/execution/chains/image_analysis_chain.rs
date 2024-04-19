@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 use crate::{
-    agent::{error::AgentError, execution::job_prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
+    agent::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
     db::ShinkaiDB,
 };
 

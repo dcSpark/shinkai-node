@@ -1,0 +1,518 @@
+use crate::{
+    agent::{error::AgentError, job::JobStepResult},
+    managers::model_capabilities_manager::ModelCapabilitiesManager,
+    tools::router::ShinkaiTool,
+};
+use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::{collections::HashMap, convert::TryInto};
+use tiktoken_rs::ChatCompletionRequestMessage;
+
+use super::general_prompts::do_not_mention_prompt;
+
+pub struct JobPromptGenerator {}
+
+impl JobPromptGenerator {
+    /// Parses an execution context hashmap to string to be added into a content subprompt
+    pub fn parse_context_to_string(context: HashMap<String, String>) -> String {
+        context
+            .into_iter()
+            .map(|(key, value)| format!("{}: {}", key, value))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubPromptType {
+    User,
+    System,
+    Assistant,
+}
+
+impl ToString for SubPromptType {
+    fn to_string(&self) -> String {
+        match self {
+            SubPromptType::User => "user".to_string(),
+            SubPromptType::System => "system".to_string(),
+            SubPromptType::Assistant => "assistant".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubPromptAssetType {
+    Image,
+    Video,
+    Audio,
+}
+
+pub type SubPromptAssetContent = String;
+pub type SubPromptAssetDetail = String;
+
+/// Sub-prompts are composed of a 3-element tuple of (SubPromptType, text, priority_value)
+/// Priority_value is a number between 0-100, where the higher it is the less likely it will be
+/// removed if LLM context window limits are reached.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubPrompt {
+    Content(SubPromptType, String, u8),
+    Asset(
+        SubPromptType,
+        SubPromptAssetType,
+        SubPromptAssetContent,
+        SubPromptAssetDetail,
+        u8,
+    ),
+    EBNF(SubPromptType, String, u8, bool),
+}
+
+impl SubPrompt {
+    /// Returns the length of the SubPrompt content string
+    pub fn len(&self) -> usize {
+        match self {
+            SubPrompt::Content(_, content, _) => content.len(),
+            SubPrompt::Asset(_, _, content, _, _) => content.len(),
+            SubPrompt::EBNF(_, ebnf, _, _) => ebnf.len(),
+        }
+    }
+}
+
+/// Struct that represents a prompt to be used for inferencing an LLM
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Prompt {
+    /// Sub-prompts that make up this prompt
+    pub sub_prompts: Vec<SubPrompt>,
+    /// The lowest priority value held in sub_prompts
+    pub lowest_priority: u8,
+    /// The highest priority value held in sub_prompts
+    pub highest_priority: u8,
+}
+
+impl Prompt {
+    pub fn new() -> Self {
+        Self {
+            sub_prompts: Vec::new(),
+            lowest_priority: 100,
+            highest_priority: 0,
+        }
+    }
+
+    pub fn to_json(&self) -> Result<String, AgentError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, AgentError> {
+        Ok(serde_json::from_str(json)?)
+    }
+
+    /// Adds a sub-prompt that holds any String content.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::Content(prompt_type, content, capped_priority_value as u8);
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds a sub-prompt that holds an Asset.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_asset(
+        &mut self,
+        asset_type: SubPromptAssetType,
+        asset_content: SubPromptAssetContent,
+        asset_detail: SubPromptAssetDetail,
+        prompt_type: SubPromptType,
+        priority_value: u8,
+    ) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::Asset(
+            prompt_type,
+            asset_type,
+            asset_content,
+            asset_detail,
+            capped_priority_value as u8,
+        );
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds an ebnf sub-prompt.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8, false);
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds an ebnf sub-prompt that is meant for retry prompts.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_retry_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8, true);
+        self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Updates the lowest and highest priority values of self using the
+    /// existing priority values of the sub_prompts.
+    fn update_sub_prompts_priorities(&mut self) {
+        for sub_prompt in self.sub_prompts.iter() {
+            match &sub_prompt {
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
+                    self.lowest_priority = self.lowest_priority.min(*priority);
+                    self.highest_priority = self.highest_priority.max(*priority);
+                }
+                SubPrompt::Asset(_, _, _, _, priority) => {
+                    self.lowest_priority = self.lowest_priority.min(*priority);
+                    self.highest_priority = self.highest_priority.max(*priority);
+                }
+            }
+        }
+    }
+
+    /// Adds a single sub-prompt.
+    /// Updates the lowest and highest priority values of self
+    pub fn add_sub_prompt(&mut self, sub_prompt: SubPrompt) {
+        self.add_sub_prompts(vec![sub_prompt]);
+    }
+
+    /// Adds multiple pre-prepared sub-prompts.
+    /// Updates the lowest and highest priority values of self
+    pub fn add_sub_prompts(&mut self, mut sub_prompts: Vec<SubPrompt>) {
+        self.sub_prompts.append(&mut sub_prompts);
+        self.update_sub_prompts_priorities();
+    }
+
+    /// Remove sub prompt at index
+    /// Adds multiple pre-prepared sub-prompts.
+    /// Updates the lowest and highest priority values of self
+    pub fn remove_sub_prompt(&mut self, index: usize) -> SubPrompt {
+        let element = self.sub_prompts.remove(index);
+        self.update_sub_prompts_priorities();
+        element
+    }
+
+    /// Adds multiple pre-prepared sub-prompts with a new priority value.
+    /// The new priority value will be applied to all input sub-prompts.
+    pub fn add_sub_prompts_with_new_priority(&mut self, sub_prompts: Vec<SubPrompt>, new_priority: u8) {
+        let capped_priority_value = std::cmp::min(new_priority, 100) as u8;
+        let mut updated_sub_prompts = Vec::new();
+        for mut sub_prompt in sub_prompts {
+            match &mut sub_prompt {
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
+                    *priority = capped_priority_value
+                }
+                SubPrompt::Asset(_, _, _, _, priority) => *priority = capped_priority_value,
+            }
+            updated_sub_prompts.push(sub_prompt);
+        }
+        self.add_sub_prompts(updated_sub_prompts);
+    }
+
+    /// Adds previous results from step history into the Prompt, up to max_previous_history amount.
+    /// Of note, priority value must be between 0-100.
+    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
+        let mut count = 0;
+        let mut sub_prompts_list = Vec::new();
+
+        // sub_prompts_list.push(SubPrompt::Content(
+        //     SubPromptType::System,
+        //     "Here are the previous conversation messages:".to_string(),
+        //     priority_value,
+        // ));
+
+        while let Some(step) = history.pop() {
+            if let Some(prompt) = step.get_result_prompt() {
+                for sub_prompt in prompt.sub_prompts {
+                    sub_prompts_list.push(sub_prompt);
+                }
+                count += 1;
+                if count >= max_previous_history {
+                    break;
+                }
+            }
+        }
+
+        self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);
+    }
+
+    /// Removes the first sub-prompt from the end of the sub_prompts list that has the lowest priority value.
+    /// Used primarily for cutting down prompt when it is too large to fit in context window.
+    pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
+        let lowest_priority = self.lowest_priority;
+        if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
+            SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
+            SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
+        }) {
+            return Some(self.remove_sub_prompt(position));
+        }
+        None
+    }
+
+    /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
+    pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Result<(), AgentError> {
+        let mut current_token_count = self.generate_chat_completion_messages()?.1;
+        while current_token_count > max_prompt_tokens {
+            match self.remove_lowest_priority_sub_prompt() {
+                Some(removed_sub_prompt) => {
+                    current_token_count -= removed_sub_prompt.len();
+                }
+                None => break, // No more sub-prompts to remove, exit the loop
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates that there is at least one EBNF sub-prompt to ensure
+    /// the LLM knows what to output.
+    pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
+        if !self
+            .sub_prompts
+            .iter()
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _, _, _)))
+        {
+            return Err(AgentError::UserPromptMissingEBNFDefinition);
+        }
+        Ok(())
+    }
+
+    fn generate_ebnf_response_string(&self, ebnf: &str, retry: bool) -> String {
+        if retry {
+            format!("An EBNF option to respond with: {} ", ebnf)
+        } else {
+            format!(
+                "Then respond using the following EBNF and absolutely nothing else: {} ",
+                ebnf
+            )
+        }
+    }
+
+    /// Processes all sub-prompts into a single output String.
+    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+        self.check_ebnf_included()?;
+
+        let json_response_required = String::from("```json");
+        let content = self
+            .sub_prompts
+            .iter()
+            .map(|sub_prompt| match sub_prompt {
+                SubPrompt::Content(_, content, _) => content.clone(),
+                SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, retry.clone()),
+                SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
+                    format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+            + "\n"
+            + &json_response_required;
+        Ok(content)
+    }
+
+    /// Generates a tuple of a list of ChatCompletionRequestMessages and their token length,
+    /// ready to be used with OpenAI inferencing.
+    fn generate_chat_completion_messages(&self) -> Result<(Vec<ChatCompletionRequestMessage>, usize), AgentError> {
+        let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+        let mut current_length: usize = 0;
+
+        // Process all sub-prompts in their original order
+        for sub_prompt in &self.sub_prompts {
+            let (prompt_type, content, type_) = match sub_prompt {
+                SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone(), "text"),
+                SubPrompt::EBNF(prompt_type, ebnf, _, retry) => {
+                    let ebnf_string = self.generate_ebnf_response_string(ebnf, retry.clone());
+                    (prompt_type, ebnf_string, "text")
+                }
+                SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, _) => {
+                    (prompt_type, asset_content.to_string(), "image")
+                }
+            };
+
+            let new_message = ChatCompletionRequestMessage {
+                role: prompt_type.to_string(),
+                content: Some(content),
+                name: if type_ == "text" { None } else { Some(type_.to_string()) },
+                function_call: None,
+            };
+
+            // Only count tokens for non-image content
+            if type_ != "image" {
+                let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&[new_message.clone()])
+                    .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
+
+                current_length += new_message_tokens;
+            }
+
+            tiktoken_messages.push(new_message);
+        }
+
+        Ok((tiktoken_messages, current_length))
+    }
+
+    /// Processes all sub-prompts into a single output String in OpenAI's message format.
+    pub fn generate_openai_messages(
+        &self,
+        max_prompt_tokens: Option<usize>,
+    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
+        self.check_ebnf_included()?;
+
+        // We take about half of a default total 4097 if none is provided as a backup (should never happen)
+        let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
+
+        // Remove sub-prompts until the total token count is under the specified limit
+        let mut prompt_copy = self.clone();
+        prompt_copy.remove_subprompts_until_under_max(limit)?;
+
+        // Generate the output chat completion request messages
+        let output_messages = prompt_copy.generate_chat_completion_messages()?.0;
+        Ok(output_messages)
+    }
+
+    // First version of generic. Probably we will need to pass a model name and a max tokens
+    // to this function. No any model name will work with the tokenizers so probably we will need
+    // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
+    /// TODO: Update to work with priority system for prompt size reducing
+    pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
+        self.check_ebnf_included()?;
+
+        // TODO: Update to Llama tokenizer here
+        let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
+        // let model = "llama2"; // TODO: change to something that actually fits
+
+        let mut messages: Vec<String> = Vec::new();
+        let mut current_length: usize = 0;
+        let mut user_content_added = false;
+        let mut system_content_added = false;
+        let mut at_least_one_user_content = false;
+        let mut first_user_content: Option<String> = None;
+        let mut first_user_content_position: Option<usize> = None;
+
+        // First, calculate the total length of EBNF content. We want to add it no matter what or
+        // the response will be invalid.
+        for sub_prompt in &self.sub_prompts {
+            if let SubPrompt::EBNF(_, ebnf, _, retry) = sub_prompt {
+                let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
+                current_length += new_message.len();
+            }
+        }
+
+        // Then, process all sub-prompts in their original order
+        for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
+            match sub_prompt {
+                SubPrompt::Asset(_, _, _, _, _) => {
+                    // Ignore Asset
+                }
+                SubPrompt::Content(prompt_type, content, priority_value) => {
+                    if content == &*do_not_mention_prompt || content == "" {
+                        continue;
+                    }
+                    let mut new_message = "".to_string();
+                    if prompt_type == &SubPromptType::System || prompt_type == &SubPromptType::Assistant {
+                        new_message = format!("{}", content.clone());
+                    } else {
+                        new_message = format!("- {}", content.clone());
+                        at_least_one_user_content = true;
+                        if first_user_content.is_none() {
+                            first_user_content = Some(new_message.clone());
+                            first_user_content_position = Some(i);
+                        }
+                    }
+
+                    if prompt_type == &SubPromptType::User {
+                        at_least_one_user_content = true;
+                    }
+
+                    let new_message_length = new_message.len();
+                    if current_length + new_message_length > limit {
+                        continue;
+                    }
+                    messages.push(new_message);
+                    current_length += new_message_length;
+
+                    match prompt_type {
+                        SubPromptType::User => user_content_added = true,
+                        SubPromptType::System => system_content_added = true,
+                        SubPromptType::Assistant => system_content_added = true,
+                    }
+                }
+                SubPrompt::EBNF(_, ebnf, _, retry) => {
+                    let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
+                    messages.push(new_message);
+                }
+            }
+        }
+
+        if !at_least_one_user_content {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No content was added to compute the prompt",
+            );
+        }
+
+        if !user_content_added && first_user_content.is_some() {
+            let remaining_tokens = limit - current_length;
+            if remaining_tokens >= 3 {
+                let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
+                if let Some(position) = first_user_content_position {
+                    if position < messages.len() {
+                        messages.insert(position, truncated_content.to_string());
+                    } else {
+                        // If the position is out of bounds, append the content at the end of the vector
+                        messages.push(truncated_content.to_string());
+                    }
+                }
+            }
+        } else if !user_content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No user content was added to compute the prompt",
+            );
+        }
+
+        if !system_content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No system content was added to compute the prompt",
+            );
+        }
+
+        let output = messages.join(" ");
+        // eprintln!("generate_genericapi_messages output: {:?}", output);
+        Ok(output)
+    }
+}
+
+//
+// Core Job Step Flow
+//
+// Note this will all happen within a single Job step. We will probably end up summarizing the context/results from previous steps into the step history to be included as the base initial context for new steps.
+//
+// 0. User submits an initial message/request to their AI Agent.
+// 1. An initial bootstrap plan is created based on the initial request from the user.
+//
+// 2. We enter into "analysis phase".
+// 3a. Iterating starting from the first point in the plan, we ask the LLM true/false if it can provide an answer given it's personal knowledge + current context.
+// 3b. If it can then we mark this analysis step as "prepared" and go back to 3a for the next bootstrap plan task.
+// 3c. If not we tell the LLM to search for tools that would work for this task.
+// 4a. We return a list of tools to it, and ask it to either select one, or return an error message.
+// 4b. If it returns an error message, it means the plan can not be completed/Agent has failed, and we exit/send message back to user with the error message (15).
+// 4c. If it chooses one, we fetch the tool info including the input EBNF.
+// 5a. We now show the input EBNF to the LLM, and ask it whether or not it has all the needed knowledge + potential data in the current context to be able to use the tool. (In either case  after the LLM chooses)
+// 5b. The LLM says it has all the needed info, then we add the tool's name/input EBNF to the current context, and either go back to 3a for the next bootstrap plan task if the task is now finished/prepared, or go to 6 if this tool was searched for to find an input for another tool.
+// 5c. The LLM doesn't have all the info it needs, so it performs another tool search and we go back to 4a.
+// 6. After resolving 4-5 for the new tool search, the new tool's input EBNF has been added into the context window, which will allow us to go back to 5a for the original tool, which enables the LLM to now state it has all the info it needs (marking the analysis step as prepared), thus going back to 3a for the next top level task.
+// 7. After iterating through all the bootstrap plan tasks and analyzing them, we have created an "execution plan" that specifies all tool calls which will need to be made.
+//
+// 8. We now move to the "execution phase".
+// 9. Using the execution plan, we move forward alternating between inferencing the LLM and executing a tool, as dictated by the plan.
+// 10. To start we inference the LLM with the first step in the plan + the input EBNF of the first tool, and tell the LLM to fill out the input EBNF with real data.
+// 11. The input JSON is taken and the tool is called/executed, with the results being added into the context.
+// 12. With the tool executed, we now inference the LLM with just the context + the input EBNF of the next tool that it needs to fill out (we can skip user's request text).
+// 13. We iterate through the entire execution plan (looping back/forth between 11/12) and arrive at the end with a context filled with all relevant data needed to answer the user's initial request.
+// 14. We inference the LLM one last time, providing it just the context + list of executed tools, and telling it to respond to the user's request by using/summarizing the results.
+// 15. We add a Shinkai message into the job's inbox with the LLM's response, allowing the user to see the result.
+//
+//
+//
+//

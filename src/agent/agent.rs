@@ -1,4 +1,4 @@
-use super::execution::job_prompts::{Prompt, SubPromptType};
+use super::execution::prompts::prompts::{Prompt, SubPromptType};
 use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;

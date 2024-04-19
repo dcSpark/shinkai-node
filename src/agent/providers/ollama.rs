@@ -1,7 +1,7 @@
 use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::LLMProvider;
 use async_trait::async_trait;
 use futures::StreamExt;

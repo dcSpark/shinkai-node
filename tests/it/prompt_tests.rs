@@ -6,10 +6,10 @@ mod tests {
     use reqwest::Client;
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-    use shinkai_node::agent::execution::job_prompts::Prompt;
+    use shinkai_node::agent::execution::prompts::prompts::Prompt;
     use shinkai_node::agent::providers::LLMProvider;
     use shinkai_node::agent::{
-        execution::job_prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
+        execution::prompts::prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
         job_manager::JobManager,
         parsing_helper::ParsingHelper,
     };
@@ -70,7 +70,7 @@ mod tests {
                 let elements_list: Vec<String> = vec![get_zeko_description() /* add more elements here */];
 
                 for elements in elements_list {
-                    let prompt = JobPromptGenerator::response_prompt_with_vector_search_final(
+                    let prompt = JobPromptGenerator::qa_response_prompt_with_vector_search_final(
                         "What's Zeko?".to_string(),
                         vec![],
                         Some(elements),
@@ -97,7 +97,7 @@ mod tests {
                 ];
 
                 for element in elements_list {
-                    let prompt = JobPromptGenerator::response_prompt_with_vector_search_final(
+                    let prompt = JobPromptGenerator::qa_response_prompt_with_vector_search_final(
                         element.to_string(),
                         vec![],
                         Some("".to_string()),

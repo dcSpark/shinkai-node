@@ -1,12 +1,10 @@
+use crate::{
+    agent::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
+    db::ShinkaiDB,
+};
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
-
-use crate::{
-    agent::{error::AgentError, execution::job_prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
-    db::ShinkaiDB,
-};
 
 #[derive(Debug, Clone, Default)]
 pub struct CronExecutionChainResponse {

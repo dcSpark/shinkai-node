@@ -1,4 +1,4 @@
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
