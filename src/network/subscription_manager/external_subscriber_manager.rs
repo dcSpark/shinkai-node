@@ -820,32 +820,47 @@ impl ExternalSubscriberManager {
                 "Streamer profile cannot be empty".to_string(),
             ));
         };
+        // Review that path is one of the available shared folders
+        if !self
+            .shared_folders_trees
+            .contains_key(&format!("{}:::{}", streamer_profile, path))
+            && path != "/"
+        {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "The specified path is not an available shared folder".to_string(),
+            ));
+        }
 
         let full_requester_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
         let full_streamer_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile.clone())?;
 
-         // Before proceeding, remove all keys starting with the same profile from shared_folders_trees
-         let profile_prefix = format!("{}:::", streamer_profile);
-         let keys_to_remove: Vec<String> = self.shared_folders_trees
-             .iter()
-             .filter_map(|entry| {
-                 let key = entry.key();
-                 if key.starts_with(&profile_prefix) {
-                     Some(key.clone())
-                 } else {
-                     None
-                 }
-             })
-             .collect();
- 
-         for key in keys_to_remove {
-             self.shared_folders_trees.remove(&key);
-            // we don't remove the ephemeral keys bc they are used to
-            // check if a subscription is already sync and it could potentially reset them
-            // for a key that's getting updated later on
-         }
+        // Only clean up keys for profile if path is "/"
+        // we do this just to remove folders that may had been unshared
+        if path == "/" {
+            // Before proceeding, remove all keys starting with the same profile from shared_folders_trees
+            let profile_prefix = format!("{}:::", streamer_profile);
+            let keys_to_remove: Vec<String> = self
+                .shared_folders_trees
+                .iter()
+                .filter_map(|entry| {
+                    let key = entry.key();
+                    if key.starts_with(&profile_prefix) {
+                        Some(key.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            for key in keys_to_remove {
+                self.shared_folders_trees.remove(&key);
+                // we don't remove the ephemeral keys bc they are used to
+                // check if a subscription is already sync and it could potentially reset them
+                // for a key that's getting updated later on
+            }
+        }
 
         let mut converted_results = Vec::new();
         {
@@ -859,21 +874,29 @@ impl ExternalSubscriberManager {
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
-            // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
-            let perms_reader = vector_fs
-                .new_reader(
-                    full_requester_profile_subidentity.clone(),
-                    vr_path,
-                    full_streamer_profile_subidentity.clone(),
-                )
-                .await
-                .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
-            let results = vector_fs
-                .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
-                .await?;
+            // Initialize filtered_results
+            let filtered_results: Vec<(VRPath, ReadPermission)>;
 
-            // Use the new function to filter results to only include top-level folders
-            let filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+            if path != "/" {
+                // If the path is not "/", assume it is public and directly use it
+                filtered_results = vec![(vr_path.clone(), ReadPermission::Public)];
+            } else {
+                // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
+                let perms_reader = vector_fs
+                    .new_reader(
+                        full_requester_profile_subidentity.clone(),
+                        vr_path,
+                        full_streamer_profile_subidentity.clone(),
+                    )
+                    .await
+                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+                let results = vector_fs
+                    .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                    .await?;
+
+                // Use the new function to filter results to only include top-level folders
+                filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
+            }
 
             // Drop the lock on vector_fs before proceeding
             drop(vector_fs);
