@@ -198,6 +198,27 @@ impl JobManager {
             _ => JsonValue::String(value.to_string()),
         }
     }
+
+    /// TODO: When VPack/Folder are added into job scope, count the number of resources at the time and store in job scope
+    /// Counts the number of resources in the scope, accessing the VectorFS to check for folders
+    pub async fn count_number_of_resources_in_job_scope(
+        vector_fs: Arc<VectorFS>,
+        profile: &ShinkaiName,
+        scope: &JobScope,
+    ) -> Result<usize, VectorFSError> {
+        let mut count = scope.local_vrkai.len() + scope.vector_fs_items.len();
+
+        for vrpack_entry in &scope.local_vrpack {
+            count += vrpack_entry.vrpack.vrkai_count as usize;
+        }
+        for folder in &scope.vector_fs_folders {
+            let path = folder.path.clone();
+            let folder_content = vector_fs.count_number_of_items_under_path(path, profile).await?;
+            count += folder_content;
+        }
+
+        Ok(count)
+    }
 }
 
 // Helper function to convert a string to snake_case

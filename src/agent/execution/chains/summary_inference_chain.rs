@@ -263,6 +263,16 @@ async fn this_check(
     let this_score = top_score_summarize_this_embeddings(generator.clone(), &user_message_embedding).await?;
     println!("Top This score: {:.2}", this_score);
 
+    // Get current job task code block count, and the previous job task's code block count if it exists in step history
+    let current_code_block_count = job_task.get_elements_filtered(true, false).len();
+
+    for step in step_history {
+        println!("Step: {:?}", step);
+    }
+
+    // let previous_job_task = step_history.last().map(|step| step.).unwrap_or_default();
+    // let previous_code_block_count = previous_job_task.get_elements_filtered(true, false).len();
+
     // Get current user message code block count, and the previous user message's code block count if it exists in step history
     let current_code_block_count = user_message.get_code_block_elements().len();
     let previous_code_block_count = step_history
