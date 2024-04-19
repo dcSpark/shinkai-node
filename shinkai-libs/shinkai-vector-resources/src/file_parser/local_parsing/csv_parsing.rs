@@ -4,7 +4,7 @@ use crate::{
     resource_errors::VRError,
 };
 use csv::ReaderBuilder;
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 
 impl LocalFileParser {
     /// Attempts to process the provided csv file into a list of TextGroups.
@@ -13,24 +13,34 @@ impl LocalFileParser {
 
         let mut text_groups = Vec::new();
         for line in csv_lines {
-            let (parsed_line, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&line);
+            let (parsed_line, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&line);
 
             if parsed_line.len() as u64 > max_node_text_size {
                 // If the line itself exceeds max_node_text_size, split it into chunks
                 // Split the unparsed line into chunks and parse metadata in each chunk
-                let chunks = if metadata.is_empty() {
-                    ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
-                } else {
+                let chunks = if parsed_any_metadata {
                     ShinkaiFileParser::split_into_chunks_with_metadata(&line, max_node_text_size as usize)
+                } else {
+                    ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
                 };
 
                 if let Some(first_chunk) = chunks.first() {
-                    let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&first_chunk);
-                    let mut line_group = TextGroup::new(parsed_chunk.to_owned(), metadata, vec![], None);
+                    let (parsed_chunk, metadata, _) = if parsed_any_metadata {
+                        ShinkaiFileParser::parse_and_extract_metadata(&first_chunk)
+                    } else {
+                        (first_chunk.to_owned(), HashMap::new(), false)
+                    };
+
+                    let mut line_group = TextGroup::new(parsed_chunk, metadata, vec![], None);
 
                     if chunks.len() > 1 {
                         for chunk in chunks.into_iter().skip(1) {
-                            let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                            let (parsed_chunk, metadata, _) = if parsed_any_metadata {
+                                ShinkaiFileParser::parse_and_extract_metadata(&chunk)
+                            } else {
+                                (chunk.to_owned(), HashMap::new(), false)
+                            };
+
                             line_group.push_sub_group(TextGroup::new(parsed_chunk, metadata, vec![], None));
                         }
                     }
