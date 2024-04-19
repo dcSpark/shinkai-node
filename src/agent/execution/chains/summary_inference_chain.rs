@@ -5,6 +5,7 @@ use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
+use futures::stream::StreamExt;
 use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -98,9 +99,23 @@ impl JobManager {
         let scope = full_job.scope();
 
         let resource_count =
-            JobManager::count_number_of_resources_in_job_scope(vector_fs, &user_profile, scope).await?;
+            JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
 
-        // If a significant amount of VRs, simply fetch the top 5 most relevant and summarize them fully.
+        // Get a stream that retrieves all resources in the job scope automatically, and chunk it in groups of 5 (same as stream buffer size)
+        let resource_stream =
+            JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, &user_profile).await;
+        let mut chunks = resource_stream.chunks(5);
+
+        // For each chunk parallelize creating a detailed summary for each
+        let mut num_resources_processed = 0;
+        while let Some(resources) = chunks.next().await {
+            println!("Received chunk of resources: {}", resources.len());
+
+            num_resources_processed += resources.len();
+        }
+
+        // Optimization TODO:
+        // If a significant amount of VRs, simply search first to find the the top 5 most relevant and summarize them fully.
         // The rest summarize as 1-2 line sentences and list them up to 25.
 
         Ok("Summary inference chain has been chosen".to_string())

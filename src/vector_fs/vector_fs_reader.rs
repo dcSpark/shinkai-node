@@ -400,10 +400,39 @@ impl VectorFS {
         profile: &ShinkaiName,
     ) -> Result<usize, VectorFSError> {
         let internals = self.get_profile_fs_internals_read_only(profile).await?;
-        let folder_count = internals
+        let count = internals
             .fs_core_resource
             .retrieve_vrheader_nodes_exhaustive(Some(path.clone()))
             .len();
-        Ok(folder_count)
+        Ok(count)
+    }
+
+    /// Returns all VRHeaderNodes under the path specified in the VectorFS, recursively (aka. any depth).
+    /// These represent the VRs in the VectorFS.
+    pub async fn retrieve_all_vr_header_nodes_underneath_folder(
+        &self,
+        reader: VFSReader,
+    ) -> Result<Vec<RetrievedNode>, VectorFSError> {
+        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let vrheader_nodes = internals
+            .fs_core_resource
+            .retrieve_vrheader_nodes_exhaustive(Some(reader.path.clone()));
+
+        Ok(vrheader_nodes)
+    }
+
+    /// Returns all VectorFS paths of items underneath the path specified (any depth underneath).
+    pub async fn retrieve_all_item_paths_underneath_folder(
+        &self,
+        reader: VFSReader,
+    ) -> Result<Vec<VRPath>, VectorFSError> {
+        let vrheader_nodes_all_depths = self.retrieve_all_vr_header_nodes_underneath_folder(reader).await?;
+
+        let paths = vrheader_nodes_all_depths
+            .iter()
+            .map(|ret_node| ret_node.retrieval_path.clone())
+            .collect::<Vec<VRPath>>();
+
+        Ok(paths)
     }
 }

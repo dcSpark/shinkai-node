@@ -2,6 +2,7 @@ use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
+use crate::vector_fs::vector_fs_error::VectorFSError;
 use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -18,35 +19,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 impl JobManager {
-    /// Helper method which fetches all local VRs, & directly linked FSItem Vector Resources specified in the given JobScope.
-    /// Returns all of them in a single list ready to be used.
-    /// Of note, this does not fetch resources inside of folders in the job scope, as those are not fetched in whole,
-    /// but instead have a deep vector search performed on them via the VectorFS itself separately.
-    pub async fn fetch_job_scope_direct_resources(
-        db: Arc<ShinkaiDB>,
-        vector_fs: Arc<VectorFS>,
-        job_scope: &JobScope,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
-        let mut resources = Vec::new();
-
-        // Add local resources to the list
-        for local_entry in &job_scope.local_vrkai {
-            resources.push(local_entry.vrkai.resource.clone());
-        }
-
-        for fs_item in &job_scope.vector_fs_items {
-            let reader = vector_fs
-                .new_reader(profile.clone(), fs_item.path.clone(), profile.clone())
-                .await?;
-
-            let ret_resource = vector_fs.retrieve_vector_resource(&reader).await?;
-            resources.push(ret_resource);
-        }
-
-        Ok(resources)
-    }
-
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
     /// Attempts to take at least 1 proximity group per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
@@ -379,7 +351,7 @@ impl JobManager {
         }
 
         // Fetch rest of VRs directly
-        let resources = JobManager::fetch_job_scope_direct_resources(db, vector_fs, job_scope, profile).await?;
+        let resources = JobManager::fetch_job_scope_direct_resources(vector_fs, job_scope, profile).await?;
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
