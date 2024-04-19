@@ -826,9 +826,7 @@ impl ExternalSubscriberManager {
             .contains_key(&format!("{}:::{}", streamer_profile, path))
             && path != "/"
         {
-            return Err(SubscriberManagerError::InvalidRequest(
-                "The specified path is not an available shared folder".to_string(),
-            ));
+            return Ok(vec![]);
         }
 
         let full_requester_profile_subidentity =
