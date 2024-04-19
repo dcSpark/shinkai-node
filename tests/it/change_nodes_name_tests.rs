@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-use super::utils::test_boilerplate::run_test_one_node_network;
 use crate::it::utils::node_test_api::api_registration_device_node_profile_main;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::shinkai_utils::{
@@ -121,8 +120,11 @@ fn change_nodes_name_test() {
         });
 
         let _result = tokio::try_join!(node1_handler, interactions_handler);
+        
     });
+    rt.shutdown_background();
 
+    let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let new_node_name = "@@change_node_test.sepolia-shinkai";
 
@@ -188,4 +190,5 @@ fn change_nodes_name_test() {
 
         let _result = tokio::try_join!(node1_handler, interactions_handler);
     });
+    rt.shutdown_background();
 }

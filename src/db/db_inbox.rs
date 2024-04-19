@@ -89,7 +89,7 @@ impl ShinkaiDB {
         let ext_metadata = message.external_metadata.clone();
 
         // Get the scheduled time or calculate current time
-        let time_key = match ext_metadata.scheduled_time.is_empty() {
+        let mut time_key = match ext_metadata.scheduled_time.is_empty() {
             true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
@@ -112,8 +112,7 @@ impl ShinkaiDB {
             }
         };
 
-        // Note(Nico): We are not going to let add messages older than its parent if it's a JobInbox
-        // If the inbox is of type JobInbox, fetch the parent message and compare its scheduled_time
+        // Previous code was here
         if let InboxName::JobInbox { .. } = inbox_name_manager {
             if let Some(parent_key) = &parent_key.clone() {
                 let (parent_message, _) = self.fetch_message_and_hash(parent_key)?;
@@ -121,9 +120,7 @@ impl ShinkaiDB {
                 let parsed_time_key: DateTime<Utc> = DateTime::parse_from_rfc3339(&time_key)?.into();
                 let parsed_parent_time: DateTime<Utc> = DateTime::parse_from_rfc3339(&parent_time)?.into();
                 if parsed_time_key < parsed_parent_time {
-                    return Err(ShinkaiDBError::SomeError(
-                        "Scheduled time of the message is older than its parent".to_string(),
-                    ));
+                    time_key = ShinkaiStringTime::generate_time_now();
                 }
             }
         }
@@ -152,7 +149,7 @@ impl ShinkaiDB {
         batch.put_cf(cf_inbox, composite_key.as_bytes(), &hash_key);
 
         // Insert the message
-        let _ = self.insert_message_to_all(&updated_message.clone())?;
+        self.insert_message_to_all(&updated_message.clone())?;
 
         // If this message has a parent, add this message as a child of the parent
         if let Some(parent_key) = parent_key {

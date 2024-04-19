@@ -791,25 +791,14 @@ mod tests {
         The tree that we are creating looks like:
             1
             ├── 2
-                └── 3 (older date than 2. it should fail)
+                └── 3 (older date than 2. it should'nt fail)
          */
 
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
-            let parent_hash = if *i > 0 {
-                Some(messages[*i - 1].calculate_message_hash_for_pagination())
-            } else {
-                None
-            };
-            let result = shinkai_db
+            let _result = shinkai_db
                 .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None)
                 .await;
-
-            // If we are at the third iteration (i.e., adding the third message), check that the result is an error
-            if *i == 1 {
-                assert!(result.is_err());
-                continue;
-            }
         }
 
         // Check if the job inbox is not empty after adding a message
@@ -827,7 +816,7 @@ mod tests {
             .unwrap();
 
         // Check the content of the messages
-        assert_eq!(last_messages_inbox.len(), 2);
+        assert_eq!(last_messages_inbox.len(), 3);
 
         // Check the content of the first message array
         assert_eq!(last_messages_inbox[0].len(), 1);
@@ -840,5 +829,11 @@ mod tests {
         let message_content_2 = last_messages_inbox[1][0].clone().get_message_content().unwrap();
         let job_message_2: JobMessage = serde_json::from_str(&message_content_2).unwrap();
         assert_eq!(job_message_2.content, "Hello World 2".to_string());
+
+        // Check the content of the second message array
+        assert_eq!(last_messages_inbox[2].len(), 1);
+        let message_content_3 = last_messages_inbox[2][0].clone().get_message_content().unwrap();
+        let job_message_3: JobMessage = serde_json::from_str(&message_content_3).unwrap();
+        assert_eq!(job_message_3.content, "Hello World 3".to_string());
     }
 }

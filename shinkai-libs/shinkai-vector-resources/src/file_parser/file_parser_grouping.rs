@@ -6,6 +6,7 @@ use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
+use regex::Regex;
 use std::collections::HashMap;
 
 impl ShinkaiFileParser {
@@ -186,11 +187,19 @@ impl ShinkaiFileParser {
         let has_sub_groups = !grouped_text.sub_groups.is_empty();
         let new_name = grouped_text.text.clone();
         let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
-        let mut metadata = HashMap::new();
-        metadata.insert(
-            ShinkaiFileParser::page_numbers_metadata_key(),
-            grouped_text.format_page_num_string(),
-        );
+
+        let metadata = if grouped_text.metadata.is_empty() {
+            // TODO: Unstructured parser is wired with page numbers, should be removed in the future
+            let mut metadata = HashMap::new();
+            metadata.insert(
+                ShinkaiFileParser::page_numbers_metadata_key(),
+                grouped_text.format_page_num_string(),
+            );
+            metadata
+        } else {
+            grouped_text.metadata.clone()
+        };
+
         (new_resource_id, Some(metadata), has_sub_groups, new_name)
     }
 
@@ -220,6 +229,44 @@ impl ShinkaiFileParser {
             let end = if end < text.len() {
                 let mut end = end;
                 while end > start && !text.as_bytes()[end].is_ascii_whitespace() {
+                    end -= 1;
+                }
+                if end == start {
+                    start + chunk_size
+                } else {
+                    end
+                }
+            } else {
+                text.len()
+            };
+
+            let chunk = &text[start..end];
+            chunks.push(chunk.to_string());
+
+            start = end;
+        }
+
+        chunks
+    }
+
+    /// Splits a string into chunks at the nearest whitespace to a given size avoiding splitting metadata
+    pub fn split_into_chunks_with_metadata(text: &str, chunk_size: usize) -> Vec<String> {
+        // The regex matches both pure and replaceable metadata
+        let re = Regex::new(Self::METADATA_REGEX).unwrap();
+        let matched_positions: Vec<(usize, usize)> = re.find_iter(text).map(|m| (m.start(), m.end())).collect();
+
+        let mut chunks = Vec::new();
+        let mut start = 0;
+        while start < text.len() {
+            let end = start + chunk_size;
+            let end = if end < text.len() {
+                let mut end = end;
+                while end > start
+                    && (!text.as_bytes()[end].is_ascii_whitespace()
+                        || matched_positions
+                            .iter()
+                            .any(|(meta_start, meta_end)| end >= *meta_start && end < *meta_end))
+                {
                     end -= 1;
                 }
                 if end == start {

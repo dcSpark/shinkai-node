@@ -58,6 +58,15 @@ impl ShinkaiStringTime {
         scheduled_time
     }
 
+    /// Generates a datetime String in the past based on number of seconds
+    pub fn generate_time_in_past_with_secs(secs: i64) -> String {
+        let timestamp = (Utc::now() - chrono::Duration::seconds(secs))
+            .format("%Y-%m-%dT%H:%M:%S.%f")
+            .to_string();
+        let scheduled_time = format!("{}Z", &timestamp[..23]);
+        scheduled_time
+    }
+
     /// Generates a datetime String at a specific moment in time
     pub fn generate_specific_time(year: i32, month: u32, day: u32, hr: u32, min: u32, sec: u32) -> String {
         let naive_datetime = chrono::NaiveDateTime::new(

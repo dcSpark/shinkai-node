@@ -7,8 +7,6 @@ mod tests {
     use shinkai_node::managers::model_capabilities_manager::{
         ModelCapability, ModelCost, ModelPrivacy, ModelCapabilitiesManager,
     };
-    use tokio::sync::Mutex;
-
     use std::path::Path;
     use std::sync::Arc;
     use std::{env, fs};
