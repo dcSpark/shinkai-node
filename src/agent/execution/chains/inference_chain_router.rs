@@ -17,6 +17,7 @@ use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
 use super::cron_execution_chain::CronExecutionChainResponse;
+use super::references::ResourceReference;
 
 pub enum InferenceChain {
     QAChain,
@@ -62,6 +63,7 @@ impl JobManager {
                     } else {
                         2
                     };
+                    let mut referenced_resources: HashMap<ResourceReference, (Vec<String>)> = HashMap::new();
                     inference_response_content = JobManager::start_qa_inference_chain(
                         db,
                         vector_fs,
@@ -76,7 +78,7 @@ impl JobManager {
                         1,
                         qa_iteration_count,
                         max_tokens_in_prompt as usize,
-                    )
+                    
                     .await?;
                 } else {
                     return Err(AgentError::AgentNotFound);

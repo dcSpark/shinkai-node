@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VRHeader};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -37,6 +37,7 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
+        referenced_resource_headers: Vec<VRHeader>,
     ) -> Result<String, AgentError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -116,6 +117,7 @@ impl JobManager {
                 iteration_count,
                 max_iterations,
                 max_tokens_in_prompt,
+                referenced_resource_headers,
             )
             .await;
         }
