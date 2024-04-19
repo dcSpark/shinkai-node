@@ -1,5 +1,5 @@
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_task_parser::ParsedJobTask;
+use crate::agent::execution::parsed_user_message_parser::ParsedJobTask;
 use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
@@ -32,7 +32,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
-        job_task: ParsedJobTask,
+        parsed_user_message: ParsedJobTask,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -41,9 +41,15 @@ impl JobManager {
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         // Perform the checks
-        let this_check = this_check(&generator, &job_task, full_job.scope(), &full_job.step_history).await?;
-        let these_check = these_check(&generator, &job_task, full_job.scope()).await?;
-        let message_history_check = message_history_check(&generator, &job_task).await?;
+        let this_check = this_check(
+            &generator,
+            &parsed_user_message,
+            full_job.scope(),
+            &full_job.step_history,
+        )
+        .await?;
+        let these_check = these_check(&generator, &parsed_user_message, full_job.scope()).await?;
+        let message_history_check = message_history_check(&generator, &parsed_user_message).await?;
 
         let checks = vec![this_check, these_check, message_history_check];
         let highest_score_check = checks
@@ -58,7 +64,7 @@ impl JobManager {
                 db,
                 vector_fs,
                 full_job,
-                job_task,
+                parsed_user_message,
                 agent,
                 execution_context,
                 generator,
@@ -72,7 +78,7 @@ impl JobManager {
                 db,
                 vector_fs,
                 full_job,
-                job_task,
+                parsed_user_message,
                 agent,
                 execution_context,
                 generator,
@@ -89,7 +95,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
-        job_task: ParsedJobTask,
+        parsed_user_message: ParsedJobTask,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -158,20 +164,20 @@ impl JobManager {
 
     // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.
     /// Checks if the job's task asks to summarize in one of many ways using vector search.
-    pub async fn validate_job_task_requests_summary(
-        job_task: ParsedJobTask,
+    pub async fn validate_parsed_user_message_requests_summary(
+        parsed_user_message: ParsedJobTask,
         generator: RemoteEmbeddingGenerator,
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
     ) -> bool {
         // Perform the checks
-        let these_check = these_check(&generator, &job_task, job_scope)
+        let these_check = these_check(&generator, &parsed_user_message, job_scope)
             .await
             .unwrap_or((false, 0.0));
-        let this_check = this_check(&generator, &job_task, job_scope, step_history)
+        let this_check = this_check(&generator, &parsed_user_message, job_scope, step_history)
             .await
             .unwrap_or((false, 0.0));
-        let message_history_check = message_history_check(&generator, &job_task)
+        let message_history_check = message_history_check(&generator, &parsed_user_message)
             .await
             .unwrap_or((false, 0.0));
 
@@ -200,15 +206,15 @@ fn passing_score(generator: &RemoteEmbeddingGenerator) -> f32 {
 /// Checks if the job task's similarity score passes for any of the "these" summary strings
 async fn these_check(
     generator: &RemoteEmbeddingGenerator,
-    job_task: &ParsedJobTask,
+    parsed_user_message: &ParsedJobTask,
     job_scope: &JobScope,
 ) -> Result<(bool, f32), AgentError> {
     // Get job task embedding, without code blocks for clarity in task
-    let job_task_embedding = job_task
+    let parsed_user_message_embedding = parsed_user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
     let passing = passing_score(&generator.clone());
-    let these_score = top_score_summarize_these_embeddings(generator.clone(), &job_task_embedding).await?;
+    let these_score = top_score_summarize_these_embeddings(generator.clone(), &parsed_user_message_embedding).await?;
     println!("Top These score: {:.2}", these_score);
     Ok((these_score > passing && !job_scope.is_empty(), these_score))
 }
@@ -216,28 +222,26 @@ async fn these_check(
 /// Checks if the job task's similarity score passes for any of the "this" summary strings
 async fn this_check(
     generator: &RemoteEmbeddingGenerator,
-    job_task: &ParsedJobTask,
+    parsed_user_message: &ParsedJobTask,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
 ) -> Result<(bool, f32), AgentError> {
     // Get job task embedding, without code blocks for clarity in task
-    let job_task_embedding = job_task
+    let parsed_user_message_embedding = parsed_user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
 
     let passing = passing_score(&generator.clone());
-    let this_score = top_score_summarize_this_embeddings(generator.clone(), &job_task_embedding).await?;
+    let this_score = top_score_summarize_this_embeddings(generator.clone(), &parsed_user_message_embedding).await?;
     println!("Top This score: {:.2}", this_score);
 
     // Get current job task code block count, and the previous job task's code block count if it exists in step history
-    let current_code_block_count = job_task.get_elements_filtered(true, false).len();
+    let current_code_block_count = parsed_user_message.get_elements_filtered(true, false).len();
 
-    for step in step_history {
-        println!("Step: {:?}", step);
-    }
+    let previous_message = step_history.last().map(|step| step.latest_user_message());
 
-    // let previous_job_task = step_history.last().map(|step| step.).unwrap_or_default();
-    // let previous_code_block_count = previous_job_task.get_elements_filtered(true, false).len();
+    // let previous_parsed_user_message = step_history.last().map(|step| step.).unwrap_or_default();
+    // let previous_code_block_count = previous_parsed_user_message.get_elements_filtered(true, false).len();
 
     // Old check. Potentially reuse this if we decide to go with a custom code block summarizer.
     // let check = (this_score > passing && !job_scope.is_empty()) && code_block_count < 1);
@@ -251,16 +255,16 @@ async fn this_check(
 /// Checks if the job task's similarity score passes for the "message history" summary string
 async fn message_history_check(
     generator: &RemoteEmbeddingGenerator,
-    job_task: &ParsedJobTask,
+    parsed_user_message: &ParsedJobTask,
 ) -> Result<(bool, f32), AgentError> {
     // Get job task embedding, without code blocks for clarity in task
-    let job_task_embedding = job_task
+    let parsed_user_message_embedding = parsed_user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
 
     let passing = passing_score(&generator.clone());
     let message_history_score =
-        top_score_message_history_summary_embeddings(generator.clone(), &job_task_embedding).await?;
+        top_score_message_history_summary_embeddings(generator.clone(), &parsed_user_message_embedding).await?;
     println!("Top Message history score: {:.2}", message_history_score);
     Ok((message_history_score > passing, message_history_score))
 }

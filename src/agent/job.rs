@@ -1,4 +1,4 @@
-use super::execution::job_prompts::Prompt;
+use super::execution::job_prompts::{Prompt, SubPrompt, SubPromptType};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope};
 use std::collections::HashMap;
@@ -105,6 +105,30 @@ impl JobStepResult {
     /// Returns the latest revisions of the Job Step Result if one exists
     pub fn get_result_prompt(&self) -> Option<Prompt> {
         self.step_revisions.last().cloned()
+    }
+
+    /// Returns the latest user message if one exists
+    pub fn latest_user_message(&self) -> Option<String> {
+        self.step_revisions
+            .last()?
+            .sub_prompts
+            .iter()
+            .find_map(|prompt| match prompt {
+                SubPrompt::Content(role, message, _) if role == &SubPromptType::User => Some(message.clone()),
+                _ => None,
+            })
+    }
+
+    /// Returns the latest assistant message if one exists
+    pub fn latest_assistant_message(&self) -> Option<String> {
+        self.step_revisions
+            .last()?
+            .sub_prompts
+            .iter()
+            .find_map(|prompt| match prompt {
+                SubPrompt::Content(role, message, _) if role == &SubPromptType::Assistant => Some(message.clone()),
+                _ => None,
+            })
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
