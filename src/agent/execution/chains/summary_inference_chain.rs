@@ -1,6 +1,6 @@
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_task_parser::ParsedJobTask;
-use crate::agent::job::{Job, JobId, JobLike};
+use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -39,7 +39,7 @@ impl JobManager {
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         // Perform the checks
-        let this_check = this_check(&generator, &job_task, full_job.scope()).await?;
+        let this_check = this_check(&generator, &job_task, full_job.scope(), &full_job.step_history).await?;
         let these_check = these_check(&generator, &job_task, full_job.scope()).await?;
         let message_history_check = message_history_check(&generator, &job_task).await?;
 
@@ -51,7 +51,7 @@ impl JobManager {
 
         // Later implement this alternative summary flow
         // if message_history_check.1 == highest_score_check.1 {
-        if these_check.1 == highest_score_check.1 && this_check.1 == highest_score_check.1 {
+        if these_check.1 == highest_score_check.1 || this_check.1 == highest_score_check.1 {
             Self::start_summarize_job_context_sub_chain(
                 db,
                 vector_fs,
@@ -95,23 +95,30 @@ impl JobManager {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
+        let scope = full_job.scope();
+
+        let resource_count =
+            JobManager::count_number_of_resources_in_job_scope(vector_fs, &user_profile, scope).await?;
+
         // If a significant amount of VRs, simply fetch the top 5 most relevant and summarize them fully.
         // The rest summarize as 1-2 line sentences and list them up to 25.
 
         Ok("Summary inference chain has been chosen".to_string())
     }
 
+    // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.
     /// Checks if the job's task asks to summarize in one of many ways using vector search.
     pub async fn validate_job_task_requests_summary(
         job_task: ParsedJobTask,
         generator: RemoteEmbeddingGenerator,
         job_scope: &JobScope,
+        step_history: &Vec<JobStepResult>,
     ) -> bool {
         // Perform the checks
         let these_check = these_check(&generator, &job_task, job_scope)
             .await
             .unwrap_or((false, 0.0));
-        let this_check = this_check(&generator, &job_task, job_scope)
+        let this_check = this_check(&generator, &job_task, job_scope, step_history)
             .await
             .unwrap_or((false, 0.0));
         let message_history_check = message_history_check(&generator, &job_task)
@@ -161,25 +168,34 @@ async fn this_check(
     generator: &RemoteEmbeddingGenerator,
     job_task: &ParsedJobTask,
     job_scope: &JobScope,
+    step_history: &Vec<JobStepResult>,
 ) -> Result<(bool, f32), AgentError> {
     // Get job task embedding, without code blocks for clarity in task
     let job_task_embedding = job_task
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
-    let code_block_count = job_task.get_elements_filtered(true, false).len();
 
     let passing = passing_score(&generator.clone());
     let this_score = top_score_summarize_this_embeddings(generator.clone(), &job_task_embedding).await?;
     println!("Top This score: {:.2}", this_score);
 
+    // Get current job task code block count, and the previous job task's code block count if it exists in step history
+    let current_code_block_count = job_task.get_elements_filtered(true, false).len();
+
+    for step in step_history {
+        println!("Step: {:?}", step);
+    }
+
+    // let previous_job_task = step_history.last().map(|step| step.).unwrap_or_default();
+    // let previous_code_block_count = previous_job_task.get_elements_filtered(true, false).len();
+
     // Old check. Potentially reuse this if we decide to go with a custom code block summarizer.
-    // (this_score > passing && !job_scope.is_empty()) && code_block_count < 1),
+    // let check = (this_score > passing && !job_scope.is_empty()) && code_block_count < 1);
 
     // Only pass if there are VRs in scope, and no code blocks in job task. This is to allow QA chain to deal with codeblock summary for now.
-    Ok((
-        ((this_score > passing && !job_scope.is_empty()) && code_block_count < 1),
-        this_score,
-    ))
+    let check = (this_score > passing && !job_scope.is_empty()) && current_code_block_count < 1;
+
+    Ok((check, this_score))
 }
 
 /// Checks if the job task's similarity score passes for the "message history" summary string

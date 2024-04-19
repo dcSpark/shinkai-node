@@ -10,10 +10,10 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::SourceFileMap;
-use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, NodeContent, RetrievedNode, VRKai, VRPack, VectorResourceCore,
 };
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceSearch};
 
 /// A struct that represents having access rights to read the VectorFS under a profile/at a specific path.
 /// If a VFSReader struct is constructed, that means the `requester_name` has passed
@@ -377,5 +377,33 @@ impl VectorFS {
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let vr = self.retrieve_vector_resource(&reader).await?;
         Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
+    }
+
+    /// Returns the number of folders under the path specified in the VectorFS.
+    pub async fn count_number_of_folders_under_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<usize, VectorFSError> {
+        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let folder_count = internals
+            .fs_core_resource
+            .retrieve_resource_nodes_exhaustive(Some(path.clone()))
+            .len();
+        Ok(folder_count)
+    }
+
+    /// Returns the number of items under the path specified in the VectorFS.
+    pub async fn count_number_of_items_under_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<usize, VectorFSError> {
+        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let folder_count = internals
+            .fs_core_resource
+            .retrieve_vrheader_nodes_exhaustive(Some(path.clone()))
+            .len();
+        Ok(folder_count)
     }
 }

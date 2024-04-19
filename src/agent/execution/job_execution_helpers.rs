@@ -5,9 +5,12 @@ use crate::agent::parsing_helper::ParsingHelper;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::vector_fs::vector_fs::VectorFS;
+use crate::vector_fs::vector_fs_error::VectorFSError;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -144,7 +147,7 @@ impl JobManager {
     /// it may return an outdated node_name
     pub async fn fetch_relevant_job_data(
         job_id: &str,
-        db: Arc<ShinkaiDB>
+        db: Arc<ShinkaiDB>,
     ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), AgentError> {
         // Fetch the job
         let full_job = { db.get_job(job_id)? };
@@ -167,7 +170,7 @@ impl JobManager {
         Ok((full_job, agent_found, profile_name, user_profile))
     }
 
-    pub async fn get_all_agents(db: Arc<ShinkaiDB>,) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub async fn get_all_agents(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         db.get_all_agents()
     }
 
@@ -194,6 +197,27 @@ impl JobManager {
             }
             _ => JsonValue::String(value.to_string()),
         }
+    }
+
+    /// TODO: When VPack/Folder are added into job scope, count the number of resources at the time and store in job scope
+    /// Counts the number of resources in the scope, accessing the VectorFS to check for folders
+    pub async fn count_number_of_resources_in_job_scope(
+        vector_fs: Arc<VectorFS>,
+        profile: &ShinkaiName,
+        scope: &JobScope,
+    ) -> Result<usize, VectorFSError> {
+        let mut count = scope.local_vrkai.len() + scope.vector_fs_items.len();
+
+        for vrpack_entry in &scope.local_vrpack {
+            count += vrpack_entry.vrpack.vrkai_count as usize;
+        }
+        for folder in &scope.vector_fs_folders {
+            let path = folder.path.clone();
+            let folder_content = vector_fs.count_number_of_items_under_path(path, profile).await?;
+            count += folder_content;
+        }
+
+        Ok(count)
     }
 }
 

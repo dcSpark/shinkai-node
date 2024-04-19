@@ -1,7 +1,7 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_task_parser::ParsedJobTask;
-use crate::agent::job::Job;
+use crate::agent::job::{Job, JobStepResult};
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
@@ -54,7 +54,13 @@ impl JobManager {
         let parsed_job_task = ParsedJobTask::new(job_message.content.to_string());
 
         // Choose the inference chain based on the job task
-        let chosen_chain = choose_inference_chain(parsed_job_task.clone(), generator.clone(), &full_job.scope).await;
+        let chosen_chain = choose_inference_chain(
+            parsed_job_task.clone(),
+            generator.clone(),
+            &full_job.scope,
+            &full_job.step_history,
+        )
+        .await;
         match chosen_chain {
             InferenceChain::SummaryChain => {
                 inference_response_content = JobManager::start_summary_inference_chain(
@@ -137,19 +143,6 @@ impl JobManager {
                         None,
                     )
                     .await?;
-
-                    new_execution_context.insert(
-                        "previous_step_response".to_string(),
-                        inference_response_content.clone().cron_expression,
-                    );
-                    new_execution_context.insert(
-                        "previous_step_response".to_string(),
-                        inference_response_content.clone().pddl_plan_problem,
-                    );
-                    new_execution_context.insert(
-                        "previous_step_response".to_string(),
-                        inference_response_content.clone().pddl_plan_domain,
-                    );
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }
@@ -195,8 +188,21 @@ impl JobManager {
                     .await?;
                     inference_response_content = response.summary;
 
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone());
+                    // new_execution_context.insert(
+                    //     "previous_step_response".to_string(),
+                    //     inference_response_content.clone().cron_expression,
+                    // );
+                    // new_execution_context.insert(
+                    //     "previous_step_response".to_string(),
+                    //     inference_response_content.clone().pddl_plan_problem,
+                    // );
+                    // new_execution_context.insert(
+                    //     "previous_step_response".to_string(),
+                    //     inference_response_content.clone().pddl_plan_domain,
+                    // );
+
+                    // new_execution_context
+                    //     .insert("previous_step_response".to_string(), inference_response_content.clone());
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }
@@ -234,9 +240,11 @@ async fn choose_inference_chain(
     parsed_job_task: ParsedJobTask,
     generator: RemoteEmbeddingGenerator,
     job_scope: &JobScope,
+    step_history: &Vec<JobStepResult>,
 ) -> InferenceChain {
     eprintln!("Choosing inference chain");
-    if JobManager::validate_job_task_requests_summary(parsed_job_task, generator.clone(), job_scope).await {
+    if JobManager::validate_job_task_requests_summary(parsed_job_task, generator.clone(), job_scope, step_history).await
+    {
         InferenceChain::SummaryChain
     } else {
         InferenceChain::QAChain
