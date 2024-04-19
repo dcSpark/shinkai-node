@@ -103,6 +103,10 @@ pub async fn summarize_these_embeddings(
         "Give me a summay of these docs/files".to_string(),
         "Give me a summy of these docs/files".to_string(),
         "Give me a smmary of these docs/files".to_string(),
+        "Summarize the conversation context".to_string(),
+        "Summarize the chat context".to_string(),
+        "Summarize the chat scope".to_string(),
+        "Summarize the conversation scope".to_string(),
     ];
     let ids = vec!["".to_string(); strings.len()];
     let embeddings = generator.generate_embeddings(&strings, &ids).await?;

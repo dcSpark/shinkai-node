@@ -14,6 +14,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
@@ -97,9 +98,12 @@ impl JobManager {
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         let scope = full_job.scope();
-
         let resource_count =
             JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
+
+        // Optimization TODO:
+        // If a significant amount of VRs, simply search first to find the the top 5 most relevant and summarize them fully.
+        // The rest summarize as 1-2 line sentences and list them up to 25.
 
         // Get a stream that retrieves all resources in the job scope automatically, and chunk it in groups of 5 (same as stream buffer size)
         let resource_stream =
@@ -108,17 +112,48 @@ impl JobManager {
 
         // For each chunk parallelize creating a detailed summary for each
         let mut num_resources_processed = 0;
+        let mut detailed_summaries = Vec::new();
         while let Some(resources) = chunks.next().await {
             println!("Received chunk of resources: {}", resources.len());
+            let resource_count = resources.len();
 
-            num_resources_processed += resources.len();
+            // Create a future for each resource in the chunk
+            let futures = resources
+                .into_iter()
+                .map(|resource| Self::generate_detailed_summary_for_resource(resource, &generator));
+            let results = futures::future::join_all(futures).await;
+
+            // Handle each future's result individually
+            for result in results {
+                match result {
+                    Ok(summary) => detailed_summaries.push(summary),
+                    Err(e) => shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        &format!("Error generating detailed summary: {}", e),
+                    ),
+                }
+            }
+            num_resources_processed += resource_count;
         }
 
-        // Optimization TODO:
-        // If a significant amount of VRs, simply search first to find the the top 5 most relevant and summarize them fully.
-        // The rest summarize as 1-2 line sentences and list them up to 25.
+        let joined_summaries = detailed_summaries
+            .iter()
+            .map(|summary| format!("{}\n", summary))
+            .collect::<String>();
 
-        Ok("Summary inference chain has been chosen".to_string())
+        Ok(joined_summaries)
+    }
+
+    pub async fn generate_detailed_summary_for_resource(
+        resource: BaseVectorResource,
+        generator: &RemoteEmbeddingGenerator,
+    ) -> Result<String, AgentError> {
+        // TODO: Implement logic
+        Ok(format!(
+            "Detailed summary for resource: {:?}",
+            resource.as_trait_object().description()
+        ))
     }
 
     // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.

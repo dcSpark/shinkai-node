@@ -317,7 +317,7 @@ impl JobManager {
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
                     .await?;
 
-                let mut results = vector_fs
+                let results = vector_fs
                     .deep_vector_search_customized(
                         &reader,
                         query_text.clone(),
