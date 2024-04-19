@@ -4,7 +4,7 @@ use crate::{
     resource_errors::VRError,
 };
 use csv::ReaderBuilder;
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 
 impl LocalFileParser {
     /// Attempts to process the provided csv file into a list of TextGroups.
@@ -18,18 +18,18 @@ impl LocalFileParser {
                 let chunks = ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize);
 
                 if let Some(first_chunk) = chunks.first() {
-                    let mut line_group = TextGroup::new(first_chunk.to_owned(), vec![], vec![], None);
+                    let mut line_group = TextGroup::new(first_chunk.to_owned(), HashMap::new(), vec![], vec![], None);
 
                     if chunks.len() > 1 {
                         for chunk in chunks.into_iter().skip(1) {
-                            line_group.push_sub_group(TextGroup::new(chunk, vec![], vec![], None));
+                            line_group.push_sub_group(TextGroup::new(chunk, HashMap::new(), vec![], vec![], None));
                         }
                     }
 
                     text_groups.push(line_group);
                 }
             } else {
-                text_groups.push(TextGroup::new(line.clone(), vec![], vec![], None));
+                text_groups.push(TextGroup::new(line.clone(), HashMap::new(), vec![], vec![], None));
             }
         }
 
