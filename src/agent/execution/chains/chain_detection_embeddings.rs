@@ -5,10 +5,10 @@ use shinkai_vector_resources::resource_errors::VRError;
 use std::result::Result::Ok;
 
 /// Scores job task embedding against a set of embeddings and returns the highest score.
-pub async fn top_score_embeddings(embeddings: Vec<(String, Embedding)>, job_task_embedding: &Embedding) -> f32 {
+pub async fn top_score_embeddings(embeddings: Vec<(String, Embedding)>, user_message_embedding: &Embedding) -> f32 {
     let mut top_score = 0.0;
     for (summary_string, summary_embedding) in embeddings {
-        let score = summary_embedding.score_similarity(job_task_embedding);
+        let score = summary_embedding.score_similarity(user_message_embedding);
         println!("{} Score: {:.2}", summary_string, score);
         if score > top_score {
             top_score = score;
@@ -20,28 +20,28 @@ pub async fn top_score_embeddings(embeddings: Vec<(String, Embedding)>, job_task
 /// Scores job task embedding against "summarize these" embeddings and returns the highest score.
 pub async fn top_score_summarize_these_embeddings(
     generator: RemoteEmbeddingGenerator,
-    job_task_embedding: &Embedding,
+    user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = summarize_these_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, job_task_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
 }
 
 /// Scores job task embedding against "summarize this" embeddings and returns the highest score.
 pub async fn top_score_summarize_this_embeddings(
     generator: RemoteEmbeddingGenerator,
-    job_task_embedding: &Embedding,
+    user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = summarize_this_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, job_task_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
 }
 
 /// Scores job task embedding against message history summary embeddings and returns the highest score.
 pub async fn top_score_message_history_summary_embeddings(
     generator: RemoteEmbeddingGenerator,
-    job_task_embedding: &Embedding,
+    user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = message_history_summary_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, job_task_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
 }
 
 /// Returns summary embeddings related to requests for summarizing multiple documents or files

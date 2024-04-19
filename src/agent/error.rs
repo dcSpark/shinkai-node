@@ -109,7 +109,7 @@ impl fmt::Display for AgentError {
             AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
             AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
             AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
-            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this job_task: {}", s),
+            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this user_message: {}", s),
             AgentError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
             AgentError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
             AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),

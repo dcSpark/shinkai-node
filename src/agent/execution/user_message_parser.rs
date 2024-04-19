@@ -8,25 +8,25 @@ use shinkai_vector_resources::{
 /// Represents an analyzed/parsed initial message which triggered the job to run (aka. job task)
 /// Holds an ordered list of elements, which are pieces of the original job task string with parsed metadata about them
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ParsedJobTask {
-    pub original_job_task_string: String,
+pub struct ParsedUserMessage {
+    pub original_user_message_string: String,
     pub elements: Vec<JobTaskElement>,
 }
 
-impl ParsedJobTask {
-    pub fn new(original_job_task_string: String) -> Self {
+impl ParsedUserMessage {
+    pub fn new(original_user_message_string: String) -> Self {
         // Clean the original job task string by removing trailing newlines/whitespace
-        let original_job_task_string = original_job_task_string.trim_end_matches('\n').trim().to_string();
-        let elements = Self::parse_original_job_task_string(&original_job_task_string);
-        let pjt = ParsedJobTask {
-            original_job_task_string,
+        let original_user_message_string = original_user_message_string.trim_end_matches('\n').trim().to_string();
+        let elements = Self::parse_original_user_message_string(&original_user_message_string);
+        let pjt = ParsedUserMessage {
+            original_user_message_string,
             elements,
         };
-        println!("ParsedJobTask: {:?}", pjt);
+        println!("ParsedUserMessage: {:?}", pjt);
         pjt
     }
 
-    /// Creates a new `ParsedJobTask` using the given elements (recreates original job task string)
+    /// Creates a new `ParsedUserMessage` using the given elements (recreates original job task string)
     pub fn new_from_elements(elements: Vec<JobTaskElement>) -> Self {
         let orig_text = elements
             .iter()
@@ -38,18 +38,18 @@ impl ParsedJobTask {
             })
             .collect::<Vec<String>>()
             .join(" ");
-        ParsedJobTask {
-            original_job_task_string: orig_text,
+        ParsedUserMessage {
+            original_user_message_string: orig_text,
             elements,
         }
     }
 
     /// Parses the original job task string into a list of job task elements
-    fn parse_original_job_task_string(original_job_task_string: &str) -> Vec<JobTaskElement> {
+    fn parse_original_user_message_string(original_user_message_string: &str) -> Vec<JobTaskElement> {
         let mut elements = Vec::new();
 
         // Split the text elements from the codeblocks
-        let split_text_on_code_blocks = split_text_on_code_blocks(original_job_task_string);
+        let split_text_on_code_blocks = split_text_on_code_blocks(original_user_message_string);
         for text in split_text_on_code_blocks {
             if text.starts_with("```") {
                 // TODO: process language eventually
@@ -111,7 +111,7 @@ impl ParsedJobTask {
     /// Returns a string representation of the job task, filtered by the given parameters
     pub fn get_output_string_filtered(&self, remove_text: bool, remove_code_blocks: bool) -> String {
         let filtered_elements = self.get_elements_filtered(remove_text, remove_code_blocks);
-        ParsedJobTask::new_from_elements(filtered_elements).get_output_string()
+        ParsedUserMessage::new_from_elements(filtered_elements).get_output_string()
     }
 
     /// Generates an embedding for the job task using it's entire output string, with a default empty id

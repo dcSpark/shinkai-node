@@ -59,7 +59,7 @@ impl JobPromptGenerator {
     }
 
     /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn basic_instant_response_prompt(job_task: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
+    pub fn basic_instant_response_prompt(user_message: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();
 
         // Add up to previous 10 step results from history
@@ -72,7 +72,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
+        prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
         prompt.add_ebnf(
             String::from(r#"'{' 'answer' ':' string '}'"#),
             SubPromptType::System,
@@ -83,9 +83,9 @@ impl JobPromptGenerator {
     }
 
     /// A basic prompt for answering based off of vector searching content which explains to the LLM
-    /// that it should use them as context to answer the job_task, with the ability to further search.
+    /// that it should use them as context to answer the user_message, with the ability to further search.
     pub fn response_prompt_with_vector_search(
-        job_task: String,
+        user_message: String,
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         prev_search_text: Option<String>,
@@ -133,7 +133,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
-        prompt.add_content(format!("{}.\n", job_task), SubPromptType::User, 100);
+        prompt.add_content(format!("{}.\n", user_message), SubPromptType::User, 100);
 
         prompt.add_content(
             format!("If you have enough information to directly answer the user's question:"),
@@ -173,9 +173,9 @@ impl JobPromptGenerator {
     }
 
     /// A basic prompt for answering based off of vector searching content which explains to the LLM
-    /// that it should use them as context to answer the job_task with no option to further search.
+    /// that it should use them as context to answer the user_message with no option to further search.
     pub fn response_prompt_with_vector_search_final(
-        job_task: String,
+        user_message: String,
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
@@ -208,7 +208,7 @@ impl JobPromptGenerator {
 
         let pre_task_text = format!("The user has asked: ");
         prompt.add_content(pre_task_text, SubPromptType::System, 99);
-        prompt.add_content(job_task, SubPromptType::User, 100);
+        prompt.add_content(user_message, SubPromptType::User, 100);
 
         let this_clause = if step_history_is_empty {
             "If the user talks about `it` or `this`, they are referencing the content."
@@ -326,14 +326,14 @@ impl JobPromptGenerator {
         prompt
     }
 
-    pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
+    pub fn bootstrap_plan_prompt(user_message: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
+        prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
         prompt.add_content(
             String::from(
                 "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."

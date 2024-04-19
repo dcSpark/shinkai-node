@@ -1,6 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_node::agent::execution::job_task_parser::ParsedJobTask;
+use shinkai_node::agent::execution::user_message_parser::ParsedUserMessage;
 use shinkai_node::agent::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
@@ -1104,21 +1104,21 @@ async fn test_vector_fs_operations() {
 }
 
 #[tokio::test]
-async fn test_remove_code_blocks_with_parsed_job_task() {
+async fn test_remove_code_blocks_with_parsed_user_message() {
     // Example strings containing code blocks
     let example1 = "Here is some text.\n```\nlet x = 10;\n```\nAnd here is more text.";
     let example2 = "Another example with a `single backtick`, and a code block:\n```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\nEnd of example.";
     let example3 = "Text before code block 1.\n```\nCode Block 1\n```\nText between code block 1 and 2.\n```\nCode Block 2\n```\nText between code block 2 and 3.\n```\nCode Block 3\n```\nText after code block 3.";
 
     // Create a parsed job task for each example
-    let parsed_job_task1 = ParsedJobTask::new(example1.to_string());
-    let parsed_job_task2 = ParsedJobTask::new(example2.to_string());
-    let parsed_job_task3 = ParsedJobTask::new(example3.to_string());
+    let parsed_user_message1 = ParsedUserMessage::new(example1.to_string());
+    let parsed_user_message2 = ParsedUserMessage::new(example2.to_string());
+    let parsed_user_message3 = ParsedUserMessage::new(example3.to_string());
 
     // Extract only the code blocks from each parsed job task
-    let code_blocks1 = parsed_job_task1.get_output_string_filtered(true, false);
-    let code_blocks2 = parsed_job_task2.get_output_string_filtered(true, false);
-    let code_blocks3 = parsed_job_task3.get_output_string_filtered(true, false);
+    let code_blocks1 = parsed_user_message1.get_output_string_filtered(true, false);
+    let code_blocks2 = parsed_user_message2.get_output_string_filtered(true, false);
+    let code_blocks3 = parsed_user_message3.get_output_string_filtered(true, false);
 
     // Expected code blocks strings
     let expected_code_blocks1 = "```\nlet x = 10;\n```";
@@ -1139,14 +1139,14 @@ async fn test_remove_code_blocks_with_parsed_job_task() {
 //     let example3 = "Text before numbered list.\n1. Item 1\n2. Item 2\n3. Item 3\nText after numbered list.";
 
 //     // Create a parsed job task for each example
-//     let parsed_job_task1 = ParsedJobTask::new(example1.to_string());
-//     let parsed_job_task2 = ParsedJobTask::new(example2.to_string());
-//     let parsed_job_task3 = ParsedJobTask::new(example3.to_string());
+//     let parsed_user_message1 = ParsedUserMessage::new(example1.to_string());
+//     let parsed_user_message2 = ParsedUserMessage::new(example2.to_string());
+//     let parsed_user_message3 = ParsedUserMessage::new(example3.to_string());
 
 //     // Assuming a method to count list elements in the parsed job task
-//     let list_count1 = parsed_job_task1.get_elements_filtered(true, true, false).len();
-//     let list_count2 = parsed_job_task2.get_elements_filtered(true, true, false).len();
-//     let list_count3 = parsed_job_task3.get_elements_filtered(true, true, false).len();
+//     let list_count1 = parsed_user_message1.get_elements_filtered(true, true, false).len();
+//     let list_count2 = parsed_user_message2.get_elements_filtered(true, true, false).len();
+//     let list_count3 = parsed_user_message3.get_elements_filtered(true, true, false).len();
 
 //     // Expected number of list elements
 //     let expected_list_count1 = 2;
@@ -1169,9 +1169,9 @@ async fn test_remove_code_blocks_with_parsed_job_task() {
 
 //     // Print each list element for visual inspection (assuming a method to iterate and print list elements)
 //     println!("List elements in example1:");
-//     parsed_job_task1.print_list_elements();
+//     parsed_user_message1.print_list_elements();
 //     println!("List elements in example2:");
-//     parsed_job_task2.print_list_elements();
+//     parsed_user_message2.print_list_elements();
 //     println!("List elements in example3:");
-//     parsed_job_task3.print_list_elements();
+//     parsed_user_message3.print_list_elements();
 // }

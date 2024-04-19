@@ -27,7 +27,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
-        job_task: String,
+        user_message: String,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -41,7 +41,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
-            &format!("start_qa_inference_chain>  message: {:?}", job_task),
+            &format!("start_qa_inference_chain>  message: {:?}", user_message),
         );
 
         //
@@ -50,8 +50,8 @@ impl JobManager {
         // to be able to find all the information related to the user's questions. This will likely be needed when lots of VRs are part of the scope.
         //
 
-        // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
-        let query_text = search_text.clone().unwrap_or(job_task.clone());
+        // Use search_text if available (on recursion), otherwise use user_message to generate the query (on first iteration)
+        let query_text = search_text.clone().unwrap_or(user_message.clone());
 
         // Vector Search if the scope isn't empty.
         let scope_is_empty = full_job.scope().is_empty();
@@ -77,7 +77,7 @@ impl JobManager {
         let is_not_final = iteration_count < max_iterations && !scope_is_empty;
         let filled_prompt = if is_not_final {
             JobPromptGenerator::response_prompt_with_vector_search(
-                job_task.clone(),
+                user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),
                 Some(query_text),
@@ -85,7 +85,7 @@ impl JobManager {
             )
         } else {
             JobPromptGenerator::response_prompt_with_vector_search_final(
-                job_task.clone(),
+                user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),
                 Some(full_job.step_history.clone()),
@@ -106,7 +106,7 @@ impl JobManager {
                 db,
                 vector_fs,
                 full_job,
-                job_task,
+                user_message,
                 agent,
                 execution_context,
                 generator,
@@ -136,7 +136,7 @@ impl JobManager {
                     let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(&summary_str);
                     return Ok(cleaned_answer);
                 } else {
-                    return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+                    return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
                 }
             }
         }
@@ -205,7 +205,7 @@ impl JobManager {
             db,
             vector_fs,
             full_job,
-            job_task.to_string(),
+            user_message.to_string(),
             agent,
             execution_context,
             generator,
@@ -225,7 +225,7 @@ async fn no_json_object_retry_logic(
     db: Arc<ShinkaiDB>,
     vector_fs: Arc<VectorFS>,
     full_job: Job,
-    job_task: String,
+    user_message: String,
     agent: SerializedAgent,
     execution_context: HashMap<String, String>,
     generator: RemoteEmbeddingGenerator,
@@ -243,7 +243,7 @@ async fn no_json_object_retry_logic(
                 db,
                 vector_fs,
                 full_job,
-                job_task.to_string(),
+                user_message.to_string(),
                 agent,
                 execution_context,
                 generator,

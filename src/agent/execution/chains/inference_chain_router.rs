@@ -1,6 +1,6 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_task_parser::ParsedJobTask;
+use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobStepResult};
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
@@ -51,11 +51,11 @@ impl JobManager {
         let mut new_execution_context = HashMap::new();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
-        let parsed_job_task = ParsedJobTask::new(job_message.content.to_string());
+        let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
         // Choose the inference chain based on the job task
         let chosen_chain = choose_inference_chain(
-            parsed_job_task.clone(),
+            parsed_user_message.clone(),
             generator.clone(),
             &full_job.scope,
             &full_job.step_history,
@@ -67,7 +67,7 @@ impl JobManager {
                     db,
                     vector_fs,
                     full_job,
-                    parsed_job_task,
+                    parsed_user_message,
                     agent,
                     prev_execution_context,
                     generator,
@@ -87,7 +87,7 @@ impl JobManager {
                     db,
                     vector_fs,
                     full_job,
-                    parsed_job_task.get_output_string(),
+                    parsed_user_message.get_output_string(),
                     agent,
                     prev_execution_context,
                     generator,
@@ -237,13 +237,19 @@ impl JobManager {
 
 /// Chooses the inference chain based on the job task
 async fn choose_inference_chain(
-    parsed_job_task: ParsedJobTask,
+    parsed_user_message: ParsedUserMessage,
     generator: RemoteEmbeddingGenerator,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
 ) -> InferenceChain {
     eprintln!("Choosing inference chain");
-    if JobManager::validate_job_task_requests_summary(parsed_job_task, generator.clone(), job_scope, step_history).await
+    if JobManager::validate_user_message_requests_summary(
+        parsed_user_message,
+        generator.clone(),
+        job_scope,
+        step_history,
+    )
+    .await
     {
         InferenceChain::SummaryChain
     } else {
