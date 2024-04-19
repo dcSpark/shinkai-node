@@ -30,7 +30,7 @@ impl LocalFileParser {
         let mut current_metadata = HashMap::new();
 
         for line in text_lines {
-            let (parsed_line, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&line);
+            let (parsed_line, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&line);
 
             if parsed_line.len() as u64 + current_text.len() as u64 > max_node_text_size {
                 if !current_text.is_empty() {
@@ -46,14 +46,19 @@ impl LocalFileParser {
                 if parsed_line.len() as u64 > max_node_text_size {
                     // If the line itself exceeds max_node_text_size, split it into chunks
                     // Split the unparsed line into chunks and parse metadata in each chunk
-                    let chunks = if metadata.is_empty() {
-                        ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
-                    } else {
+                    let chunks = if parsed_any_metadata {
                         ShinkaiFileParser::split_into_chunks_with_metadata(&line, max_node_text_size as usize)
+                    } else {
+                        ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
                     };
 
                     for chunk in chunks {
-                        let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                        let (parsed_chunk, metadata, _) = if parsed_any_metadata {
+                            ShinkaiFileParser::parse_and_extract_metadata(&chunk)
+                        } else {
+                            (chunk, HashMap::new(), false)
+                        };
+
                         text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
                     }
                 } else {
