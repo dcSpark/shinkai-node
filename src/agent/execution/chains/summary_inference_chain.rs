@@ -17,6 +17,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
