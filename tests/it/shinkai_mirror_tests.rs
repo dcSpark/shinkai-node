@@ -495,6 +495,7 @@ fn mirror_sync_tests() {
             }
         }
     });
+    rt.shutdown_background();
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -4,9 +4,9 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair,
+    clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
     init_default_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
@@ -18,6 +18,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
+use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -49,17 +50,17 @@ fn node_agent_registration() {
         let node1_device_name = "node1_device";
         let node1_agent = "node1_gpt_agent";
 
-        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
 
-        let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
-        let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (node1_profile_identity_sk, _node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
+        let (node1_profile_encryption_sk, _node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
@@ -197,7 +198,7 @@ fn node_agent_registration() {
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name,
                     node1_subidentity_name,
@@ -216,7 +217,7 @@ fn node_agent_registration() {
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name,
                     node1_subidentity_name,
@@ -453,6 +454,95 @@ fn node_agent_registration() {
                 // Note(Nico): the backend was modified to do more repeats when chaining so the mocky endpoint returns the same message twice hence
                 // this odd result
                 // assert!(node2_last_messages.len() == 2);
+            }
+            {
+                // Send an old message
+                let past_time_2_secs = ShinkaiStringTime::generate_time_in_past_with_secs(10);
+
+                let job_id_clone = job_id.clone();
+                let job_message = JobMessage {
+                    job_id,
+                    content: "testing old message".to_string(),
+                    files_inbox: "".to_string(),
+                    parent: None,
+                };
+                let body = serde_json::to_string(&job_message)
+                    .map_err(|_| "Failed to serialize job message to JSON")
+                    .unwrap();
+
+                let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone.clone())
+                    .map_err(|_| "Failed to get job inbox name")
+                    .unwrap()
+                    .to_string();
+
+                let job_message = ShinkaiMessageBuilder::new(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .body_encryption(EncryptionMethod::None)
+                .external_metadata_with_schedule(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string(),
+                    past_time_2_secs,
+                )
+                .message_raw_content(body.clone())
+                .internal_metadata_with_inbox(
+                    "main".to_string(),
+                    agent_subidentity.clone(),
+                    inbox.to_string(),
+                    EncryptionMethod::None,
+                    None,
+                )
+                .message_schema_type(MessageSchemaType::JobMessageSchema)
+                .build()
+                .unwrap();
+
+                let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIJobMessage {
+                        msg: job_message,
+                        res: res_message_job_sender,
+                    })
+                    .await
+                    .unwrap();
+                let node_job_message = res_message_job_receiver.recv().await.unwrap();
+                eprintln!("Old message node_job_message: {:?}", node_job_message);
+
+                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
+
+                let mut node1_last_messages = vec![];
+                let mut is_message_found = false;
+                for _ in 0..30 {
+                    let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
+                        clone_static_secret_key(&node1_profile_encryption_sk),
+                        clone_signature_secret_key(&node1_profile_identity_sk),
+                        node1_encryption_pk,
+                        inbox.to_string(),
+                        4,
+                        None,
+                        "".to_string(),
+                        sender.clone(),
+                        node1_identity_name.to_string(),
+                    )
+                    .unwrap();
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res: res1_sender })
+                        .await
+                        .unwrap();
+                    node1_last_messages = res1_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                    // eprintln!("*** node2_last_messages: {:?}", node2_last_messages);
+                    if node1_last_messages.len() >= 4 {
+                        is_message_found = true;
+                        break;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                eprintln!("### node1_last_messages: {:?}", node1_last_messages);
+                assert!(is_message_found);
+
             }
             {
                 // Send a scheduled message
