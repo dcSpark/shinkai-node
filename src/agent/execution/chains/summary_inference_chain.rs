@@ -1,4 +1,5 @@
 use crate::agent::error::AgentError;
+use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
 use crate::agent::job_manager::JobManager;
@@ -155,6 +156,12 @@ impl JobManager {
         agent: SerializedAgent,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
+        let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+
+        // Split the list of resource_sub_prompts into chunks that fit in the max tokens in prompt
+        // Implement a method on SubPrompt does this chunking and token counting
+        // let sub_prompt_chunks = resource_sub_prompts.
+
         // TODO: Implement logic
         Ok(format!(
             "Detailed summary for resource: {:?}",

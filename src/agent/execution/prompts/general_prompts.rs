@@ -7,30 +7,6 @@ use lazy_static::lazy_static;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 
 impl JobPromptGenerator {
-    /// Converts a vector resource into a series of subprompts to be used in a prompt
-    /// If the VR is ordered, the output will be as well.
-    pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
-        let mut temp_prompt = Prompt::new();
-
-        let nodes = resource.as_trait_object().get_all_nodes_flattened();
-
-        // Iterate through each node and add its text string to the prompt (which is the name of the VR)
-        for node in nodes {
-            if let Ok(content) = node.get_text_content() {
-                temp_prompt.add_content(content.to_string(), SubPromptType::System, subprompt_priority);
-            }
-            if let Ok(resource) = node.get_vector_resource_content() {
-                temp_prompt.add_content(
-                    resource.as_trait_object().name().to_string(),
-                    SubPromptType::System,
-                    subprompt_priority,
-                );
-            }
-        }
-
-        temp_prompt.remove_all_subprompts()
-    }
-
     /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
     pub fn basic_instant_response_prompt(user_message: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();

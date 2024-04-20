@@ -5,6 +5,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::ChatCompletionRequestMessage;
 
@@ -74,6 +75,61 @@ impl SubPrompt {
             SubPrompt::Asset(_, _, content, _, _) => content.len(),
             SubPrompt::EBNF(_, ebnf, _, _) => ebnf.len(),
         }
+    }
+
+    /// Generates a human/LLM-readable output string from the SubPrompt content
+    pub fn generate_output_string(&self) -> String {
+        match self {
+            SubPrompt::Content(_, content, _) => content.clone(),
+            SubPrompt::EBNF(_, ebnf, _, retry) => {
+                if *retry {
+                    format!("An EBNF option to respond with: {} ", ebnf)
+                } else {
+                    format!(
+                        "Then respond using the following EBNF and absolutely nothing else: {} ",
+                        ebnf
+                    )
+                }
+            }
+            SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
+                format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
+            }
+        }
+    }
+
+    /// Extracts generic subprompt data, returning a tuple of the prompt type, content, and content type.
+    pub fn extract_generic_subprompt_data(&self) -> (SubPromptType, String, &'static str) {
+        match self {
+            SubPrompt::Content(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
+            SubPrompt::EBNF(prompt_type, _, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
+            SubPrompt::Asset(prompt_type, _, asset_content, _, _) => {
+                (prompt_type.clone(), asset_content.clone(), "image")
+            }
+        }
+    }
+
+    /// Converts a vector resource into a series of subprompts to be used in a prompt
+    /// If the VR is ordered, the output will be as well.
+    pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
+        let mut temp_prompt = Prompt::new();
+
+        let nodes = resource.as_trait_object().get_all_nodes_flattened();
+
+        // Iterate through each node and add its text string to the prompt (which is the name of the VR)
+        for node in nodes {
+            if let Ok(content) = node.get_text_content() {
+                temp_prompt.add_content(content.to_string(), SubPromptType::System, subprompt_priority);
+            }
+            if let Ok(resource) = node.get_vector_resource_content() {
+                temp_prompt.add_content(
+                    resource.as_trait_object().name().to_string(),
+                    SubPromptType::System,
+                    subprompt_priority,
+                );
+            }
+        }
+
+        temp_prompt.remove_all_subprompts()
     }
 }
 
@@ -315,13 +371,7 @@ impl Prompt {
         let content = self
             .sub_prompts
             .iter()
-            .map(|sub_prompt| match sub_prompt {
-                SubPrompt::Content(_, content, _) => content.clone(),
-                SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, retry.clone()),
-                SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
-                    format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
-                }
-            })
+            .map(|sub_prompt| sub_prompt.generate_output_string())
             .collect::<Vec<String>>()
             .join("\n")
             + "\n"
@@ -337,16 +387,7 @@ impl Prompt {
 
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
-            let (prompt_type, content, type_) = match sub_prompt {
-                SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone(), "text"),
-                SubPrompt::EBNF(prompt_type, ebnf, _, retry) => {
-                    let ebnf_string = self.generate_ebnf_response_string(ebnf, retry.clone());
-                    (prompt_type, ebnf_string, "text")
-                }
-                SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, _) => {
-                    (prompt_type, asset_content.to_string(), "image")
-                }
-            };
+            let (prompt_type, content, type_) = sub_prompt.extract_generic_subprompt_data();
 
             let new_message = ChatCompletionRequestMessage {
                 role: prompt_type.to_string(),

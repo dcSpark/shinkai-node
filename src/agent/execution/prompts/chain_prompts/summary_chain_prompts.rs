@@ -1,5 +1,8 @@
 use super::super::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::agent::{execution::user_message_parser::ParsedUserMessage, job::JobStepResult};
+use crate::agent::{
+    execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
+    job::JobStepResult,
+};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 
 impl JobPromptGenerator {
@@ -14,44 +17,44 @@ impl JobPromptGenerator {
         //
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
-            SubPromptType::System,
-            100
-        );
+        //     prompt.add_content(
+        //         "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
+        //         SubPromptType::System,
+        //         100
+        //     );
 
-        if let Some(summary) = summary_text {
-            prompt.add_content(
-                format!(
-                    "Here is the current content you found earlier to answer the user's question: `{}`",
-                    summary
-                ),
-                SubPromptType::User,
-                99,
-            );
-        }
+        //     if let Some(summary) = summary_text {
+        //         prompt.add_content(
+        //             format!(
+        //                 "Here is the current content you found earlier to answer the user's question: `{}`",
+        //                 summary
+        //             ),
+        //             SubPromptType::User,
+        //             99,
+        //         );
+        //     }
 
-        let pre_task_text = format!("The user has asked: ");
-        prompt.add_content(pre_task_text, SubPromptType::System, 99);
-        prompt.add_content(user_message, SubPromptType::User, 100);
+        //     let pre_task_text = format!("The user has asked: ");
+        //     prompt.add_content(pre_task_text, SubPromptType::System, 99);
+        //     prompt.add_content(user_message, SubPromptType::User, 100);
 
-        let this_clause = if step_history_is_empty {
-            "If the user talks about `it` or `this`, they are referencing the content."
-        } else {
-            "If the user talks about `it` or `this`, they are referencing the previous message."
-        };
+        //     let this_clause = if step_history_is_empty {
+        //         "If the user talks about `it` or `this`, they are referencing the content."
+        //     } else {
+        //         "If the user talks about `it` or `this`, they are referencing the previous message."
+        //     };
 
-        prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
-            SubPromptType::System,
-            98
-        );
+        //     prompt.add_content(
+        //         format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
+        //         SubPromptType::System,
+        //         98
+        //     );
 
-        prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
-            SubPromptType::System,
-            100,
-        );
+        //     prompt.add_ebnf(
+        //         String::from(r#"'{' 'answer' ':' string '}'"#),
+        //         SubPromptType::System,
+        //         100,
+        //     );
 
         prompt
     }
