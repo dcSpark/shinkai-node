@@ -10,7 +10,7 @@ use shinkai_vector_resources::{
     source::DistributionInfo,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRKeywords, VRPath},
 };
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 /// Enum that holds the types of external-facing entries used in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -68,6 +68,15 @@ impl FSEntry {
             FSEntry::Item(item) => item.to_json_simplified_value(),
             FSEntry::Folder(folder) => folder.to_json_simplified_value(),
             FSEntry::Root(root) => root.to_json_simplified_value(),
+        }
+    }
+
+    /// Converts the FSEntry to a "minimal" JSON Value by calling minimal methods on items/folders/roots
+    pub fn to_json_minimal_value(&self) -> Result<Value, VectorFSError> {
+        match self {
+            FSEntry::Item(item) => item.to_json_minimal_value(),
+            FSEntry::Folder(folder) => folder.to_json_minimal_value(),
+            FSEntry::Root(root) => root.to_json_minimal_value(),
         }
     }
 
@@ -145,6 +154,21 @@ impl FSRoot {
             *child_folder = serde_json::from_value(child_folder.to_json_simplified_value()?)?;
         }
         Ok(serde_json::to_value(&root)?)
+    }
+
+    /// Converts the FSRoot to a "minimal" JSON Value without vr_header in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_minimal_value(&self) -> Result<serde_json::Value, VectorFSError> {
+        let mut root_json = serde_json::to_value(self.clone())?;
+
+        // Recursively simplify child folders to their minimal representation
+        if let Some(child_folders) = root_json.get_mut("child_folders").and_then(|cf| cf.as_array_mut()) {
+            for folder in child_folders {
+                *folder = serde_json::from_value::<FSFolder>(folder.clone())?.to_json_minimal_value()?;
+            }
+        }
+
+        Ok(root_json)
     }
 }
 
@@ -365,6 +389,28 @@ impl FSFolder {
         }
         Ok(serde_json::to_value(&folder)?)
     }
+
+    /// Converts the FSFolder to a "minimal" JSON Value without vr_header in child items
+    /// and recursively simplifies child folders.
+    pub fn to_json_minimal_value(&self) -> Result<serde_json::Value, VectorFSError> {
+        let mut folder_json = serde_json::to_value(self.clone())?;
+
+        // Simplify child items by removing vr_header
+        if let Some(child_items) = folder_json.get_mut("child_items").and_then(|ci| ci.as_array_mut()) {
+            for item in child_items {
+                item.as_object_mut().unwrap().remove("vr_header");
+            }
+        }
+
+        // Recursively simplify child folders
+        if let Some(child_folders) = folder_json.get_mut("child_folders").and_then(|cf| cf.as_array_mut()) {
+            for folder in child_folders {
+                *folder = serde_json::from_value::<FSFolder>(folder.clone())?.to_json_minimal_value()?;
+            }
+        }
+
+        Ok(folder_json)
+    }
 }
 
 /// An external facing "file" abstraction used to make interacting with the VectorFS easier.
@@ -529,6 +575,14 @@ impl FSItem {
         item.vr_header.resource_embedding = None;
         item.vr_header.resource_keywords = VRKeywords::new();
         Ok(serde_json::to_value(&item)?)
+    }
+
+    /// Converts the FSItem to a "minimal" JSON Value
+    pub fn to_json_minimal_value(&self) -> Result<Value, VectorFSError> {
+        let mut item_json = serde_json::to_value(self)?;
+        // Remove the vr_header from the JSON representation
+        item_json.as_object_mut().unwrap().remove("vr_header");
+        Ok(item_json)
     }
 
     /// Process the two last_saved datetimes in a Node from the VectorFS core resource.

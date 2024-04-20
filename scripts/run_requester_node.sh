@@ -36,6 +36,6 @@ export ABI_PATH="./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry
 
 # Add these lines to enable all log options
 export LOG_ALL=1
-export RUSTFLAGS="--cfg tokio_unstable"
-
-cargo run --features console
+# export RUSTFLAGS="--cfg tokio_unstable"
+# --features console
+cargo run 

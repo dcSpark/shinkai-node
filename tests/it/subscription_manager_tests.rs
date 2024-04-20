@@ -1317,6 +1317,108 @@ fn subscription_manager_test() {
                 assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
             }
             {
+                eprintln!("Add a new file to the streamer");
+
+                // Upload File to /shared_test_folder/crypto
+                let file_path = Path::new("files/zeko.vrkai");
+                upload_file(
+                    &node1_commands_sender,
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                    "/shared_test_folder/crypto",
+                    file_path,
+                    0,
+                )
+                .await;
+            }
+            {
+                // Send Current Items to Node
+            }
+            {
+                eprintln!("Check that new file was received");
+                let mut attempts = 0;
+                let max_attempts = 100;
+                let mut structure_matched = false;
+
+                while attempts < max_attempts && !structure_matched {
+                    
+                    eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+
+                    let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
+                    let msg = generate_message_with_payload(
+                        serde_json::to_string(&payload).unwrap(),
+                        MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+                        node2_profile_encryption_sk.clone(),
+                        clone_signature_secret_key(&node2_profile_identity_sk),
+                        node2_encryption_pk,
+                        &node2_identity_name.to_string().clone(),
+                        &node2_profile_name.to_string().clone(),
+                        node2_identity_name,
+                        "",
+                    );
+
+                    // Prepare the response channel
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                    // Send the command
+                    node2_commands_sender
+                        .send(NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res: res_sender })
+                        .await
+                        .unwrap();
+                    let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                    // print_tree_simple(&resp);
+
+                   let expected_structure = serde_json::json!({
+                        "path": "/",
+                        "child_folders": [
+                            {
+                                "name": "shared_test_folder",
+                                "path": "/shared_test_folder",
+                                "child_folders": [
+                                    {
+                                        "name": "crypto",
+                                        "path": "/shared_test_folder/crypto",
+                                        "child_folders": [],
+                                        "child_items": [
+                                            {
+                                                "name": "shinkai_intro",
+                                                "path": "/shared_test_folder/crypto/shinkai_intro"
+                                            },
+                                            {
+                                                "name": "shinkai_intro_2",
+                                                "path": "/shared_test_folder/crypto/zeko"
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "child_items": [
+                                    {
+                                        "name": "shinkai_intro",
+                                        "path": "/shared_test_folder/shinkai_intro"
+                                    }
+                                ]
+                            }
+                        ],
+                        "child_items": []
+                    });
+
+                    structure_matched = check_structure(&actual_resp_json, &expected_structure);
+                    if structure_matched {
+                        eprintln!("The actual folder structure matches the expected structure.");
+                        break;
+                    } else {
+                        eprintln!("The actual folder structure does not match the expected structure. Retrying...");
+                        eprintln!("Actual structure: {:?}", actual_resp_json);
+                    }
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+                assert!(structure_matched, "The actual folder structure does not match the expected structure after all attempts.");
+            }
+            {
                  // check that the unsubscription was processed in the other node
                  eprintln!("Check current subscribers for node 1");
                  let unchanged_message = ShinkaiMessageBuilder::get_my_subscribers(
