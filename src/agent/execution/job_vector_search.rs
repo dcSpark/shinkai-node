@@ -11,12 +11,12 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
     deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption, VRHeader,
+    TraversalOption,
 };
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
 
 impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
@@ -259,7 +259,7 @@ impl JobManager {
         query_text: String,
         num_of_top_results: u64,
         profile: &ShinkaiName,
-        include_description: bool,
+        _include_description: bool,
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {

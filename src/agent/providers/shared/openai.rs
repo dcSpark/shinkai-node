@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt;
+
 
 use crate::agent::error::AgentError;
 use crate::agent::execution::prompts::prompts::Prompt;
@@ -7,14 +7,14 @@ use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use serde::de::Deserializer;
-use serde::de::Error;
-use serde::de::{MapAccess, Visitor};
+
+
 use serde::ser::{SerializeMap, SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
-use serde_json::{self, Map};
+
+use serde_json::{self};
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -106,7 +106,7 @@ pub struct ApiPayload {
 
 pub fn openai_prepare_messages(
     model: &AgentLLMInterface,
-    model_type: String,
+    _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {

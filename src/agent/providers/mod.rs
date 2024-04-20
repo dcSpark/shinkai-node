@@ -28,7 +28,7 @@ pub trait LLMProvider {
         match internal_extract_json_string(s) {
             Ok(json_str) => match serde_json::from_str(&json_str) {
                 Ok(json_val) => Ok(json_val),
-                Err(e) => {
+                Err(_e) => {
                     // If parsing fails, clean up the string and try again
                     let cleaned_json_string = Self::json_string_cleanup(&json_str);
                     match internal_extract_json_string(&cleaned_json_string) {

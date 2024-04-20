@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
     node_api::APIError, node_error::NodeError,
-    subscription_manager::external_subscriber_manager::{self, ExternalSubscriberManager}, Node,
+    subscription_manager::external_subscriber_manager::{ExternalSubscriberManager}, Node,
 };
 use crate::{
     agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
@@ -29,7 +29,7 @@ use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
-    vector_resource::{VRKai, VRPack, VRPath},
+    vector_resource::{VRPack, VRPath},
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1031,7 +1031,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
-        embedding_generator: Arc<EmbeddingGenerator>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1285,7 +1285,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_pack(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,

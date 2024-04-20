@@ -1,5 +1,5 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use rocksdb::{Error, Options};
+
 use serde_json::{from_slice, to_vec};
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 

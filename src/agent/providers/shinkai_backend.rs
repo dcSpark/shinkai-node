@@ -7,10 +7,10 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use serde_json::{self, Map};
+use serde_json::{self};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use tiktoken_rs::model::get_context_size;
+
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -92,7 +92,7 @@ impl LLMProvider for ShinkaiBackend {
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
-                let payload_string =
+                let _payload_string =
                     serde_json::to_string(&payload).unwrap_or_else(|_| String::from("Failed to serialize payload"));
 
                 // eprintln!("Curl command:");

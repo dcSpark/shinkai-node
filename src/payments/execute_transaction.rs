@@ -116,7 +116,7 @@ pub async fn execute_transaction(
         .map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
     // eprintln!("Pending transaction: {:?}", pending_tx);
 
-    let receipt = pending_tx
+    let _receipt = pending_tx
         .confirmations(1)
         .await
         .map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;

@@ -45,7 +45,7 @@ impl<'a> PlanExecutor<'a> {
     pub async fn execute_plan(&mut self) -> Result<(), AgentError> {
         for step in &self.execution_plan {
             match step {
-                ExecutionStep::Inference(inference_step) => {
+                ExecutionStep::Inference(_inference_step) => {
 
                     // 1. Generate the content to be sent using prompt generator/self/step
                     // PromptGenerator::...
@@ -65,7 +65,7 @@ impl<'a> PlanExecutor<'a> {
 
                     // 5. Find & parse the JSON in the response
                 }
-                ExecutionStep::Tool(tool_step) => {
+                ExecutionStep::Tool(_tool_step) => {
                     // self.agent.use_tool(tool_step.tool.clone()).await?;
                 }
                 _ => (),

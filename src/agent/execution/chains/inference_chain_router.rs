@@ -1,4 +1,4 @@
-use crate::agent::agent::Agent;
+
 use crate::agent::error::AgentError;
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobStepResult};
@@ -14,11 +14,11 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
-use super::cron_execution_chain::CronExecutionChainResponse;
+
 
 pub enum InferenceChain {
     QAChain,

@@ -8,10 +8,9 @@ use shinkai_message_primitives::{
         agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
         shinkai_name::ShinkaiName,
     },
-    shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient},
 };
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+
+
 
 #[derive(Debug, Clone)]
 pub struct Agent {
@@ -59,7 +58,7 @@ impl Agent {
 
     /// Inferences an LLM locally based on info held in the Agent
     /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait to unify local with remote interface.
-    async fn inference_locally(&self, content: String) -> Result<JsonValue, AgentError> {
+    async fn inference_locally(&self, _content: String) -> Result<JsonValue, AgentError> {
         // Here we run our GPU-intensive task on a separate thread
         let handle = tokio::task::spawn_blocking(move || {
             let mut map = Map::new();
@@ -72,7 +71,7 @@ impl Agent {
 
         match handle.await {
             Ok(response) => Ok(response),
-            Err(e) => Err(AgentError::InferenceFailed),
+            Err(_e) => Err(AgentError::InferenceFailed),
         }
     }
 
@@ -156,7 +155,7 @@ impl Agent {
                     )
                     .await
             }
-            AgentLLMInterface::LocalLLM(local_llm) => {
+            AgentLLMInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
         }

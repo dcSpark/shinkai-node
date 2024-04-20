@@ -82,7 +82,7 @@ impl RustTool {
     }
 
     // Default name of the rust toolkit
-    pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
+    pub fn ebnf_inputs(&self, _add_arg_descriptions: bool) -> String {
         RustToolkit::toolkit_type_name()
     }
 

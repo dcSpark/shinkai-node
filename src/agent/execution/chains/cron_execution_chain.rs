@@ -22,11 +22,11 @@ pub struct CronExecutionState {
 impl JobManager {
     #[async_recursion]
     pub async fn start_cron_execution_chain_for_subtask(
-        db: Arc<ShinkaiDB>,
-        full_job: Job,
+        _db: Arc<ShinkaiDB>,
+        _full_job: Job,
         agent: SerializedAgent,
-        execution_context: HashMap<String, String>,
-        user_profile: Option<ShinkaiName>,
+        _execution_context: HashMap<String, String>,
+        _user_profile: Option<ShinkaiName>,
         task_description: String, // what
         web_content: String,      // where
         iteration_count: u64,
@@ -67,7 +67,7 @@ impl JobManager {
             return Err(AgentError::InferenceRecursionLimitReached(task_description.clone()));
         }
 
-        let (filled_prompt, response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
+        let (filled_prompt, _response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
             None | Some("apply_to_website_prompt") => {
                 let filled_web_prompt =
                     JobPromptGenerator::apply_to_website_prompt(task_description.clone(), web_content.clone());

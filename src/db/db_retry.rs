@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::{DateTime, Utc};
-use rocksdb::{Error, IteratorMode, Options};
+use rocksdb::{IteratorMode};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 
@@ -58,7 +58,7 @@ impl ShinkaiDB {
 
         for item in iter {
             // Unwrap the Result
-            let (key, value) = item.map_err(ShinkaiDBError::from)?;
+            let (key, _value) = item.map_err(ShinkaiDBError::from)?;
 
             // Convert the Vec<u8> key into a string
             let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiDBError::InvalidData)?;

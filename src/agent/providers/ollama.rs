@@ -32,7 +32,7 @@ impl LLMProvider for Ollama {
         &self,
         client: &Client,
         url: Option<&String>,
-        api_key: Option<&String>, // Note: not required
+        _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {

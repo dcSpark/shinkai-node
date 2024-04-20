@@ -16,7 +16,7 @@ pub type ExecuteActionFn =
 fn default_execute_action_fn() -> ExecuteActionFn {
     fn action_fn(
         action: &Action,
-        state: &mut SharedPlanState,
+        _state: &mut SharedPlanState,
     ) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
         let action_name = action.name.clone();
         Box::pin(async move {
@@ -63,7 +63,7 @@ Part B:
 impl ShinkaiPlan {
     pub fn process_plan(plan: Arc<Mutex<ShinkaiPlan>>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
-            let mut plan_guard = plan.lock().await;
+            let _plan_guard = plan.lock().await;
             // for action in plan_guard.clone().domain.actions.iter() {
             //     match (plan_guard.execute_action)(action, &mut plan_guard.state).await {
             //         Ok(_) => {

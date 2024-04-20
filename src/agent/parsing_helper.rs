@@ -2,23 +2,23 @@ use super::error::AgentError;
 use super::execution::chains::tool_execution_chain;
 use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
-use csv::Reader;
-use lazy_static::lazy_static;
+
+
 use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
-use shinkai_vector_resources::file_parser::unstructured_api::{self, UnstructuredAPI};
-use shinkai_vector_resources::file_parser::unstructured_parser::UnstructuredParser;
-use shinkai_vector_resources::file_parser::unstructured_types::UnstructuredElement;
-use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::file_parser::unstructured_api::{UnstructuredAPI};
+
+
+
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
-use std::io::Cursor;
+
 
 pub struct ParsingHelper {}
 
@@ -36,7 +36,7 @@ impl ParsingHelper {
         for _ in 0..5 {
             let response_json = match JobManager::inference_agent_json(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
-                Err(e) => {
+                Err(_e) => {
                     continue; // Continue to the next iteration on error
                 }
             };
@@ -50,7 +50,7 @@ impl ParsingHelper {
             .await
             {
                 Ok(result) => result,
-                Err(e) => {
+                Err(_e) => {
                     continue; // Continue to the next iteration on error
                 }
             };

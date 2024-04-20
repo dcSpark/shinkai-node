@@ -8,11 +8,11 @@ use serde_json::from_str;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use std::collections::HashMap;
+
 
 impl ShinkaiDB {
     /// Prepares the `JSToolkit` for saving into the ShinkaiDB.
-    fn _prepare_toolkit(&self, toolkit: &JSToolkit, profile: &ShinkaiName) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
+    fn _prepare_toolkit(&self, toolkit: &JSToolkit, _profile: &ShinkaiName) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = toolkit.to_json()?;
         let bytes = json.as_bytes().to_vec(); // Clone the bytes here
@@ -24,7 +24,7 @@ impl ShinkaiDB {
     fn _prepare_profile_toolkit_map(
         &self,
         toolkit_map: &InstalledJSToolkitMap,
-        profile: &ShinkaiName,
+        _profile: &ShinkaiName,
     ) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = toolkit_map.to_json()?;
@@ -52,7 +52,7 @@ impl ShinkaiDB {
     fn _prepare_profile_tool_router(
         &self,
         tool_router: &ToolRouter,
-        profile: &ShinkaiName,
+        _profile: &ShinkaiName,
     ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = tool_router.to_json()?;

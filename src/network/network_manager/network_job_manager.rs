@@ -27,7 +27,7 @@ use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 
 use super::network_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,

@@ -21,14 +21,14 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{
-    DistributionInfo, DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSourceReference,
+    DistributionInfo,
 };
-use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
+use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 use tracing::instrument;
 
 impl JobManager {

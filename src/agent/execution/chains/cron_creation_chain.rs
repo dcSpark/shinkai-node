@@ -1,4 +1,4 @@
-use crate::agent::agent::Agent;
+
 use crate::agent::error::AgentError;
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -15,11 +15,11 @@ use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 
 /*
     We need:
@@ -268,7 +268,7 @@ impl JobManager {
             create_llm_caller_tool(),
         ];
 
-        let (filled_prompt, response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
+        let (filled_prompt, _response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
             None | Some("cron") => {
                 let filled_cron_prompt =
                     JobPromptGenerator::cron_expression_generation_prompt(cron_description.clone());

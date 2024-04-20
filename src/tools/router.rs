@@ -6,7 +6,7 @@ use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
-    MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
+    MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
 use std::collections::HashMap;
 
@@ -371,7 +371,7 @@ impl ToolRouter {
     pub fn add_shinkai_tool(&mut self, shinkai_tool: &ShinkaiTool, embedding: Embedding) -> Result<(), ToolError> {
         let data = shinkai_tool.to_json()?;
         let router_key = shinkai_tool.tool_router_key();
-        let mut metadata = None;
+        let metadata = None;
 
         // Setup the metadata based on tool type
 

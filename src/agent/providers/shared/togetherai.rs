@@ -6,7 +6,7 @@ use crate::{
     managers::model_capabilities_manager::{Base64ImageString, PromptResult, PromptResultEnum},
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
+
 use shinkai_message_primitives::{
     schemas::agents::serialized_agent::AgentLLMInterface,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -47,8 +47,8 @@ pub struct Choice {
 }
 
 pub fn llama_prepare_messages(
-    model: &AgentLLMInterface,
-    model_type: String,
+    _model: &AgentLLMInterface,
+    _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
@@ -64,8 +64,8 @@ pub fn llama_prepare_messages(
 }
 
 pub fn llava_prepare_messages(
-    model: &AgentLLMInterface,
-    model_type: String,
+    _model: &AgentLLMInterface,
+    _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {

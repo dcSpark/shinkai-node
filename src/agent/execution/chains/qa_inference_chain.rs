@@ -6,16 +6,16 @@ use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
-use keyphrases::KeyPhraseExtractor;
+
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::{RemoteEmbeddingGenerator};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 use tracing::instrument;
 
 impl JobManager {
