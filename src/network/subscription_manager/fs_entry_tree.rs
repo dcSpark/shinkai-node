@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 use std::collections::HashMap;
@@ -71,6 +70,15 @@ impl FSEntryTree {
         for child in self.children.values() {
             child.pretty_print(indent + 1);
         }
+    }
+
+    // Method to collect all paths from this tree and its children
+    pub fn collect_all_paths(&self) -> Vec<String> {
+        let mut paths = vec![self.path.clone()];
+        for child in self.children.values() {
+            paths.extend(child.collect_all_paths());
+        }
+        paths
     }
 }
 
@@ -180,5 +188,53 @@ mod tests {
             assert_eq!(deserialized_child.path, value.path);
             assert_eq!(deserialized_child.last_modified, value.last_modified);
         }
+    }
+
+    #[test]
+    fn test_collect_all_paths() {
+        let tree = FSEntryTree {
+            name: "/".to_string(),
+            path: "/shared_test_folder".to_string(),
+            last_modified: Utc.ymd(2024, 4, 20).and_hms_nano(4, 52, 44, 922332),
+            children: HashMap::from([
+                (
+                    "crypto".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "crypto".to_string(),
+                        path: "/shared_test_folder/crypto".to_string(),
+                        last_modified: Utc.ymd(2024, 4, 20).and_hms_nano(4, 52, 42, 845145),
+                        children: HashMap::from([(
+                            "shinkai_intro".to_string(),
+                            Arc::new(FSEntryTree {
+                                name: "shinkai_intro".to_string(),
+                                path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
+                                last_modified: Utc.ymd(2024, 4, 3).and_hms_nano(2, 41, 16, 443701081),
+                                children: HashMap::new(),
+                            }),
+                        )]),
+                    }),
+                ),
+                (
+                    "shinkai_intro".to_string(),
+                    Arc::new(FSEntryTree {
+                        name: "shinkai_intro".to_string(),
+                        path: "/shared_test_folder/shinkai_intro".to_string(),
+                        last_modified: Utc.ymd(2024, 4, 3).and_hms_nano(2, 41, 16, 443701081),
+                        children: HashMap::new(),
+                    }),
+                ),
+            ]),
+        };
+
+        let expected_paths = vec![
+            "/shared_test_folder".to_string(),
+            "/shared_test_folder/crypto".to_string(),
+            "/shared_test_folder/crypto/shinkai_intro".to_string(),
+            "/shared_test_folder/shinkai_intro".to_string(),
+        ];
+
+        let mut paths = tree.collect_all_paths();
+        paths.sort(); // Ensure the order is consistent for comparison
+        assert_eq!(paths, expected_paths);
     }
 }
