@@ -3,58 +3,59 @@ use crate::agent::{
     execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
     job::JobStepResult,
 };
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
+use shinkai_vector_resources::{
+    source::VRSourceReference,
+    vector_resource::{BaseVectorResource, RetrievedNode},
+};
 
 impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
     pub fn summary_chain_detailed_summary_prompt(
         user_message: ParsedUserMessage,
         resource_sub_prompts: Vec<SubPrompt>,
-        resource: BaseVectorResource,
+        resource_source: VRSourceReference,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
-        //
+        // Intro
+        prompt.add_content(
+                "You are an advanced assistant who summarizes content extremely well. Do not ask for further context or information in your answer, or respond with anything but markdown.".to_string(),
+                SubPromptType::System,
+                100
+            );
+
+        // Add the source if available
+        if resource_source.is_none() {
+            prompt.add_content(format!("Here is the content:",), SubPromptType::System, 100);
+        } else {
+            prompt.add_content(
+                format!("Here is the content from {}: ", resource_source.format_source_string()),
+                SubPromptType::System,
+                100,
+            );
+        }
+
+        // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        //     prompt.add_content(
-        //         "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
-        //         SubPromptType::System,
-        //         100
-        //     );
+        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics and/or chapters in the content with 1-2 sentences.. Follow this markdown scheme when responding, and include nothing else but the output markdown: ";
+        prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        //     if let Some(summary) = summary_text {
-        //         prompt.add_content(
-        //             format!(
-        //                 "Here is the current content you found earlier to answer the user's question: `{}`",
-        //                 summary
-        //             ),
-        //             SubPromptType::User,
-        //             99,
-        //         );
-        //     }
+        let markdown_message = r#"
+        ## [Content Title]
 
-        //     let pre_task_text = format!("The user has asked: ");
-        //     prompt.add_content(pre_task_text, SubPromptType::System, 99);
-        //     prompt.add_content(user_message, SubPromptType::User, 100);
+        [Introductory paragraph]
 
-        //     let this_clause = if step_history_is_empty {
-        //         "If the user talks about `it` or `this`, they are referencing the content."
-        //     } else {
-        //         "If the user talks about `it` or `this`, they are referencing the previous message."
-        //     };
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+    
 
-        //     prompt.add_content(
-        //         format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
-        //         SubPromptType::System,
-        //         98
-        //     );
+        "#;
+        prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        //     prompt.add_ebnf(
-        //         String::from(r#"'{' 'answer' ':' string '}'"#),
-        //         SubPromptType::System,
-        //         100,
-        //     );
+        let task_message = "Do not respond with absolutely anything else, except with the output markdown fulfilling the users request: ```md\n";
+        prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt
     }

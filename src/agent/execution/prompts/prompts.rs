@@ -365,8 +365,6 @@ impl Prompt {
 
     /// Processes all sub-prompts into a single output String.
     pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
-        self.check_ebnf_included()?;
-
         let json_response_required = String::from("```json");
         let content = self
             .sub_prompts
@@ -415,8 +413,6 @@ impl Prompt {
         &self,
         max_prompt_tokens: Option<usize>,
     ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
-        self.check_ebnf_included()?;
-
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
 
@@ -434,8 +430,6 @@ impl Prompt {
     // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
     /// TODO: Update to work with priority system for prompt size reducing
     pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
-        self.check_ebnf_included()?;
-
         // TODO: Update to Llama tokenizer here
         let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
         // let model = "llama2"; // TODO: change to something that actually fits

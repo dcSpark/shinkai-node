@@ -95,6 +95,21 @@ impl VRSourceReference {
             ))
         }
     }
+
+    /// Checks if the VRSourceReference is of type Standard
+    pub fn is_standard(&self) -> bool {
+        matches!(self, VRSourceReference::Standard(_))
+    }
+
+    /// Checks if the VRSourceReference is of type Notarized
+    pub fn is_notarized(&self) -> bool {
+        matches!(self, VRSourceReference::Notarized(_))
+    }
+
+    /// Checks if the VRSourceReference is of type None
+    pub fn is_none(&self) -> bool {
+        matches!(self, VRSourceReference::None)
+    }
 }
 
 /// Struct which holds the data of a source file which a VR was generated from

@@ -158,11 +158,20 @@ impl JobManager {
     ) -> Result<String, AgentError> {
         let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
+        // TODO: Make sure the whole document gets parsed into chunks that fit the LLMs max tokens minus some front buffer for the actual prompt
         // Split the list of resource_sub_prompts into chunks that fit in the max tokens in prompt
         // Implement a method on SubPrompt does this chunking and token counting
         // let sub_prompt_chunks = resource_sub_prompts.
 
-        // TODO: Implement logic
+        let resource_source = resource.as_trait_object().source();
+        let prompt = JobPromptGenerator::summary_chain_detailed_summary_prompt(
+            user_message,
+            resource_sub_prompts,
+            resource_source,
+        );
+
+        // agent.inference
+
         Ok(format!(
             "Detailed summary for resource: {:?}",
             resource.as_trait_object().description()
