@@ -17,17 +17,13 @@ mod vector_fs;
 use runner::{initialize_node, run_node_tasks};
 
 #[cfg(feature = "console")]
-use tracing_subscriber::prelude::*;
+use console_subscriber;
 
 #[tokio::main]
 pub async fn main() {
     #[cfg(feature = "console")]
     {
-        let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info,tokio_console=debug".to_string());
-        tracing_subscriber::registry()
-           .with(tracing_subscriber::EnvFilter::new(filter))
-           .with(tracing_subscriber::fmt::layer())
-           .init();
+        console_subscriber::init();
         eprintln!("> tokio-console is enabled");
     }
 
