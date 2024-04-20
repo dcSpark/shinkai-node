@@ -10,12 +10,12 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
     deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption, VRHeader,
+    TraversalOption,
 };
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
 
 impl JobManager {
     /// Helper method which fetches all local VRs, & directly linked FSItem Vector Resources specified in the given JobScope.
@@ -23,7 +23,7 @@ impl JobManager {
     /// Of note, this does not fetch resources inside of folders in the job scope, as those are not fetched in whole,
     /// but instead have a deep vector search performed on them via the VectorFS itself separately.
     pub async fn fetch_job_scope_direct_resources(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
@@ -287,7 +287,7 @@ impl JobManager {
         query_text: String,
         num_of_top_results: u64,
         profile: &ShinkaiName,
-        include_description: bool,
+        _include_description: bool,
         generator: RemoteEmbeddingGenerator,
         max_tokens_in_prompt: usize,
     ) -> Result<(Vec<Vec<RetrievedNode>>, HashMap<String, Vec<RetrievedNode>>), ShinkaiDBError> {
@@ -345,7 +345,7 @@ impl JobManager {
                     .new_reader(profile.clone(), folder.path.clone(), profile.clone())
                     .await?;
 
-                let mut results = vector_fs
+                let results = vector_fs
                     .deep_vector_search_customized(
                         &reader,
                         query_text.clone(),

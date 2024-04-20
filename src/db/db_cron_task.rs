@@ -1,15 +1,14 @@
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
 };
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
-use rocksdb::{IteratorMode, Options};
+
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

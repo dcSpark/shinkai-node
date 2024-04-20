@@ -29,7 +29,7 @@ use shinkai_message_primitives::{
     },
 };
 use std::{
-    io::{self, Error},
+    io::{Error},
     net::SocketAddr,
 };
 use std::{str::FromStr, sync::Arc};

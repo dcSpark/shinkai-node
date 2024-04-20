@@ -10,7 +10,7 @@ use shinkai_message_primitives::shinkai_utils::{
         string_to_signature_secret_key,
     },
 };
-use std::path::Path;
+
 use std::{collections::HashMap, env, fs};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 

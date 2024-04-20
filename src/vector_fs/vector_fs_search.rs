@@ -2,7 +2,7 @@ use super::vector_fs_types::FSItem;
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::vector_fs::vector_fs_permissions::PermissionsIndex;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator};
 use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{
     deep_search_scores_average_out, BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
@@ -11,7 +11,7 @@ use shinkai_vector_resources::vector_resource::{
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
-        RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource, VectorResourceCore,
+        RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResourceCore,
         VectorResourceSearch,
     },
 };

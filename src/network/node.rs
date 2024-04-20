@@ -3,7 +3,7 @@ use super::network_manager::network_job_manager::{
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo};
+use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager};
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -32,7 +32,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, IdentityPermissions, JobToolCall, RegistrationCodeType,
+    APIAvailableSharedItems, IdentityPermissions, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -1847,7 +1847,7 @@ impl Node {
 
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
-        let mut listener = TcpListener::bind(&self.listen_address).await?;
+        let listener = TcpListener::bind(&self.listen_address).await?;
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
@@ -1856,7 +1856,7 @@ impl Node {
 
         // Initialize your connection limiter
         loop {
-            let (mut socket, addr) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
             // Too many requests by IP protection
             let ip = addr.ip().to_string();
             let conn_limiter_clone = self.conn_limiter.clone();

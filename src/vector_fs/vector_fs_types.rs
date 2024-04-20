@@ -10,7 +10,7 @@ use shinkai_vector_resources::{
     source::DistributionInfo,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRKeywords, VRPath},
 };
-use std::{collections::HashMap, mem::discriminant};
+use std::{collections::HashMap};
 
 /// Enum that holds the types of external-facing entries used in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

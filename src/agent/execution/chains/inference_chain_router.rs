@@ -1,4 +1,4 @@
-use crate::agent::agent::Agent;
+
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
 use crate::agent::job_manager::JobManager;
@@ -9,14 +9,14 @@ use crate::vector_fs::vector_fs::VectorFS;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::{RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
-use super::cron_execution_chain::CronExecutionChainResponse;
+
 
 pub enum InferenceChain {
     QAChain,
@@ -47,7 +47,7 @@ impl JobManager {
         // For now we just use qa inference chain by default.
         let chosen_chain = InferenceChain::QAChain;
         let mut inference_response_content = String::new();
-        let mut new_execution_context = HashMap::new();
+        let new_execution_context = HashMap::new();
         // Trim `\n` to prevent dumb models from responding with crappy results
         let job_message_content = job_message.content.trim_end_matches('\n');
 

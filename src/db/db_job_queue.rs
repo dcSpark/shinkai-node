@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
-use crate::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
-use rocksdb::{ColumnFamily, IteratorMode};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use super::{db_errors::ShinkaiDBError, ShinkaiDB};
+
+use rocksdb::{IteratorMode};
+use serde::{de::DeserializeOwned, Serialize};
 
 impl ShinkaiDB {
     pub fn persist_job_queues<T: Serialize>(
