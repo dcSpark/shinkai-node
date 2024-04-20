@@ -375,7 +375,11 @@ impl ExternalSubscriberManager {
                 // handles.clear();
 
                 // Wait for interval_minutes before the next iteration
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+                if !is_testing {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+                } else {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; 
+                }
             }
         })
     }

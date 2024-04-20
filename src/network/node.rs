@@ -275,6 +275,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    APIVecFSRetrievePathMinimalJson {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
     APIVecFSRetrieveVectorResource {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
@@ -1377,6 +1381,27 @@ impl Node {
                                             let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_vec_fs_retrieve_path_simplified_json(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    ext_subscription_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
+                                        NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_retrieve_path_minimal_json(
                                                     db_clone,
                                                     vector_fs_clone,
                                                     node_name_clone,
