@@ -2,13 +2,13 @@ use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption,
 use crate::{
     embeddings::Embedding,
     resource_errors::VRError,
-    source::{DistributionInfo, SourceFileMap},
+    source::{SourceFileMap},
 };
 use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::{collections::HashMap, fmt};
+
+use std::{collections::HashMap};
 
 // Versions of VRKai that are supported
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
