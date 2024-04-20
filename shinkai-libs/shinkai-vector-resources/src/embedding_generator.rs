@@ -4,7 +4,7 @@ use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use async_trait::async_trait;
-use byteorder::{LittleEndian, ReadBytesExt};
+
 use lazy_static::lazy_static;
 #[cfg(feature = "native-http")]
 use reqwest::blocking::Client;
@@ -13,9 +13,8 @@ use reqwest::Client as AsyncClient;
 use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native-http")]
-use std::io::{prelude::*, Cursor};
-#[cfg(feature = "native-http")]
-use std::net::TcpStream;
+use std::io::{prelude::*};
+
 use std::time::Duration;
 
 lazy_static! {

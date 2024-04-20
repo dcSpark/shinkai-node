@@ -55,7 +55,7 @@ impl RetrievedNode {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|node| {
-                let hash = node.node.get_merkle_hash().unwrap_or_default();
+                let _hash = node.node.get_merkle_hash().unwrap_or_default();
                 let id_ref_key = node.generate_globally_unique_node_id();
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
@@ -324,7 +324,7 @@ impl Node {
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
 
-        let mut node = Self {
+        let node = Self {
             id,
             content: NodeContent::Text(text.to_string()),
             metadata,

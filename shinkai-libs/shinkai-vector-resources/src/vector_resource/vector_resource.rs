@@ -1,5 +1,5 @@
 pub use super::vector_resource_search::VectorResourceSearch;
-use super::BaseVectorResource;
+
 use super::OrderedVectorResource;
 use crate::data_tags::DataTagIndex;
 #[cfg(feature = "native-http")]
@@ -12,7 +12,7 @@ use crate::model_type::EmbeddingModelType;
 use crate::model_type::EmbeddingModelTypeString;
 use crate::model_type::TextEmbeddingsInference;
 use crate::resource_errors::VRError;
-use crate::shinkai_time::ShinkaiStringTime;
+
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::DistributionInfo;
 pub use crate::source::VRSourceReference;
@@ -21,9 +21,9 @@ use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
-use blake3::Hash;
+
 use chrono::{DateTime, Utc};
-use hex::decode_to_slice;
+
 use std::any::Any;
 
 #[async_trait]

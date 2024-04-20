@@ -115,7 +115,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         }
         for node in nodes {
             let ret_path = node.retrieval_path;
-            let path = ret_path.format_to_string();
+            let _path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
             let node_id = node.node.id.clone();
             let data = match &node.node.content {
@@ -527,7 +527,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
-        let mut query = query.clone();
+        let query = query.clone();
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
@@ -744,11 +744,11 @@ pub trait VectorResourceSearch: VectorResourceCore {
 /// with the top level search score from the VRs themselves.
 /// Uses the input strings for more advanced detection for how much to weigh the VR score vs the node score.
 pub fn deep_search_scores_average_out(
-    query_text: Option<String>,
+    _query_text: Option<String>,
     vr_score: f32,
-    vr_description: String,
+    _vr_description: String,
     node_score: f32,
-    node_content: String,
+    _node_content: String,
 ) -> f32 {
     // TODO: Later on do keyword extraction on query_text, and if the description or node content has any of the top 3, increase weighting accordingly
     // This might be too intensive to run rake on all results, so re-think this over later/test it.
