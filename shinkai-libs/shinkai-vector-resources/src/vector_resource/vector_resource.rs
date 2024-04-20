@@ -56,10 +56,14 @@ pub trait VectorResourceCore: Send + Sync {
     fn get_root_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
     fn get_root_embeddings(&self) -> Vec<Embedding>;
+    /// Retrieves references to all Embeddings at the root level of the Vector Resource
+    fn get_root_embeddings_ref(&self) -> Vec<&Embedding>;
     /// Retrieves a copy of a Node given its id, at the root level depth.
     fn get_root_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_root_nodes(&self) -> Vec<Node>;
+    /// Retrieves references to all Nodes at the root level of the Vector Resource
+    fn get_root_nodes_ref(&self) -> Vec<&Node>;
     /// Returns the merkle root of the Vector Resource (if it is not None).
     fn get_merkle_root(&self) -> Result<String, VRError>;
     /// Sets the merkle root of the Vector Resource, errors if provided hash is not a Blake3 hash.
@@ -805,6 +809,45 @@ pub trait VectorResourceCore: Send + Sync {
         } else {
             self.created_datetime()
         }
+    }
+
+    /// Retrieve all nodes and embeddings in the Vector Resource with all hierarchy flattened.
+    /// If the resource is an OrderedVectorResource, the ordering is preserved.
+    fn get_all_nodes_embeddings_flattened(&self) -> Vec<(Node, Embedding)> {
+        let mut result_nodes = vec![];
+
+        let mut root_nodes = self.get_root_nodes();
+        for node in &mut root_nodes {
+            if let Ok(resource) = node.get_vector_resource_content_mut() {
+                // First remove the children nodes, and push the emptied resource node to results w/its embedding
+                let child_nodes_res = resource.as_trait_object_mut().remove_root_nodes();
+                let embedding_res = self.get_root_embedding(node.id.clone());
+                if let Ok(embedding) = embedding_res {
+                    result_nodes.push((node.clone(), embedding));
+                }
+
+                // Then we iterate through the children and retrieve their nodes/embeddings
+                if let Ok(child_nodes) = child_nodes_res {
+                    for (child_node, child_embedding) in child_nodes {
+                        if let Ok(resource) = child_node.get_vector_resource_content() {
+                            let child_ret_nodes = resource.as_trait_object().get_all_nodes_embeddings_flattened();
+                            result_nodes.extend(child_ret_nodes);
+                        } else {
+                            result_nodes.push((child_node.clone(), child_embedding.clone()));
+                        }
+                    }
+                }
+            }
+            // If its not a VR node
+            else {
+                let embedding_res = self.get_root_embedding(node.id.clone());
+                if let Ok(embedding) = embedding_res {
+                    result_nodes.push((node.clone(), embedding));
+                }
+            }
+        }
+
+        result_nodes
     }
 
     /// Generates 2 RetrievedNodes which contain either the description + 2nd node, or the first two nodes if no description is available.

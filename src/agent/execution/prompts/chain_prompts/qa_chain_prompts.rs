@@ -1,4 +1,4 @@
-use super::prompts::{JobPromptGenerator, Prompt, SubPromptType};
+use super::super::prompts::{JobPromptGenerator, Prompt, SubPromptType};
 use crate::agent::job::JobStepResult;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 

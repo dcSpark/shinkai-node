@@ -4,8 +4,38 @@ use crate::{
     tools::router::ShinkaiTool,
 };
 use lazy_static::lazy_static;
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 
 impl JobPromptGenerator {
+    pub fn convert_resource_into_subprompts(resource: BaseVectorResource) -> Vec<SubPrompt> {
+        let mut subprompts = vec![];
+
+        // // If it is an ordered vector resource, then we can just add each node as a subprompt
+        // if let Ok(ord_res) = resource.as_ordered_vector_resource() {
+        //     let mut subprompts = Vec::new();
+        //     for ret_node in ord_res.retrieve_all_nodes_ordered() {
+        //         ret_nodes.push(ret_node);
+        //     }
+        // }
+        // // If its not an ordered vector resource, just fetch the nodes in whatever order
+        // else {
+        //     ret_nodes.extend(resource.as_trait_object().retrieve_nodes_exhaustive_unordered(None));
+        // }
+
+        // for ret_node in ret_nodes {
+        //     if let Ok() = ret_node.get_text_content() {
+        //         let content = ret_node.node.content;
+        //         subprompts.push(SubPrompt::Content(content));
+        //     } else if let Ok() = ret_node.get_resource_content() {
+        //     }
+        // }
+
+        // let mut subprompts = Vec::new();
+        // subprompts.push(SubPrompt::Text(resource.content));
+
+        subprompts
+    }
+
     /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
     pub fn basic_instant_response_prompt(user_message: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();
