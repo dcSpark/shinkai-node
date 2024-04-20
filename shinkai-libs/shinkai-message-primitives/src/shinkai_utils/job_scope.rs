@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
-use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
+use shinkai_vector_resources::vector_resource::{VectorResourceCore};
 use shinkai_vector_resources::{
-    source::{SourceFile, VRSourceReference},
+    source::{VRSourceReference},
     vector_resource::BaseVectorResource,
-    vector_resource::VRHeader,
 };
 use std::fmt;
 

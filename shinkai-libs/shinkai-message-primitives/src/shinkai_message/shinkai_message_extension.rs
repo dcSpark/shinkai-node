@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::shinkai_message::shinkai_message::ShinkaiVersion;
+
+
 
 use super::{
     shinkai_message::{MessageBody, MessageData, NodeApiData, ShinkaiMessage},
