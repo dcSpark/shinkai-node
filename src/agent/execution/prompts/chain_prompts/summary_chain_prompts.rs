@@ -1,23 +1,18 @@
 use super::super::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::agent::job::JobStepResult;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use crate::agent::{execution::user_message_parser::ParsedUserMessage, job::JobStepResult};
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 
 impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
     pub fn summary_chain_detailed_summary_prompt(
-        user_message: String,
-        ret_nodes: Vec<RetrievedNode>,
-        summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
+        user_message: ParsedUserMessage,
+        resource_sub_prompts: Vec<SubPrompt>,
+        resource: BaseVectorResource,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Add up to previous 10 step results from history
-        let mut step_history_is_empty = true;
-        if let Some(step_history) = job_step_history {
-            step_history_is_empty = step_history.is_empty();
-            prompt.add_step_history(step_history, 10, 98);
-        }
+        //
+        prompt.add_sub_prompts(resource_sub_prompts);
 
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),

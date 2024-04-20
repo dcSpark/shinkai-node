@@ -165,6 +165,12 @@ impl Prompt {
                 }
             }
         }
+
+        // If no sub_prompts, then set to defaults
+        if self.sub_prompts.len() == 0 {
+            self.lowest_priority = 100;
+            self.highest_priority = 0;
+        }
     }
 
     /// Adds a single sub-prompt.
@@ -248,17 +254,33 @@ impl Prompt {
     }
 
     /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
-    pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Result<(), AgentError> {
+    /// Returns the sub-prompts that were removed, in the same order that they were in.
+    pub fn remove_subprompts_until_under_max(
+        &mut self,
+        max_prompt_tokens: usize,
+    ) -> Result<Vec<SubPrompt>, AgentError> {
+        let mut removed_subprompts = vec![];
+
         let mut current_token_count = self.generate_chat_completion_messages()?.1;
         while current_token_count > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
                     current_token_count -= removed_sub_prompt.len();
+                    removed_subprompts.push(removed_sub_prompt);
                 }
                 None => break, // No more sub-prompts to remove, exit the loop
             }
         }
-        Ok(())
+
+        removed_subprompts.reverse();
+        Ok(removed_subprompts)
+    }
+
+    /// Removes all sub-prompts from the prompt.
+    pub fn remove_all_subprompts(&mut self) -> Vec<SubPrompt> {
+        let removed_subprompts = self.sub_prompts.drain(..).collect();
+        self.update_sub_prompts_priorities();
+        removed_subprompts
     }
 
     /// Validates that there is at least one EBNF sub-prompt to ensure

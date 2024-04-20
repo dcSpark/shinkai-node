@@ -811,6 +811,24 @@ pub trait VectorResourceCore: Send + Sync {
         }
     }
 
+    /// Retrieve all nodes in the Vector Resource with all hierarchy flattened.
+    /// If the resource is an OrderedVectorResource, the ordering is preserved.
+    fn get_all_nodes_flattened(&self) -> Vec<Node> {
+        self.get_all_nodes_embeddings_flattened()
+            .iter()
+            .map(|(node, _)| node.clone())
+            .collect()
+    }
+
+    /// Retrieve all embeddings in the Vector Resource with all hierarchy flattened.
+    /// If the resource is an OrderedVectorResource, the ordering is preserved.
+    fn get_all_embeddings_flattened(&self) -> Vec<Embedding> {
+        self.get_all_nodes_embeddings_flattened()
+            .iter()
+            .map(|(_, embedding)| embedding.clone())
+            .collect()
+    }
+
     /// Retrieve all nodes and embeddings in the Vector Resource with all hierarchy flattened.
     /// If the resource is an OrderedVectorResource, the ordering is preserved.
     fn get_all_nodes_embeddings_flattened(&self) -> Vec<(Node, Embedding)> {
