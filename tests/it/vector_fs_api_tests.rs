@@ -326,7 +326,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrievePathSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),

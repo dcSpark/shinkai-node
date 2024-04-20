@@ -431,7 +431,7 @@ impl ShinkaiName {
     }
 
     fn correct_node_name(raw_name: String) -> String {
-        let mut parts: Vec<&str> = raw_name.splitn(2, '/').collect();
+        let parts: Vec<&str> = raw_name.splitn(2, '/').collect();
 
         let mut node_name = parts[0].to_string();
 

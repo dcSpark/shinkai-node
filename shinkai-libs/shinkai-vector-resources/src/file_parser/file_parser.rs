@@ -9,7 +9,7 @@ use crate::resource_errors::VRError;
 use crate::source::DistributionInfo;
 use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
-use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
+use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 
@@ -376,7 +376,7 @@ impl ShinkaiFileParser {
         }
 
         for grouped_text in &text_groups {
-            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            let (_new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
             if has_sub_groups {
                 let new_doc = Self::process_new_doc_resource_blocking_with_embeddings_already_generated(
                     grouped_text.sub_groups.clone(),

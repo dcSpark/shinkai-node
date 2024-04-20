@@ -5,7 +5,7 @@ use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
@@ -95,7 +95,7 @@ impl LLMProvider for GenericAPI {
                     Ok(data) => {
                         // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
                         // and from those the longest one. I haven't see multiple choices so far though.
-                        let mut response_string: String = data
+                        let response_string: String = data
                             .output
                             .choices
                             .first()

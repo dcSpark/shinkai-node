@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::tools::error::ToolError;
-use serde_json::json;
+
 use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

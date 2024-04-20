@@ -1,5 +1,5 @@
 use super::vector_fs_internals::VectorFSInternals;
-use super::vector_fs_permissions::PermissionsIndex;
+
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
 use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};

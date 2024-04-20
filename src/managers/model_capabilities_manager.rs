@@ -419,7 +419,7 @@ impl ModelCapabilitiesManager {
                     "gpt-4".to_string()
                 }
             }
-            AgentLLMInterface::GenericAPI(genericapi) => {
+            AgentLLMInterface::GenericAPI(_genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
                 "".to_string()
             }

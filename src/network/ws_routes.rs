@@ -38,7 +38,7 @@ pub fn ws_route(
 }
 
 pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
-    let (mut ws_tx, mut ws_rx) = ws.split();
+    let (ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
     // Continuously listen for incoming messages

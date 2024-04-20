@@ -1,13 +1,13 @@
 use super::DistributionInfo;
-use crate::file_parser::unstructured_parser::UnstructuredParser;
+
 use crate::resource_errors::VRError;
 use crate::source::notary_source::{
-    NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile, TLSNotaryProof,
+    NotarizedSourceReference, TLSNotarizedSourceFile, TLSNotaryProof,
 };
-use crate::vector_resource::VRPath;
-use chrono::{DateTime, Utc};
+
+
 use regex::Regex;
-use reqwest::header::ORIGIN;
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -398,7 +398,7 @@ impl SourceFileType {
                     return Ok(SourceFileType::Code(code_type));
                 }
                 // Config support will be added once we implement parsers for them all
-                if let Ok(config_type) = ConfigFileType::from_str(ext) {
+                if let Ok(_config_type) = ConfigFileType::from_str(ext) {
                     // return Ok(SourceFileType::ConfigFileType(config_type));
                     return Err(VRError::FileTypeNotSupported(file_name.to_string()));
                 }
@@ -406,15 +406,15 @@ impl SourceFileType {
                     return Ok(SourceFileType::Shinkai(shinkai_type));
                 }
                 // Video/audio/image support will come in the future by first converting to text.
-                if let Ok(video_type) = VideoFileType::from_str(ext) {
+                if let Ok(_video_type) = VideoFileType::from_str(ext) {
                     // return Ok(SourceFileType::Video(video_type));
                     return Err(VRError::FileTypeNotSupported(file_name.to_string()));
                 }
-                if let Ok(audio_type) = AudioFileType::from_str(ext) {
+                if let Ok(_audio_type) = AudioFileType::from_str(ext) {
                     // return Ok(SourceFileType::Audio(audio_type));
                     return Err(VRError::FileTypeNotSupported(file_name.to_string()));
                 }
-                if let Ok(img_type) = ImageFileType::from_str(ext) {
+                if let Ok(_img_type) = ImageFileType::from_str(ext) {
                     // return Ok(SourceFileType::Image(img_type));
                     return Err(VRError::FileTypeNotSupported(file_name.to_string()));
                 }

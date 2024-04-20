@@ -194,6 +194,17 @@ pub async fn run_api(
             })
     };
 
+    // POST v1/vec_fs/retrieve_path_minimal_json
+    let api_vec_fs_retrieve_path_minimal_json = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "vec_fs" / "retrieve_path_minimal_json")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                api_vec_fs_retrieve_path_minimal_json_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     // POST v1/vec_fs/retrieve_vector_search_simplified_json
     let api_vec_fs_retrieve_vector_search_simplified_json = {
         let node_commands_sender = node_commands_sender.clone();
@@ -678,6 +689,7 @@ pub async fn run_api(
         .or(change_nodes_name)
         .or(get_last_messages_from_inbox_with_branches)
         .or(api_vec_fs_retrieve_path_simplified_json)
+        .or(api_vec_fs_retrieve_path_minimal_json)
         .or(api_vec_fs_retrieve_vector_search_simplified_json)
         .or(api_vec_fs_search_items)
         .or(api_vec_fs_create_folder)
@@ -889,6 +901,21 @@ async fn api_vec_fs_retrieve_path_simplified_json_handler(
         node_commands_sender,
         message,
         |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrievePathSimplifiedJson {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn api_vec_fs_retrieve_path_minimal_json_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |_node_commands_sender, message, res_sender| NodeCommand::APIVecFSRetrievePathMinimalJson {
             msg: message,
             res: res_sender,
         },

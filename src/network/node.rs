@@ -3,7 +3,7 @@ use super::network_manager::network_job_manager::{
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo};
+use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager};
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -32,7 +32,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, IdentityPermissions, JobToolCall, RegistrationCodeType,
+    APIAvailableSharedItems, IdentityPermissions, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -272,6 +272,10 @@ pub enum NodeCommand {
         res: Sender<Result<(), String>>,
     },
     APIVecFSRetrievePathSimplifiedJson {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Value, APIError>>,
+    },
+    APIVecFSRetrievePathMinimalJson {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
@@ -1392,6 +1396,27 @@ impl Node {
                                                 ).await;
                                             });
                                         },
+                                        // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
+                                        NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let vector_fs_clone = self.vector_fs.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_vec_fs_retrieve_path_minimal_json(
+                                                    db_clone,
+                                                    vector_fs_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    ext_subscription_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
                                         // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
                                         NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
@@ -1847,7 +1872,7 @@ impl Node {
 
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
-        let mut listener = TcpListener::bind(&self.listen_address).await?;
+        let listener = TcpListener::bind(&self.listen_address).await?;
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
@@ -1856,7 +1881,7 @@ impl Node {
 
         // Initialize your connection limiter
         loop {
-            let (mut socket, addr) = listener.accept().await?;
+            let (socket, addr) = listener.accept().await?;
             // Too many requests by IP protection
             let ip = addr.ip().to_string();
             let conn_limiter_clone = self.conn_limiter.clone();

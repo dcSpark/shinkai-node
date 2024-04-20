@@ -1,8 +1,8 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
-use rocksdb::{Error, IteratorMode, Options, WriteBatch};
-use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, MessageData};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use rocksdb::{Error, WriteBatch};
+
+
 
 impl ShinkaiDB {
     pub fn write_symmetric_key(&self, hex_blake3_hash: &str, private_key: &[u8]) -> Result<(), ShinkaiDBError> {

@@ -3,7 +3,7 @@ use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use shinkai_vector_resources::resource_errors::VRError;
 use std::error::Error;
-use std::fmt::{self, write};
+use std::fmt::{self};
 
 #[derive(Debug)]
 pub enum ToolError {
