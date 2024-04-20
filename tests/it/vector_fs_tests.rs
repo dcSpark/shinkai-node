@@ -64,7 +64,7 @@ pub async fn get_shinkai_intro_doc_async(
     data_tags: &Vec<DataTag>,
 ) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
-    let source_file_name = "Zeko_Mina_Rollup.pdf";
+    let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
 
     let unstructured = UnstructuredAPI::new_default();
@@ -271,11 +271,6 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let ret_vrkai = vector_fs.retrieve_vrkai(&reader).await.unwrap();
-    eprintln!("ret_vrkai: {:?}", ret_vrkai.encode_as_base64());
-
-    std::fs::write("my_kai.vrkai", ret_vrkai.encode_as_base64().unwrap()).expect("Failed to write to file");
-
-    panic!("stop here");
     let (ret_resource, ret_source_file_map) = (ret_vrkai.resource, ret_vrkai.sfm);
     assert_eq!(ret_resource, resource);
     assert_eq!(ret_source_file_map, Some(source_file_map.clone()));
