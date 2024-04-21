@@ -2,6 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
@@ -378,7 +379,7 @@ impl ExternalSubscriberManager {
                 if !is_testing {
                     tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
                 } else {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; 
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 }
             }
         })
@@ -446,10 +447,11 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Local shared folder state: {:?}", local_shared_folder_state).as_str(),
             );
-            eprintln!(
-                ">> (process_subscription_job_message_queued) Local shared folder state: {:?}",
-                local_shared_folder_state
-            );
+            // eprintln!("\n\n-----------------------------------");
+            // eprintln!(
+            //     ">> (process_subscription_job_message_queued) Local shared folder state: {:?}",
+            //     local_shared_folder_state
+            // );
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -459,6 +461,10 @@ impl ExternalSubscriberManager {
                 )
                 .as_str(),
             );
+            // eprintln!(
+            //     ">> (process_subscription_job_message_queued) Subscriber folder state: {:?}",
+            //     subscription_with_tree.subscriber_folder_tree
+            // );
             // Calculate diff
             let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
@@ -469,6 +475,8 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Diff: {:?}", diff).as_str(),
             );
+            // eprintln!(">> (process_subscription_job_message_queued) Diff: {:?}", diff);
+            // eprintln!("\n\n-----------------------------------");
 
             // If at least one diff was found, retrieve the VRPack for the path
             if !diff.children.is_empty() {
@@ -519,7 +527,7 @@ impl ExternalSubscriberManager {
                         Err(e) => {
                             // tries to create a folder with that name
                             if let Some(folder_name) = path.clone().pop() {
-                                let parent_path = path.parent_path(); 
+                                let parent_path = path.parent_path();
                                 let _ = vr_pack.create_folder(&folder_name, parent_path);
                             }
                             continue; // Skip to the next iteration
@@ -545,8 +553,10 @@ impl ExternalSubscriberManager {
                         .await?;
                     drop(identity_manager);
 
+                    let vr_pack_plus_changes = VRPackPlusChanges { vr_pack, diff };
+
                     let result = Self::send_vr_pack_to_peer(
-                        vr_pack,
+                        vr_pack_plus_changes,
                         subscription_id.clone(),
                         standard_identity,
                         subscription_with_tree.symmetric_key,
@@ -582,7 +592,7 @@ impl ExternalSubscriberManager {
     }
 
     pub async fn send_vr_pack_to_peer(
-        vr_pack: VRPack,
+        vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,
         receiver_identity: StandardIdentity,
         symmetric_key: String,
@@ -605,7 +615,13 @@ impl ExternalSubscriberManager {
         );
 
         // Call the send_encrypted_vrkaipath_pairs function
-        Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr).await;
+        Node::send_encrypted_vrpack(
+            vr_pack_plus_changes,
+            subscription_id,
+            symmetric_key,
+            receiver_socket_addr,
+        )
+        .await;
         Ok(())
     }
 
@@ -949,13 +965,15 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                let tree = FSEntryTreeGenerator::shared_folders_to_tree(
+                let tree = match FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
-                )
-                .await?;
+                ).await {
+                    Ok(tree) => tree,
+                    Err(_) => continue,
+                };
 
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
@@ -1206,20 +1224,8 @@ impl ExternalSubscriberManager {
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
-        if let Some(profile_name) = requester_shinkai_identity.get_profile_name_string() {
-            let key_shared_folder = format!("{}:::{}", profile_name, path);
-            self.shared_folders_trees.remove(&key_shared_folder);
-            Ok(true)
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::ExtSubscriptions,
-                ShinkaiLogLevel::Error,
-                format!("Profile name not found for {:?}", requester_shinkai_identity).as_str(),
-            );
-            Err(SubscriberManagerError::VectorFSNotAvailable(
-                "Profile name not found".to_string(),
-            ))
-        }
+        let _ = self.update_shared_folders().await;
+        Ok(true)
     }
 
     pub async fn subscribe_to_shared_folder(
