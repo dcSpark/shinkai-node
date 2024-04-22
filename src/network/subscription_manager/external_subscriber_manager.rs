@@ -378,7 +378,7 @@ impl ExternalSubscriberManager {
                 if !is_testing {
                     tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
                 } else {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; 
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 }
             }
         })
@@ -519,7 +519,7 @@ impl ExternalSubscriberManager {
                         Err(e) => {
                             // tries to create a folder with that name
                             if let Some(folder_name) = path.clone().pop() {
-                                let parent_path = path.parent_path(); 
+                                let parent_path = path.parent_path();
                                 let _ = vr_pack.create_folder(&folder_name, parent_path);
                             }
                             continue; // Skip to the next iteration
@@ -928,7 +928,7 @@ impl ExternalSubscriberManager {
                     .await
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
                 let results = vector_fs
-                    .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                    .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
                     .await?;
 
                 // Use the new function to filter results to only include top-level folders

@@ -313,15 +313,13 @@ impl VectorFS {
         let (item_node, _) = self._remove_node_from_core_resource(writer).await?;
         let ref_string = item_node.get_vr_header_content()?.reference_string();
 
-        {
-            let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-            internals
-                .permissions_index
-                .remove_path_permission(writer.path.clone())
-                .await;
-            self._update_fs_internals(writer.profile.clone(), internals).await?;
-        }
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
+        internals
+            .permissions_index
+            .remove_path_permission(writer.path.clone())
+            .await;
+        self._update_fs_internals(writer.profile.clone(), internals.clone())
+            .await?;
         self.db.wb_delete_resource(&ref_string, &mut write_batch)?;
         self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
         Ok(write_batch)
@@ -821,7 +819,6 @@ impl VectorFS {
         Ok(())
     }
 
-    /// TODO: Propagate the merkle hashes from the folders/items in the VRPack, and save them into the VectorFS. Requires reworking whole logic here.
     /// Extracts the VRPack into the VectorFS underneath the folder specified in the writer's path. Uses the VRPack's name
     /// as the folder name which everything gets extracted into.
     pub async fn extract_vrpack_in_folder(&self, writer: &VFSWriter, vrpack: VRPack) -> Result<(), VectorFSError> {

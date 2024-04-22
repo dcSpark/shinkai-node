@@ -1043,7 +1043,62 @@ async fn test_vector_fs_operations() {
     assert!(folder_deletion_check, "The folder should now not exist.");
 
     //
-    // Validate that after everything, in-memory state == fsdb state
+    // Validate that for every folder/item, there is a matching path permission, and no more
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .await
+        .unwrap();
+
+    let fs_internals = vector_fs
+        .get_profile_fs_internals_cloned(&default_test_profile())
+        .await
+        .unwrap();
+
+    println!("\n\n\nVectorFS:");
+    fs_internals
+        .fs_core_resource
+        .print_all_nodes_exhaustive(None, true, false);
+
+    let all_read_perms = fs_internals
+        .permissions_index
+        .find_paths_with_read_permissions_as_hashmap(
+            reader.path.clone(),
+            vec![ReadPermission::Public, ReadPermission::Private],
+        )
+        .await
+        .unwrap();
+    let all_write_perms = fs_internals
+        .permissions_index
+        .find_paths_with_write_permissions_as_hashmap(reader.path.clone(), vec![WritePermission::Private])
+        .await
+        .unwrap();
+    let read_perms_count = all_read_perms.len();
+    let write_perms_count = all_write_perms.len();
+
+    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+    let all_internals_paths = ret_nodes.iter().map(|p| p.retrieval_path.clone());
+    let paths_count = all_internals_paths.len();
+
+    println!("All read read perms: {:?}", all_read_perms.keys());
+    println!("All write write perms: {:?}", all_write_perms.keys());
+
+    for path in all_internals_paths {
+        println!("Path: {}", path);
+        assert_eq!(all_read_perms.contains_key(&path), true);
+        assert_eq!(all_write_perms.contains_key(&path), true);
+    }
+    for path in all_read_perms.keys() {
+        assert_eq!(all_write_perms.contains_key(&path), true);
+    }
+    for path in all_write_perms.keys() {
+        assert_eq!(all_read_perms.contains_key(&path), true);
+    }
+    assert_eq!(read_perms_count, paths_count);
+    assert_eq!(write_perms_count, paths_count);
+
+    //
+    // Validate that after everything, in-memory state == fsdb state after reverting
     //
     let reader = orig_writer
         .new_reader_copied_data(VRPath::root(), &mut vector_fs)
@@ -1061,6 +1116,8 @@ async fn test_vector_fs_operations() {
     let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).await.unwrap();
 
     assert_eq!(current_state, new_state);
+
+    // Verify that
 
     //
     // Verify Simplified FSEntry types parse properly

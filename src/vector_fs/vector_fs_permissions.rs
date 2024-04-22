@@ -534,13 +534,25 @@ impl PermissionsIndex {
         }
     }
 
-    /// Finds all paths that have one of the specified type of read permissions, starting from a given path.
-    pub async fn find_paths_with_read_permissions(
+    /// Finds all paths that have one of the specified type of read permissions, starting from a given path, and returns them as a Vec.
+    pub async fn find_paths_with_read_permissions_as_vec(
         &self,
         starting_path: VRPath,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
-        let mut paths_with_permissions = Vec::new();
+        let hashmap_result = self
+            .find_paths_with_read_permissions_as_hashmap(starting_path, read_permissions_to_find)
+            .await?;
+        Ok(hashmap_result.into_iter().collect())
+    }
+
+    /// Finds all paths that have one of the specified type of read permissions, starting from a given path, and returns them as a HashMap.
+    pub async fn find_paths_with_read_permissions_as_hashmap(
+        &self,
+        starting_path: VRPath,
+        read_permissions_to_find: Vec<ReadPermission>,
+    ) -> Result<HashMap<VRPath, ReadPermission>, VectorFSError> {
+        let mut paths_with_permissions = HashMap::new();
 
         // Acquire a read lock to access the fs_permissions hashmap
         let fs_permissions = self.fs_permissions.read().await;
@@ -552,7 +564,7 @@ impl PermissionsIndex {
                 match PathPermission::from_json(permission_json) {
                     Ok(path_permission) => {
                         if read_permissions_to_find.contains(&path_permission.read_permission) {
-                            paths_with_permissions.push((path.clone(), path_permission.read_permission.clone()));
+                            paths_with_permissions.insert(path.clone(), path_permission.read_permission.clone());
                         }
                     }
                     Err(_) => {}
@@ -563,13 +575,25 @@ impl PermissionsIndex {
         Ok(paths_with_permissions)
     }
 
-    /// Finds all paths that have one of the specified type of write permissions, starting from a given path.
-    pub async fn find_paths_with_write_permissions(
+    /// Finds all paths that have one of the specified type of write permissions, starting from a given path, and returns them as a Vec.
+    pub async fn find_paths_with_write_permissions_as_vec(
         &self,
         starting_path: VRPath,
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
-        let mut paths_with_permissions = Vec::new();
+        let hashmap_result = self
+            .find_paths_with_write_permissions_as_hashmap(starting_path, write_permissions_to_find)
+            .await?;
+        Ok(hashmap_result.into_iter().collect())
+    }
+
+    /// Finds all paths that have one of the specified type of write permissions, starting from a given path, and returns them as a HashMap.
+    pub async fn find_paths_with_write_permissions_as_hashmap(
+        &self,
+        starting_path: VRPath,
+        write_permissions_to_find: Vec<WritePermission>,
+    ) -> Result<HashMap<VRPath, WritePermission>, VectorFSError> {
+        let mut paths_with_permissions = HashMap::new();
 
         // Acquire a read lock to access the fs_permissions hashmap
         let fs_permissions = self.fs_permissions.read().await;
@@ -581,7 +605,7 @@ impl PermissionsIndex {
                 match PathPermission::from_json(permission_json) {
                     Ok(path_permission) => {
                         if write_permissions_to_find.contains(&path_permission.write_permission) {
-                            paths_with_permissions.push((path.clone(), path_permission.write_permission.clone()));
+                            paths_with_permissions.insert(path.clone(), path_permission.write_permission.clone());
                         }
                     }
                     Err(_) => (),
@@ -656,7 +680,7 @@ impl VectorFS {
     }
 
     /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
-    pub async fn find_paths_with_read_permissions(
+    pub async fn find_paths_with_read_permissions_as_vec(
         &self,
         reader: &VFSReader,
         read_permissions_to_find: Vec<ReadPermission>,
@@ -664,12 +688,25 @@ impl VectorFS {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         fs_internals
             .permissions_index
-            .find_paths_with_read_permissions(reader.path.clone(), read_permissions_to_find)
+            .find_paths_with_read_permissions_as_vec(reader.path.clone(), read_permissions_to_find)
             .await
     }
 
+    pub async fn find_paths_with_read_permissions_as_hashmap(
+        &self,
+        reader: &VFSReader,
+        read_permissions_to_find: Vec<ReadPermission>,
+    ) -> Result<HashMap<VRPath, ReadPermission>, VectorFSError> {
+        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
+        let hashmap_result = fs_internals
+            .permissions_index
+            .find_paths_with_read_permissions_as_hashmap(reader.path.clone(), read_permissions_to_find)
+            .await?;
+        Ok(hashmap_result.into_iter().collect())
+    }
+
     /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
-    pub async fn find_paths_with_write_permissions(
+    pub async fn find_paths_with_write_permissions_as_vec(
         &self,
         reader: &VFSReader,
         write_permissions_to_find: Vec<WritePermission>,
@@ -677,7 +714,20 @@ impl VectorFS {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         fs_internals
             .permissions_index
-            .find_paths_with_write_permissions(reader.path.clone(), write_permissions_to_find)
+            .find_paths_with_write_permissions_as_vec(reader.path.clone(), write_permissions_to_find)
+            .await
+    }
+
+    /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
+    pub async fn find_paths_with_write_permissions_as_hashmap(
+        &self,
+        reader: &VFSReader,
+        write_permissions_to_find: Vec<WritePermission>,
+    ) -> Result<HashMap<VRPath, WritePermission>, VectorFSError> {
+        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
+        fs_internals
+            .permissions_index
+            .find_paths_with_write_permissions_as_hashmap(reader.path.clone(), write_permissions_to_find)
             .await
     }
 
