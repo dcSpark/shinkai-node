@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceSearch};
 use std::{collections::HashMap, fmt::Write, thread, time::Duration};
 use tokio::sync::{RwLock, RwLockReadGuard};
 
@@ -685,37 +685,54 @@ impl VectorFS {
         reader: &VFSReader,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
-        fs_internals
-            .permissions_index
-            .find_paths_with_read_permissions_as_vec(reader.path.clone(), read_permissions_to_find)
-            .await
+        let hashmap_result = self
+            .find_paths_with_read_permissions_as_hashmap(reader, read_permissions_to_find)
+            .await?;
+
+        Ok(hashmap_result.into_iter().collect())
     }
 
+    /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
+    /// TODO: Remove the logic to fetch the actual available paths in the FS, and just make perms match the reality (find the bug).
     pub async fn find_paths_with_read_permissions_as_hashmap(
         &self,
         reader: &VFSReader,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<HashMap<VRPath, ReadPermission>, VectorFSError> {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
+
+        // Fetches the actual available paths in the FS. // TODO: Remove this and make sure perms are actually accurate.
+        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+        let mut all_internals_paths = HashMap::new();
+        ret_nodes.iter().for_each(|p| {
+            all_internals_paths.insert(p.retrieval_path.clone(), true);
+        });
+
         let hashmap_result = fs_internals
             .permissions_index
             .find_paths_with_read_permissions_as_hashmap(reader.path.clone(), read_permissions_to_find)
             .await?;
-        Ok(hashmap_result.into_iter().collect())
+
+        let final_result = hashmap_result
+            .into_iter()
+            .filter(|(path, _)| all_internals_paths.contains_key(&path))
+            .collect();
+
+        Ok(final_result)
     }
 
     /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
+    /// TODO: Remove the logic to fetch the actual available paths in the FS, and just make perms match the reality (find the bug).
     pub async fn find_paths_with_write_permissions_as_vec(
         &self,
         reader: &VFSReader,
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
-        fs_internals
-            .permissions_index
-            .find_paths_with_write_permissions_as_vec(reader.path.clone(), write_permissions_to_find)
-            .await
+        let hashmap_result = self
+            .find_paths_with_write_permissions_as_hashmap(reader, write_permissions_to_find)
+            .await?;
+
+        Ok(hashmap_result.into_iter().collect())
     }
 
     /// Finds all paths that have one of the specified types of write permissions, starting from the path in the given VFSReader.
@@ -725,10 +742,25 @@ impl VectorFS {
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<HashMap<VRPath, WritePermission>, VectorFSError> {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
-        fs_internals
+
+        // Fetches the actual available paths in the FS. // TODO: Remove this and make sure perms are actually accurate.
+        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+        let mut all_internals_paths = HashMap::new();
+        ret_nodes.iter().for_each(|p| {
+            all_internals_paths.insert(p.retrieval_path.clone(), true);
+        });
+
+        let hashmap_result = fs_internals
             .permissions_index
             .find_paths_with_write_permissions_as_hashmap(reader.path.clone(), write_permissions_to_find)
-            .await
+            .await?;
+
+        let final_result = hashmap_result
+            .into_iter()
+            .filter(|(path, _)| all_internals_paths.contains_key(&path))
+            .collect();
+
+        Ok(final_result)
     }
 
     /// Sets the read/write permissions for the FSEntry at the writer's path (overwrites).

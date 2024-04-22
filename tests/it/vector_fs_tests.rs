@@ -1060,17 +1060,12 @@ async fn test_vector_fs_operations() {
         .fs_core_resource
         .print_all_nodes_exhaustive(None, true, false);
 
-    let all_read_perms = fs_internals
-        .permissions_index
-        .find_paths_with_read_permissions_as_hashmap(
-            reader.path.clone(),
-            vec![ReadPermission::Public, ReadPermission::Private],
-        )
+    let all_read_perms = vector_fs
+        .find_paths_with_read_permissions_as_hashmap(&reader, vec![ReadPermission::Public, ReadPermission::Private])
         .await
         .unwrap();
-    let all_write_perms = fs_internals
-        .permissions_index
-        .find_paths_with_write_permissions_as_hashmap(reader.path.clone(), vec![WritePermission::Private])
+    let all_write_perms = vector_fs
+        .find_paths_with_write_permissions_as_hashmap(&reader, vec![WritePermission::Private])
         .await
         .unwrap();
     let read_perms_count = all_read_perms.len();
