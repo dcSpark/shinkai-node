@@ -1,4 +1,4 @@
-use crate::{agent::error::AgentError, tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError};
+use crate::{tools::error::ToolError, vector_fs::vector_fs_error::VectorFSError};
 use core::fmt;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -262,7 +262,7 @@ impl From<VectorFSError> for ShinkaiDBError {
 }
 
 impl From<std::string::FromUtf8Error> for ShinkaiDBError {
-    fn from(err: std::string::FromUtf8Error) -> ShinkaiDBError {
+    fn from(_err: std::string::FromUtf8Error) -> ShinkaiDBError {
         ShinkaiDBError::Utf8ConversionError
     }
 }

@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::{fmt, fs};
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use reqwest::multipart::{Form, Part};
+use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::multipart::{Form};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

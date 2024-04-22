@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::{App};
 
 pub struct Args {
     pub create_message: bool,

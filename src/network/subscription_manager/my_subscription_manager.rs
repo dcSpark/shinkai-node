@@ -36,7 +36,7 @@ use tokio::sync::Mutex;
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_entry_tree::FSEntryTree;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 
 const NUM_THREADS: usize = 2;
 const LRU_CAPACITY: usize = 100;
@@ -553,7 +553,7 @@ impl MySubscriptionsManager {
             .as_str(),
         );
         let mut subscription_folder_path: Option<String> = None;
-        let mut subscription_shared_path: String;
+        let subscription_shared_path: String;
         {
             // Attempt to upgrade the weak pointer to the DB and lock it
             let db = self
@@ -778,12 +778,12 @@ impl MySubscriptionsManager {
             let mut handles = Vec::new();
             for _ in 0..thread_number {
                 let job_queue_manager = job_queue_manager.clone();
-                let db = db.clone();
-                let vector_fs = vector_fs.clone();
+                let _db = db.clone();
+                let _vector_fs = vector_fs.clone();
                 let handle = tokio::spawn(async move {
                     loop {
                         match job_queue_manager.lock().await.dequeue("some_key").await {
-                            Ok(Some(job)) => {
+                            Ok(Some(_job)) => {
                                 "hey_replace_me".to_string();
                             }
                             Ok(None) => break,

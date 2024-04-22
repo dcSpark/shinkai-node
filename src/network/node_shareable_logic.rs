@@ -14,7 +14,7 @@ use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
     shinkai_utils::encryption::string_to_encryption_public_key,
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,

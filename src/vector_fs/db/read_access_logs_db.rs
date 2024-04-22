@@ -11,11 +11,11 @@ impl VectorFSDB {
     /// Adds the read access log into the FSDB
     pub fn wb_add_read_access_log(
         &self,
-        requester_name: ShinkaiName,
-        read_path: &VRPath,
-        datetime: DateTime<Utc>,
-        profile: ShinkaiName,
-        batch: &mut ProfileBoundWriteBatch,
+        _requester_name: ShinkaiName,
+        _read_path: &VRPath,
+        _datetime: DateTime<Utc>,
+        _profile: ShinkaiName,
+        _batch: &mut ProfileBoundWriteBatch,
     ) -> Result<(), VectorFSError> {
         // let (bytes, cf) = self._prepare_read_access_log(...)?;
         // batch.put_cf_pb(cf, db_key, &bytes);
@@ -33,8 +33,8 @@ impl VectorFSDB {
     /// read access logs stored in the DB.
     pub fn get_latest_read_access_log(
         &self,
-        read_path: &VRPath,
-        profile: ShinkaiName,
+        _read_path: &VRPath,
+        _profile: ShinkaiName,
     ) -> Result<Option<(DateTime<Utc>, ShinkaiName)>, VectorFSError> {
         // Implement logic
         Ok(None)

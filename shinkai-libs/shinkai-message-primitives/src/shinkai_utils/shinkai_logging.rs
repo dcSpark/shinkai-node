@@ -1,13 +1,12 @@
 use chrono::Local;
-use colored::*;
+
 use std::sync::{Arc, Mutex, Once};
 
 // Conditional compilation: Only include tracing imports for non-WASM targets
 #[cfg(not(target_arch = "wasm32"))]
-use tracing::{debug, error, info, span, Level, Span};
+use tracing::{debug, error, info, span, Level};
 
-#[cfg(not(target_arch = "wasm32"))]
-use tracing_subscriber::FmtSubscriber;
+
 
 static INIT: Once = Once::new();
 static TELEMETRY: Mutex<Option<Arc<dyn ShinkaiTelemetry + Send + Sync>>> = Mutex::new(None);

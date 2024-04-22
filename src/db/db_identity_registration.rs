@@ -10,7 +10,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, string_to_signature_public_key,
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 #[derive(PartialEq, Debug)]
 pub enum RegistrationCodeStatus {

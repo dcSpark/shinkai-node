@@ -375,7 +375,11 @@ impl ExternalSubscriberManager {
                 // handles.clear();
 
                 // Wait for interval_minutes before the next iteration
-                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+                if !is_testing {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+                } else {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; 
+                }
             }
         })
     }
@@ -442,6 +446,10 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Local shared folder state: {:?}", local_shared_folder_state).as_str(),
             );
+            eprintln!(
+                ">> (process_subscription_job_message_queued) Local shared folder state: {:?}",
+                local_shared_folder_state
+            );
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -469,15 +477,6 @@ impl ExternalSubscriberManager {
                     ShinkaiLogLevel::Debug,
                     "Diff found, sending VRPack to subscriber",
                 );
-                // Note: for now we are just going to get everything
-                // TODO: In a later update we will be more granular
-
-                let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
-                    "VectorFS instance is not available".to_string(),
-                ))?;
-
-                let vr_path_shared_folder = VRPath::from_string(&shared_folder)
-                    .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
 
                 // Use the origin profile subidentity for both Reader inputs to only fetch all paths with public (or whitelist later) read perms without issues.
                 let subscription_id = subscription_with_tree.subscription.subscription_id.clone();
@@ -486,13 +485,53 @@ impl ExternalSubscriberManager {
                     ShinkaiLogLevel::Debug,
                     format!("Processing subscription: {:?}", subscription_id).as_str(),
                 );
+
+                let vector_fs_inst = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
+                    "VectorFS instance is not available".to_string(),
+                ))?;
+
+                let diff_paths = diff.collect_all_paths();
+                let mut vr_pack = VRPack::new_empty("bundle");
                 let streamer = subscription_id.extract_streamer_node_with_profile()?;
                 let subscriber = subscription_id.extract_subscriber_node_with_profile()?;
 
-                let reader = vector_fs_inst
-                    .new_reader(subscriber.clone(), vr_path_shared_folder, streamer.clone())
-                    .await?;
-                let vr_pack = vector_fs_inst.retrieve_vrpack(&reader).await.unwrap();
+                for (index, path) in diff_paths.iter().enumerate() {
+                    // Convert the path to VRPath and continue to the next iteration if it fails
+                    let path = match VRPath::from_string(path) {
+                        Ok(path) => path,
+                        Err(_) => {
+                            continue; // Skip to the next iteration
+                        }
+                    };
+                    // Attempt to create a new reader and continue to the next iteration if it fails
+                    let reader = match vector_fs_inst
+                        .new_reader(subscriber.clone(), path.clone(), streamer.clone())
+                        .await
+                    {
+                        Ok(reader) => reader,
+                        Err(_) => {
+                            continue; // Skip to the next iteration
+                        }
+                    };
+                    // Attempt to retrieve vrkai and continue to the next iteration if it fails
+                    let vrkai = match vector_fs_inst.retrieve_vrkai(&reader).await {
+                        Ok(vrkai) => vrkai,
+                        Err(e) => {
+                            // tries to create a folder with that name
+                            if let Some(folder_name) = path.clone().pop() {
+                                let parent_path = path.parent_path(); 
+                                let _ = vr_pack.create_folder(&folder_name, parent_path);
+                            }
+                            continue; // Skip to the next iteration
+                        }
+                    };
+                    let parent_path = path.parent_path();
+                    let is_last_element = index == diff_paths.len() - 1;
+                    // Attempt to insert vrkai into vr_pack and log error if it fails
+                    if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
+                        continue; // Skip to the next iteration
+                    }
+                }
 
                 if let Some(identity_manager_lock) = maybe_identity_manager.upgrade() {
                     let identity_manager = identity_manager_lock.lock().await;

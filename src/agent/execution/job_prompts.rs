@@ -3,10 +3,10 @@ use crate::{
     agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::router::ShinkaiTool,
 };
-use futures::stream::ForEach;
+
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use serde_json::to_string;
+
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
@@ -146,7 +146,7 @@ impl JobPromptGenerator {
             100,
         );
 
-        let this_clause = if step_history_is_empty {
+        let _this_clause = if step_history_is_empty {
             "When the user talks about `it` or `this`, they are referencing the content."
         } else {
             "When the user talks about `it` or `this`, they are referencing the previous message."
@@ -176,7 +176,7 @@ impl JobPromptGenerator {
     /// that it should use them as context to answer the job_task with no option to further search.
     pub fn response_prompt_with_vector_search_final(
         job_task: String,
-        ret_nodes: Vec<RetrievedNode>,
+        _ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
     ) -> Prompt {
@@ -404,7 +404,7 @@ impl JobPromptGenerator {
     /// Prompt for having the LLM generate a PDDL plan given some tools
     pub fn pddl_plan_problem_generation_prompt(
         task: String,
-        pddl_domain: String,
+        _pddl_domain: String,
         tools: Vec<ShinkaiTool>,
         previous: Option<String>,
         previous_error: Option<String>,
@@ -1020,7 +1020,7 @@ impl Prompt {
             .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(_, content, _) => content.clone(),
                 SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, retry.clone()),
-                SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
+                SubPrompt::Asset(_, asset_type, _asset_content, asset_detail, _) => {
                     format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
                 }
             })
@@ -1045,7 +1045,7 @@ impl Prompt {
                     let ebnf_string = self.generate_ebnf_response_string(ebnf, retry.clone());
                     (prompt_type, ebnf_string, "text")
                 }
-                SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, _) => {
+                SubPrompt::Asset(prompt_type, _asset_type, asset_content, _asset_detail, _) => {
                     (prompt_type, asset_content.to_string(), "image")
                 }
             };
@@ -1124,7 +1124,7 @@ impl Prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
                 }
-                SubPrompt::Content(prompt_type, content, priority_value) => {
+                SubPrompt::Content(prompt_type, content, _priority_value) => {
                     if content == &*do_not_mention_prompt || content == "" {
                         continue;
                     }

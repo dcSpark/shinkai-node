@@ -6,7 +6,7 @@ use super::{
 };
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString};
+use crate::model_type::{EmbeddingModelTypeString};
 use crate::{embeddings::Embedding, resource_errors::VRError};
 use base64::{decode, encode};
 use serde::{Deserialize, Serialize};
@@ -331,11 +331,11 @@ impl VRPack {
             .retrieve_nodes_exhaustive(starting_path, false);
         for node in nodes {
             let ret_path = node.retrieval_path;
-            let path = ret_path.format_to_string();
+            let _path = ret_path.format_to_string();
             let path_depth = ret_path.path_ids.len();
             let data = match &node.node.content {
                 NodeContent::Text(s) => {
-                    let text_content = if s.chars().count() > 25 {
+                    let _text_content = if s.chars().count() > 25 {
                         s.chars().take(25).collect::<String>() + "..."
                     } else {
                         s.to_string()

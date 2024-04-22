@@ -1,8 +1,7 @@
-use crate::{agent::error::AgentError, tools::error::ToolError};
+use crate::{tools::error::ToolError};
 use core::fmt;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxNameError,
         shinkai_name::{ShinkaiName, ShinkaiNameError},
     },
     shinkai_message::shinkai_message_error::ShinkaiMessageError,

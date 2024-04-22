@@ -61,7 +61,7 @@ impl Node {
             return Ok(());
         }
 
-        let mut my_subscription_manager = my_subscription_manager.lock().await;
+        let my_subscription_manager = my_subscription_manager.lock().await;
         let sender_profile = requester_name.get_profile_name_string().unwrap_or("".to_string());
 
         match ShinkaiName::from_node_and_profile_names(

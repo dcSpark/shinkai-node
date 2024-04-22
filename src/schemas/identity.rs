@@ -11,7 +11,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
 use std::{fmt, net::SocketAddr};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

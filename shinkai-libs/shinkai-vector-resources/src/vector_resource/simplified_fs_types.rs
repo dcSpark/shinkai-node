@@ -1,6 +1,6 @@
-use super::MapVectorResource;
+
 use crate::resource_errors::VRError;
-use crate::source::DistributionOrigin;
+
 pub use crate::source::{DistributionInfo, VRSourceReference};
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;

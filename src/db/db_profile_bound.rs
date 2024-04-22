@@ -188,7 +188,7 @@ impl ShinkaiDB {
     }
 
     /// Profile-bound saves the WriteBatch to the database
-    pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
+    pub fn write_pb(&self, _pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
         // self.write(pb_batch.write_batch)
         panic!("Not implemented");
     }
@@ -201,7 +201,7 @@ impl ShinkaiDB {
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
-        let mut prof_name = ShinkaiDB::get_profile_name_string(profile)?;
+        let prof_name = ShinkaiDB::get_profile_name_string(profile)?;
         Ok(Self::generate_profile_bound_key_from_str(key, &prof_name))
     }
 
