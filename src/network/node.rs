@@ -463,11 +463,7 @@ impl Node {
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_name = ShinkaiName::new(node_name).unwrap();
         {
-            match db_arc.update_local_node_keys(
-                node_name.clone(),
-                encryption_public_key,
-                identity_public_key,
-            ) {
+            match db_arc.update_local_node_keys(node_name.clone(), encryption_public_key, identity_public_key) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
@@ -1888,24 +1884,30 @@ impl Node {
             let network_job_manager = Arc::clone(&self.network_job_manager);
 
             tokio::spawn(async move {
+                let mut buffer = Vec::new();
                 let mut socket = socket.lock().await;
-                let mut header = [0u8; 1]; // Buffer for the message type identifier
-                if socket.read_exact(&mut header).await.is_ok() {
-                    let mut buffer = Vec::new();
-                    if socket.read_to_end(&mut buffer).await.is_ok() {
-                        let message_type = match header[0] {
+                let mut length_bytes = [0u8; 4];
+                if socket.read_exact(&mut length_bytes).await.is_ok() {
+                    let msg_length = u32::from_be_bytes(length_bytes) as usize;
+
+                    // Resize buffer to fit the message and read it
+                    buffer.resize(msg_length, 0);
+                    if socket.read_exact(&mut buffer).await.is_ok() {
+                        // Process the message (existing logic)
+                        let message_type = match buffer[0] {
+                            // Assuming the first byte is the message type
                             0x01 => NetworkMessageType::ShinkaiMessage,
                             0x02 => NetworkMessageType::VRKaiPathPair,
-                            // Add cases for other message types as needed
                             _ => {
                                 shinkai_log(
                                     ShinkaiLogOption::Node,
                                     ShinkaiLogLevel::Error,
                                     "Received message with unknown type identifier",
                                 );
-                                return; // Skip processing for unknown message types
+                                return; // Exit the task if the message type is unknown
                             }
                         };
+
                         shinkai_log(
                             ShinkaiLogOption::Node,
                             ShinkaiLogLevel::Info,
@@ -1929,19 +1931,6 @@ impl Node {
                                 &format!("Failed to add network job to queue: {}", e),
                             );
                         }
-                        if let Err(e) = socket.flush().await {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to flush the socket: {}", e),
-                            );
-                        }
-                    } else {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            "Failed to read the message type identifier",
-                        );
                     }
                 }
                 conn_limiter_clone.decrement_connection(&ip).await;
@@ -2024,7 +2013,13 @@ impl Node {
             match stream {
                 Ok(mut stream) => {
                     let encoded_msg = message.encode_message().unwrap();
-                    let mut data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                    // Prepare the message with a length prefix
+                    let message_length = (encoded_msg.len() as u32).to_be_bytes(); // Convert the length to bytes
+
+                    let mut data_to_send = Vec::new();
+                    let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                    data_to_send.extend_from_slice(&message_length);
+                    data_to_send.extend(header_data_to_send);
                     data_to_send.extend_from_slice(&encoded_msg);
                     let _ = stream.write_all(&data_to_send).await;
                     let _ = stream.flush().await;
@@ -2106,8 +2101,12 @@ impl Node {
             };
             let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
 
-            // Prepend nonce to the encrypted data to use it during decryption
-            let mut data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
+            // Prepare the message with a length prefix
+            let message_length = (vr_kai_serialized.len() as u32).to_be_bytes(); // Convert the length to bytes
+            let mut data_to_send = Vec::new();
+            let header_data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
+            data_to_send.extend_from_slice(&message_length);
+            data_to_send.extend(header_data_to_send);
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
             // Convert to Vec<u8> to send over TCP
