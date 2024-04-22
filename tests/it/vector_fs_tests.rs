@@ -177,7 +177,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs().await;
 
-    let fs_internals = vector_fs.get_profile_fs_internals_copy(&default_test_profile()).await;
+    let fs_internals = vector_fs.get_profile_fs_internals_cloned(&default_test_profile()).await;
     assert!(fs_internals.is_ok())
 }
 
@@ -248,7 +248,7 @@ async fn test_vector_fs_saving_reading() {
         .is_err());
 
     let internals = vector_fs
-        .get_profile_fs_internals_read_only(&default_test_profile())
+        .get_profile_fs_internals_cloned(&default_test_profile())
         .await
         .unwrap();
     // internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
@@ -503,7 +503,7 @@ async fn test_vector_fs_saving_reading() {
 
     {
         let internals = vector_fs
-            .get_profile_fs_internals_read_only(&default_test_profile())
+            .get_profile_fs_internals_cloned(&default_test_profile())
             .await
             .unwrap();
 

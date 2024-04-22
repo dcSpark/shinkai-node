@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json};
+use serde_json::json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{collections::HashMap, fmt::Write, thread, time::Duration};
@@ -603,7 +603,7 @@ impl VectorFS {
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
+            let fs_internals = self.get_profile_fs_internals_cloned(&profile_name).await?;
             if fs_internals
                 .permissions_index
                 .validate_read_access(&name_to_check, &path)
@@ -624,7 +624,7 @@ impl VectorFS {
         paths: Vec<VRPath>,
     ) -> Result<(), VectorFSError> {
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
+            let fs_internals = self.get_profile_fs_internals_cloned(&profile_name).await?;
             if fs_internals
                 .permissions_index
                 .validate_write_access(&name_to_check, &path)
@@ -645,7 +645,7 @@ impl VectorFS {
         let mut path_permissions = Vec::new();
 
         for path in paths {
-            let fs_internals = self.get_profile_fs_internals_read_only(&profile_name).await?;
+            let fs_internals = self.get_profile_fs_internals_cloned(&profile_name).await?;
             match fs_internals.permissions_index.get_path_permission(&path).await {
                 Ok(permission) => path_permissions.push((path, permission)),
                 Err(e) => return Err(e),
@@ -661,7 +661,7 @@ impl VectorFS {
         reader: &VFSReader,
         read_permissions_to_find: Vec<ReadPermission>,
     ) -> Result<Vec<(VRPath, ReadPermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         fs_internals
             .permissions_index
             .find_paths_with_read_permissions(reader.path.clone(), read_permissions_to_find)
@@ -674,7 +674,7 @@ impl VectorFS {
         reader: &VFSReader,
         write_permissions_to_find: Vec<WritePermission>,
     ) -> Result<Vec<(VRPath, WritePermission)>, VectorFSError> {
-        let fs_internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         fs_internals
             .permissions_index
             .find_paths_with_write_permissions(reader.path.clone(), write_permissions_to_find)
