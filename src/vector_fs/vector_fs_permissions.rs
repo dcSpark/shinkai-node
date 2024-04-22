@@ -535,7 +535,7 @@ impl PermissionsIndex {
     }
 
     /// Finds all paths that have one of the specified type of read permissions, starting from a given path, and returns them as a Vec.
-    pub async fn find_paths_with_read_permissions_as_vec(
+    async fn find_paths_with_read_permissions_as_vec(
         &self,
         starting_path: VRPath,
         read_permissions_to_find: Vec<ReadPermission>,
@@ -547,7 +547,7 @@ impl PermissionsIndex {
     }
 
     /// Finds all paths that have one of the specified type of read permissions, starting from a given path, and returns them as a HashMap.
-    pub async fn find_paths_with_read_permissions_as_hashmap(
+    async fn find_paths_with_read_permissions_as_hashmap(
         &self,
         starting_path: VRPath,
         read_permissions_to_find: Vec<ReadPermission>,
