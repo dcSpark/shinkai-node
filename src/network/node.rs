@@ -3,7 +3,7 @@ use super::network_manager::network_job_manager::{
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
-use super::subscription_manager::external_subscriber_manager::{ExternalSubscriberManager};
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -1912,10 +1912,26 @@ impl Node {
                 let mut socket = socket.lock().await;
                 let mut length_bytes = [0u8; 4];
                 if socket.read_exact(&mut length_bytes).await.is_ok() {
-                    let msg_length = u32::from_be_bytes(length_bytes) as usize;
+                    let total_length = u32::from_be_bytes(length_bytes) as usize;
 
-                    // Initialize buffer to fit the message, excluding the header byte
-                    let mut buffer = vec![0u8; msg_length - 1]; // Adjust buffer size to exclude the header
+                    // Read the identity length
+                    let mut identity_length_bytes = [0u8; 4];
+                    if socket.read_exact(&mut identity_length_bytes).await.is_err() {
+                        return; // Exit if we fail to read identity length
+                    }
+                    let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+
+                    // Read the identity bytes
+                    let mut identity_bytes = vec![0u8; identity_length];
+                    if socket.read_exact(&mut identity_bytes).await.is_err() {
+                        return; // Exit if we fail to read identity
+                    }
+
+                    // Calculate the message length excluding the identity length and the identity itself
+                    let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
+
+                    // Initialize buffer to fit the message
+                    let mut buffer = vec![0u8; msg_length];
 
                     // Read the header byte to determine the message type
                     let mut header_byte = [0u8; 1];
@@ -2041,12 +2057,18 @@ impl Node {
             match stream {
                 Ok(mut stream) => {
                     let encoded_msg = message.encode_message().unwrap();
-                    // Prepare the message with a length prefix
-                    let message_length = (encoded_msg.len() as u32 + 1).to_be_bytes(); // Convert the length to bytes, adding 1 for the header
+                    let identity = &message.external_metadata.recipient;
+                    let identity_bytes = identity.as_bytes();
+                    let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+
+                    // Prepare the message with a length prefix and identity length
+                    let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
 
                     let mut data_to_send = Vec::new();
                     let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
-                    data_to_send.extend_from_slice(&message_length);
+                    data_to_send.extend_from_slice(&total_length);
+                    data_to_send.extend_from_slice(&identity_length);
+                    data_to_send.extend(identity_bytes);
                     data_to_send.extend(header_data_to_send);
                     data_to_send.extend_from_slice(&encoded_msg);
                     let _ = stream.write_all(&data_to_send).await;
@@ -2096,6 +2118,7 @@ impl Node {
         subscription_id: SubscriptionId,
         encryption_key_hex: String,
         peer: SocketAddr,
+        recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {
             // Serialize only the VRKaiPath pairs
@@ -2129,11 +2152,18 @@ impl Node {
             };
             let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
 
-            // Prepare the message with a length prefix
-            let message_length = (vr_kai_serialized.len() as u32 + 1).to_be_bytes(); // Convert the length to bytes, adding 1 for the header
+            let identity = recipient.get_node_name_string();
+            let identity_bytes = identity.as_bytes();
+            let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+
+            // Prepare the message with a length prefix, identity length, and identity
+            let total_length = (vr_kai_serialized.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
+
             let mut data_to_send = Vec::new();
             let header_data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
-            data_to_send.extend_from_slice(&message_length);
+            data_to_send.extend_from_slice(&total_length);
+            data_to_send.extend_from_slice(&identity_length);
+            data_to_send.extend(identity_bytes);
             data_to_send.extend(header_data_to_send);
             data_to_send.extend_from_slice(&vr_kai_serialized);
 

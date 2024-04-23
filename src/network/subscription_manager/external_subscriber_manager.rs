@@ -597,6 +597,7 @@ impl ExternalSubscriberManager {
                 .to_string(),
             )
         })?;
+        let receiver_name = receiver_identity.full_identity_name;
 
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -605,7 +606,7 @@ impl ExternalSubscriberManager {
         );
 
         // Call the send_encrypted_vrkaipath_pairs function
-        Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr).await;
+        Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr, receiver_name).await;
         Ok(())
     }
 
