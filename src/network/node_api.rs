@@ -657,6 +657,23 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| retrieve_vrpack_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/local_scan_ollama_models
+    let local_scan_ollama_models = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "local_scan_ollama_models")
+            .and(warp::get())
+            .and_then(move || local_scan_ollama_models_handler(node_commands_sender.clone()))
+    };
+    
+    // POST v1/add_ollama_models
+    let add_ollama_models = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_ollama_models")
+            .and(warp::post())
+            .and(warp::body::json())
+            .and_then(move |models: Vec<String>| add_ollama_models_handler(node_commands_sender.clone(), models))
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -701,6 +718,8 @@ pub async fn run_api(
         .or(api_vec_fs_remove_folder)
         .or(api_vec_fs_retrieve_vector_resource)
         .or(api_convert_files_and_save_to_folder)
+        .or(local_scan_ollama_models)
+        .or(add_ollama_models)
         .or(api_available_shared_items)
         .or(api_available_shared_items_open)
         .or(api_create_shareable_folder)
@@ -1086,6 +1105,42 @@ async fn api_convert_files_and_save_to_folder_handler(
         },
     )
     .await
+}
+
+async fn local_scan_ollama_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::LocalScanOllamaModels { res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(models) => Ok(warp::reply::json(&models)),
+        Err(error) => Err(warp::reject::custom(APIError::from(error))),
+    }
+}
+
+async fn add_ollama_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    models: Vec<String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::AddOllamaModels {
+            models,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(APIError::from(error))),
+    }
 }
 
 async fn subscribe_to_shared_folder_handler(
