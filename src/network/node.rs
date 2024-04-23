@@ -1909,18 +1909,18 @@ impl Node {
             let network_job_manager = Arc::clone(&self.network_job_manager);
 
             tokio::spawn(async move {
-                let mut buffer = Vec::new();
                 let mut socket = socket.lock().await;
                 let mut length_bytes = [0u8; 4];
                 if socket.read_exact(&mut length_bytes).await.is_ok() {
                     let msg_length = u32::from_be_bytes(length_bytes) as usize;
 
-                    // Resize buffer to fit the message and read it
-                    buffer.resize(msg_length, 0);
-                    if socket.read_exact(&mut buffer).await.is_ok() {
-                        // Process the message (existing logic)
-                        let message_type = match buffer[0] {
-                            // Assuming the first byte is the message type
+                    // Initialize buffer to fit the message, excluding the header byte
+                    let mut buffer = vec![0u8; msg_length - 1]; // Adjust buffer size to exclude the header
+
+                    // Read the header byte to determine the message type
+                    let mut header_byte = [0u8; 1];
+                    if socket.read_exact(&mut header_byte).await.is_ok() {
+                        let message_type = match header_byte[0] {
                             0x01 => NetworkMessageType::ShinkaiMessage,
                             0x02 => NetworkMessageType::VRKaiPathPair,
                             _ => {
@@ -1933,28 +1933,31 @@ impl Node {
                             }
                         };
 
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Info,
-                            &format!("Received message of type {:?} from: {:?}", message_type, addr),
-                        );
-
-                        let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                        let network_job = NetworkJobQueue {
-                            receiver_address: addr,
-                            unsafe_sender_address: destination_socket,
-                            message_type,
-                            content: buffer.clone(),
-                            date_created: Utc::now(),
-                        };
-
-                        let mut network_job_manager = network_job_manager.lock().await;
-                        if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                        // Read the rest of the message into the buffer
+                        if socket.read_exact(&mut buffer).await.is_ok() {
                             shinkai_log(
                                 ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to add network job to queue: {}", e),
+                                ShinkaiLogLevel::Info,
+                                &format!("Received message of type {:?} from: {:?}", message_type, addr),
                             );
+
+                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                            let network_job = NetworkJobQueue {
+                                receiver_address: addr,
+                                unsafe_sender_address: destination_socket,
+                                message_type,
+                                content: buffer.clone(), // Now buffer does not include the header
+                                date_created: Utc::now(),
+                            };
+
+                            let mut network_job_manager = network_job_manager.lock().await;
+                            if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to add network job to queue: {}", e),
+                                );
+                            }
                         }
                     }
                 }
@@ -2039,7 +2042,7 @@ impl Node {
                 Ok(mut stream) => {
                     let encoded_msg = message.encode_message().unwrap();
                     // Prepare the message with a length prefix
-                    let message_length = (encoded_msg.len() as u32).to_be_bytes(); // Convert the length to bytes
+                    let message_length = (encoded_msg.len() as u32 + 1).to_be_bytes(); // Convert the length to bytes, adding 1 for the header
 
                     let mut data_to_send = Vec::new();
                     let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
@@ -2127,7 +2130,7 @@ impl Node {
             let vr_kai_serialized = bincode::serialize(&vr_kai).unwrap();
 
             // Prepare the message with a length prefix
-            let message_length = (vr_kai_serialized.len() as u32).to_be_bytes(); // Convert the length to bytes
+            let message_length = (vr_kai_serialized.len() as u32 + 1).to_be_bytes(); // Convert the length to bytes, adding 1 for the header
             let mut data_to_send = Vec::new();
             let header_data_to_send = vec![0x02]; // Network Message type identifier for VRKaiPathPair
             data_to_send.extend_from_slice(&message_length);
