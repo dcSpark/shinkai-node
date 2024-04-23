@@ -305,6 +305,7 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("neural-chat")
                     || ollama.model_type.starts_with("vicuna")
                     || ollama.model_type.starts_with("mixtral")
+                    || ollama.model_type.starts_with("phi3")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
@@ -371,6 +372,8 @@ impl ModelCapabilitiesManager {
                     return 65_000;
                 } else if ollama.model_type.starts_with("llama3") {
                     return 8_000;
+                } else if ollama.model_type.starts_with("phi3") {
+                    return 128_000;
                 }
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
