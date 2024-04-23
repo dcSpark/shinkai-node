@@ -661,17 +661,21 @@ pub async fn run_api(
     let local_scan_ollama_models = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "local_scan_ollama_models")
-            .and(warp::get())
-            .and_then(move || local_scan_ollama_models_handler(node_commands_sender.clone()))
+            .and(warp::post()) // Corrected from .and(warp::get()) to match the handler's expected method
+            .and(warp::body::json::<ShinkaiMessage>()) // Ensure the body is deserialized into a ShinkaiMessage
+            .and_then(move |message: ShinkaiMessage| {
+                local_scan_ollama_models_handler(node_commands_sender.clone(), message)
+            }) // Corrected handler name and added message parameter
     };
-    
+
     // POST v1/add_ollama_models
     let add_ollama_models = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "add_ollama_models")
             .and(warp::post())
-            .and(warp::body::json())
-            .and_then(move |models: Vec<String>| add_ollama_models_handler(node_commands_sender.clone(), models))
+            .and(warp::body::json::<ShinkaiMessage>()) // Updated to accept ShinkaiMessage instead of Vec<String>
+            .and_then(move |message: ShinkaiMessage| add_ollama_models_handler(node_commands_sender.clone(), message))
+        // Corrected to pass ShinkaiMessage to the handler
     };
 
     let cors = warp::cors() // build the CORS filter
@@ -1109,10 +1113,14 @@ async fn api_convert_files_and_save_to_folder_handler(
 
 async fn local_scan_ollama_models_handler(
     node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::LocalScanOllamaModels { res: res_sender })
+        .send(NodeCommand::APILocalScanOllamaModels {
+            msg: message,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
@@ -1125,12 +1133,12 @@ async fn local_scan_ollama_models_handler(
 
 async fn add_ollama_models_handler(
     node_commands_sender: Sender<NodeCommand>,
-    models: Vec<String>,
+    message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::AddOllamaModels {
-            models,
+        .send(NodeCommand::APIAddOllamaModels {
+            models: message,
             res: res_sender,
         })
         .await

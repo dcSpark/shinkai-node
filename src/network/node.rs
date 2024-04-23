@@ -264,6 +264,14 @@ pub enum NodeCommand {
     IsPristine {
         res: Sender<bool>,
     },
+    APILocalScanOllamaModels {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, String>>,
+    },
+    APIAddOllamaModels {
+        models: ShinkaiMessage,
+        res: Sender<Result<(), String>>,
+    },
     LocalScanOllamaModels {
         res: Sender<Result<Vec<String>, String>>,
     },
