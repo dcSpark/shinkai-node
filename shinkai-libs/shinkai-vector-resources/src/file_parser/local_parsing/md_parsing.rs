@@ -1,3 +1,4 @@
+#[cfg(feature = "desktop-only")]
 use comrak::{
     nodes::{AstNode, ListDelimType, ListType, NodeValue},
     parse_document, Arena, Options,
@@ -8,6 +9,7 @@ use crate::{file_parser::file_parser_types::TextGroup, resource_errors::VRError}
 use super::LocalFileParser;
 
 impl LocalFileParser {
+    #[cfg(feature = "desktop-only")]
     pub fn process_md_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
         let md_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedJSONParsing)?;
 
@@ -24,7 +26,9 @@ impl LocalFileParser {
             }
         }
 
+        #[cfg(feature = "desktop-only")]
         let mut text_groups: Vec<TextGroup> = Vec::new();
+        #[cfg(feature = "desktop-only")]
         let mut current_text = "".to_string();
         let mut processed_node_type = NodeValue::Document;
 

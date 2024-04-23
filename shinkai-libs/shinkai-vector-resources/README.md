@@ -6,11 +6,11 @@ A Vector Resource is made up of a hierarchy of nodes, where each node can either
 
 ## Importing Into Your Project
 
-By default the library includes both async & blocking interfaces for parsing files into Vector Resources automatically (with hierarchy/embeddings auto-generated + batched). This ingestion is non-wasm compatible, and is included as a default feature called `native-http`.
+By default the library includes both async & blocking interfaces for parsing files into Vector Resources automatically (with hierarchy/embeddings auto-generated + batched). This ingestion is non-wasm compatible, and is included as a default feature called `desktop-only`.
 
 Past ingestion & generation of the Vector Resources themselves (which requires sending requests to Unstructured + Embedding Generation Server), all other parts of the library are pure Rust and are wasm compatible. As such, you can generate Vector Resources in non-wasm code and simply serialize/send them into the wasm side, to then use them freely with no issues.
 
-To disable `native-http` & support wasm, simply import as such:
+To disable `desktop-only` & support wasm, simply import as such:
 
 ```
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }

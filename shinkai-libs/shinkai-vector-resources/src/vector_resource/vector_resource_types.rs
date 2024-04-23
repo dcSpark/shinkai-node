@@ -851,7 +851,7 @@ impl VRKeywords {
         self.keywords_embedding.take()
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Asynchronously regenerates and updates the keywords' embedding using the provided keywords.
     pub async fn update_keywords_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
         let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));
@@ -860,7 +860,7 @@ impl VRKeywords {
         Ok(())
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Synchronously regenerates and updates the keywords' embedding using the provided keywords.
     pub fn update_keywords_embedding_blocking(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), VRError> {
         let formatted_keywords = format!("Keywords: [{}]", self.keyword_list.join(","));

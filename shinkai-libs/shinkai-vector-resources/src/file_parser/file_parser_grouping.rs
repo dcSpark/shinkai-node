@@ -3,7 +3,7 @@ use super::file_parser_types::TextGroup;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
 use regex::Regex;
@@ -58,7 +58,7 @@ impl ShinkaiFileParser {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
@@ -132,7 +132,7 @@ impl ShinkaiFileParser {
         Ok(text_groups)
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
     pub fn generate_text_group_embeddings_blocking(

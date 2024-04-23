@@ -30,15 +30,20 @@ lz4_flex = "0.11.0"
 base64 = "0.13.0"
 futures = "0.3.30"
 urlencoding = "1.1.1"
-comrak = "0.22.0"
 
 [build-dependencies]
 reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
 
 [features]
-default = ["native-http"]
-native-http = ["reqwest/blocking"]
+default = ["desktop-only"]
+desktop-only = ["reqwest/blocking", "comrak"]
+
 wasm-http = []
+
+[dependencies.comrak]
+version = "0.22.0"
+default-features = true
+optional = true
 
 [dependencies.reqwest]
 version = "0.11"
