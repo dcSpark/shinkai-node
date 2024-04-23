@@ -1,6 +1,7 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::local_parsing::LocalFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -1056,7 +1057,10 @@ async fn local_txt_metadata_parsing_test() {
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
     assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
-    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
+    assert_ne!(
+        results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(),
+        "br0K3n"
+    );
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();
@@ -1065,4 +1069,40 @@ async fn local_txt_metadata_parsing_test() {
 
     assert!(results2[0].node.get_text_content().unwrap().contains("2000"));
     assert!(results2[0].node.metadata.as_ref().unwrap().contains_key("datetime"));
+}
+
+#[tokio::test]
+async fn local_md_parsing_test() {
+    let source_file_name = "README.md";
+    let buffer = std::fs::read(format!("{}", source_file_name)).unwrap();
+    let result = LocalFileParser::process_md_file(buffer, 400);
+
+    let unwrapped_result = result.unwrap();
+    let h1 = &unwrapped_result[0];
+
+    assert_eq!(unwrapped_result.len(), 1);
+    assert_eq!(h1.text, "Shinkai Vector Resources");
+
+    let h1_sub_groups = &h1.sub_groups;
+    assert_eq!(h1_sub_groups.len(), 5);
+    assert!(h1_sub_groups[0].text.contains("A powerful native Rust"));
+    assert!(h1_sub_groups[1].text.contains("A Vector Resource is made up"));
+    assert_eq!(h1_sub_groups[2].text, "Importing Into Your Project");
+    assert_eq!(h1_sub_groups[3].text, "How To Use Vector Resources");
+    assert_eq!(h1_sub_groups[4].text, "Tests");
+
+    let h2_importing_sub_groups = &h1_sub_groups[2].sub_groups;
+    assert!(h2_importing_sub_groups[0]
+        .text
+        .contains("By default the library includes"));
+
+    let h2_how_to_sub_groups = &h1_sub_groups[3].sub_groups;
+    assert!(h2_how_to_sub_groups[0].text.contains("Reference"));
+
+    let h2_tests_sub_groups = &h1_sub_groups[4].sub_groups;
+    assert_eq!(h2_tests_sub_groups.len(), 1);
+    assert_eq!(h2_tests_sub_groups[0].text, "Running Tests");
+
+    let h3_tests_sub_groups = &h2_tests_sub_groups[0].sub_groups;
+    assert!(h3_tests_sub_groups[0].text.contains("Of note"));
 }
