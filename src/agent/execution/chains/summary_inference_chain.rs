@@ -143,7 +143,7 @@ impl JobManager {
 
         let joined_summaries = detailed_summaries
             .iter()
-            .map(|summary| format!("{}\n", summary))
+            .map(|summary| format!("{}\n\n\n", summary))
             .collect::<String>();
 
         Ok(joined_summaries)
@@ -170,12 +170,23 @@ impl JobManager {
             resource_source,
         );
 
-        // agent.inference
+        // Extract the JSON from the inference response Result and proceed forward
+        let response = JobManager::inference_agent_json(agent.clone(), prompt.clone()).await?;
+        let (answer, _) = &JobManager::advanced_extract_key_from_inference_response(
+            agent.clone(),
+            response.clone(),
+            prompt.clone(),
+            vec![
+                "answer".to_string(),
+                "markdown".to_string(),
+                "summary".to_string(),
+                "text".to_string(),
+            ],
+            3,
+        )
+        .await?;
 
-        Ok(format!(
-            "Detailed summary for resource: {:?}",
-            resource.as_trait_object().description()
-        ))
+        Ok(format!("{}", answer))
     }
 
     // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.

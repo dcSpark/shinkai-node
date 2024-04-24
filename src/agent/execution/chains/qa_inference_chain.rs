@@ -93,7 +93,7 @@ impl JobManager {
         };
 
         // Inference the agent's LLM with the prompt
-        let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
+        let response = JobManager::inference_agent_json(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
         if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
@@ -186,7 +186,7 @@ impl JobManager {
         if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt =
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
-            let response = JobManager::inference_agent(agent.clone(), retry_prompt).await;
+            let response = JobManager::inference_agent_json(agent.clone(), retry_prompt).await;
             if let Ok(response_json) = response {
                 match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
                     Ok(search_str) => {

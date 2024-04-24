@@ -92,7 +92,7 @@ impl JobManager {
 
     /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
+    pub async fn inference_agent_json(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
         let prompt_cloned = filled_prompt.clone();
         let task_response = tokio::spawn(async move {
@@ -105,7 +105,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            format!("inference_agent> response: {:?}", response).as_str(),
+            format!("inference_agent_json> response: {:?}", response).as_str(),
         );
 
         response

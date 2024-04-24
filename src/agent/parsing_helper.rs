@@ -34,7 +34,7 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_agent(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_agent_json(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
                 Err(e) => {
                     continue; // Continue to the next iteration on error
@@ -284,9 +284,9 @@ impl ParsingHelper {
         for sentence in sentences {
             // Check if adding the next sentence exceeds the max_chars limit
             if current_paragraph.len() + sentence.len() > max_chars {
-                // If the current paragraph is not empty, add it to the result with a line break
+                // If the current paragraph is not empty, add it to the result with a double line break
                 if !current_paragraph.is_empty() {
-                    result_string.push_str(&format!("{}\n", current_paragraph.trim()));
+                    result_string.push_str(&format!("{}\n\n", current_paragraph.trim()));
                     current_paragraph.clear();
                 }
                 // Start a new paragraph with the current sentence

@@ -77,9 +77,8 @@ impl Agent {
     }
 
     /// Inferences the LLM model tied to the agent to get a response back.
-    /// Note, all `content` is expected to use prompts from the PromptGenerator,
-    /// meaning that they tell/force the LLM to always respond in JSON. We automatically
-    /// parse the JSON object out of the response into a JsonValue, perform retries, and error if no object is found after everything.
+    /// We automatically  parse the JSON object out of the response into a JsonValue, perform retries,
+    /// and error if no object is found after everything.
     pub async fn inference(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
         let mut response = self.internal_inference_matching_model(prompt.clone()).await;
         let mut attempts = 0;
