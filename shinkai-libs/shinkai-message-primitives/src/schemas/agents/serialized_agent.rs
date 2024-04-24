@@ -25,6 +25,7 @@ pub enum AgentLLMInterface {
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
     LocalLLM(LocalLLM),
+    Groq(Groq)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -32,6 +33,11 @@ pub struct LocalLLM {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Ollama {
+    pub model_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Groq {
     pub model_type: String,
 }
 
@@ -66,6 +72,9 @@ impl FromStr for AgentLLMInterface {
         } else if s.starts_with("shinkai-backend:") {
             let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
+        } else if s.starts_with("groq:") {
+            let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
+            Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
         } else {
             Err(())
         }
@@ -92,6 +101,10 @@ impl Serialize for AgentLLMInterface {
             }
             AgentLLMInterface::ShinkaiBackend(shinkaibackend) => {
                 let model_type = format!("shinkai-backend:{}", shinkaibackend.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            AgentLLMInterface::Groq(groq) => {
+                let model_type = format!("groq:{}", groq.model_type);
                 serializer.serialize_str(&model_type)
             }
             AgentLLMInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -126,10 +139,13 @@ impl<'de> Visitor<'de> for AgentLLMInterfaceVisitor {
             "shinkai-backend" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "groq" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(AgentLLMInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
-                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm"],
+                &["openai", "genericapi", "ollama", "shinkai-backend", "local-llm", "groq"],
             )),
         }
     }

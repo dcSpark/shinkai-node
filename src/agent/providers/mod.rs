@@ -8,6 +8,7 @@ pub mod ollama;
 pub mod openai;
 pub mod shared;
 pub mod shinkai_backend;
+pub mod groq;
 
 #[async_trait]
 pub trait LLMProvider {
