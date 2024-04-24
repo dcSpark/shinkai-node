@@ -143,7 +143,7 @@ impl JobManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response(
+        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response_with_json(
             agent.clone(),
             response_json.clone(),
             filled_prompt.clone(),
@@ -153,7 +153,7 @@ impl JobManager {
         .await
         {
             Ok((summary_str, new_resp_json)) => {
-                let new_search_text = match &JobManager::advanced_extract_key_from_inference_response(
+                let new_search_text = match &JobManager::advanced_extract_key_from_inference_response_with_json(
                     agent.clone(),
                     new_resp_json.clone(),
                     filled_prompt.clone(),

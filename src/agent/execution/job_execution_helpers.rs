@@ -12,15 +12,91 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tracing::instrument;
 
 impl JobManager {
+    /// Attempts to extract multiple keys from the inference response, including retry inferencing/upper + lower if necessary.
+    /// Potential keys hashmap should have the expected string as the key, and the values be the list of potential alternates to try if expected fails.
+    /// Returns a Hashmap using the same expected keys as the potential keys hashmap, but the values are the String found (the first matching of each).
+    /// Errors if any of the keys fail to extract.
+    pub async fn advanced_extract_multi_keys_from_inference_response(
+        agent: SerializedAgent,
+        response_json: JsonValue,
+        filled_prompt: Prompt,
+        potential_keys_hashmap: HashMap<&str, Vec<&str>>,
+        retry_attempts: u64,
+    ) -> Result<HashMap<String, String>, AgentError> {
+        let (value, _) = JobManager::advanced_extract_multi_keys_from_inference_response_with_json(
+            agent.clone(),
+            response_json.clone(),
+            filled_prompt.clone(),
+            potential_keys_hashmap.clone(),
+            retry_attempts.clone(),
+        )
+        .await?;
+
+        Ok(value)
+    }
+
+    /// Attempts to extract multiple keys from the inference response, including retry inferencing/upper + lower if necessary.
+    /// Potential keys hashmap should have the expected string as the key, and the values be the list of potential alternates to try if expected fails.
+    /// Returns a Hashmap using the same expected keys as the potential keys hashmap, but the values are the String found (the first matching of each).
+    /// Also returns the response JSON (which will be new if at least one inference retry was done).
+    /// Errors if any of the keys fail to extract.
+    pub async fn advanced_extract_multi_keys_from_inference_response_with_json(
+        agent: SerializedAgent,
+        response_json: JsonValue,
+        filled_prompt: Prompt,
+        potential_keys_hashmap: HashMap<&str, Vec<&str>>,
+        retry_attempts: u64,
+    ) -> Result<(HashMap<String, String>, JsonValue), AgentError> {
+        let mut result_map = HashMap::new();
+        let mut response_json = response_json;
+
+        for (key, potential_keys) in potential_keys_hashmap {
+            let (value, json) = JobManager::advanced_extract_key_from_inference_response_with_json(
+                agent.clone(),
+                response_json.clone(),
+                filled_prompt.clone(),
+                potential_keys.iter().map(|k| k.to_string()).collect(),
+                retry_attempts.clone(),
+            )
+            .await?;
+            result_map.insert(key.to_string(), value);
+            response_json = json;
+        }
+        return Ok((result_map, response_json));
+    }
+
     /// Attempts to extract a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
     /// Also tries variants of each potential key using capitalization/casing.
-    /// Returns a tuple of the value found at the first matching key + the (potentially new) response JSON (new if retry was done).
+    /// Returns the String found at the first matching key.
     pub async fn advanced_extract_key_from_inference_response(
+        agent: SerializedAgent,
+        response_json: JsonValue,
+        filled_prompt: Prompt,
+        potential_keys: Vec<String>,
+        retry_attempts: u64,
+    ) -> Result<String, AgentError> {
+        let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_json(
+            agent.clone(),
+            response_json.clone(),
+            filled_prompt.clone(),
+            potential_keys.clone(),
+            retry_attempts.clone(),
+        )
+        .await?;
+
+        Ok(value)
+    }
+
+    /// Attempts to extract a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
+    /// Also tries variants of each potential key using capitalization/casing.
+    /// Returns a tuple of the String found at the first matching key + the (potentially new) response JSON (new if retry was done).
+    pub async fn advanced_extract_key_from_inference_response_with_json(
         agent: SerializedAgent,
         response_json: JsonValue,
         filled_prompt: Prompt,

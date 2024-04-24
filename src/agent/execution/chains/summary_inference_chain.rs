@@ -172,23 +172,52 @@ impl JobManager {
             resource_source,
         );
 
+        // Specify the keys that we need to extract from the LLM response
+        let mut potential_keys = HashMap::new();
+        potential_keys.insert("title", vec!["name", "answer", "markdown"]);
+        potential_keys.insert("intro", vec!["introduction", "text", "paragraph", "explanation"]);
+        potential_keys.insert(
+            "list",
+            vec![
+                "bullets",
+                "points",
+                "bulletpoints",
+                "bulletpoint",
+                "lists",
+                "bullet-points",
+            ],
+        );
+
         // Extract the JSON from the inference response Result and proceed forward
         let response = JobManager::inference_agent_json(agent.clone(), prompt.clone()).await?;
-        let (answer, _) = &JobManager::advanced_extract_key_from_inference_response(
+        let extracted_keys_map = JobManager::advanced_extract_multi_keys_from_inference_response(
             agent.clone(),
-            response.clone(),
+            response,
             prompt.clone(),
-            vec![
-                "answer".to_string(),
-                "markdown".to_string(),
-                "summary".to_string(),
-                "text".to_string(),
-            ],
+            potential_keys.clone(),
             3,
         )
         .await?;
 
-        Ok(format!("{}", answer))
+        // Now parse the extracted keys into the output markdown summary string
+        let mut summary = String::new();
+        if let Some(title) = extracted_keys_map.get("title") {
+            if !title.is_empty() && !title.trim().starts_with("#") {
+                summary += "#";
+            }
+            eprintln!("Adding title: {}", title);
+            summary += &format!(" {}\n\n", title.trim());
+        }
+        if let Some(intro) = extracted_keys_map.get("intro") {
+            eprintln!("Adding intro: {}", intro);
+            summary += &format!("{}\n\n", intro);
+        }
+        if let Some(list) = extracted_keys_map.get("list") {
+            eprintln!("Adding list: {}", list);
+            summary += &format!("{}\n", list);
+        }
+
+        Ok(summary)
     }
 
     // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.

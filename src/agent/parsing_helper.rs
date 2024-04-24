@@ -40,7 +40,7 @@ impl ParsingHelper {
                     continue; // Continue to the next iteration on error
                 }
             };
-            let (answer, _new_resp_json) = match JobManager::advanced_extract_key_from_inference_response(
+            let (answer, _new_resp_json) = match JobManager::advanced_extract_key_from_inference_response_with_json(
                 agent.clone(),
                 response_json,
                 prompt.clone(),
