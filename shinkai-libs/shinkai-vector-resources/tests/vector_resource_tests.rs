@@ -1073,36 +1073,74 @@ async fn local_txt_metadata_parsing_test() {
 
 #[tokio::test]
 async fn local_md_parsing_test() {
-    let source_file_name = "README.md";
-    let buffer = std::fs::read(format!("{}", source_file_name)).unwrap();
-    let result = LocalFileParser::process_md_file(buffer, 400);
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "parsed_channels.md";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
 
-    let unwrapped_result = result.unwrap();
-    let h1 = &unwrapped_result[0];
+    // Perform vector search
+    let query_string = "What is happening on OpenSea?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    assert_eq!(unwrapped_result.len(), 1);
-    assert_eq!(h1.text, "Shinkai Vector Resources");
+    assert!(results[0].score > 0.4);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("KoL Token has successfully launched"));
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().len(), 9);
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().get("recasts").unwrap(), "0");
+    assert_eq!(
+        results[0].node.metadata.as_ref().unwrap().get("hash").unwrap(),
+        "0x43b9a4bc24246855e3d5f4459a7a3d79e50505e6"
+    );
 
-    let h1_sub_groups = &h1.sub_groups;
-    assert_eq!(h1_sub_groups.len(), 5);
-    assert!(h1_sub_groups[0].text.contains("A powerful native Rust"));
-    assert!(h1_sub_groups[1].text.contains("A Vector Resource is made up"));
-    assert_eq!(h1_sub_groups[2].text, "Importing Into Your Project");
-    assert_eq!(h1_sub_groups[3].text, "How To Use Vector Resources");
-    assert_eq!(h1_sub_groups[4].text, "Tests");
+    // Get Farcaster Posts
+    let query_string = "Get Farcaster Posts".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    let h2_importing_sub_groups = &h1_sub_groups[2].sub_groups;
-    assert!(h2_importing_sub_groups[0]
-        .text
-        .contains("By default the library includes"));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("Pepe Runner 2049")));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("i never remember")));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("wowow.shibuya.xyz")));
 
-    let h2_how_to_sub_groups = &h1_sub_groups[3].sub_groups;
-    assert!(h2_how_to_sub_groups[0].text.contains("Reference"));
+    // Shinkai Vector Resources
+    let query_string = "Explain Shinkai Vector Resources".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    let h2_tests_sub_groups = &h1_sub_groups[4].sub_groups;
-    assert_eq!(h2_tests_sub_groups.len(), 1);
-    assert_eq!(h2_tests_sub_groups[0].text, "Running Tests");
-
-    let h3_tests_sub_groups = &h2_tests_sub_groups[0].sub_groups;
-    assert!(h3_tests_sub_groups[0].text.contains("Of note"));
+    assert!(results[0].score > 0.5);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("A powerful native Rust"));
+    assert!(results[1..].iter().any(|node| node
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("To disable [desktop-only]")));
+    assert!(results[1..].iter().any(|node| node
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("Reference `unstructured_tests.rs`")));
 }
