@@ -48,10 +48,15 @@ impl ShinkaiFileParser {
 
         // Check if the name ends with ".htm" or ".html" and calculate the position to avoid deletion.
         let avoid_deletion_position = if decoded_name.ends_with(".htm") || decoded_name.ends_with(".html") {
-            decoded_name.len().saturating_sub(4) // Position before ".htm" or ".html"
+            decoded_name.len().saturating_sub(4) // Position before ".htm"
+        } else if decoded_name.ends_with(".html") {
+            decoded_name.len().saturating_sub(5) // Position before ".html"
+        } else if decoded_name.ends_with(".mhtml") {
+            decoded_name.len().saturating_sub(6) // Position before ".mhtml"
         } else {
             decoded_name.len() // Use the full length if not ending with ".htm" or ".html"
         };
+
         // Find the last occurrence of "/" or "%2F" that is not too close to the ".htm" extension.
         let last_relevant_slash_position = decoded_name.rmatch_indices(&['/', '%']).find_map(|(index, _)| {
             if index + 3 < avoid_deletion_position && decoded_name[index..].starts_with("%2F") {
