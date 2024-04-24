@@ -1,4 +1,3 @@
-
 use crate::agent::error::AgentError;
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobStepResult};
@@ -12,8 +11,6 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 
@@ -21,10 +18,8 @@ use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
 
-
 pub enum InferenceChain {
     QAChain,
-    SummaryChain,
     SummaryChain,
     ToolExecutionChain,
     CodingChain,

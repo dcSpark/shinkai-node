@@ -12,11 +12,9 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -270,14 +268,11 @@ async fn this_check(
     println!("Top This score: {:.2}", this_score);
 
     // Get current job task code block count, and the previous job task's code block count if it exists in step history
-    let current_code_block_count = job_task.get_elements_filtered(true, false).len();
+    let current_code_block_count = user_message.get_code_block_elements().len();
 
     for step in step_history {
         println!("Step: {:?}", step);
     }
-
-    // let previous_job_task = step_history.last().map(|step| step.).unwrap_or_default();
-    // let previous_code_block_count = previous_job_task.get_elements_filtered(true, false).len();
 
     // Get current user message code block count, and the previous user message's code block count if it exists in step history
     let current_code_block_count = user_message.get_code_block_elements().len();
