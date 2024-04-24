@@ -16,7 +16,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use tokio::sync::Mutex;
+
 
 use crate::{
     agent::{
@@ -24,7 +24,7 @@ use crate::{
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    planner::kai_files::{KaiJobFile, KaiSchemaType}, vector_fs::{self, vector_fs::VectorFS},
+    planner::kai_files::{KaiJobFile, KaiSchemaType}, vector_fs::{vector_fs::VectorFS},
 };
 
 impl JobManager {

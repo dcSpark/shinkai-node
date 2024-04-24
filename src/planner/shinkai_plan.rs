@@ -1,14 +1,14 @@
 use futures::Future;
 use pddl_ish_parser::models::domain::Domain;
 use pddl_ish_parser::parser::action::Action;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use std::{io::Cursor, pin::Pin, sync::Arc};
+
+
+
+use std::{pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 use pddl_ish_parser::parser::problem_parser::parse_problem;
 use pddl_ish_parser::parser::domain_parser::parse_domain;
-use crate::agent::execution::job_prompts::Prompt;
+
 
 pub type ExecuteActionFn =
     fn(&Action, &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
@@ -16,7 +16,7 @@ pub type ExecuteActionFn =
 fn default_execute_action_fn() -> ExecuteActionFn {
     fn action_fn(
         action: &Action,
-        state: &mut SharedPlanState,
+        _state: &mut SharedPlanState,
     ) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
         let action_name = action.name.clone();
         Box::pin(async move {
@@ -63,7 +63,7 @@ Part B:
 impl ShinkaiPlan {
     pub fn process_plan(plan: Arc<Mutex<ShinkaiPlan>>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
-            let mut plan_guard = plan.lock().await;
+            let _plan_guard = plan.lock().await;
             // for action in plan_guard.clone().domain.actions.iter() {
             //     match (plan_guard.execute_action)(action, &mut plan_guard.state).await {
             //         Ok(_) => {

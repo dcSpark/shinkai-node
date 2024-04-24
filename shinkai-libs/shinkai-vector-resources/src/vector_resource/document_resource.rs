@@ -4,10 +4,10 @@ use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
+use crate::shinkai_time::{ShinkaiTime};
 use crate::source::{DistributionInfo, SourceReference, VRSourceReference};
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
-use blake3::Hash;
+
 use chrono::{DateTime, Utc};
 use serde_json;
 use std::any::Any;

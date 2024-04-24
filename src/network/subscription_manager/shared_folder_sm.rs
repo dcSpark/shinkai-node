@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
+
 use serde::de::Error as SerdeError;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::collections::HashMap;
-use std::sync::Arc;
+
 
 use super::external_subscriber_manager::SharedFolderInfo;
 

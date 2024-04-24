@@ -181,7 +181,7 @@ impl ShinkaiDB {
         self.db.put_cf(cf, b"needs_reset", b"true")
     }
 
-    pub fn set_ws_manager(&self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
+    pub fn set_ws_manager(&self, _ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
         // TODO: off for now
         // self.ws_manager = Some(ws_manager);
     }
@@ -244,7 +244,7 @@ impl ShinkaiDB {
         // Reversed timekeyed
         // Convert time_key to DateTime<Utc>
         let time_key_date = DateTime::parse_from_rfc3339(&time_key)
-            .map_err(|e| ShinkaiDBError::InvalidData)?
+            .map_err(|_e| ShinkaiDBError::InvalidData)?
             .with_timezone(&Utc);
 
         // Convert time_key_date to Unix time
@@ -385,7 +385,7 @@ impl ShinkaiDB {
         for item in iter.take(n) {
             // Handle the Result returned by the iterator
             match item {
-                Ok((key, value)) => {
+                Ok((_key, value)) => {
                     // The value is the hash key used in the AllMessages CF
                     let message_key = value.to_vec();
 

@@ -7,7 +7,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
-use serde::Serialize;
+
 
 
 #[derive(Debug)]

@@ -1,17 +1,17 @@
-use crate::shinkai_utils::signatures::signature_public_key_to_string;
+
 
 use super::shinkai_message::{
-    EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
+    MessageBody, ShinkaiMessage,
 };
 use super::shinkai_message_error::ShinkaiMessageError;
-use super::shinkai_message_schemas::MessageSchemaType;
+
 use blake3::Hasher;
-use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
-use chacha20poly1305::ChaCha20Poly1305;
+use chacha20poly1305::aead::{NewAead};
+
 use ed25519_dalek::{Signer, Verifier};
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use ed25519_dalek::{SigningKey};
+
+
 use serde_json::json;
 use std::convert::TryInto;
 

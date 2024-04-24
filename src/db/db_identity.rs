@@ -9,7 +9,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string_ref, string_to_signature_public_key,
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 impl ShinkaiDB {
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiDBError> {
@@ -347,7 +347,7 @@ impl ShinkaiDB {
         };
 
         // Create an iterator for the column family
-        let mut iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
+        let iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
 
         // Iterate over the keys in the column family and print them
         for item in iter {
@@ -395,7 +395,7 @@ impl ShinkaiDB {
         };
 
         // Create an iterator for the column family
-        let mut iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
+        let iter = self.db.iterator_cf(cf_node_and_users, rocksdb::IteratorMode::Start);
 
         // Iterate over the keys in the column family and print them
         for item in iter {

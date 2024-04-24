@@ -1,7 +1,7 @@
 use chrono::DateTime;
 use chrono::Utc;
-use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
+use rocksdb::{Error, WriteBatch};
+
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
@@ -11,7 +11,7 @@ use shinkai_message_primitives::{
 };
 
 use crate::schemas::{
-    identity::{IdentityType, StandardIdentity},
+    identity::{StandardIdentity},
     inbox_permission::InboxPermission,
     smart_inbox::SmartInbox,
 };

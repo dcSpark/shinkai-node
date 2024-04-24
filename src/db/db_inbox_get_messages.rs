@@ -157,7 +157,7 @@ impl ShinkaiDB {
         let total_elements = until_offset_hash_key.is_some().then(|| n + 1).unwrap_or(n);
         let keys = keys.clone().into_iter().rev().collect::<Vec<String>>();
 
-        for i in 0..total_elements {
+        for _i in 0..total_elements {
             let mut path = Vec::new();
 
             let key = match current_key.clone() {

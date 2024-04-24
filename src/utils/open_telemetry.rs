@@ -1,9 +1,9 @@
-use opentelemetry::{global, trace::Tracer as _, KeyValue};
-use opentelemetry_otlp::new_pipeline;
+use opentelemetry::{trace::Tracer as _, KeyValue};
+
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::metrics::MeterProvider;
+
 use opentelemetry_sdk::runtime;
-use opentelemetry_sdk::trace as sdktrace;
+
 use opentelemetry_sdk::trace::BatchConfig;
 use opentelemetry_sdk::trace::Config;
 use opentelemetry_sdk::trace::Sampler;
