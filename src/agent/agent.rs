@@ -3,14 +3,10 @@ use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
-use shinkai_message_primitives::{
-    schemas::{
-        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
-        shinkai_name::ShinkaiName,
-    },
+use shinkai_message_primitives::schemas::{
+    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    shinkai_name::ShinkaiName,
 };
-
-
 
 #[derive(Debug, Clone)]
 pub struct Agent {

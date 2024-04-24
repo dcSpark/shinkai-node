@@ -1,3 +1,4 @@
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
@@ -10,7 +11,6 @@ use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -128,7 +128,8 @@ impl LLMProvider for ShinkaiBackend {
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
 
-                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
+                let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&response_text);
+                let data_resp: Result<JsonValue, _> = serde_json::from_str(&cleaned_response_text);
 
                 match data_resp {
                     Ok(value) => {

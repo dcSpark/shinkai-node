@@ -1,3 +1,4 @@
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
@@ -88,8 +89,8 @@ impl LLMProvider for GenericAPI {
                     ShinkaiLogLevel::Info,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-
-                let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&response_text);
+                let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&response_text);
+                let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&cleaned_response_text);
 
                 match data_resp {
                     Ok(data) => {

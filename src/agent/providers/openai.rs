@@ -1,6 +1,7 @@
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -95,7 +96,7 @@ impl LLMProvider for OpenAI {
                 );
 
                 let response_text = res.text().await?;
-                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
+                let data_resp: Result<JsonValue, _> = JobManager::json_val_from_str_safe(&response_text);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -158,7 +159,7 @@ impl LLMProvider for OpenAI {
                             ShinkaiLogLevel::Error,
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        Err(e)
                     }
                 }
             } else {

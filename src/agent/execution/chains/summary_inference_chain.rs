@@ -144,7 +144,14 @@ impl JobManager {
 
         let joined_summaries = detailed_summaries
             .iter()
-            .map(|summary| format!("{}\n\n\n", summary))
+            .enumerate()
+            .map(|(index, summary)| {
+                if index < detailed_summaries.len() - 1 {
+                    format!("{}\n\n---\n", summary)
+                } else {
+                    format!("{}\n\n", summary)
+                }
+            })
             .collect::<String>();
 
         Ok(joined_summaries)
@@ -200,9 +207,16 @@ impl JobManager {
             let mut intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
             let mut list = chunks[2].replace("List:", "");
 
+            // Add the title tag if it doesnt exist
             if !title.is_empty() && !title.trim().starts_with("#") {
                 title = format!("## {}", title);
             }
+
+            // Filter the list for common pitfalls of dumb LLMs
+            list = list
+                .replace("[Content Title]:", "")
+                .replace("[Bulletpoint Title]: ", "")
+                .replace("Bulletpoint Description:", "-");
 
             format!("{}\n\n{}\n\n{}", title.trim(), intro.trim(), list.trim())
         } else {

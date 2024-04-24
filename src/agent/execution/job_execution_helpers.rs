@@ -219,6 +219,63 @@ impl JobManager {
         }
     }
 
+    /// Escapes control characters in a string to ensure it parses properly with serde as JSON.
+    pub fn clean_control_characters(text: &str) -> String {
+        text.chars()
+            .map(|c| match c {
+                // // Explicitly handle valid JSON escape sequences
+                // '\n' => "\\n".to_string(),
+                // '\r' => "\\r".to_string(),
+                // '\t' => "\\t".to_string(),
+                // '\"' => "\\\"".to_string(),
+                // '\\' => "\\\\".to_string(),
+                // Remove other control characters
+                c if c.is_control() => "".to_string(),
+                // Include all other characters
+                _ => c.to_string(),
+            })
+            .collect()
+    }
+
+    /// Cleans json string of invalid control characters which are inside of quotes (aka. keys/values in json)
+    pub fn clean_json_str_for_json_parsing(text: &str) -> String {
+        let mut result = String::new();
+        let mut temp_string = String::new();
+        let mut in_quote = false;
+
+        for c in text.chars() {
+            match c {
+                '\"' if in_quote => {
+                    // Exiting quote block
+                    in_quote = false;
+                    result += &Self::clean_control_characters(&temp_string);
+                    result.push('\"');
+                    temp_string.clear();
+                }
+                '\"' => {
+                    // Entering quote block
+                    in_quote = true;
+                    result.push('\"');
+                }
+                _ if in_quote => temp_string.push(c),
+                _ => result.push(c),
+            }
+        }
+
+        // Handle case where text ends while still in a quote block
+        if !temp_string.is_empty() {
+            result += &Self::clean_control_characters(&temp_string);
+        }
+
+        result
+    }
+
+    /// Cleans the json string to ensure its safe to provide to serde, and then parses it into a JsonValue
+    pub fn json_val_from_str_safe(text: &str) -> Result<JsonValue, AgentError> {
+        let cleaned_text = JobManager::clean_json_str_for_json_parsing(text);
+        Ok(serde_json::from_str::<JsonValue>(&cleaned_text)?)
+    }
+
     /// Fetches boilerplate/relevant data required for a job to process a step
     /// it may return an outdated node_name
     pub async fn fetch_relevant_job_data(
