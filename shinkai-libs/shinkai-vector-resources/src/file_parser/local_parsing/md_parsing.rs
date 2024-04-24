@@ -191,21 +191,21 @@ impl LocalFileParser {
     fn push_text_group_by_depth(text_groups: &mut Vec<TextGroup>, depth: usize, text: String, max_node_text_size: u64) {
         if !text.is_empty() {
             let mut created_text_groups = Vec::new();
-            let (parsed_text, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
+            let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
 
             if parsed_text.len() as u64 > max_node_text_size {
-                let chunks = if metadata.is_empty() {
-                    ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize)
-                } else {
+                let chunks = if parsed_any_metadata {
                     ShinkaiFileParser::split_into_chunks_with_metadata(&text, max_node_text_size as usize)
+                } else {
+                    ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize)
                 };
 
                 for chunk in chunks {
-                    let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-                    created_text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], vec![], None));
+                    let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                    created_text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
                 }
             } else {
-                created_text_groups.push(TextGroup::new(parsed_text, metadata, vec![], vec![], None));
+                created_text_groups.push(TextGroup::new(parsed_text, metadata, vec![], None));
             }
 
             if depth > 0 {
