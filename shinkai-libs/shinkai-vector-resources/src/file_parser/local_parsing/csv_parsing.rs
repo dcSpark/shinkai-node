@@ -4,7 +4,7 @@ use crate::{
     resource_errors::VRError,
 };
 use csv::ReaderBuilder;
-use std::{collections::HashMap, io::Cursor};
+use std::io::Cursor;
 
 impl LocalFileParser {
     /// Attempts to process the provided csv file into a list of TextGroups.
@@ -13,23 +13,32 @@ impl LocalFileParser {
 
         let mut text_groups = Vec::new();
         for line in csv_lines {
-            if line.len() as u64 > max_node_text_size {
+            let (parsed_line, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&line);
+
+            if parsed_line.len() as u64 > max_node_text_size {
                 // If the line itself exceeds max_node_text_size, split it into chunks
-                let chunks = ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize);
+                // Split the unparsed line into chunks and parse metadata in each chunk
+                let chunks = if metadata.is_empty() {
+                    ShinkaiFileParser::split_into_chunks(&line, max_node_text_size as usize)
+                } else {
+                    ShinkaiFileParser::split_into_chunks_with_metadata(&line, max_node_text_size as usize)
+                };
 
                 if let Some(first_chunk) = chunks.first() {
-                    let mut line_group = TextGroup::new(first_chunk.to_owned(), HashMap::new(), vec![], vec![], None);
+                    let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&first_chunk);
+                    let mut line_group = TextGroup::new(parsed_chunk.to_owned(), metadata, vec![], vec![], None);
 
                     if chunks.len() > 1 {
                         for chunk in chunks.into_iter().skip(1) {
-                            line_group.push_sub_group(TextGroup::new(chunk, HashMap::new(), vec![], vec![], None));
+                            let (parsed_chunk, metadata) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                            line_group.push_sub_group(TextGroup::new(parsed_chunk, metadata, vec![], vec![], None));
                         }
                     }
 
                     text_groups.push(line_group);
                 }
             } else {
-                text_groups.push(TextGroup::new(line.clone(), HashMap::new(), vec![], vec![], None));
+                text_groups.push(TextGroup::new(parsed_line, metadata, vec![], vec![], None));
             }
         }
 
@@ -50,7 +59,7 @@ impl LocalFileParser {
         let likely_header = headers.iter().all(|s| {
             let is_alphabetic = s.chars().all(|c| c.is_alphabetic() || c.is_whitespace());
             let no_duplicates = headers.iter().filter(|&item| item == s).count() == 1;
-            let no_prohibited_chars = !s.contains(&['@', '#', '$', '%', '^', '&', '*'][..]);
+            let no_prohibited_chars = !s.contains(&['@', '#', '$', '%', '^', '&', '*']);
 
             is_alphabetic && no_duplicates && no_prohibited_chars
         });
