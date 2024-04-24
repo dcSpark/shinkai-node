@@ -77,8 +77,7 @@ impl VRSourceReference {
     /// Creates a VRSourceReference using file_name/content to auto-detect and create an instance of Self.
     /// Errors if can not detect matching extension in file_name.
     pub fn from_file(file_name: &str, text_chunking_strategy: TextChunkingStrategy) -> Result<Self, VRError> {
-        let re = Regex::new(r"\.[^.]+$").unwrap();
-        let file_name_without_extension = re.replace(file_name, "");
+        let file_name_without_extension = SourceFileType::clean_string_of_extension(file_name);
         // Attempt to auto-detect, else use file extension
         let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
