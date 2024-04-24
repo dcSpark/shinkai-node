@@ -42,15 +42,19 @@ impl JobPromptGenerator {
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         let markdown_message = r#"
-        { 
-            "title": "[Content Title]",
-            "intro": "[Introductory paragraph]",
-            "list": "- **[Bulletpoint Title]**: [Bulletpoint Description]\n- **[Bulletpoint Title]**: [Bulletpoint Description]\n- **[Bulletpoint Title]**: [Bulletpoint Description]"
-        }
-       "#;
-        prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
+        { "answer": "
+        ## [Content Title]
 
-        let task_message = "Do not respond with absolutely anything else, except with the output json holding a markdown string, which fulfills the users summary request: ```json\n";
+        [Introductory paragraph]
+
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+        - **[Bulletpoint Title]**: [Bulletpoint Description]
+    
+        "}"#;
+        prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
+
+        let task_message = "Do not respond with absolutely anything else, except with the output json holding a single markdown string, which fulfills the users summary request: \n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt

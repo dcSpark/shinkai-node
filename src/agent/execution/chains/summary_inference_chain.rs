@@ -123,6 +123,7 @@ impl JobManager {
                     user_message.clone(),
                     agent.clone(),
                     max_tokens_in_prompt,
+                    1,
                 )
             });
             let results = futures::future::join_all(futures).await;
@@ -149,12 +150,14 @@ impl JobManager {
         Ok(joined_summaries)
     }
 
+    #[async_recursion]
     pub async fn generate_detailed_summary_for_resource(
         resource: BaseVectorResource,
         generator: RemoteEmbeddingGenerator,
         user_message: ParsedUserMessage,
         agent: SerializedAgent,
         max_tokens_in_prompt: usize,
+        attempt_count: u64,
     ) -> Result<String, AgentError> {
         let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
@@ -165,7 +168,7 @@ impl JobManager {
 
         let resource_source = resource.as_trait_object().source();
         let prompt = JobPromptGenerator::summary_chain_detailed_summary_prompt(
-            user_message,
+            user_message.clone(),
             resource_sub_prompts,
             resource_source,
         );
@@ -186,12 +189,39 @@ impl JobManager {
         )
         .await?;
 
+        // Split into chunks and do improved parsing
         let filtered_answer = answer.replace("\\n_", "\\n");
-        let filtered_answer = answer.replace("Title:", "");
-        let filtered_answer = answer.replace("Summary:", "");
-        let filtered_answer = answer.replace("Intro:", "");
+        let mut chunks: Vec<&str> = filtered_answer.split("\n\n").collect();
+        if chunks.last().map_or(false, |last| last.trim().is_empty()) {
+            chunks.pop();
+        }
+        let filtered_answer = if chunks.len() == 3 {
+            let mut title = chunks[0].replace("Title:", "");
+            let mut intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
+            let mut list = chunks[2].replace("List:", "");
 
-        Ok(format!("{}", answer))
+            if !title.is_empty() && !title.trim().starts_with("#") {
+                title = format!("## {}", title);
+            }
+
+            format!("{}\n\n{}\n\n{}", title.trim(), intro.trim(), list.trim())
+        } else {
+            filtered_answer
+        };
+
+        if filtered_answer.len() < 100 && attempt_count < 2 {
+            return Self::generate_detailed_summary_for_resource(
+                resource,
+                generator.clone(),
+                user_message.clone(),
+                agent.clone(),
+                max_tokens_in_prompt,
+                attempt_count + 1,
+            )
+            .await;
+        }
+
+        Ok(filtered_answer)
     }
 
     // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.
