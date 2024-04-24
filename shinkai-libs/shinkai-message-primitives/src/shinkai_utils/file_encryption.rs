@@ -2,7 +2,7 @@ use blake3::Hasher;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::aead::{generic_array::GenericArray};
 use aes_gcm::KeyInit;
-use rand::rngs::OsRng;
+
 use rand::RngCore;
 use hex;
 

@@ -116,6 +116,13 @@ impl VectorFS {
         entry.to_json_simplified_value()
     }
 
+    /// Retrieves a minimal JSON Value representation of the FSEntry at the reader's path in the VectorFS.
+    /// This is a very minimalistic representation that should be sent to frontends to visualize the VectorFS.
+    pub async fn retrieve_fs_path_minimal_json_value(&self, reader: &VFSReader) -> Result<Value, VectorFSError> {
+        let entry = self.retrieve_fs_entry(reader).await?;
+        entry.to_json_minimal_value()
+    }
+
     /// Retrieves the FSEntry for the reader's path in the VectorFS.
     pub async fn retrieve_fs_entry(&self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
         let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;

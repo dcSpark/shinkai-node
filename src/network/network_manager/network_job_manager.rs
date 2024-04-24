@@ -27,7 +27,7 @@ use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use super::network_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
@@ -174,7 +174,7 @@ impl NetworkJobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
-                Weak<ShinkaiDB>,                // db
+                Weak<ShinkaiDB>,                       // db
                 Weak<VectorFS>,                        // vector_fs
                 ShinkaiName,                           // my_profile_name
                 EncryptionStaticKey,                   // my_encryption_secret_key
@@ -500,7 +500,7 @@ impl NetworkJobManager {
             subscription.subscriber_profile,
         )?;
 
-        // Check if the folder already exists. For now, we delete the folder and recreate it
+        // Check if the folder already exists. If it does, we will manually extract the VRPack
         {
             let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
 
@@ -526,34 +526,51 @@ impl NetworkJobManager {
                 .unwrap();
 
             if path_already_exists {
-                vector_fs_lock.delete_folder(&destination_writer).await?;
+                let unpacked_vrkais = vr_pack
+                    .unpack_all_vrkais()
+                    .map_err(|e| NetworkJobQueueError::Other(format!("VR error: {}", e)))?;
+                for (vr_kai, vr_path) in unpacked_vrkais {
+                    let vr_kai_path = VRPath::from_string(&vr_path.to_string())
+                        .map_err(|e| NetworkJobQueueError::InvalidVRPath(e.to_string()))?;
+
+                    let _res = vector_fs_lock
+                        .create_new_folder_auto(&destination_writer, vr_kai_path.parent_path())
+                        .await
+                        .unwrap();
+
+                    let vrkai_destination_writer = vector_fs_lock
+                        .new_writer(local_subscriber.clone(), vr_path.parent_path(), local_subscriber.clone())
+                        .await
+                        .unwrap();
+
+                    let _resp = vector_fs_lock
+                        .save_vrkai_in_folder(&vrkai_destination_writer, vr_kai)
+                        .await;
+                }
+            } else {
+                let parent_writer = vector_fs_lock
+                    .new_writer(
+                        local_subscriber.clone(),
+                        parent_vr_path.clone(),
+                        local_subscriber.clone(),
+                    )
+                    .await
+                    .unwrap();
+
+                vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
             }
-
-            let parent_writer = vector_fs_lock
-                .new_writer(
-                    local_subscriber.clone(),
-                    parent_vr_path.clone(),
-                    local_subscriber.clone(),
-                )
-                .await
-                .unwrap();
-
-            let _ = vector_fs_lock.extract_vrpack_in_folder(&parent_writer, vr_pack).await?;
-
-            {
-                // // debug. print current files
-                // eprintln!("debug current files");
-                // // let root_path = VRPath::root();
-                // let root_path = VRPath::from_string("/").unwrap();
-                // let reader = vector_fs_lock.new_reader(
-                //     local_subscriber.clone(),
-                //     root_path.clone(),
-                //     local_subscriber.clone(),
-                // ).await;
-                // let reader = reader.unwrap();
-                // let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
-                // eprintln!("Current files: {:?}", result);
-            }
+            // {
+            //     // debug. print current files
+            //     eprintln!("debug current files");
+            //     // let root_path = VRPath::root();
+            //     let root_path = VRPath::from_string("/").unwrap();
+            //     let reader = vector_fs_lock
+            //         .new_reader(local_subscriber.clone(), root_path.clone(), local_subscriber.clone())
+            //         .await;
+            //     let reader = reader.unwrap();
+            //     let result = vector_fs_lock.retrieve_fs_path_simplified_json(&reader).await;
+            //     eprintln!("Current files: {:?}", result);
+            // }
         }
 
         Ok(())
@@ -607,13 +624,16 @@ impl NetworkJobManager {
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Error,
-                &format!("{} > Failed to get sender identity: {:?} {:?}", receiver_address, sender_profile_name_string, e),
+                &format!(
+                    "{} > Failed to get sender identity: {:?} {:?}",
+                    receiver_address, sender_profile_name_string, e
+                ),
             );
             return Ok(());
         }
 
         let sender_identity = sender_identity.unwrap();
-            
+
         verify_message_signature(sender_identity.node_signature_public_key, &message)?;
 
         shinkai_log(

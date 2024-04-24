@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{
     node_api::APIError, node_error::NodeError,
-    subscription_manager::external_subscriber_manager::{self, ExternalSubscriberManager}, Node,
+    subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
 use crate::{
     agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
@@ -29,7 +29,7 @@ use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     file_parser::unstructured_api::UnstructuredAPI,
     source::DistributionInfo,
-    vector_resource::{VRKai, VRPack, VRPath},
+    vector_resource::{VRPack, VRPath},
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -82,6 +82,7 @@ impl Node {
     }
 
     #[allow(clippy::too_many_arguments)]
+    // Public function for simplified JSON
     pub async fn api_vec_fs_retrieve_path_simplified_json(
         _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -91,6 +92,60 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        Self::retrieve_path_json_common(
+            // Pass parameters and false for is_minimal
+            _db,
+            vector_fs,
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            ext_subscription_manager,
+            res,
+            false,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    // Public function for minimal JSON
+    pub async fn api_vec_fs_retrieve_path_minimal_json(
+        _db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        Self::retrieve_path_json_common(
+            // Pass parameters and true for is_minimal
+            _db,
+            vector_fs,
+            node_name,
+            identity_manager,
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            ext_subscription_manager,
+            res,
+            true,
+        )
+        .await
+    }
+
+    // Private method to abstract common logic
+    async fn retrieve_path_json_common(
+        _db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<Value, APIError>>,
+        is_minimal: bool, // Determines which JSON representation to retrieve
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
@@ -108,6 +163,7 @@ impl Node {
                     return Ok(());
                 }
             };
+
         let vr_path = match VRPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
@@ -116,14 +172,15 @@ impl Node {
                     error: "Bad Request".to_string(),
                     message: format!("Failed to convert path to VRPath: {}", e),
                 };
+                // Immediately send the error and return from the function
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
-        let reader = vector_fs
+        let reader = match vector_fs
             .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
+            .await
+        {
             Ok(reader) => reader,
             Err(e) => {
                 let api_error = APIError {
@@ -131,9 +188,16 @@ impl Node {
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to create reader: {}", e),
                 };
+                // Immediately send the error and return from the function
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
+        };
+
+        let result = if is_minimal {
+            vector_fs.retrieve_fs_path_minimal_json_value(&reader).await
+        } else {
+            vector_fs.retrieve_fs_path_simplified_json_value(&reader).await
         };
 
         fn add_shared_folder_info(obj: &mut serde_json::Value, shared_folders: &[SharedFolderInfo]) {
@@ -162,10 +226,8 @@ impl Node {
             }
         }
 
-        let result = vector_fs.retrieve_fs_path_simplified_json_value(&reader).await;
-        let result = match result {
-            Ok(result_value) => {
-                let mut result_value = result_value;
+        match result {
+            Ok(mut result_value) => {
                 let mut subscription_manager = ext_subscription_manager.lock().await;
                 let shared_folders_result = subscription_manager
                     .available_shared_folders(
@@ -178,34 +240,23 @@ impl Node {
                     .await;
                 drop(subscription_manager);
 
-                let shared_folders_result = match shared_folders_result {
-                    Ok(result) => result,
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to retrieve shared folders: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
-                add_shared_folder_info(&mut result_value, &shared_folders_result);
-                result_value
+                if let Ok(shared_folders) = shared_folders_result {
+                    add_shared_folder_info(&mut result_value, &shared_folders);
+                }
+
+                let _ = res.send(Ok(result_value)).await.map_err(|_| ());
+                Ok(())
             }
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve fs path simplified json: {}", e),
+                    message: format!("Failed to retrieve fs path json: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
-        };
-
-        let _ = res.send(Ok(result)).await.map_err(|_| ());
-        Ok(())
+        }
     }
 
     pub async fn api_vec_fs_search_items(
@@ -1031,7 +1082,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
-        embedding_generator: Arc<EmbeddingGenerator>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         unstructured_api: Arc<UnstructuredAPI>,
         external_subscriber_manager: Arc<Mutex<ExternalSubscriberManager>>,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1193,7 +1244,7 @@ impl Node {
         // We need to force ext_manager to update their cache
         {
             let mut ext_manager = external_subscriber_manager.lock().await;
-            ext_manager.update_shared_folders();
+            let _ = ext_manager.update_shared_folders().await;
         }
 
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
@@ -1285,7 +1336,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_pack(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,

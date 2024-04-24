@@ -1,13 +1,13 @@
 use super::DistributionInfo;
-use crate::file_parser::unstructured_parser::UnstructuredParser;
+
 use crate::resource_errors::VRError;
 use crate::source::TextChunkingStrategy;
-use crate::vector_resource::{DocumentFileType, SourceFileType, VRPath};
-use chrono::{DateTime, Utc};
-use regex::Regex;
+use crate::vector_resource::{SourceFileType};
+
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::str::FromStr;
+
 
 /// Struct which holds the contents of the TLSNotary proof for the source file
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

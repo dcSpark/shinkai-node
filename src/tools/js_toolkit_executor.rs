@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+
 use std::fs::File;
 use std::io;
 use std::process::{Child, Command, Stdio};

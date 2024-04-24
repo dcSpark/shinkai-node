@@ -1,7 +1,7 @@
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
+
 
 use crate::{
     agent::{error::AgentError, execution::job_prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
@@ -24,11 +24,11 @@ pub struct CronExecutionState {
 impl JobManager {
     #[async_recursion]
     pub async fn image_analysis_chain(
-        db: Arc<ShinkaiDB>,
-        full_job: Job,
+        _db: Arc<ShinkaiDB>,
+        _full_job: Job,
         agent_found: Option<SerializedAgent>,
-        execution_context: HashMap<String, String>,
-        user_profile: Option<ShinkaiName>,
+        _execution_context: HashMap<String, String>,
+        _user_profile: Option<ShinkaiName>,
         task: String,
         image: String,
         iteration_count: u64,

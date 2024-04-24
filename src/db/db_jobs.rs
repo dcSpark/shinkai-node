@@ -4,8 +4,8 @@ use std::time::Instant;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
 use crate::agent::job::{Job, JobLike, JobStepResult};
-use async_std::eprint;
-use rocksdb::{IteratorMode, Options, WriteBatch};
+
+use rocksdb::{IteratorMode, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -615,7 +615,7 @@ impl ShinkaiDB {
         message: &ShinkaiMessage,
         parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        self.unsafe_insert_inbox_message(&message, parent_message_key).await?;
+        self.unsafe_insert_inbox_message(message, parent_message_key).await?;
         Ok(())
     }
 }

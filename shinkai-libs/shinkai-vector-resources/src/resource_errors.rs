@@ -1,9 +1,9 @@
-use crate::vector_resource::{VRKaiVersion, VRPath};
-use lz4_flex::block::DecompressError;
+use crate::vector_resource::{VRPath};
+
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
-use std::string::FromUtf8Error;
+
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {

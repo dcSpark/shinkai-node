@@ -14,12 +14,11 @@ use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
 };
-use tiktoken_rs::{ChatCompletionRequestMessage, FunctionCall};
 use std::{
     fmt,
     sync::{Arc, Weak},
 };
-use tokio::sync::Mutex;
+use tiktoken_rs::ChatCompletionRequestMessage;
 
 #[derive(Debug)]
 pub enum ModelCapabilitiesManagerError {
@@ -170,6 +169,8 @@ impl ModelCapabilitiesManager {
                     vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("yarn-mistral") {
                     vec![ModelCapability::TextInference]
+                } else if ollama.model_type.starts_with("llama3") {
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("llava") {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 } else if ollama.model_type.starts_with("bakllava") {
@@ -195,6 +196,7 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
+                "togethercomputer/llama3" => ModelCost::Cheap,
                 "yorickvp/llava-13b" => ModelCost::Expensive,
                 _ => ModelCost::Unknown,
             },
@@ -277,7 +279,7 @@ impl ModelCapabilitiesManager {
                 }
             }
             AgentLLMInterface::GenericAPI(genericapi) => {
-                if genericapi.model_type.starts_with("togethercomputer/llama-2") {
+                if genericapi.model_type.starts_with("togethercomputer/llama-2") ||  genericapi.model_type.starts_with("meta-llama/Llama-3") {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;
@@ -297,6 +299,8 @@ impl ModelCapabilitiesManager {
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral")
                     || ollama.model_type.starts_with("llama2")
+                    || ollama.model_type.starts_with("llama3")
+                    || ollama.model_type.starts_with("wizardlm2")
                     || ollama.model_type.starts_with("starling-lm")
                     || ollama.model_type.starts_with("neural-chat")
                     || ollama.model_type.starts_with("vicuna")
@@ -332,11 +336,13 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for GenericAPI
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
-                }
-                else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
+                } else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
                     32_000
-                }
-                else {
+                } else if genericapi.model_type.starts_with("meta-llama/Llama-3") {
+                    8_000
+                } else if genericapi.model_type.starts_with("mistralai/Mixtral-8x22B") {
+                    65_000
+                } else {
                     4096
                 }
             }
@@ -359,9 +365,12 @@ impl ModelCapabilitiesManager {
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
                     return 32_000;
-                }
-                else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
+                } else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
                     return 32_000;
+                } else if ollama.model_type.starts_with("mixtral:8x22b") {
+                    return 65_000;
+                } else if ollama.model_type.starts_with("llama3") {
+                    return 8_000;
                 }
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
@@ -410,7 +419,7 @@ impl ModelCapabilitiesManager {
                     "gpt-4".to_string()
                 }
             }
-            AgentLLMInterface::GenericAPI(genericapi) => {
+            AgentLLMInterface::GenericAPI(_genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
                 "".to_string()
             }
@@ -442,12 +451,10 @@ impl ModelCapabilitiesManager {
         buffered_token_count
     }
 
-    pub fn num_tokens_from_messages(
-        messages: &[ChatCompletionRequestMessage],
-    ) -> Result<usize, String> {
+    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> Result<usize, String> {
         let average_token_size = 4; // Average size of a token (in characters)
         let buffer_percentage = 0.15; // Buffer to account for tokenization variance
-    
+
         let mut total_characters = 0;
         for message in messages {
             total_characters += message.role.chars().count() + 1; // +1 for a space or newline after the role
@@ -458,13 +465,13 @@ impl ModelCapabilitiesManager {
                 total_characters += name.chars().count() + 1; // +1 for a space or newline after the name
             }
         }
-    
+
         // Calculate estimated tokens without the buffer
         let estimated_tokens = (total_characters as f64 / average_token_size as f64).ceil() as usize;
-    
+
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
-    
+
         Ok(buffered_token_count)
     }
 }

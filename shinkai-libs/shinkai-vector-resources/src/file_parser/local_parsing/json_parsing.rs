@@ -1,14 +1,14 @@
 use super::LocalFileParser;
 use crate::file_parser::file_parser_types::TextGroup;
 use crate::resource_errors::VRError;
-use crate::source::VRSourceReference;
+
 use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
-    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
+    pub fn process_json_file(file_buffer: Vec<u8>, _max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
         let json_string = String::from_utf8(file_buffer.clone()).map_err(|_| VRError::FailedJSONParsing)?;
-        let json: JsonValue = serde_json::from_str(&json_string)?;
+        let _json: JsonValue = serde_json::from_str(&json_string)?;
 
         Ok(vec![])
     }
@@ -50,7 +50,7 @@ impl LocalFileParser {
     fn process_content_json_value(
         key: &str,
         json: &JsonValue,
-        accumulated_string: &String,
+        _accumulated_string: &String,
         max_node_text_size: u64,
     ) -> Option<String> {
         let formatted_string = format!("{}: {}", key, json.to_string());

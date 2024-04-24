@@ -5,7 +5,6 @@ use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCompressionType, IteratorMode, Options, SingleThreaded,
-    TransactionDB, TransactionDBOptions,
 };
 use rocksdb::{Error, OptimisticTransactionDB};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -272,7 +271,7 @@ impl VectorFSDB {
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, VectorFSError> {
-        let mut prof_name = Self::get_profile_name_string(profile)?;
+        let prof_name = Self::get_profile_name_string(profile)?;
         Ok(Self::generate_profile_bound_key_from_str(key, &prof_name))
     }
 

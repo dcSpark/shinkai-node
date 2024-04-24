@@ -1,15 +1,14 @@
 use super::{
     node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
-    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBody, SendResponseBodyData},
+    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData},
     node_error::NodeError,
     node_shareable_logic::validate_message_main_logic,
     Node,
 };
 use crate::{
-    agent::job_manager::{self, JobManager},
+    agent::job_manager::{JobManager},
     db::db_errors::ShinkaiDBError,
     managers::IdentityManager,
-    planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -37,7 +36,6 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_error::ShinkaiMessageError,
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
             MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
@@ -2124,7 +2122,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_get_filenames_in_inbox(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,

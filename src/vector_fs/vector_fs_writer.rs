@@ -769,7 +769,7 @@ impl VectorFS {
                     .new_writer_copied_data(writer.path.push_cloned(node.id.clone()), self)
                     .await?;
                 match node.content {
-                    NodeContent::Resource(res) => {
+                    NodeContent::Resource(_res) => {
                         self.update_permissions_recursively(
                             &child_writer,
                             read_permission.clone(),

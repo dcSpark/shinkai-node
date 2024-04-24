@@ -1,5 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{json, Result as JsonResult};
+use serde_json::{json};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{collections::HashMap, fmt::Write, thread, time::Duration};
@@ -193,7 +193,7 @@ impl PermissionsIndex {
 
     /// Creates a new PermissionsIndex using an input hashmap and profile.
     pub fn from_hashmap(profile_name: ShinkaiName, json_permissions: HashMap<VRPath, String>) -> Self {
-        let mut index = Self {
+        let index = Self {
             fs_permissions: RwLock::new(json_permissions),
             profile_name,
         };

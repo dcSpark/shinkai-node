@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
+
 use serde::de::Error as SerdeError;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::collections::HashMap;
-use std::sync::Arc;
+
 
 use super::external_subscriber_manager::SharedFolderInfo;
 
@@ -204,6 +204,7 @@ mod tests {
         // Adjusted to create SharedFolderInfo instances
         let shared_folder_info_1 = SharedFolderInfo {
             path: "/path/to/file1".to_string(),
+            profile: "profile1".to_string(),
             permission: "read_write".to_string(),
             tree: item_tree_1,
             subscription_requirement: None, // Assuming None for simplicity; adjust as needed
@@ -211,6 +212,7 @@ mod tests {
 
         let shared_folder_info_2 = SharedFolderInfo {
             path: "/path/to/file2".to_string(),
+            profile: "profile2".to_string(),
             permission: "read_only".to_string(),
             tree: item_tree_2,
             subscription_requirement: None, // Assuming None for simplicity; adjust as needed
