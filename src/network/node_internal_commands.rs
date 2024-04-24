@@ -409,6 +409,29 @@ impl Node {
         }
     }
 
+    pub async fn internal_remove_agent(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        agent_id: String,
+        profile: &ShinkaiName,
+    ) -> Result<(), NodeError> {
+        match db.remove_agent(&agent_id, profile) {
+            Ok(()) => {
+                let mut subidentity_manager = identity_manager.lock().await;
+                match subidentity_manager.remove_agent_subidentity(&agent_id).await {
+                    Ok(_) => Ok(()),
+                    Err(err) => {
+                        error!("Failed to remove subidentity: {}", err);
+                        Err(NodeError {
+                            message: format!("Failed to remove device subidentity: {}", err),
+                        })
+                    }
+                }
+            }
+            Err(e) => Err(NodeError::from(e)),
+        }
+    }
+
     pub async fn ping_all(
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,

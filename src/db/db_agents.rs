@@ -80,12 +80,36 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    /// Updates an existing agent in the database.
+    pub fn update_agent(&self, updated_agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // Serialize the updated agent to bytes
+        let bytes = to_vec(&updated_agent).unwrap();
+
+        // Get handle to the NodeAndUsers topic
+        let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
+
+        // Construct the database key for the agent
+        let agent_id_for_db = Self::db_agent_id(&updated_agent.id, profile)?;
+        let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", &agent_id_for_db);
+
+        // Check if the agent exists
+        let agent_exists = self.db.get_cf(cf_node_and_users, agent_key.as_bytes())?.is_some();
+        if !agent_exists {
+            return Err(ShinkaiDBError::DataNotFound);
+        }
+
+        // Update the agent in the database
+        self.db.put_cf(cf_node_and_users, agent_key.as_bytes(), bytes)?;
+
+        Ok(())
+    }
+
     pub fn remove_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Get cf handle for NodeAndUsers topic
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
         // Prefix used to identify all keys related to the agent
-        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
         let agent_prefix = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
 
         // Check if the agent exists
