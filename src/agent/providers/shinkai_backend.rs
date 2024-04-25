@@ -43,6 +43,7 @@ impl LLMProvider for ShinkaiBackend {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
@@ -52,10 +53,6 @@ impl LLMProvider for ShinkaiBackend {
                     | "PREMIUM_VISION_INFERENCE"
                     | "STANDARD_TEXT_INFERENCE"
                     | "FREE_TEXT_INFERENCE" => {
-                        let open_ai = OpenAI {
-                            model_type: self.model_type.clone(),
-                        };
-                        let model = AgentLLMInterface::OpenAI(open_ai);
                         let result = openai_prepare_messages(&model, prompt)?;
                         match result.value {
                             PromptResultEnum::Value(v) => v,
@@ -128,6 +125,8 @@ impl LLMProvider for ShinkaiBackend {
                 );
 
                 let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&response_text);
+
+                eprintln!("!100 Model used: {:?}", model);
                 eprintln!("!101 Cleaned Response Text: {:?}", cleaned_response_text);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&cleaned_response_text);
 

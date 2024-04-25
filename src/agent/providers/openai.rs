@@ -42,14 +42,12 @@ impl LLMProvider for OpenAI {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-                let open_ai = OpenAI {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::OpenAI(open_ai);
+
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {

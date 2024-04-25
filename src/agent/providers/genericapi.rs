@@ -21,6 +21,7 @@ impl LLMProvider for GenericAPI {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
@@ -37,10 +38,6 @@ impl LLMProvider for GenericAPI {
                 );
 
                 // TODO: implement diff tokenizers depending on the model
-                let generic = GenericAPI {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::GenericAPI(generic);
                 let mut max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 max_tokens = std::cmp::max(5, max_tokens - (messages_string.len() / 2));
 

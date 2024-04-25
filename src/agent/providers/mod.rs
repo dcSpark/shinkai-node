@@ -2,6 +2,7 @@ use super::{error::AgentError, execution::prompts::prompts::Prompt};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
 
 pub mod genericapi;
 pub mod ollama;
@@ -20,6 +21,7 @@ pub trait LLMProvider {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError>;
 
     /// Given an input string, parses the largest JSON object that it finds. Largest allows us to skip over

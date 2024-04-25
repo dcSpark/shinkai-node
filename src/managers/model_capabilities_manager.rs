@@ -338,7 +338,8 @@ impl ModelCapabilitiesManager {
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
                 } else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
-                    32_000
+                    16_000
+                    //  32_000
                 } else if genericapi.model_type.starts_with("meta-llama/Llama-3") {
                     8_000
                 } else if genericapi.model_type.starts_with("mistralai/Mixtral-8x22B") {
@@ -367,7 +368,8 @@ impl ModelCapabilitiesManager {
                 if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
                     return 32_000;
                 } else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
-                    return 32_000;
+                    return 16_000;
+                    //  32_000
                 } else if ollama.model_type.starts_with("mixtral:8x22b") {
                     return 65_000;
                 } else if ollama.model_type.starts_with("llama3") {
@@ -470,6 +472,7 @@ impl ModelCapabilitiesManager {
         buffered_token_count
     }
 
+    /// Counts the number of tokens from the list of messages
     pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> Result<usize, String> {
         let average_token_size = 4; // Average size of a token (in characters)
         let buffer_percentage = 0.15; // Buffer to account for tokenization variance

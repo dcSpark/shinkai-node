@@ -35,13 +35,10 @@ impl LLMProvider for Ollama {
         url: Option<&String>,
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/generate");
-            let ollama = Ollama {
-                model_type: self.model_type.clone(),
-            };
-            let model = AgentLLMInterface::Ollama(ollama);
             let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
             let (messages_string, asset_content) = match messages_result.value {
                 PromptResultEnum::Text(v) => (v, None),
