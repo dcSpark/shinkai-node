@@ -27,16 +27,9 @@ impl ShinkaiFileParser {
                 texts.push(sub_group.format_text_for_embedding(max_node_text_size));
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
-                indices.push((sub_path, texts.len() - 1));
-            }
-            for sub_group in &text_group.sub_groups {
-                Self::collect_texts_and_indices(
-                    &sub_group.sub_groups,
-                    texts,
-                    indices,
-                    max_node_text_size,
-                    current_path.clone(),
-                );
+                indices.push((sub_path.clone(), texts.len() - 1));
+
+                Self::collect_texts_and_indices(&sub_group.sub_groups, texts, indices, max_node_text_size, sub_path);
             }
         }
     }
