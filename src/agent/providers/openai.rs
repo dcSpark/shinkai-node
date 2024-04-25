@@ -50,9 +50,8 @@ impl LLMProvider for OpenAI {
                     model_type: self.model_type.clone(),
                 };
                 let model = AgentLLMInterface::OpenAI(open_ai);
-                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
                     _ => {

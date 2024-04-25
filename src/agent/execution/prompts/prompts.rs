@@ -416,12 +416,15 @@ impl Prompt {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
 
+        println!("!102 Limit of number of tokens allowed: {}", limit);
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit)?;
 
         // Generate the output chat completion request messages
-        let output_messages = prompt_copy.generate_chat_completion_messages()?.0;
+        let (output_messages, token_count) = prompt_copy.generate_chat_completion_messages()?;
+
+        println!("!103 Number of tokens in output: {}", token_count);
         Ok(output_messages)
     }
 

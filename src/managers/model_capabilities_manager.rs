@@ -270,9 +270,7 @@ impl ModelCapabilitiesManager {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
-                    let total_tokens = Self::get_max_tokens(model);
-                    let tiktoken_messages =
-                        openai_prepare_messages(model, openai.clone().model_type, prompt, total_tokens)?;
+                    let tiktoken_messages = openai_prepare_messages(&model, prompt)?;
                     Ok(tiktoken_messages)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
@@ -324,6 +322,7 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    /// Returns the maximum number of tokens allowed for the given model.
     pub fn get_max_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
@@ -384,6 +383,13 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
+    pub fn get_max_input_tokens(model: &AgentLLMInterface) -> usize {
+        let max_tokens = Self::get_max_tokens(model);
+        let max_output_tokens = Self::get_max_output_tokens(model);
+        std::cmp::min((max_tokens as f64 * 0.90) as usize, max_output_tokens)
+    }
+
     pub fn get_max_output_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(_) => {
@@ -407,6 +413,17 @@ impl ModelCapabilitiesManager {
                 4096
             }
         }
+    }
+
+    /// Returns the remaining number of output tokens allowed for the LLM to use
+    pub fn get_remaining_output_tokens(model: &AgentLLMInterface, used_tokens: usize) -> usize {
+        let max_tokens = Self::get_max_tokens(model);
+        let mut remaining_output_tokens = max_tokens.saturating_sub(used_tokens);
+        remaining_output_tokens = std::cmp::min(
+            remaining_output_tokens,
+            ModelCapabilitiesManager::get_max_output_tokens(&model.clone()),
+        );
+        remaining_output_tokens
     }
 
     // Note(Nico): this may be necessary bc some libraries are not caught up with the latest models e.g. tiktoken-rs

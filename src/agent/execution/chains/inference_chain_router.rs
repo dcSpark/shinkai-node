@@ -49,7 +49,7 @@ impl JobManager {
         let mut inference_response_content = String::new();
         let mut new_execution_context = HashMap::new();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_tokens(&agent.model);
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
         // Choose the inference chain based on the user message

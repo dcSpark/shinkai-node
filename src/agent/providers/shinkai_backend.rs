@@ -56,8 +56,7 @@ impl LLMProvider for ShinkaiBackend {
                             model_type: self.model_type.clone(),
                         };
                         let model = AgentLLMInterface::OpenAI(open_ai);
-                        let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                        let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                        let result = openai_prepare_messages(&model, prompt)?;
                         match result.value {
                             PromptResultEnum::Value(v) => v,
                             _ => {

@@ -71,6 +71,7 @@ async-lock = "2.4.0"
 governor = "0.6.3"
 lru = "0.7.0"
 console-subscriber = { version = "0.1", optional = true }
+quickxml_to_serde = "0.6.0"
 
 [dependencies.opentelemetry]
 version = "0.21.0"
