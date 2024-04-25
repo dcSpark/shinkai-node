@@ -389,7 +389,11 @@ impl ModelCapabilitiesManager {
     pub fn get_max_input_tokens(model: &AgentLLMInterface) -> usize {
         let max_tokens = Self::get_max_tokens(model);
         let max_output_tokens = Self::get_max_output_tokens(model);
-        std::cmp::min((max_tokens as f64 * 0.90) as usize, max_output_tokens)
+        if max_tokens > max_output_tokens {
+            max_tokens - max_output_tokens
+        } else {
+            max_output_tokens
+        }
     }
 
     pub fn get_max_output_tokens(model: &AgentLLMInterface) -> usize {
@@ -494,6 +498,7 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        buffered_token_count
+        // Rob note: Multiplying this estimation, as for mixtral 8x7b it's been extremely off
+        (buffered_token_count as f64 * 2.5).floor() as usize
     }
 }
