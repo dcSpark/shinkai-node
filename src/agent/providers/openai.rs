@@ -93,7 +93,7 @@ impl LLMProvider for OpenAI {
                 );
 
                 let response_text = res.text().await?;
-                let data_resp: Result<JsonValue, _> = JobManager::json_val_from_str_safe(&response_text);
+                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -156,7 +156,7 @@ impl LLMProvider for OpenAI {
                             ShinkaiLogLevel::Error,
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(e)
+                        Err(AgentError::SerdeError(e))
                     }
                 }
             } else {

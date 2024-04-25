@@ -96,9 +96,7 @@ impl LLMProvider for Ollama {
                         let chunk_str = String::from_utf8_lossy(&chunk);
                         let chunk_str = chunk_str.chars().filter(|c| !c.is_control()).collect::<String>();
 
-                        let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&chunk_str);
-                        let data_resp: Result<OllamaAPIStreamingResponse, _> =
-                            serde_json::from_str(&cleaned_response_text);
+                        let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {
                                 if let Some(response) = data.response.as_str() {
@@ -128,8 +126,7 @@ impl LLMProvider for Ollama {
                 format!("Call API Response Text: {:?}", response_text).as_str(),
             );
 
-            let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&response_text);
-            match serde_json::from_str::<JsonValue>(&cleaned_response_text) {
+            match serde_json::from_str::<JsonValue>(&response_text) {
                 Ok(deserialized_json) => {
                     let response_string = deserialized_json.to_string();
                     Self::extract_largest_json_object(&response_string)

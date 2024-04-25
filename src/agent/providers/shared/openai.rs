@@ -100,17 +100,6 @@ impl OpenAIApiMessage {
             })
             .collect();
 
-        if let Some(last_message) = messages.last_mut() {
-            match &mut last_message.content {
-                MessageContent::Text(text) => {
-                    if !text.ends_with(" ```") {
-                        text.push_str(" ```json");
-                    }
-                }
-                _ => {}
-            }
-        }
-
         Ok(messages)
     }
 }
@@ -157,7 +146,6 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Res
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&filtered_chat_completion_messages);
-    println!("!104 Number of tokens used: {}", used_tokens);
     // Calculate the remaining output tokens available
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(&model, used_tokens);
 

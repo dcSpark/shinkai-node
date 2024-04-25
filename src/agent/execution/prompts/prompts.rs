@@ -364,14 +364,6 @@ impl Prompt {
 
         let mut current_token_count = self.generate_chat_completion_messages()?.1;
         while current_token_count > max_prompt_tokens {
-            println!(
-                "!10X - In Theory Current token count: {} - Token Limit: {}",
-                current_token_count, max_prompt_tokens
-            );
-            println!(
-                "!10X - Real Token Count: {}",
-                self.generate_chat_completion_messages()?.1
-            );
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
                     current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
@@ -418,15 +410,13 @@ impl Prompt {
 
     /// Processes all sub-prompts into a single output String.
     pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
-        let json_response_required = String::from("```json");
         let content = self
             .sub_prompts
             .iter()
             .map(|sub_prompt| sub_prompt.generate_output_string())
             .collect::<Vec<String>>()
             .join("\n")
-            + "\n"
-            + &json_response_required;
+            + "\n";
         Ok(content)
     }
 
@@ -454,7 +444,6 @@ impl Prompt {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
 
-        println!("!102 Limit of number of tokens allowed: {}", limit);
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit)?;
@@ -462,7 +451,6 @@ impl Prompt {
         // Generate the output chat completion request messages
         let (output_messages, token_count) = prompt_copy.generate_chat_completion_messages()?;
 
-        println!("!103 Number of tokens in output: {}", token_count);
         Ok(output_messages)
     }
 

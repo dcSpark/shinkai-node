@@ -89,6 +89,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             100,
         );
+        prompt.add_content(format!("```json"), SubPromptType::System, 100);
 
         prompt
     }
@@ -148,6 +149,8 @@ impl JobPromptGenerator {
             SubPromptType::System,
             100,
         );
+
+        prompt.add_content(format!("```json"), SubPromptType::System, 100);
 
         prompt
     }
