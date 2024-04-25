@@ -473,7 +473,7 @@ impl ModelCapabilitiesManager {
     }
 
     /// Counts the number of tokens from the list of messages
-    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> Result<usize, String> {
+    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> usize {
         let average_token_size = 4; // Average size of a token (in characters)
         let buffer_percentage = 0.15; // Buffer to account for tokenization variance
 
@@ -494,6 +494,6 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        Ok(buffered_token_count)
+        buffered_token_count
     }
 }

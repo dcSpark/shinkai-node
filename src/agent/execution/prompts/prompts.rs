@@ -108,6 +108,41 @@ impl SubPrompt {
         }
     }
 
+    /// Converts a subprompt into a ChatCompletionRequestMessage
+    pub fn into_chat_completion_request_message(&self) -> ChatCompletionRequestMessage {
+        let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
+        ChatCompletionRequestMessage {
+            role: prompt_type.to_string(),
+            content: Some(content),
+            name: if type_ == "text" { None } else { Some(type_.to_string()) },
+            function_call: None,
+        }
+    }
+
+    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion message.
+    /// In other words, this is the "real" estimated token count (not just naive utf-8 character count).
+    pub fn count_tokens_as_completion_message(&self) -> usize {
+        let new_message = self.into_chat_completion_request_message();
+        self.count_tokens_with_pregenerated_completion_message(&new_message)
+    }
+
+    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion message.
+    /// In other words, this is the "real" estimated token count (not just naive utf-8 character count).
+    /// This accepts a pregenerated completion message made from self.into_chat_completion_request_message() for greater efficiency.
+    pub fn count_tokens_with_pregenerated_completion_message(
+        &self,
+        completion_message: &ChatCompletionRequestMessage,
+    ) -> usize {
+        // Only count tokens for non-image content
+        let (_, _, type_) = self.extract_generic_subprompt_data();
+        if type_ == "image" {
+            return 0;
+        }
+
+        let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&[completion_message.clone()]);
+        new_message_tokens
+    }
+
     /// Converts a vector resource into a series of subprompts to be used in a prompt
     /// If the VR is ordered, the output will be as well.
     pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
@@ -243,12 +278,22 @@ impl Prompt {
     }
 
     /// Remove sub prompt at index
-    /// Adds multiple pre-prepared sub-prompts.
     /// Updates the lowest and highest priority values of self
     pub fn remove_sub_prompt(&mut self, index: usize) -> SubPrompt {
         let element = self.sub_prompts.remove(index);
         self.update_sub_prompts_priorities();
         element
+    }
+
+    /// Remove sub prompt at index safely, or returns None.
+    /// Updates the lowest and highest priority values of self
+    pub fn remove_sub_prompt_safe(&mut self, index: usize) -> Option<SubPrompt> {
+        if index < self.sub_prompts.len() {
+            let element = self.remove_sub_prompt(index);
+            Some(element)
+        } else {
+            None
+        }
     }
 
     /// Adds multiple pre-prepared sub-prompts with a new priority value.
@@ -319,9 +364,17 @@ impl Prompt {
 
         let mut current_token_count = self.generate_chat_completion_messages()?.1;
         while current_token_count > max_prompt_tokens {
+            println!(
+                "!10X - In Theory Current token count: {} - Token Limit: {}",
+                current_token_count, max_prompt_tokens
+            );
+            println!(
+                "!10X - Real Token Count: {}",
+                self.generate_chat_completion_messages()?.1
+            );
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
-                    current_token_count -= removed_sub_prompt.len();
+                    current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
                     removed_subprompts.push(removed_sub_prompt);
                 }
                 None => break, // No more sub-prompts to remove, exit the loop
@@ -385,23 +438,8 @@ impl Prompt {
 
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
-            let (prompt_type, content, type_) = sub_prompt.extract_generic_subprompt_data();
-
-            let new_message = ChatCompletionRequestMessage {
-                role: prompt_type.to_string(),
-                content: Some(content),
-                name: if type_ == "text" { None } else { Some(type_.to_string()) },
-                function_call: None,
-            };
-
-            // Only count tokens for non-image content
-            if type_ != "image" {
-                let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&[new_message.clone()])
-                    .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
-
-                current_length += new_message_tokens;
-            }
-
+            let new_message = sub_prompt.into_chat_completion_request_message();
+            current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
             tiktoken_messages.push(new_message);
         }
 
