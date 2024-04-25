@@ -219,22 +219,32 @@ impl JobManager {
         }
     }
 
+    /// Escapes control characters outside of a string
+    fn clean_outer_control_character(c: char) -> String {
+        match c {
+            // // Explicitly handle valid JSON escape sequences
+            '\n' => "\\n".to_string(),
+            '\r' => "\\r".to_string(),
+            '\t' => "\\t".to_string(),
+            // Remove other control characters
+            c if c.is_control() => "".to_string(),
+            // Include all other characters
+            _ => c.to_string(),
+        }
+    }
+
     /// Escapes control characters in a string to ensure it parses properly with serde as JSON.
-    pub fn clean_control_characters(text: &str) -> String {
-        text.chars()
-            .map(|c| match c {
-                // // Explicitly handle valid JSON escape sequences
-                // '\n' => "\\n".to_string(),
-                // '\r' => "\\r".to_string(),
-                // '\t' => "\\t".to_string(),
-                // '\"' => "\\\"".to_string(),
-                // '\\' => "\\\\".to_string(),
-                // Remove other control characters
-                c if c.is_control() => "".to_string(),
-                // Include all other characters
-                _ => c.to_string(),
-            })
-            .collect()
+    fn clean_inner_control_character(c: char) -> String {
+        match c {
+            // // Explicitly handle valid JSON escape sequences
+            '\n' => "\\\\n".to_string(),
+            '\r' => "\\\\r".to_string(),
+            '\t' => "\\\\t".to_string(),
+            // Remove other control characters
+            c if c.is_control() => "".to_string(),
+            // Include all other characters
+            _ => c.to_string(),
+        }
     }
 
     /// Cleans json string of invalid control characters which are inside of quotes (aka. keys/values in json)
@@ -248,7 +258,7 @@ impl JobManager {
                 '\"' if in_quote => {
                     // Exiting quote block
                     in_quote = false;
-                    result += &Self::clean_control_characters(&temp_string);
+                    result += &temp_string;
                     result.push('\"');
                     temp_string.clear();
                 }
@@ -257,14 +267,14 @@ impl JobManager {
                     in_quote = true;
                     result.push('\"');
                 }
-                _ if in_quote => temp_string.push(c),
-                _ => result.push(c),
+                _ if in_quote => temp_string.push_str(&Self::clean_inner_control_character(c)),
+                _ => result.push_str(&Self::clean_outer_control_character(c)),
             }
         }
 
         // Handle case where text ends while still in a quote block
         if !temp_string.is_empty() {
-            result += &Self::clean_control_characters(&temp_string);
+            result += &temp_string;
         }
 
         result

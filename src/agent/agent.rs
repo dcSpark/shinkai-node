@@ -79,19 +79,34 @@ impl Agent {
         let mut attempts = 0;
 
         let mut new_prompt = prompt.clone();
+        new_prompt.add_content(
+            format!("You are an advanced JSON assistant who can fix any invalid JSON string."),
+            SubPromptType::User,
+            100,
+        );
+
         while let Err(err) = &response {
-            if attempts >= 3 {
+            if attempts >= 4 {
                 break;
             }
             attempts += 1;
 
             // If serde failed parsing the json string, then use advanced retrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
-                new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
+                new_prompt.add_content(
+                    format!("```{}```", response_json.to_string()),
+                    SubPromptType::Assistant,
+                    100,
+                );
+                new_prompt.add_content(
+                    format!("No, that is not valid JSON. This is the error reported for the above json string:"),
+                    SubPromptType::User,
+                    100,
+                );
+                new_prompt.add_content(format!("```{}```", serde_error.to_string()), SubPromptType::User, 100);
                 new_prompt.add_content(
                     format!(
-                        "`{}` \nFix this error in your response so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always use single quotes (never double quotes) inside of the strings.",
-                        serde_error.to_string()
+                        "Fix the json string so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always escape quotes properly inside of strings!",
                     ),
                     SubPromptType::User,
                     100,

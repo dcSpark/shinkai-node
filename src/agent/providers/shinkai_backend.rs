@@ -129,6 +129,7 @@ impl LLMProvider for ShinkaiBackend {
                 );
 
                 let cleaned_response_text = JobManager::clean_json_str_for_json_parsing(&response_text);
+                eprintln!("!101 Cleaned Response Text: {:?}", cleaned_response_text);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&cleaned_response_text);
 
                 match data_resp {
