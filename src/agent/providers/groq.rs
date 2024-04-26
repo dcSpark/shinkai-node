@@ -21,7 +21,7 @@ impl LLMProvider for Groq {
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "");
+                let url = format!("{}{}", base_url, "/chat/completions");
                 let groq = Groq {
                     model_type: self.model_type.clone(),
                 };
@@ -30,7 +30,32 @@ impl LLMProvider for Groq {
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
                 let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
                 let messages_json = match result.value {
-                    PromptResultEnum::Value(v) => v,
+                    PromptResultEnum::Value(mut v) => {
+                        // Assuming `v` is a serde_json::Value representing an array of messages
+                        if let JsonValue::Array(ref mut messages) = v {
+                            for message in messages.iter_mut() {
+                                if let JsonValue::Object(ref mut obj) = message {
+                                    if let Some(JsonValue::Array(contents)) = obj.get_mut("content") {
+                                        // Concatenate all text fields in the content array into a single string
+                                        let concatenated_content = contents
+                                            .iter()
+                                            .filter_map(|content| {
+                                                if let JsonValue::Object(content_obj) = content {
+                                                    content_obj.get("text").and_then(|t| t.as_str()).map(String::from)
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<Vec<String>>()
+                                            .join(" ");
+                                        // Replace the content array with a single string
+                                        obj.insert("content".to_string(), JsonValue::String(concatenated_content));
+                                    }
+                                }
+                            }
+                        }
+                        v
+                    }
                     _ => {
                         return Err(AgentError::UnexpectedPromptResultVariant(
                             "Expected Value variant in PromptResultEnum".to_string(),
@@ -45,10 +70,7 @@ impl LLMProvider for Groq {
                     "max_tokens": result.remaining_tokens,
                 });
 
-                // Openai doesn't support json_object response format for vision models. wut?
-                if !self.model_type.contains("vision") {
-                    payload["response_format"] = json!({ "type": "json_object" });
-                }
+                payload["response_format"] = json!({ "type": "json_object" });
 
                 let mut payload_log = payload.clone();
                 shinkai_log(
@@ -75,7 +97,7 @@ impl LLMProvider for Groq {
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Response Text: {:?}", response_text).as_str(),
+                    format!("Groq Call API Response Text: {:?}", response_text).as_str(),
                 );
 
                 match data_resp {

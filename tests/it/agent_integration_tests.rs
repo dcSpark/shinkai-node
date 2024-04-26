@@ -98,9 +98,9 @@ fn node_agent_registration() {
         let agent_name = ShinkaiName::new(
             format!(
                 "{}/{}/agent/{}",
-                node1_identity_name.clone(),
-                node1_subidentity_name.clone(),
-                node1_agent.clone()
+                node1_identity_name,
+                node1_subidentity_name,
+                node1_agent
             )
             .to_string(),
         )
@@ -110,16 +110,16 @@ fn node_agent_registration() {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
-        let ollama = Ollama {
+        let _ollama = Ollama {
             model_type: "mistral".to_string(),
         };
 
-        let shinkai_backend = ShinkaiBackend {
+        let _shinkai_backend = ShinkaiBackend {
             model_type: "gpt-4-1106-preview".to_string(),
         };
 
         let agent = SerializedAgent {
-            id: node1_agent.clone().to_string(),
+            id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
             // external_url: Some("http://localhost:3000".to_string()),
