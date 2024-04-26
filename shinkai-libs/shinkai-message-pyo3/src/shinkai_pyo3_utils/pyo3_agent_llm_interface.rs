@@ -5,6 +5,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
 use shinkai_message_primitives::schemas::agents::serialized_agent::LocalLLM;
 use shinkai_message_primitives::schemas::agents::serialized_agent::Ollama;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::Groq;
 use shinkai_message_primitives::schemas::agents::serialized_agent::ShinkaiBackend;
 
 #[pyclass]
