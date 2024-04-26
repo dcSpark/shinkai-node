@@ -73,7 +73,7 @@ impl FromStr for AgentLLMInterface {
             let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
         } else if s.starts_with("groq:") {
-            let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
+            let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
         } else {
             Err(())
