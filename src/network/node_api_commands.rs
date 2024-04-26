@@ -2191,6 +2191,169 @@ impl Node {
         }
     }
 
+    pub async fn api_remove_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIRemoveAgentRequest),
+        )
+        .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let agent_id_result = msg.get_message_content();
+
+        let agent_id = match agent_id_result {
+            Ok(id) => id.to_string(),
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get agent ID from message: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = sender_subidentity.get_full_identity_name();
+        let profile = match ShinkaiName::new(profile) {
+            Ok(profile) => profile,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create profile: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut identity_manager = identity_manager.lock().await;
+        match db.remove_agent(&agent_id, &profile) {
+            Ok(_) => match identity_manager.remove_agent_subidentity(&agent_id).await {
+                Ok(_) => {
+                    let _ = res.send(Ok("Agent removed successfully".to_string())).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to remove agent from identity manager: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_modify_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<SerializedAgent>(
+            node_name,
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::APIModifyAgentRequest,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Check if the profile has access to modify the agent
+        let profiles_with_access = match db.get_agent_profiles_with_access(&input_payload.id, &requester_name) {
+            Ok(access_list) => access_list,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get profiles with access: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        if !profiles_with_access.contains(&requester_name.get_profile_name_string().unwrap_or_default()) {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::FORBIDDEN.as_u16(),
+                    error: "Forbidden".to_string(),
+                    message: "Profile does not have access to modify this agent".to_string(),
+                }))
+                .await;
+            Ok(())
+        } else {
+            // Modify agent based on the input_payload
+            match db.update_agent(input_payload.clone(), &requester_name) {
+                Ok(_) => {
+                    let mut identity_manager = identity_manager.lock().await;
+                    match identity_manager.modify_agent_subidentity(input_payload).await {
+                        Ok(_) => {
+                            let _ = res.send(Ok("Agent modified successfully".to_string())).await;
+                            Ok(())
+                        },
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to update agent in identity manager: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            Ok(())
+                        }
+                    }
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update agent: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        }
+    }
+
     pub async fn api_create_files_inbox_with_symmetric_key(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2218,10 +2381,32 @@ impl Node {
         };
 
         // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key)?;
+        let decrypted_msg = match msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key) {
+            Ok(decrypted) => decrypted,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to decrypt message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Extract the content of the message
-        let content = decrypted_msg.get_message_content()?;
+        let content = match decrypted_msg.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to extract message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         match Self::process_symmetric_key(content, db.clone()).await {
             Ok(_) => {

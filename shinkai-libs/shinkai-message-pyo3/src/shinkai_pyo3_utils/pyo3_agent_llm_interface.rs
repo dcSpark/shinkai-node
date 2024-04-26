@@ -5,6 +5,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
 use shinkai_message_primitives::schemas::agents::serialized_agent::LocalLLM;
 use shinkai_message_primitives::schemas::agents::serialized_agent::Ollama;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::Groq;
 use shinkai_message_primitives::schemas::agents::serialized_agent::ShinkaiBackend;
 
 #[pyclass]
@@ -37,6 +38,11 @@ impl PyAgentLLMInterface {
             Ok(Self {
                 inner: AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }),
             })
+        } else if s.starts_with("groq:") {
+            let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: AgentLLMInterface::Groq(Groq { model_type }),
+            })
         } else {
             Ok(Self {
                 inner: AgentLLMInterface::LocalLLM(LocalLLM {}),
@@ -46,9 +52,7 @@ impl PyAgentLLMInterface {
 
     #[staticmethod]
     pub fn new_openai(model_type: String) -> Self {
-        let open_ai = OpenAI {
-            model_type,
-        };
+        let open_ai = OpenAI { model_type };
         Self {
             inner: AgentLLMInterface::OpenAI(open_ai),
         }
@@ -56,9 +60,7 @@ impl PyAgentLLMInterface {
 
     #[staticmethod]
     pub fn new_genericapi(model_type: String) -> Self {
-        let generic_api = GenericAPI {
-            model_type,
-        };
+        let generic_api = GenericAPI { model_type };
         Self {
             inner: AgentLLMInterface::GenericAPI(generic_api),
         }
@@ -76,7 +78,10 @@ impl PyAgentLLMInterface {
             AgentLLMInterface::OpenAI(open_ai) => Ok(format!("openai:{}", open_ai.model_type)),
             AgentLLMInterface::GenericAPI(generic_ai) => Ok(format!("genericapi:{}", generic_ai.model_type)),
             AgentLLMInterface::Ollama(ollama) => Ok(format!("ollama:{}", ollama.model_type)),
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Ok(format!("shinkai-backend:{}", shinkai_backend.model_type)),
+            AgentLLMInterface::Groq(groq) => Ok(format!("groq:{}", groq.model_type)),
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
+                Ok(format!("shinkai-backend:{}", shinkai_backend.model_type))
+            }
             AgentLLMInterface::LocalLLM(_) => Ok("LocalLLM".to_string()),
         }
     }

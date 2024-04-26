@@ -286,7 +286,7 @@ impl ParsingHelper {
             if current_paragraph.len() + sentence.len() > max_chars {
                 // If the current paragraph is not empty, add it to the result with a line break
                 if !current_paragraph.is_empty() {
-                    result_string.push_str(&format!("{}\n", current_paragraph.trim()));
+                    result_string.push_str(&format!("{}\n\n", current_paragraph.trim()));
                     current_paragraph.clear();
                 }
                 // Start a new paragraph with the current sentence

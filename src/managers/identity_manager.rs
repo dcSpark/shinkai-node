@@ -113,6 +113,68 @@ impl IdentityManager {
         Ok(())
     }
 
+    pub async fn modify_agent_subidentity(&mut self, updated_agent: SerializedAgent) -> anyhow::Result<()> {
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("modify_agent_subidentity > updated_agent: {:?}", updated_agent).as_str(),
+        );
+
+        let mut found = false;
+        for identity in &mut self.local_identities {
+            if let Identity::Agent(agent) = identity {
+                if agent.full_identity_name == updated_agent.full_identity_name {
+                    *agent = updated_agent.clone();
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if found {
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Debug,
+                format!("Agent modified: {:?}", updated_agent.full_identity_name).as_str(),
+            );
+            Ok(())
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Error,
+                format!("Agent not found: {}", updated_agent.full_identity_name).as_str(),
+            );
+            Err(anyhow::anyhow!("Agent with ID '{}' not found.", updated_agent.full_identity_name))
+        }
+    }
+
+    pub async fn remove_agent_subidentity(&mut self, agent_id: &str) -> anyhow::Result<()> {
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("remove_agent_subidentity > agent_id: {}", agent_id).as_str(),
+        );
+
+        let initial_count = self.local_identities.len();
+        self.local_identities.retain(|identity| match identity {
+            Identity::Agent(agent) => agent.full_identity_name.to_string() != agent_id,
+            _ => true,
+        });
+
+        let final_count = self.local_identities.len();
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Debug,
+            format!("Removed {} agent(s)", initial_count - final_count).as_str(),
+        );
+
+        if initial_count == final_count {
+            Err(anyhow::anyhow!("Agent with ID '{}' not found.", agent_id))
+        } else {
+            Ok(())
+        }
+    }
+
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
