@@ -49,12 +49,6 @@ struct IdentityNameToExternalProfileDataResponse {
     encryption_public_key: String,
 }
 
-#[derive(serde::Deserialize)]
-struct ConnectBody {
-    address: String,
-    profile_name: String,
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct APIError {
     pub code: u16,
@@ -1127,7 +1121,7 @@ async fn scan_ollama_models_handler(
 
     match result {
         Ok(models) => Ok(warp::reply::json(&models)),
-        Err(error) => Err(warp::reject::custom(APIError::from(error))),
+        Err(error) => Err(warp::reject::custom(error)),
     }
 }
 
@@ -1147,7 +1141,7 @@ async fn add_ollama_models_handler(
 
     match result {
         Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
-        Err(error) => Err(warp::reject::custom(APIError::from(error))),
+        Err(error) => Err(warp::reject::custom(error)),
     }
 }
 
@@ -1226,6 +1220,7 @@ async fn get_my_subscribers_handler(
     Ok(warp::reply::json(&subscribers))
 }
 
+#[allow(clippy::type_complexity)]
 async fn send_msg_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1498,6 +1493,7 @@ async fn available_agents_handler(
     .await
 }
 
+#[allow(clippy::type_complexity)]
 async fn job_message_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,

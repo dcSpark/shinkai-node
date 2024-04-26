@@ -1,6 +1,7 @@
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::Node;
 use crate::agent::job_manager::JobManager;
-use crate::db::{ShinkaiDB};
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::{
@@ -344,8 +345,19 @@ impl Node {
         requester: ShinkaiName,
         res: Sender<Result<(), String>>,
     ) {
-        let result =
-            Self::internal_add_ollama_models(db, identity_manager, input_models, requester).await;
+        let result = Self::internal_add_ollama_models(db, identity_manager, input_models, requester).await;
         let _ = res.send(result).await;
+    }
+
+    pub async fn local_ext_manager_process_subscription_updates(
+        _ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<(), String>>,
+    ) {
+        {
+            let subscription_manager = _ext_subscription_manager.lock().await;
+            subscription_manager.test_process_subscription_updates().await;
+        }
+
+        let _ = res.send(Ok(())).await;
     }
 }

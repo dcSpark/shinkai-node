@@ -376,6 +376,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
     },
+    LocalExtManagerProcessSubscriptionUpdates {
+        res: Sender<Result<(), String>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -1875,6 +1878,16 @@ impl Node {
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => self.local_ext_manager_process_subscription_updates(res).await,
+                                        NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => {
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_ext_manager_process_subscription_updates(
+                                                    ext_subscription_manager_clone,
                                                     res,
                                                 ).await;
                                             });

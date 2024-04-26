@@ -25,7 +25,6 @@ use aes_gcm::KeyInit;
 use async_channel::Sender;
 use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use ethers::middleware::gas_oracle::eth_gas_station::Response;
 use log::error;
 use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
@@ -64,7 +63,6 @@ impl Node {
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
         let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> = identity_manager.lock().await.clone_box();
-        // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
 
         validate_message_main_logic(
@@ -2015,7 +2013,6 @@ impl Node {
         }
     }
 
-    // TODO: WIP
     pub async fn api_add_ollama_models(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
