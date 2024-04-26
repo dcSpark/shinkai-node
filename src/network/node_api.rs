@@ -660,11 +660,11 @@ pub async fn run_api(
     // POST v1/local_scan_ollama_models
     let local_scan_ollama_models = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "local_scan_ollama_models")
+        warp::path!("v1" / "scan_ollama_models")
             .and(warp::post()) // Corrected from .and(warp::get()) to match the handler's expected method
             .and(warp::body::json::<ShinkaiMessage>()) // Ensure the body is deserialized into a ShinkaiMessage
             .and_then(move |message: ShinkaiMessage| {
-                local_scan_ollama_models_handler(node_commands_sender.clone(), message)
+                scan_ollama_models_handler(node_commands_sender.clone(), message)
             }) // Corrected handler name and added message parameter
     };
 
@@ -1111,13 +1111,13 @@ async fn api_convert_files_and_save_to_folder_handler(
     .await
 }
 
-async fn local_scan_ollama_models_handler(
+async fn scan_ollama_models_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::APILocalScanOllamaModels {
+        .send(NodeCommand::APIScanOllamaModels {
             msg: message,
             res: res_sender,
         })
@@ -1138,7 +1138,7 @@ async fn add_ollama_models_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::APIAddOllamaModels {
-            models: message,
+            msg: message,
             res: res_sender,
         })
         .await

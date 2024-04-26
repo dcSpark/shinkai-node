@@ -264,18 +264,19 @@ pub enum NodeCommand {
     IsPristine {
         res: Sender<bool>,
     },
-    APILocalScanOllamaModels {
+    APIScanOllamaModels {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, String>>,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
     },
     APIAddOllamaModels {
-        models: ShinkaiMessage,
-        res: Sender<Result<(), String>>,
+        msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
     },
     LocalScanOllamaModels {
-        res: Sender<Result<Vec<String>, String>>,
+        res: Sender<Result<Vec<serde_json::Value>, String>>,
     },
     AddOllamaModels {
+        target_profile: ShinkaiName,
         models: Vec<String>,
         res: Sender<Result<(), String>>,
     },
@@ -949,16 +950,15 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        NodeCommand::AddOllamaModels { models, res } => {
+                                        NodeCommand::AddOllamaModels { target_profile, models, res } => {
                                             let db_clone = self.db.clone();
-                                            let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_ollama_models(
                                                     db_clone,
-                                                    &node_name_clone,
                                                     identity_manager_clone,
                                                     models,
+                                                    target_profile,
                                                     res,
                                                 ).await;
                                             });
@@ -1300,6 +1300,38 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_list_toolkits(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIScanOllamaModels { msg, res } => self.api_scan_ollama_models(msg, res).await,
+                                        NodeCommand::APIScanOllamaModels { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_scan_ollama_models(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg, 
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddOllamaModels { msg, res } => self.api_add_ollama_models(msg, res).await,
+                                        NodeCommand::APIAddOllamaModels { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_ollama_models(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
