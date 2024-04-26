@@ -60,6 +60,7 @@ impl FromStr for AgentLLMInterface {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
         if s.starts_with("openai:") {
             let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
@@ -74,7 +75,7 @@ impl FromStr for AgentLLMInterface {
             Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
         } else if s.starts_with("groq:") {
             let model_type = s.strip_prefix("groq:").unwrap_or("").to_string();
-            Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
+            Ok(AgentLLMInterface::Groq(Groq { model_type }))
         } else {
             Err(())
         }
@@ -139,7 +140,7 @@ impl<'de> Visitor<'de> for AgentLLMInterfaceVisitor {
             "shinkai-backend" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
-            "groq" => Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend {
+            "groq" => Ok(AgentLLMInterface::Groq(Groq {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
             "local-llm" => Ok(AgentLLMInterface::LocalLLM(LocalLLM {})),
