@@ -1,6 +1,7 @@
+use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::Node;
 use crate::agent::job_manager::JobManager;
-use crate::db::{ShinkaiDB};
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::{
@@ -332,20 +333,31 @@ impl Node {
         let _ = res.send(!has_any_profile).await;
     }
 
-    pub async fn local_scan_ollama_models(res: Sender<Result<Vec<String>, String>>) {
+    pub async fn local_scan_ollama_models(res: Sender<Result<Vec<serde_json::Value>, String>>) {
         let result = Self::internal_scan_ollama_models().await;
         let _ = res.send(result.map_err(|e| e.message)).await;
     }
 
     pub async fn local_add_ollama_models(
         db: Arc<ShinkaiDB>,
-        node_name: &ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_models: Vec<String>,
+        requester: ShinkaiName,
         res: Sender<Result<(), String>>,
     ) {
-        let result =
-            Self::internal_add_ollama_models(db, node_name.clone().node_name, identity_manager, input_models).await;
+        let result = Self::internal_add_ollama_models(db, identity_manager, input_models, requester).await;
         let _ = res.send(result).await;
+    }
+
+    pub async fn local_ext_manager_process_subscription_updates(
+        _ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        res: Sender<Result<(), String>>,
+    ) {
+        {
+            let subscription_manager = _ext_subscription_manager.lock().await;
+            subscription_manager.test_process_subscription_updates().await;
+        }
+
+        let _ = res.send(Ok(())).await;
     }
 }

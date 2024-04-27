@@ -63,6 +63,14 @@ async fn main() {
                 .help("Sync interval (immediate, timed:<seconds>, none)")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("node_address")
+                .short('n')
+                .long("node")
+                .value_name("NODE_ADDRESS")
+                .help("Node address for synchronization")
+                .takes_value(true),
+        )
         .get_matches();
 
     let encrypted_file_path = env::var("ENCRYPTED_FILE_PATH")
@@ -105,12 +113,21 @@ async fn main() {
 
     let sync_interval = parse_sync_interval(&sync_interval_str).expect("Failed to parse sync interval");
 
+    let node_address = matches
+        .value_of("node_address")
+        .map(String::from)
+        .or_else(|| env::var("NODE_ADDRESS").ok());
+
     // Example of creating a FilesystemSynchronizer
-    let shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
+    let mut shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
         Path::new(&encrypted_file_path),
         passphrase.as_deref().unwrap_or(""),
     )
     .expect("Failed to initialize ShinkaiManagerForSync");
+
+    if node_address.is_some() {
+        shinkai_manager.node_address = node_address.unwrap();
+    }
 
     let synchronizer = FilesystemSynchronizer::new(
         shinkai_manager,
