@@ -1339,7 +1339,7 @@ fn subscription_manager_test() {
 
                 while attempts < max_attempts && !structure_matched {
                     
-                    eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+                    eprintln!("\n\n### (Send updates to subscribers) Sending message from node 2's identity to node 2 to check if the subscription synced\n");
 
                     let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
                     let msg = generate_message_with_payload(
@@ -1477,7 +1477,7 @@ fn subscription_manager_test() {
 
                 while attempts < max_attempts && !structure_matched {
                     
-                    eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+                    eprintln!("\n\n### (Check that new file was received) Sending message from node 2's identity to node 2 to check if the subscription synced\n");
 
                     let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
                     let msg = generate_message_with_payload(
@@ -1618,14 +1618,14 @@ fn subscription_manager_test() {
                 .await;
             }
             {
-                eprintln!("Check that new file was received");
+                eprintln!("Check that removed file were updated");
                 let mut attempts = 0;
                 let max_attempts = 15;
                 let mut structure_matched = false;
 
                 while attempts < max_attempts && !structure_matched {
                     
-                    eprintln!("\n\n### Sending message from node 2's identity to node 2 to check if the subscription synced\n");
+                    eprintln!("\n\n### (Check that structure with removed folder (zeko) was updated) Sending message from node 2's identity to node 2 to check if the subscription synced\n");
 
                     let payload = APIVecFsRetrievePathSimplifiedJson { path: "/".to_string() };
                     let msg = generate_message_with_payload(
@@ -1649,7 +1649,7 @@ fn subscription_manager_test() {
                         .await
                         .unwrap();
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                    // print_tree_simple(&resp);
+                    print_tree_simple(actual_resp_json.clone());
 
                    let expected_structure = serde_json::json!({
                         "path": "/",
