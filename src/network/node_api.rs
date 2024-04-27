@@ -359,6 +359,24 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| add_agent_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/modify_agent
+    let modify_agent = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "modify_agent")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| modify_agent_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/remove_agent
+    let remove_agent = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "remove_agent")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| remove_agent_handler(node_commands_sender.clone(), message))
+    };
+
     // POST v1/last_messages_from_inbox?limit={number}&offset={key}
     let get_last_messages_from_inbox = {
         let node_commands_sender = node_commands_sender.clone();
@@ -687,6 +705,8 @@ pub async fn run_api(
         .or(update_smart_inbox_name)
         .or(available_agents)
         .or(add_agent)
+        .or(remove_agent)
+        .or(modify_agent)
         .or(get_last_messages_from_inbox)
         .or(get_last_unread_messages)
         .or(create_job)
@@ -1473,6 +1493,32 @@ async fn add_agent_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     handle_node_command(node_commands_sender, message, |_, message, res_sender| {
         NodeCommand::APIAddAgent {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+async fn modify_agent_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIModifyAgent {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
+async fn remove_agent_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIRemoveAgent {
             msg: message,
             res: res_sender,
         }

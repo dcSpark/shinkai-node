@@ -239,6 +239,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<SerializedAgent>, APIError>>,
     },
+    APIRemoveAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIModifyAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     AvailableAgents {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
@@ -1119,7 +1127,40 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        // NodeCommand::APIJobMessage { msg, res } => self.api_job_message(msg, res).await,
+                                        // NodeCommand::APIRemoveAgent { msg, res } => self.api_remove_agent(msg, res).await,
+                                        NodeCommand::APIRemoveAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_remove_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            }); 
+                                        },
+                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await, 
+                                        NodeCommand::APIModifyAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_modify_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            }); 
+                                        },
                                         NodeCommand::APIJobMessage { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let identity_manager_clone = self.identity_manager.clone();

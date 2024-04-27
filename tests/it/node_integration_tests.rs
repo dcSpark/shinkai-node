@@ -29,7 +29,6 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::utils;
 use super::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
 };
@@ -86,10 +85,10 @@ fn subidentity_registration() {
         let (node2_commands_sender, node2_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
 
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
-        let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name.clone()));
-        let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name.clone()));
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
+        let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
+        let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);

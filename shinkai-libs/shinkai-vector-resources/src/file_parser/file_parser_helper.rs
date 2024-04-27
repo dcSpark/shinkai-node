@@ -48,10 +48,15 @@ impl ShinkaiFileParser {
 
         // Check if the name ends with ".htm" or ".html" and calculate the position to avoid deletion.
         let avoid_deletion_position = if decoded_name.ends_with(".htm") || decoded_name.ends_with(".html") {
-            decoded_name.len().saturating_sub(4) // Position before ".htm" or ".html"
+            decoded_name.len().saturating_sub(4) // Position before ".htm"
+        } else if decoded_name.ends_with(".html") {
+            decoded_name.len().saturating_sub(5) // Position before ".html"
+        } else if decoded_name.ends_with(".mhtml") {
+            decoded_name.len().saturating_sub(6) // Position before ".mhtml"
         } else {
             decoded_name.len() // Use the full length if not ending with ".htm" or ".html"
         };
+
         // Find the last occurrence of "/" or "%2F" that is not too close to the ".htm" extension.
         let last_relevant_slash_position = decoded_name.rmatch_indices(&['/', '%']).find_map(|(index, _)| {
             if index + 3 < avoid_deletion_position && decoded_name[index..].starts_with("%2F") {
@@ -154,25 +159,31 @@ impl ShinkaiFileParser {
 
     // Parse and extract metadata in a text
     // Returns the parsed text and a hashmap of metadata
-    pub fn parse_and_extract_metadata(input_text: &str) -> (String, HashMap<String, String>) {
+    pub fn parse_and_extract_metadata(input_text: &str) -> (String, HashMap<String, String>, bool) {
         let mut metadata = HashMap::new();
+        let mut parsed_any_metadata = false;
         let pure_metadata_re = Regex::new(Self::PURE_METADATA_REGEX).unwrap();
         let replaceable_metadata_re = Regex::new(Self::METADATA_REGEX).unwrap();
 
         let pure_result = pure_metadata_re.replace_all(input_text, |caps: &Captures| {
-            Self::extract_metadata_from_capture(&mut metadata, caps, true)
+            Self::extract_metadata_from_capture(&mut metadata, &mut parsed_any_metadata, caps, true)
         });
 
         let parsed_result = replaceable_metadata_re.replace_all(&pure_result, |caps: &Captures| {
-            Self::extract_metadata_from_capture(&mut metadata, caps, false)
+            Self::extract_metadata_from_capture(&mut metadata, &mut parsed_any_metadata, caps, false)
         });
 
-        (parsed_result.to_string(), metadata)
+        (parsed_result.to_string(), metadata, parsed_any_metadata)
     }
 
     // Helper function to extract metadata from a capture
     // is_pure is used to determine if the metadata should be removed from the text
-    fn extract_metadata_from_capture(metadata: &mut HashMap<String, String>, caps: &Captures, is_pure: bool) -> String {
+    fn extract_metadata_from_capture(
+        metadata: &mut HashMap<String, String>,
+        parsed_any_metadata: &mut bool,
+        caps: &Captures,
+        is_pure: bool,
+    ) -> String {
         // In case extracting the capture groups fails, return the original text which is guaranteed to be valid
         let key = match caps.get(1) {
             Some(key) => key.as_str(),
@@ -183,6 +194,8 @@ impl ShinkaiFileParser {
             Some(value) => value.as_str(),
             None => return caps.get(0).unwrap().as_str().to_string(),
         };
+
+        *parsed_any_metadata = true;
 
         // 1. Verify supported key value constraints and ignore invalid ones
         // 2. Replace any matched metadata or remove if it's pure
