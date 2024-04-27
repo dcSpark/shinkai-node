@@ -19,6 +19,8 @@ pub enum MessageSchemaType {
     APIGetMessagesFromInboxRequest,
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
+    APIScanOllamaModels,
+    APIAddOllamaModels,
     APIRemoveAgentRequest,
     APIModifyAgentRequest,
     APIFinishJob,
@@ -70,6 +72,8 @@ impl MessageSchemaType {
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
+            "APIScanOllamaModels" => Some(Self::APIScanOllamaModels),
+            "APIAddOllamaModels" => Some(Self::APIAddOllamaModels),
             "APIRemoveAgentRequest" => Some(Self::APIRemoveAgentRequest),
             "APIModifyAgentRequest" => Some(Self::APIModifyAgentRequest),
             "TextContent" => Some(Self::TextContent),
@@ -122,6 +126,8 @@ impl MessageSchemaType {
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
+            Self::APIScanOllamaModels => "APIScanOllamaModels",
+            Self::APIAddOllamaModels => "APIAddOllamaModels",
             Self::APIRemoveAgentRequest => "APIRemoveAgentRequest",
             Self::APIModifyAgentRequest => "APIModifyAgentRequest",
             Self::TextContent => "TextContent",
@@ -450,6 +456,11 @@ pub struct APIUpdateShareableFolder {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIUnshareFolder {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIAddOllamaModels {
+    pub models: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

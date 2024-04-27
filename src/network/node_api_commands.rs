@@ -37,8 +37,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            APIAddAgentRequest, APIAddOllamaModels, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
+            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -63,7 +63,6 @@ impl Node {
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
         let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> = identity_manager.lock().await.clone_box();
-        // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
 
         validate_message_main_logic(
@@ -1935,6 +1934,165 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             }
         }
+        Ok(())
+    }
+
+    pub async fn api_scan_ollama_models(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIScanOllamaModels),
+        )
+        .await;
+        let (_, sender_identity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert DeviceIdentity to StandardIdentity if necessary and check if it's a Profile type with admin privileges
+        let standard_identity = match sender_identity {
+            Identity::Standard(std_identity) => Some(std_identity),
+            Identity::Device(device_identity) => device_identity.to_standard_identity(),
+            _ => None,
+        };
+
+        if let Some(std_identity) = standard_identity {
+            let is_profile_type = matches!(std_identity.identity_type, StandardIdentityType::Profile);
+            let has_appropriate_privileges = matches!(
+                std_identity.permission_type,
+                IdentityPermissions::Admin | IdentityPermissions::Standard
+            );
+
+            if !is_profile_type || !has_appropriate_privileges {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::UNAUTHORIZED.as_u16(),
+                        error: "Unauthorized".to_string(),
+                        message: "Sender identity must be a Profile type with admin privileges.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        } else {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Sender identity is not supported or cannot be converted to a StandardIdentity."
+                        .to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        match Self::internal_scan_ollama_models().await {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_add_ollama_models(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAddOllamaModels>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::APIAddOllamaModels,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert ShinkaiName to StandardIdentity if necessary and check if it's a Profile type with admin privileges
+        let identity = identity_manager
+            .lock()
+            .await
+            .search_identity(requester_name.full_name.as_str())
+            .await;
+        let standard_identity = match identity {
+            Some(Identity::Standard(std_identity)) => Some(std_identity),
+            Some(Identity::Device(device_identity)) => device_identity.to_standard_identity(),
+            _ => None,
+        };
+
+        if let Some(std_identity) = standard_identity {
+            let is_profile_type = matches!(std_identity.identity_type, StandardIdentityType::Profile);
+            let has_appropriate_privileges = matches!(
+                std_identity.permission_type,
+                IdentityPermissions::Admin | IdentityPermissions::Standard
+            );
+
+            if !is_profile_type || !has_appropriate_privileges {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::UNAUTHORIZED.as_u16(),
+                        error: "Unauthorized".to_string(),
+                        message: "Sender identity must be a Profile type with admin privileges.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        } else {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Sender identity is not supported or cannot be converted to a StandardIdentity."
+                        .to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        match Node::internal_add_ollama_models(db, identity_manager, input_payload.models, requester_name).await {
+            Ok(_) => {
+                let _ = res.send(Ok::<(), APIError>(())).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
         Ok(())
     }
 

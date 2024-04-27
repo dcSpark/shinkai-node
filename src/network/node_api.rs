@@ -49,12 +49,6 @@ struct IdentityNameToExternalProfileDataResponse {
     encryption_public_key: String,
 }
 
-#[derive(serde::Deserialize)]
-struct ConnectBody {
-    address: String,
-    profile_name: String,
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct APIError {
     pub code: u16,
@@ -675,6 +669,27 @@ pub async fn run_api(
             .and_then(move |message: ShinkaiMessage| retrieve_vrpack_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/local_scan_ollama_models
+    let local_scan_ollama_models = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "scan_ollama_models")
+            .and(warp::post()) // Corrected from .and(warp::get()) to match the handler's expected method
+            .and(warp::body::json::<ShinkaiMessage>()) // Ensure the body is deserialized into a ShinkaiMessage
+            .and_then(move |message: ShinkaiMessage| {
+                scan_ollama_models_handler(node_commands_sender.clone(), message)
+            }) // Corrected handler name and added message parameter
+    };
+
+    // POST v1/add_ollama_models
+    let add_ollama_models = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_ollama_models")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>()) // Updated to accept ShinkaiMessage instead of Vec<String>
+            .and_then(move |message: ShinkaiMessage| add_ollama_models_handler(node_commands_sender.clone(), message))
+        // Corrected to pass ShinkaiMessage to the handler
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -721,6 +736,8 @@ pub async fn run_api(
         .or(api_vec_fs_remove_folder)
         .or(api_vec_fs_retrieve_vector_resource)
         .or(api_convert_files_and_save_to_folder)
+        .or(local_scan_ollama_models)
+        .or(add_ollama_models)
         .or(api_available_shared_items)
         .or(api_available_shared_items_open)
         .or(api_create_shareable_folder)
@@ -1108,6 +1125,46 @@ async fn api_convert_files_and_save_to_folder_handler(
     .await
 }
 
+async fn scan_ollama_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::APIScanOllamaModels {
+            msg: message,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(models) => Ok(warp::reply::json(&models)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+async fn add_ollama_models_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::APIAddOllamaModels {
+            msg: message,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 async fn subscribe_to_shared_folder_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1183,6 +1240,7 @@ async fn get_my_subscribers_handler(
     Ok(warp::reply::json(&subscribers))
 }
 
+#[allow(clippy::type_complexity)]
 async fn send_msg_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -1481,6 +1539,7 @@ async fn available_agents_handler(
     .await
 }
 
+#[allow(clippy::type_complexity)]
 async fn job_message_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
