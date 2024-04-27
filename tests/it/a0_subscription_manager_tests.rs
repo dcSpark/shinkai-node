@@ -172,6 +172,7 @@ async fn make_folder_shareable(
             minimum_time_delegated_hours: Some(100),
             monthly_payment: Some(PaymentOption::USD(10.0)),
             is_free: false,
+            has_web_alternative: Some(false),
             folder_description: "This is a test folder".to_string(),
         },
     };
@@ -1189,6 +1190,7 @@ fn subscription_manager_test() {
                                 "monthly_payment": {
                                     "USD": 10.0
                                 },
+                                "has_web_alternative": false,
                                 "is_free": false,
                                 "folder_description": "This is a test folder"
                             }
@@ -1288,7 +1290,9 @@ fn subscription_manager_test() {
                 // Expected response template without dates for comparison
                 let expected_resp_template = r#"[{
                     "subscription_id": {
-                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main_profile_node2"
+                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
+                        "exclude_folders": null,
+                        "include_folders": null
                     },
                     "shared_folder": "/shared_test_folder",
                     "streaming_node": "@@node1_test.sepolia-shinkai",
@@ -1366,7 +1370,7 @@ fn subscription_manager_test() {
                         .await
                         .unwrap();
                     let actual_resp_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                    // print_tree_simple(&resp);
+                    print_tree_simple(actual_resp_json.clone());
 
                    let expected_structure = serde_json::json!({
                         "path": "/",

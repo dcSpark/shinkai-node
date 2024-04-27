@@ -4,11 +4,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
+use shinkai_vector_resources::vector_resource::VRPath;
 
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct SubscriptionId {
     unique_id: String,
+    include_folders: Option<Vec<VRPath>>,
+    exclude_folders: Option<Vec<VRPath>>,
 }
 
 impl SubscriptionId {
@@ -32,11 +35,11 @@ impl SubscriptionId {
             "{}:::{}:::{}:::{}:::{}",
             streamer_node_str, streamer_profile, shared_folder, subscriber_node_str, subscriber_profile
         );
-        SubscriptionId { unique_id }
+        SubscriptionId { unique_id, include_folders: None, exclude_folders: None }
     }
 
     pub fn from_unique_id(unique_id: String) -> Self {
-        SubscriptionId { unique_id }
+        SubscriptionId { unique_id, include_folders: None, exclude_folders: None }
     }
 
     pub fn get_unique_id(&self) -> &str {
