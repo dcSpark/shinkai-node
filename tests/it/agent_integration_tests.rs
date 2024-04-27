@@ -136,7 +136,7 @@ fn node_agent_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
