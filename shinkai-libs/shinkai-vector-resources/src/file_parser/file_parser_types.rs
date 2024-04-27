@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
 
@@ -7,7 +7,6 @@ use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
 pub struct TextGroup {
     pub text: String,
     pub metadata: HashMap<String, String>,
-    pub page_numbers: Vec<u32>,
     pub sub_groups: Vec<TextGroup>,
     pub embedding: Option<Embedding>,
 }
@@ -17,14 +16,12 @@ impl TextGroup {
     pub fn new(
         text: String,
         metadata: HashMap<String, String>,
-        page_numbers: Vec<u32>,
         sub_groups: Vec<TextGroup>,
         embedding: Option<Embedding>,
     ) -> Self {
         TextGroup {
             text,
             metadata,
-            page_numbers,
             sub_groups,
             embedding,
         }
@@ -35,7 +32,6 @@ impl TextGroup {
         TextGroup {
             text: String::new(),
             metadata: HashMap::new(),
-            page_numbers: Vec::new(),
             sub_groups: Vec::new(),
             embedding: None,
         }
@@ -71,26 +67,43 @@ impl TextGroup {
         self.text.push_str(text);
 
         if let Some(page_number) = page_number {
-            if !self.page_numbers.contains(&page_number) {
-                self.page_numbers.push(page_number);
+            let mut unique_page_numbers: HashSet<u32> = HashSet::new();
+
+            if let Some(page_numbers_metadata) = self.metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
+                let page_numbers_metadata: Result<Vec<u32>, _> = page_numbers_metadata
+                    .trim_matches(|c| c == '[' || c == ']')
+                    .split(",")
+                    .map(|n| n.trim().parse::<u32>())
+                    .collect();
+
+                match page_numbers_metadata {
+                    Ok(page_numbers) => {
+                        for page_number in page_numbers {
+                            unique_page_numbers.insert(page_number);
+                        }
+                    }
+                    Err(_) => {}
+                }
             }
+
+            unique_page_numbers.insert(page_number);
+
+            self.metadata.insert(
+                ShinkaiFileParser::page_numbers_metadata_key(),
+                format!(
+                    "[{}]",
+                    unique_page_numbers
+                        .iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
+            );
         }
     }
 
     /// Pushes a sub-group into this TextGroup
     pub fn push_sub_group(&mut self, sub_group: TextGroup) {
         self.sub_groups.push(sub_group);
-    }
-
-    /// Outputs a String that holds an array of the page numbers
-    pub fn format_page_num_string(&self) -> String {
-        format!(
-            "[{}]",
-            self.page_numbers
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<String>>()
-                .join(", ")
-        )
     }
 }

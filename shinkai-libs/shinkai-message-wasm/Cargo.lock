@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_wasm"
-version = "0.6.0"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "blake3",

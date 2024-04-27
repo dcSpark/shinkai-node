@@ -3,14 +3,10 @@ use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
-use shinkai_message_primitives::{
-    schemas::{
-        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
-        shinkai_name::ShinkaiName,
-    },
+use shinkai_message_primitives::schemas::{
+    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    shinkai_name::ShinkaiName,
 };
-
-
 
 #[derive(Debug, Clone)]
 pub struct Agent {
@@ -155,6 +151,15 @@ impl Agent {
                         prompt.clone(),
                     )
                     .await
+            }
+            AgentLLMInterface::Groq(groq) => {
+                groq.call_api(
+                    &self.client,
+                    self.external_url.as_ref(),
+                    self.api_key.as_ref(),
+                    prompt.clone(),
+                )
+                .await
             }
             AgentLLMInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await

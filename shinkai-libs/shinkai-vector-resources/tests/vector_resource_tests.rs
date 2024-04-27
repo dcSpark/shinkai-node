@@ -1056,7 +1056,10 @@ async fn local_txt_metadata_parsing_test() {
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
     assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
-    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
+    assert_ne!(
+        results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(),
+        "br0K3n"
+    );
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();
@@ -1065,4 +1068,59 @@ async fn local_txt_metadata_parsing_test() {
 
     assert!(results2[0].node.get_text_content().unwrap().contains("2000"));
     assert!(results2[0].node.metadata.as_ref().unwrap().contains_key("datetime"));
+}
+
+#[tokio::test]
+async fn local_csv_metadata_parsing_test() {
+    let csv_data = "\
+        Country,City,Airline,Price
+        USA,New York,Delta Airlines,500
+        USA,Los Angeles,United Airlines,450
+        UK,London,British Airways,{{{price:600}}}
+        France,Paris,Air France,550
+        Germany,Berlin,Lufthansa,400
+        Australia,Sydney,Qantas Airways !{{{carry_pets:true}}}!,700";
+
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "input.csv";
+    let buffer = csv_data.as_bytes().to_vec();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "What is the price of a London ticket?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.4);
+    assert!(results[0].node.get_text_content().unwrap().contains("600"));
+    assert!(!results[0].node.get_text_content().unwrap().contains("{{{price:600}}}"));
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().get("price").unwrap(), "600");
+
+    // Perform another vector search
+    let query_string2 = "Which airline goes to Sydney?".to_string();
+    let query_embedding2 = generator.generate_embedding_default(&query_string2).await.unwrap();
+    let results2 = resource.as_trait_object().vector_search(query_embedding2, 3);
+
+    assert!(results2[0].score > 0.4);
+    assert!(results2[0].node.get_text_content().unwrap().contains("Qantas"));
+    assert!(!results2[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("!{{{carry_pets:true}}}!"));
+    assert_eq!(
+        results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(),
+        "true"
+    );
 }

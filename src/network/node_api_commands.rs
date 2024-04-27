@@ -6,7 +6,7 @@ use super::{
     Node,
 };
 use crate::{
-    agent::job_manager::{JobManager},
+    agent::job_manager::JobManager,
     db::db_errors::ShinkaiDBError,
     managers::IdentityManager,
     schemas::{
@@ -37,8 +37,8 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            APIAddAgentRequest, APIAddOllamaModels, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
+            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -63,7 +63,6 @@ impl Node {
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
         let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> = identity_manager.lock().await.clone_box();
-        // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
 
         validate_message_main_logic(
@@ -1938,6 +1937,165 @@ impl Node {
         Ok(())
     }
 
+    pub async fn api_scan_ollama_models(
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIScanOllamaModels),
+        )
+        .await;
+        let (_, sender_identity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert DeviceIdentity to StandardIdentity if necessary and check if it's a Profile type with admin privileges
+        let standard_identity = match sender_identity {
+            Identity::Standard(std_identity) => Some(std_identity),
+            Identity::Device(device_identity) => device_identity.to_standard_identity(),
+            _ => None,
+        };
+
+        if let Some(std_identity) = standard_identity {
+            let is_profile_type = matches!(std_identity.identity_type, StandardIdentityType::Profile);
+            let has_appropriate_privileges = matches!(
+                std_identity.permission_type,
+                IdentityPermissions::Admin | IdentityPermissions::Standard
+            );
+
+            if !is_profile_type || !has_appropriate_privileges {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::UNAUTHORIZED.as_u16(),
+                        error: "Unauthorized".to_string(),
+                        message: "Sender identity must be a Profile type with admin privileges.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        } else {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Sender identity is not supported or cannot be converted to a StandardIdentity."
+                        .to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        match Self::internal_scan_ollama_models().await {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_add_ollama_models(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAddOllamaModels>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::APIAddOllamaModels,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert ShinkaiName to StandardIdentity if necessary and check if it's a Profile type with admin privileges
+        let identity = identity_manager
+            .lock()
+            .await
+            .search_identity(requester_name.full_name.as_str())
+            .await;
+        let standard_identity = match identity {
+            Some(Identity::Standard(std_identity)) => Some(std_identity),
+            Some(Identity::Device(device_identity)) => device_identity.to_standard_identity(),
+            _ => None,
+        };
+
+        if let Some(std_identity) = standard_identity {
+            let is_profile_type = matches!(std_identity.identity_type, StandardIdentityType::Profile);
+            let has_appropriate_privileges = matches!(
+                std_identity.permission_type,
+                IdentityPermissions::Admin | IdentityPermissions::Standard
+            );
+
+            if !is_profile_type || !has_appropriate_privileges {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::UNAUTHORIZED.as_u16(),
+                        error: "Unauthorized".to_string(),
+                        message: "Sender identity must be a Profile type with admin privileges.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        } else {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                    error: "Unauthorized".to_string(),
+                    message: "Sender identity is not supported or cannot be converted to a StandardIdentity."
+                        .to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        match Node::internal_add_ollama_models(db, identity_manager, input_payload.models, requester_name).await {
+            Ok(_) => {
+                let _ = res.send(Ok::<(), APIError>(())).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add model: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn api_add_agent(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2030,6 +2188,169 @@ impl Node {
         }
     }
 
+    pub async fn api_remove_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::APIRemoveAgentRequest),
+        )
+        .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let agent_id_result = msg.get_message_content();
+
+        let agent_id = match agent_id_result {
+            Ok(id) => id.to_string(),
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get agent ID from message: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = sender_subidentity.get_full_identity_name();
+        let profile = match ShinkaiName::new(profile) {
+            Ok(profile) => profile,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create profile: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut identity_manager = identity_manager.lock().await;
+        match db.remove_agent(&agent_id, &profile) {
+            Ok(_) => match identity_manager.remove_agent_subidentity(&agent_id).await {
+                Ok(_) => {
+                    let _ = res.send(Ok("Agent removed successfully".to_string())).await;
+                    Ok(())
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to remove agent from identity manager: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_modify_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<SerializedAgent>(
+            node_name,
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::APIModifyAgentRequest,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Check if the profile has access to modify the agent
+        let profiles_with_access = match db.get_agent_profiles_with_access(&input_payload.id, &requester_name) {
+            Ok(access_list) => access_list,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to get profiles with access: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        if !profiles_with_access.contains(&requester_name.get_profile_name_string().unwrap_or_default()) {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::FORBIDDEN.as_u16(),
+                    error: "Forbidden".to_string(),
+                    message: "Profile does not have access to modify this agent".to_string(),
+                }))
+                .await;
+            Ok(())
+        } else {
+            // Modify agent based on the input_payload
+            match db.update_agent(input_payload.clone(), &requester_name) {
+                Ok(_) => {
+                    let mut identity_manager = identity_manager.lock().await;
+                    match identity_manager.modify_agent_subidentity(input_payload).await {
+                        Ok(_) => {
+                            let _ = res.send(Ok("Agent modified successfully".to_string())).await;
+                            Ok(())
+                        },
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to update agent in identity manager: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            Ok(())
+                        }
+                    }
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update agent: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    Ok(())
+                }
+            }
+        }
+    }
+
     pub async fn api_create_files_inbox_with_symmetric_key(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2057,10 +2378,32 @@ impl Node {
         };
 
         // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key)?;
+        let decrypted_msg = match msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key) {
+            Ok(decrypted) => decrypted,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to decrypt message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Extract the content of the message
-        let content = decrypted_msg.get_message_content()?;
+        let content = match decrypted_msg.get_message_content() {
+            Ok(content) => content,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to extract message content: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         match Self::process_symmetric_key(content, db.clone()).await {
             Ok(_) => {
