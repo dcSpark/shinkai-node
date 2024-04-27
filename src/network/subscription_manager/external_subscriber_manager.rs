@@ -916,7 +916,7 @@ impl ExternalSubscriberManager {
                     .await
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
                 let results = vector_fs
-                    .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                    .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
                     .await?;
 
                 // Use the new function to filter results to only include top-level folders

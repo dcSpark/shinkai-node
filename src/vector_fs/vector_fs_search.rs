@@ -2,7 +2,7 @@ use super::vector_fs_types::FSItem;
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::vector_fs::vector_fs_permissions::PermissionsIndex;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{
     deep_search_scores_average_out, BaseVectorResource, LimitTraversalMode, Node, NodeContent, ScoringMode, VRHeader,
@@ -11,8 +11,7 @@ use shinkai_vector_resources::vector_resource::{
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
-        RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResourceCore,
-        VectorResourceSearch,
+        RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResourceCore, VectorResourceSearch,
     },
 };
 use std::collections::HashMap;
@@ -201,7 +200,7 @@ impl VectorFS {
         let ret_nodes = self
             ._vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
             .await?;
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
 
         let mut fs_items_with_scores = vec![];
         for ret_node in ret_nodes {
@@ -321,7 +320,7 @@ impl VectorFS {
         traversal_options: &Vec<TraversalOption>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         let stringified_permissions_map = internals
             .permissions_index
             .export_permissions_hashmap_with_reader(reader)

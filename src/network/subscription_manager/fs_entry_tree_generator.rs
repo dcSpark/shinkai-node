@@ -38,7 +38,7 @@ impl FSEntryTreeGenerator {
             .await
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         let shared_folders = vector_fs
-            .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+            .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
             .await?;
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
@@ -46,11 +46,14 @@ impl FSEntryTreeGenerator {
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
             // Now use the requester subidentity for actual perm checking. Required for whitelist perms in the future.
-            if let Ok(reader) = vector_fs.new_reader(
-                full_subscriber_profile_subidentity.clone(),
-                path.clone(),
-                full_streamer_profile_subidentity.clone(),
-            ).await {
+            if let Ok(reader) = vector_fs
+                .new_reader(
+                    full_subscriber_profile_subidentity.clone(),
+                    path.clone(),
+                    full_streamer_profile_subidentity.clone(),
+                )
+                .await
+            {
                 let fs_entry = vector_fs.retrieve_fs_entry(&reader).await?;
 
                 match fs_entry {
@@ -203,7 +206,7 @@ impl FSEntryTreeGenerator {
                 // Use the existing process_folder function to correctly handle folders and their children
                 let folder_tree = Self::process_folder(&fs_folder, &fs_folder.path.clone().format_to_string())?;
                 Ok(folder_tree)
-            },
+            }
             FSEntry::Item(fs_item) => {
                 // Process items as before, since they do not have children
                 let item_tree = FSEntryTree {
@@ -213,8 +216,10 @@ impl FSEntryTreeGenerator {
                     children: HashMap::new(), // Items do not have children
                 };
                 Ok(item_tree)
-            },
-            _ => Err(SubscriberManagerError::InvalidRequest("Unsupported FSEntry type".to_string())),
+            }
+            _ => Err(SubscriberManagerError::InvalidRequest(
+                "Unsupported FSEntry type".to_string(),
+            )),
         }
     }
 }
@@ -442,8 +447,14 @@ mod tests {
     fn test_with_subpaths() {
         let results = vec![
             (VRPath::from_string("/folder").unwrap(), ReadPermission::Public),
-            (VRPath::from_string("/folder/subfolder1").unwrap(), ReadPermission::Public),
-            (VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(), ReadPermission::Public),
+            (
+                VRPath::from_string("/folder/subfolder1").unwrap(),
+                ReadPermission::Public,
+            ),
+            (
+                VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(),
+                ReadPermission::Public,
+            ),
             (VRPath::from_string("/another_folder").unwrap(), ReadPermission::Public),
         ];
         let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
@@ -453,14 +464,30 @@ mod tests {
     #[test]
     fn test_with_complex_hierarchy() {
         let results = vec![
-            (VRPath::from_string("/folder/subfolder1").unwrap(), ReadPermission::Public),
-            (VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(), ReadPermission::Public),
+            (
+                VRPath::from_string("/folder/subfolder1").unwrap(),
+                ReadPermission::Public,
+            ),
+            (
+                VRPath::from_string("/folder/subfolder1/subfolder2").unwrap(),
+                ReadPermission::Public,
+            ),
             (VRPath::from_string("/folder").unwrap(), ReadPermission::Public),
             (VRPath::from_string("/another_folder").unwrap(), ReadPermission::Public),
-            (VRPath::from_string("/independent_folder").unwrap(), ReadPermission::Public),
-            (VRPath::from_string("/folder/subfolder3").unwrap(), ReadPermission::Public),
+            (
+                VRPath::from_string("/independent_folder").unwrap(),
+                ReadPermission::Public,
+            ),
+            (
+                VRPath::from_string("/folder/subfolder3").unwrap(),
+                ReadPermission::Public,
+            ),
         ];
         let filtered = FSEntryTreeGenerator::filter_to_top_level_folders(results);
-        assert_eq!(filtered.len(), 3, "Expected only distinct top-level paths to be returned");
+        assert_eq!(
+            filtered.len(),
+            3,
+            "Expected only distinct top-level paths to be returned"
+        );
     }
 }
