@@ -1623,6 +1623,22 @@ fn subscription_manager_test() {
                 let max_attempts = 15;
                 let mut structure_matched = false;
 
+                {
+                    let (res_send_msg_sender, res_send_msg_receiver): (
+                        async_channel::Sender<Result<(), String>>,
+                        async_channel::Receiver<Result<(), String>>,
+                    ) = async_channel::bounded(1);
+
+                    node1_commands_sender
+                        .send(NodeCommand::LocalExtManagerProcessSubscriptionUpdates {
+                            res: res_send_msg_sender,
+                        })
+                        .await
+                        .unwrap(); 
+
+                    res_send_msg_receiver.recv().await.unwrap().expect("Failed to receive response"); 
+                }
+
                 while attempts < max_attempts && !structure_matched {
                     
                     eprintln!("\n\n### (Check that structure with removed folder (zeko) was updated) Sending message from node 2's identity to node 2 to check if the subscription synced\n");
