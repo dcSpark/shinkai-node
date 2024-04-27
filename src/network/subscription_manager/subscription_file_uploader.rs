@@ -15,7 +15,9 @@
 // - IPFS
 // - Arcweave
 
-use cloudflare_r2_rs::r2::R2Manager;
+use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_s3::{Client as S3Client, Error as S3Error};
+use aws_types::region::Region;
 use reqwest::{Client, Error as ReqwestError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,39 +33,34 @@ pub enum FileTransferError {
     Other(String),
 }
 
-// For later (implementation of the serialization and deserialization of the FileDestination enum)
-// #[derive(Debug, Clone)]
-// pub struct R2Manager {
-//      bucket_name: String,
-//      client: Arc<Client>
-// }
-
-// impl R2Manager {
-//      /// Creates a new instance of R2Manager. The region is set to us-east-1 which aliases
-//      /// to auto. Read more here <https://developers.cloudflare.com/r2/api/s3/api/>.
-//      pub async fn new(
-//           bucket_name: &str,
-//           cloudflare_kv_uri: &str, 
-//           cloudflare_kv_client_id: &str,
-//           cloudflare_kv_secret: &str
-//      ) -> R2Manager {
+pub type FileDestinationBucket = String;
 
 #[derive(Clone, Debug)]
 pub enum FileDestination {
-    R2(R2Manager),
-    Http {
-        url: String,
-        auth_headers: Value,
-    },
+    S3(S3Client, FileDestinationBucket),
+    R2(S3Client, FileDestinationBucket),
+    Http { url: String, auth_headers: Value },
 }
 
-pub async fn upload_file(data: Vec<u8>, path: &str, filename: &str, destination: FileDestination) -> Result<(), FileTransferError> {
+pub async fn upload_file(
+    data: Vec<u8>,
+    path: &str,
+    filename: &str,
+    destination: FileDestination,
+) -> Result<(), FileTransferError> {
     match destination {
-        FileDestination::R2(manager) => {
-            manager.upload(filename, &data, None, Some("application/octet-stream")).await;
-            // Since the upload method handles errors internally and logs them, we do not need to handle them here.
-            // If you need to handle errors, you might need to modify the R2Manager to return a Result type.
-        },
+        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+            let key = format!("{}/{}", path, filename);
+            client
+                .put_object()
+                .bucket(&bucket)
+                .key(&key)
+                .body(data.into())
+                .content_type("application/octet-stream")
+                .send()
+                .await
+                .map_err(|sdk_error| FileTransferError::Other(format!("S3 error: {:?}", sdk_error)))?;
+        }
         FileDestination::Http { url, auth_headers } => {
             let client = Client::new();
             let full_url = format!("{}/{}", url, filename);
@@ -85,15 +82,27 @@ pub async fn upload_file(data: Vec<u8>, path: &str, filename: &str, destination:
     Ok(())
 }
 
-pub async fn download_file(path: &str, filename: &str, destination: FileDestination) -> Result<Vec<u8>, FileTransferError> {
+pub async fn download_file(
+    path: &str,
+    filename: &str,
+    destination: FileDestination,
+) -> Result<Vec<u8>, FileTransferError> {
     match destination {
-        FileDestination::R2(manager) => {
-            if let Some(bytes) = manager.get(filename).await {
-                Ok(bytes)
-            } else {
-                Err(FileTransferError::Other("Failed to download file".to_string()))
+        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+            let key = format!("{}/{}", path, filename);
+            let result = client.get_object().bucket(&bucket).key(&key).send().await;
+
+            match result {
+                Ok(output) => {
+                    let stream = output.body.collect().await;
+                    match stream {
+                        Ok(bytes) => Ok(bytes.into_bytes().to_vec()),
+                        Err(_) => Err(FileTransferError::Other("Failed to download file from S3".to_string())),
+                    }
+                }
+                Err(sdk_error) => Err(FileTransferError::Other(format!("S3 error: {:?}", sdk_error))),
             }
-        },
+        }
         FileDestination::Http { url, auth_headers } => {
             let client = Client::new();
             let full_url = format!("{}/{}", url, filename);
@@ -114,11 +123,30 @@ pub async fn download_file(path: &str, filename: &str, destination: FileDestinat
                 let bytes = response.bytes().await.map_err(FileTransferError::from)?;
                 Ok(bytes.to_vec())
             } else {
-                Err(FileTransferError::Other(format!("Failed to download file: HTTP {}", response.status())))
+                Err(FileTransferError::Other(format!(
+                    "Failed to download file: HTTP {}",
+                    response.status()
+                )))
             }
         }
     }
 }
+
+// Need to implement it manually
+// /// Generate a temporary link for downloading an entire folder based on the FileDestination.
+// pub async fn generate_temporary_download_link(folder_path: &str, destination: &FileDestination) -> Result<String, FileTransferError> {
+//     match destination {
+//         FileDestination::R2(manager) => {
+//             // Assuming R2Manager has a method to generate a temporary link for a folder
+//             manager.generate_temporary_link_for_folder(folder_path).await
+//         },
+//         FileDestination::Http { url, .. } => {
+//             // For HTTP, we might need to construct a URL that points to a directory listing or a zipped folder
+//             // This is highly dependent on the HTTP server's capabilities and configuration
+//             Ok(format!("{}/{}", url, folder_path))
+//         },
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -128,24 +156,35 @@ mod tests {
     #[tokio::test]
     async fn test_upload_to_r2() -> Result<(), Box<dyn std::error::Error>> {
         // Generate a unique file name
-        let folder_name = "test_folder";
-        let file_name = format!("{}/test_file_{}.txt", folder_name, Uuid::new_v4());
-        let file_contents = b"Hello, R2!";  // Dummy file contents
-        let file_path = "test_path";
+        let file_name = format!("test_file_{}.txt", Uuid::new_v4());
+        let file_contents = b"Hello, R2!"; // Dummy file contents
+        let file_path = "test_path_a/test_path_b";
 
-        // Setup the R2Manager
-        let r2_manager = R2Manager::new(
-            "shinkai-streamer",
-            "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com",
-            "462e168d6b11100c5fe01c39410f3c5f",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845"
-        ).await;
+        // Set environment variables for AWS credentials
+        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
+        std::env::set_var(
+            "AWS_SECRET_ACCESS_KEY",
+            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
+        );
+
+        // Setup the S3Client for R2 using environment configuration
+        let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
+        let config = aws_config::load_from_env().await;
+        let s3_config = config
+            .into_builder()
+            .endpoint_url(cloudflare_kv_uri)
+            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
+            .build();
+
+        let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let destination = FileDestination::R2(r2_manager);
+        let bucket_name = "shinkai-streamer";
+        let destination = FileDestination::R2(client, bucket_name.to_string());
 
         // Call the upload function
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
+        eprintln!("{:?}", upload_result);
 
         // Assert that the upload was successful
         assert!(upload_result.is_ok());
