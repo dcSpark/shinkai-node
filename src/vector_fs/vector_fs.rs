@@ -236,7 +236,7 @@ impl VectorFS {
         &self,
         profile: &ShinkaiName,
     ) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
         let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
             &self.embedding_generator.api_url,
             self.embedding_generator.api_key.clone(),
@@ -268,7 +268,7 @@ impl VectorFS {
         profile: &ShinkaiName,
         error_message: &str,
     ) -> Result<(), VectorFSError> {
-        if let Ok(_) = self.get_profile_fs_internals_read_only(profile).await {
+        if let Ok(_) = self.get_profile_fs_internals_cloned(profile).await {
             if profile.profile_name == requester_name.profile_name {
                 return Ok(());
             }
@@ -281,7 +281,7 @@ impl VectorFS {
 
     /// Attempts to fetch a copy of the profile VectorFSInternals (from memory)
     /// in the internals_map. ANY MUTATION DOESN'T PROPAGATE.
-    pub async fn get_profile_fs_internals_copy(
+    pub async fn get_profile_fs_internals_cloned(
         &self,
         profile: &ShinkaiName,
     ) -> Result<VectorFSInternals, VectorFSError> {
@@ -294,7 +294,7 @@ impl VectorFS {
         Ok(internals)
     }
 
-    /// Updates the fs_internals for a specific profile.
+    /// Updates the fs_internals for a specific profile. Applies only in memory.
     /// This function should be used with caution as it directly modifies the internals.
     pub async fn _update_fs_internals(
         &self,
@@ -329,24 +329,9 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Attempts to fetch an immutable reference to the profile VectorFSInternals (from memory)
-    /// in the internals_map. Used for pure reads where no updates are needed.
-    pub async fn get_profile_fs_internals_read_only(
-        &self,
-        profile: &ShinkaiName,
-    ) -> Result<VectorFSInternals, VectorFSError> {
-        let internals_map = self.internals_map.read().await;
-        let internals = internals_map
-            .get(profile)
-            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))?
-            .clone();
-
-        Ok(internals)
-    }
-
     /// Prints the internal nodes (of the core VR) of a Profile's VectorFS
     pub async fn print_profile_vector_fs_resource(&self, profile: ShinkaiName) {
-        let internals = self.get_profile_fs_internals_read_only(&profile).await.unwrap();
+        let internals = self.get_profile_fs_internals_cloned(&profile).await.unwrap();
         println!(
             "\n\n{}'s VectorFS Internal Resource Representation\n------------------------------------------------",
             profile.clone()

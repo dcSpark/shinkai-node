@@ -38,7 +38,7 @@ impl FSEntryTreeGenerator {
             .await
             .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
         let shared_folders = vector_fs
-            .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+            .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
             .await?;
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 

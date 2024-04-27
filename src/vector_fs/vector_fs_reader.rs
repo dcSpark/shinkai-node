@@ -125,7 +125,7 @@ impl VectorFS {
 
     /// Retrieves the FSEntry for the reader's path in the VectorFS.
     pub async fn retrieve_fs_entry(&self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
 
         // Create FSRoot directly if path is root
         if reader.path.is_empty() {
@@ -330,7 +330,7 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<RetrievedNode, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
         internals
             .fs_core_resource
             .retrieve_node_at_path(path.clone(), None)
