@@ -87,6 +87,12 @@ pub struct JobStepResult {
     pub step_revisions: Vec<Prompt>,
 }
 
+impl Default for JobStepResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobStepResult {
     /// Create a new JobStepResult
     pub fn new() -> Self {

@@ -54,7 +54,7 @@ impl FSEntryTree {
             "name": self.name,
             "path": self.path,
             "last_modified": self.last_modified.to_rfc3339(),
-            "children": self.children.iter().map(|(_, child)| child.to_pretty_json()).collect::<Vec<_>>(),
+            "children": self.children.values().map(|child| child.to_pretty_json()).collect::<Vec<_>>(),
         })
     }
 

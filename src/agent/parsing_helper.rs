@@ -67,7 +67,7 @@ impl ParsingHelper {
             );
 
             let desc = ShinkaiFileParser::process_groups_into_description(
-                &text_groups,
+                text_groups,
                 max_node_text_size as usize,
                 max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );
@@ -220,10 +220,10 @@ impl ParsingHelper {
 
     /// Attempts to clean up the answer response from the LLM for basic inferencing where the response is primarily English text
     pub fn basic_inference_text_answer_cleanup(string: &str) -> String {
-        let flattened = ParsingHelper::flatten_to_content_if_json(&string);
+        let flattened = ParsingHelper::flatten_to_content_if_json(string);
         let stripped_string = ParsingHelper::ending_stripper(&flattened);
-        let cleaned_string = ParsingHelper::add_paragraph_line_breaks(&stripped_string);
-        cleaned_string
+        
+        ParsingHelper::add_paragraph_line_breaks(&stripped_string)
     }
 
     /// Splits the LLM's response answer text into sentences based on periods, ignoring code blocks.
@@ -293,7 +293,7 @@ impl ParsingHelper {
                 current_paragraph.push_str(&sentence);
             } else {
                 // If adding the sentence doesn't exceed the limit, just add it to the current paragraph
-                current_paragraph.push_str(" ");
+                current_paragraph.push(' ');
                 current_paragraph.push_str(&sentence);
             }
         }

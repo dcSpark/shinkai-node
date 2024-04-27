@@ -333,14 +333,14 @@ impl JobManager {
                 let kai_file_bytes = kai_file_json.into_bytes();
 
                 // Save the KaiJobFile to the inbox
-                let _ = vector_fs.db.add_file_to_files_message_inbox(
+                vector_fs.db.add_file_to_files_message_inbox(
                     inbox_name.clone(),
                     format!("{}.jobkai", file_name_no_ext).to_string(),
                     kai_file_bytes,
                 )?;
-                return Ok(inbox_name);
+                Ok(inbox_name)
             }
-            Err(err) => return Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
+            Err(err) => Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
         }
     }
 }

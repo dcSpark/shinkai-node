@@ -72,7 +72,7 @@ impl LLMProvider for Groq {
 
                 payload["response_format"] = json!({ "type": "json_object" });
 
-                let mut payload_log = payload.clone();
+                let payload_log = payload.clone();
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,

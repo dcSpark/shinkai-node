@@ -68,7 +68,7 @@ impl RustTool {
         tool_embedding: Embedding,
     ) -> Self {
         Self {
-            name: name.replace(" ", "_"),
+            name: name.replace(' ', "_"),
             description,
             input_args,
             output_args,

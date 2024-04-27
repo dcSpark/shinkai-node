@@ -12,7 +12,7 @@ pub struct MockedShinkaiRegistry {
 
 impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
     fn new(_url: &str, _contract_address: &str, _abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        let mut cache = DashMap::new();
+        let cache = DashMap::new();
 
         let identities = vec![
             OnchainIdentity {

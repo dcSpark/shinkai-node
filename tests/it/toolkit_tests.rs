@@ -6,12 +6,12 @@ use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_node::tools::router::ShinkaiTool;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use std::collections::HashMap;
+
 use std::fs;
 use std::path::Path;
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn default_test_profile() -> ShinkaiName {
@@ -47,7 +47,7 @@ fn test_default_js_toolkit_json_parsing() {
     assert_eq!(
         ShinkaiTool::from(toolkit.tools[0].clone())
             .ebnf_inputs(false)
-            .replace("\n", ""),
+            .replace('\n', ""),
         r#"{"calendar_id": calendar_id, "text": text, "send_updates": send_updates, "toolkit": Google Calendar Toolkit, }calendar_id :== ([a-zA-Z0-9_]+)?text :== ([a-zA-Z0-9_]+)send_updates :== ("all" | "externalOnly" | "none")?"#
     );
 
@@ -73,19 +73,19 @@ async fn test_js_toolkit_execution() {
 
     // Test submit_headers_validation_request
     let header_values = &default_toolkit_header_values().await.unwrap();
-    let headers_validation_result = executor
-        .submit_headers_validation_request(&toolkit_js_code, &header_values)
+    executor
+        .submit_headers_validation_request(&toolkit_js_code, header_values)
         .await
         .unwrap();
     // Test submit_tool_execution_request
     let tool = "isEven";
     let input_data = &serde_json::json!({"number": 56});
     let tool_execution_result = executor
-        .submit_tool_execution_request(tool, input_data, &toolkit_js_code, &header_values)
+        .submit_tool_execution_request(tool, input_data, &toolkit_js_code, header_values)
         .await
         .unwrap();
 
-    assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
+    assert!(tool_execution_result.result[0].output.as_bool().unwrap());
     assert_eq!(tool_execution_result.tool, "isEven");
 }
 
@@ -116,7 +116,7 @@ async fn test_toolkit_installation_and_retrieval() {
 
     // Uninstall and check via the toolkit map and db key (TODO: later add deactivation checks too)
     shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
-    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap() == false);
+    assert!(!shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
     let fetched_toolkit = shinkai_db.get_toolkit(&toolkit.name, &profile);
     assert!(fetched_toolkit.is_err());
 }
@@ -196,7 +196,7 @@ async fn test_tool_router_and_toolkit_flow() {
         )
         .await
         .unwrap();
-    let results4 = tool_router.vector_search(query, 10);
+    let _results4 = tool_router.vector_search(query, 10);
     // assert_eq!(results4[0].name(), "User_Data_Vector_Search");
 
     // Deactivate toolkit and check to make sure tools are removed from Tool Router

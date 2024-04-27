@@ -4,11 +4,11 @@ use aes_gcm::KeyInit;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
     AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+    clone_static_secret_key,
 };
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
@@ -17,20 +17,20 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key,
 };
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use std::time::Instant;
-use std::{env, fs};
-use std::{net::SocketAddr, time::Duration};
+use std::{env};
+use std::{time::Duration};
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
+    api_agent_registration, api_create_job,
+    api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
@@ -45,7 +45,7 @@ fn job_from_cron_one_page() {
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
             let node1_agent = env.node1_agent.clone();
-            let node1_encryption_pk = env.node1_encryption_pk.clone();
+            let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
@@ -116,7 +116,7 @@ fn job_from_cron_one_page() {
                     model_type: "gpt-4-1106-preview".to_string(),
                 };
 
-                let generic_api = GenericAPI {
+                let _generic_api = GenericAPI {
                     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 };
 
@@ -140,7 +140,7 @@ fn job_from_cron_one_page() {
                 api_agent_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -157,7 +157,7 @@ fn job_from_cron_one_page() {
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -168,7 +168,7 @@ fn job_from_cron_one_page() {
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+                let message_content = aes_encryption_key_to_string(symmetrical_sk);
                 let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -186,7 +186,7 @@ fn job_from_cron_one_page() {
                     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
                     .await
                     .unwrap();
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
@@ -245,7 +245,7 @@ fn job_from_cron_one_page() {
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),

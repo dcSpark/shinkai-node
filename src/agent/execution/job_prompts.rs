@@ -72,7 +72,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
+        prompt.add_content(job_task.to_string(), SubPromptType::User, 100);
         prompt.add_ebnf(
             String::from(r#"'{' 'answer' ':' string '}'"#),
             SubPromptType::System,
@@ -132,11 +132,11 @@ impl JobPromptGenerator {
             }
         }
 
-        prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
+        prompt.add_content("The user has asked: ".to_string(), SubPromptType::System, 100);
         prompt.add_content(format!("{}.\n", job_task), SubPromptType::User, 100);
 
         prompt.add_content(
-            format!("If you have enough information to directly answer the user's question:"),
+            "If you have enough information to directly answer the user's question:".to_string(),
             SubPromptType::System,
             100,
         );
@@ -160,7 +160,7 @@ impl JobPromptGenerator {
             }
             prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System, 99);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System, 99);
+            prompt.add_content("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:".to_string(), SubPromptType::System, 99);
         }
 
         prompt.add_ebnf(
@@ -206,7 +206,7 @@ impl JobPromptGenerator {
             );
         }
 
-        let pre_task_text = format!("The user has asked: ");
+        let pre_task_text = "The user has asked: ".to_string();
         prompt.add_content(pre_task_text, SubPromptType::System, 99);
         prompt.add_content(job_task, SubPromptType::User, 100);
 
@@ -280,9 +280,7 @@ impl JobPromptGenerator {
                 key
             );
         } else {
-            final_content += &format!(
-                "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one",
-            );
+            final_content += "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one";
         }
 
         prompt.add_content(
@@ -306,12 +304,12 @@ impl JobPromptGenerator {
             99
         );
 
-        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User, 99);
+        prompt.add_content("Here is content from a document:".to_string(), SubPromptType::User, 99);
         for node in nodes {
-            prompt.add_content(format!("{}", node), SubPromptType::User, 99);
+            prompt.add_content(node.to_string(), SubPromptType::User, 99);
         }
         prompt.add_content(
-            format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
+            "Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum.".to_string(),
             SubPromptType::User,
             100
         );
@@ -333,7 +331,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
+        prompt.add_content(job_task.to_string(), SubPromptType::User, 100);
         prompt.add_content(
             String::from(
                 "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
@@ -426,9 +424,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!(
-                "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---"
-            ),
+            "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---".to_string(),
             SubPromptType::User,
             100
         );
@@ -452,9 +448,7 @@ impl JobPromptGenerator {
             );
         } else {
             prompt.add_content(
-                format!(
-                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
-                ),
+                "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field".to_string(),
                 SubPromptType::User, 99);
         }
 
@@ -491,9 +485,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!(
-                "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---"
-            ),
+            "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---".to_string(),
             SubPromptType::User,
             99
         );
@@ -516,9 +508,7 @@ impl JobPromptGenerator {
             );
         } else {
             prompt.add_content(
-                format!(
-                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
-                ),
+                "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field".to_string(),
                 SubPromptType::User, 99);
         }
 
@@ -535,9 +525,7 @@ impl JobPromptGenerator {
     pub fn cron_expression_generation_prompt(description: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!(
-                "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
-            ),
+            "You are a very helpful assistant that's an expert in translating user requests to cron expressions.".to_string(),
             SubPromptType::System,
             99,
         );
@@ -565,7 +553,7 @@ impl JobPromptGenerator {
     pub fn apply_to_website_prompt(description: String, web_content: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             99,
         );
@@ -583,9 +571,7 @@ impl JobPromptGenerator {
             100
         );
         prompt.add_content(
-            format!(
-                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-            ),
+            "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
             SubPromptType::User,
             100);
 
@@ -602,7 +588,7 @@ impl JobPromptGenerator {
     pub fn cron_web_task_requires_links(description: String, summary: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -620,9 +606,7 @@ impl JobPromptGenerator {
                 100,
             );
         prompt.add_content(
-                format!(
-                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field. You can only answer true or false nothing else.",
-                ),
+                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field. You can only answer true or false nothing else.".to_string(),
                 SubPromptType::User,
                 100);
 
@@ -638,7 +622,7 @@ impl JobPromptGenerator {
     pub fn cron_web_task_match_links(task_description: String, summary: String, links: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -656,9 +640,7 @@ impl JobPromptGenerator {
                     100,
                 );
         prompt.add_content(
-                    format!(
-                        "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-                    ),
+                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
                     SubPromptType::User,
                     100);
 
@@ -675,7 +657,7 @@ impl JobPromptGenerator {
     pub fn cron_subtask(description: String, web_content: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -693,9 +675,7 @@ impl JobPromptGenerator {
                 100,
             );
         prompt.add_content(
-                format!(
-                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-                ),
+                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
                 SubPromptType::User,
                 100);
 
@@ -712,7 +692,7 @@ impl JobPromptGenerator {
     pub fn image_to_text_analysis(description: String, image: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -810,6 +790,12 @@ pub struct Prompt {
     pub lowest_priority: u8,
     /// The highest priority value held in sub_prompts
     pub highest_priority: u8,
+}
+
+impl Default for Prompt {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Prompt {
@@ -1019,7 +1005,7 @@ impl Prompt {
             .iter()
             .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(_, content, _) => content.clone(),
-                SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, retry.clone()),
+                SubPrompt::EBNF(_, ebnf, _, retry) => self.generate_ebnf_response_string(ebnf, *retry),
                 SubPrompt::Asset(_, asset_type, _asset_content, asset_detail, _) => {
                     format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
                 }
@@ -1042,7 +1028,7 @@ impl Prompt {
             let (prompt_type, content, type_) = match sub_prompt {
                 SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone(), "text"),
                 SubPrompt::EBNF(prompt_type, ebnf, _, retry) => {
-                    let ebnf_string = self.generate_ebnf_response_string(ebnf, retry.clone());
+                    let ebnf_string = self.generate_ebnf_response_string(ebnf, *retry);
                     (prompt_type, ebnf_string, "text")
                 }
                 SubPrompt::Asset(prompt_type, _asset_type, asset_content, _asset_detail, _) => {
@@ -1079,7 +1065,7 @@ impl Prompt {
         self.check_ebnf_included()?;
 
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
-        let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
+        let limit = max_prompt_tokens.unwrap_or(2700_usize);
 
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
@@ -1098,7 +1084,7 @@ impl Prompt {
         self.check_ebnf_included()?;
 
         // TODO: Update to Llama tokenizer here
-        let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
+        let limit = max_prompt_tokens.unwrap_or(4000_usize.try_into().unwrap());
         // let model = "llama2"; // TODO: change to something that actually fits
 
         let mut messages: Vec<String> = Vec::new();
@@ -1113,7 +1099,7 @@ impl Prompt {
         // the response will be invalid.
         for sub_prompt in &self.sub_prompts {
             if let SubPrompt::EBNF(_, ebnf, _, retry) = sub_prompt {
-                let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
+                let new_message = self.generate_ebnf_response_string(ebnf, *retry);
                 current_length += new_message.len();
             }
         }
@@ -1125,12 +1111,12 @@ impl Prompt {
                     // Ignore Asset
                 }
                 SubPrompt::Content(prompt_type, content, _priority_value) => {
-                    if content == &*do_not_mention_prompt || content == "" {
+                    if content == &*do_not_mention_prompt || content.is_empty() {
                         continue;
                     }
                     let mut new_message = "".to_string();
                     if prompt_type == &SubPromptType::System || prompt_type == &SubPromptType::Assistant {
-                        new_message = format!("{}", content.clone());
+                        new_message = content.clone().to_string();
                     } else {
                         new_message = format!("- {}", content.clone());
                         at_least_one_user_content = true;
@@ -1158,7 +1144,7 @@ impl Prompt {
                     }
                 }
                 SubPrompt::EBNF(_, ebnf, _, retry) => {
-                    let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
+                    let new_message = self.generate_ebnf_response_string(ebnf, *retry);
                     messages.push(new_message);
                 }
             }

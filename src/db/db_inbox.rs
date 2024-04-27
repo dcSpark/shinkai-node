@@ -101,11 +101,7 @@ impl ShinkaiDB {
                 // Fetch the most recent message from the inbox
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 1, None)?;
                 if let Some(first_batch) = last_messages.first() {
-                    if let Some(last_message) = first_batch.first() {
-                        Some(last_message.calculate_message_hash_for_pagination())
-                    } else {
-                        None
-                    }
+                    first_batch.first().map(|last_message| last_message.calculate_message_hash_for_pagination())
                 } else {
                     None
                 }

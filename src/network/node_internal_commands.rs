@@ -228,8 +228,8 @@ impl Node {
         encryption_public_key: EncryptionPublicKey,
         res: Sender<(VerifyingKey, EncryptionPublicKey)>,
     ) -> Result<(), Error> {
-        let identity_public_key = identity_public_key.clone();
-        let encryption_public_key = encryption_public_key.clone();
+        let identity_public_key = identity_public_key;
+        let encryption_public_key = encryption_public_key;
         let _ = res
             .send((identity_public_key, encryption_public_key))
             .await

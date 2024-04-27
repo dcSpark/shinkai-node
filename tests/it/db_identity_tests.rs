@@ -16,12 +16,12 @@ use shinkai_node::schemas::identity::{StandardIdentity, StandardIdentityType};
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use ed25519_dalek::{VerifyingKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 async fn create_local_node_profile(
@@ -44,15 +44,15 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
     let node_profile_name = "@@node1.shinkai";
     let (_, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Create a local node profile
     task::block_on(create_local_node_profile(
         &shinkai_db,
-        node_profile_name.clone().to_string(),
-        encryption_pk.clone(),
-        identity_pk.clone(),
+        node_profile_name.to_string(),
+        encryption_pk,
+        identity_pk,
     ));
 
     let profile_name = "profile_1";
@@ -89,25 +89,25 @@ fn test_generate_and_use_registration_code_for_device() {
     init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let profile_name = "profile_1";
-    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let device_name = "device_1";
-    let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
-    let (device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+    let (_device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // first create the keys for the node
     task::block_on(create_local_node_profile(
         &shinkai_db,
-        node_profile_name.clone().to_string(),
-        encryption_pk.clone(),
-        identity_pk.clone(),
+        node_profile_name.to_string(),
+        encryption_pk,
+        identity_pk,
     ));
 
     // second create a new profile (required to register a device)
@@ -115,7 +115,7 @@ fn test_generate_and_use_registration_code_for_device() {
         .generate_registration_new_code(IdentityPermissions::Admin, RegistrationCodeType::Profile)
         .unwrap();
 
-    let profile_result = shinkai_db.use_registration_code(
+    let _profile_result = shinkai_db.use_registration_code(
         &registration_code,
         node_profile_name,
         profile_name,
@@ -169,24 +169,24 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
     init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
-    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let device_name = "device_main";
-    let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
-    let (device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+    let (_device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // Create the keys for the node
     task::block_on(create_local_node_profile(
         &shinkai_db,
-        node_profile_name.clone().to_string(),
-        encryption_pk.clone(),
-        identity_pk.clone(),
+        node_profile_name.to_string(),
+        encryption_pk,
+        identity_pk,
     ));
 
     // Generate a registration code for device with main as profile_name
@@ -198,7 +198,7 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
         .unwrap();
 
     // Use the registration code to create the device and automatically the "main" profile if not exists
-    let device_result = shinkai_db.use_registration_code(
+    let _device_result = shinkai_db.use_registration_code(
         &registration_code,
         node_profile_name,
         device_name,
@@ -246,25 +246,25 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
     init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let profile_name = "profile_1";
-    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_profile_identity_sk, _profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_profile_encryption_sk, _profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let device_name = "device_1";
-    let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
-    let (device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+    let (_device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
     // first create the keys for the node
     task::block_on(create_local_node_profile(
         &shinkai_db,
-        node_profile_name.clone().to_string(),
-        encryption_pk.clone(),
-        identity_pk.clone(),
+        node_profile_name.to_string(),
+        encryption_pk,
+        identity_pk,
     ));
 
     // registration code for device
@@ -288,7 +288,7 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 
     // Check if an error is returned as no profile is associated
     assert!(
-        matches!(result, Err(ShinkaiDBError::ProfileNotFound(node_profile_name))),
+        matches!(result, Err(ShinkaiDBError::ProfileNotFound(_node_profile_name))),
         "Expected ProfileNotFound error"
     );
 }
@@ -298,31 +298,31 @@ fn test_new_load_all_sub_identities() {
     init_default_tracing();
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(&node_profile_name.clone().to_string()));
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone().as_ref()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Create a local node profile
     task::block_on(create_local_node_profile(
         &shinkai_db,
         node_profile_name.clone().to_string(),
-        encryption_pk.clone(),
-        identity_pk.clone(),
+        encryption_pk,
+        identity_pk,
     ));
 
     // Insert some sub-identities
     for i in 1..=5 {
-        let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(i);
-        let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
+        let (_subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(i);
+        let (_subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
             ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string())
                 .unwrap(),
             None,
-            encryption_pk.clone(),
-            identity_pk.clone(),
+            encryption_pk,
+            identity_pk,
             Some(subencryption_pk),
             Some(subidentity_pk),
             StandardIdentityType::Profile,
@@ -344,16 +344,16 @@ fn test_new_load_all_sub_identities() {
 
     // add asserts to check if the identities are correct
     for i in 1..=5 {
-        let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(i);
-        let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
+        let (_subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(i);
+        let (_subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
             ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string())
                 .unwrap(),
             None,
-            encryption_pk.clone(),
-            identity_pk.clone(),
+            encryption_pk,
+            identity_pk,
             Some(subencryption_pk),
             Some(subidentity_pk),
             // todo: review this
@@ -370,14 +370,14 @@ fn test_update_local_node_keys() {
     init_default_tracing();
     setup();
     let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(&node_profile_name.clone().to_string()));
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone().as_ref()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Test update_local_node_keys
     shinkai_db
-        .update_local_node_keys(node_profile_name.clone(), encryption_pk.clone(), identity_pk.clone())
+        .update_local_node_keys(node_profile_name.clone(), encryption_pk, identity_pk)
         .unwrap();
 
     // Update to use the new context for checking the encryption and identity keys in database
@@ -412,29 +412,28 @@ fn test_new_insert_profile() {
     init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Check if any profile exists before insertion
-    assert_eq!(
-        shinkai_db.has_any_profile().unwrap(),
-        false,
+    assert!(
+        !shinkai_db.has_any_profile().unwrap(),
         "No profiles should exist before insertion"
     );
 
     let subidentity_name = "subidentity_1";
-    let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
         ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
-        encryption_pk.clone(),
-        identity_pk.clone(),
-        Some(subencryption_pk.clone()),
-        Some(subidentity_pk.clone()),
+        encryption_pk,
+        identity_pk,
+        Some(subencryption_pk),
+        Some(subidentity_pk),
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
@@ -443,9 +442,8 @@ fn test_new_insert_profile() {
     shinkai_db.insert_profile(identity.clone()).unwrap();
 
     // Check if any profile exists after insertion
-    assert_eq!(
+    assert!(
         shinkai_db.has_any_profile().unwrap(),
-        true,
         "A profile should exist after insertion"
     );
 
@@ -495,22 +493,22 @@ fn test_remove_profile() {
     init_default_tracing();
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let subidentity_name = "subidentity_1";
-    let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
         ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
-        encryption_pk.clone(),
-        identity_pk.clone(),
-        Some(subencryption_pk.clone()),
-        Some(subidentity_pk.clone()),
+        encryption_pk,
+        identity_pk,
+        Some(subencryption_pk),
+        Some(subidentity_pk),
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
@@ -519,7 +517,7 @@ fn test_remove_profile() {
     shinkai_db.insert_profile(identity.clone()).unwrap();
 
     // Remove identity
-    shinkai_db.remove_profile(&subidentity_name).unwrap();
+    shinkai_db.remove_profile(subidentity_name).unwrap();
 
     // Update to use the new context for checking in db
     let cf_node_and_users = shinkai_db.db.cf_handle(Topic::NodeAndUsers.as_str()).unwrap();

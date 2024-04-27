@@ -1,11 +1,11 @@
 use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
+
 use core::panic;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+    MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
@@ -27,7 +27,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
 
 use super::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
@@ -37,7 +37,7 @@ use super::utils::node_test_local::local_registration_profile_node;
 #[test]
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 #[test]
@@ -55,15 +55,15 @@ fn subidentity_registration() {
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-        let node1_encryption_sk_clone = node1_encryption_sk.clone();
+        let _node1_encryption_sk_clone = node1_encryption_sk.clone();
         let node1_encryption_sk_clone2 = node1_encryption_sk.clone();
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
 
-        let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
-        let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
+        let _node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
+        let _node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
 
         let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
         let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
@@ -74,11 +74,11 @@ fn subidentity_registration() {
         let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
         let node2_subencryption_sk_clone = node2_subencryption_sk.clone();
 
-        let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
-        let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
+        let _node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
+        let _node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
 
-        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
@@ -92,7 +92,7 @@ fn subidentity_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -110,7 +110,7 @@ fn subidentity_registration() {
         .await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(
+        let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
             clone_signature_secret_key(&node2_identity_sk),
@@ -230,7 +230,7 @@ fn subidentity_registration() {
                     node1_commands_sender.clone(),
                     node1_profile_name,
                     node1_identity_name,
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_device_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_device_identity_sk),
                     node1_profile_encryption_sk.clone(),
@@ -265,7 +265,7 @@ fn subidentity_registration() {
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_profile_encryption_pk.clone(),
+                    node1_profile_encryption_pk,
                 )
                 .message_raw_content(message_content.clone())
                 .no_body_encryption()
@@ -279,7 +279,7 @@ fn subidentity_registration() {
                 .external_metadata_with_other(
                     node1_identity_name.to_string(),
                     node2_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node2_subencryption_pk.clone()),
+                    encryption_public_key_to_string(node2_subencryption_pk),
                 )
                 .build()
                 .unwrap();
@@ -332,25 +332,22 @@ fn subidentity_registration() {
 
                 let message_to_check = node1_last_messages[0].clone();
                 // Check that the message is body encrypted
-                assert_eq!(
-                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
-                    false,
+                assert!(
+                    !ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     "Message from Node 2 to Node 1 is not body encrypted for Node 1 (receiver)"
                 );
 
                 let message_to_check = node2_last_messages[0].clone();
                 // Check that the message is body encrypted
-                assert_eq!(
-                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
-                    false,
+                assert!(
+                    !ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     "Message from Node 2 to Node 1 is not body encrypted for Node 2 (sender)"
                 );
 
                 // Check that the content is encrypted
                 eprintln!("Message to check: {:?}", message_to_check.clone());
-                assert_eq!(
+                assert!(
                     ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
-                    true,
                     "Message from Node 2 to Node 1 is content encrypted"
                 );
 
@@ -364,7 +361,7 @@ fn subidentity_registration() {
                 }
                 let message_to_check_content_unencrypted = message_to_check
                     .clone()
-                    .decrypt_inner_layer(&&node1_profile_encryption_sk.clone(), &node2_subencryption_pk)
+                    .decrypt_inner_layer(&node1_profile_encryption_sk.clone(), &node2_subencryption_pk)
                     .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated
@@ -404,8 +401,8 @@ fn subidentity_registration() {
             // Node 1 creates a new subidentity and that subidentity sends a message to the other one in Node 1
             {
                 let node1_subidentity_name_2 = "node1_subidentity_2";
-                let (node1_subidentity_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_signature_keypair(3);
-                let (node1_subencryption_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_encryption_keypair(3);
+                let (_node1_subidentity_sk_2, _node1_subencryption_pk_2) = unsafe_deterministic_signature_keypair(3);
+                let (_node1_subencryption_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_encryption_keypair(3);
 
                 eprintln!("Register another Profile in Node1 and verifies it");
                 api_registration_profile_node(
@@ -429,7 +426,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_subencryption_pk_2,
                 )
-                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
+                .set_optional_second_public_key_receiver_node(node1_encryption_pk)
                 .message_raw_content(message_content.clone())
                 .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
                 .message_schema_type(MessageSchemaType::TextContent)
@@ -478,16 +475,14 @@ fn subidentity_registration() {
                 let message_to_check = node1_last_messages[0].clone();
 
                 // Check that the message is not body encrypted
-                assert_eq!(
-                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
-                    false,
+                assert!(
+                    !ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     "Message from Node 1 subidentity to Node 1 subidentity 2 is not body encrypted"
                 );
 
                 // Check that the content is encrypted
-                assert_eq!(
+                assert!(
                     ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
-                    true,
                     "Message from Node 1 subidentity to Node 1 subidentity 2 is content encrypted"
                 );
 
@@ -509,7 +504,7 @@ fn subidentity_registration() {
             // Send message from Node 1 subidentity to Node 2 subidentity
             {
                 eprintln!("Final trick. Sending a fat message from Node 1 subidentity to Node 2 subidentity");
-                let message_content = std::iter::repeat("hola-").take(10_000).collect::<String>();
+                let message_content = "hola-".repeat(10_000);
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node1_profile_encryption_sk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -527,7 +522,7 @@ fn subidentity_registration() {
                 .external_metadata_with_other(
                     node2_identity_name.to_string().clone(),
                     node1_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node1_profile_encryption_pk.clone()),
+                    encryption_public_key_to_string(node1_profile_encryption_pk),
                 )
                 .build()
                 .unwrap();
@@ -582,13 +577,13 @@ fn subidentity_registration() {
                         }
 
                         // Check sender and recipient subidentity
-                        if message_to_check.get_sender_subidentity().unwrap() != node1_profile_name.to_string() {
+                        if message_to_check.get_sender_subidentity().unwrap() != *node1_profile_name {
                             eprintln!("The message does not have the right sender. Retrying...");
                             tokio::time::sleep(Duration::from_millis(500)).await;
                             continue;
                         }
 
-                        if message_to_check.get_recipient_subidentity().unwrap() != node2_profile_name.to_string() {
+                        if message_to_check.get_recipient_subidentity().unwrap() != *node2_profile_name {
                             eprintln!("The message does not have the right recipient. Retrying...");
                             tokio::time::sleep(Duration::from_millis(500)).await;
                             continue;

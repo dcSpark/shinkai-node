@@ -91,7 +91,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
         // Call the get_all_queues method to get all queue data from the db
-        match db_arc.get_all_queues(&cf_name, prefix.clone()) {
+        match db_arc.get_all_queues(cf_name, prefix.clone()) {
             Ok(db_queues) => {
                 // Initialize the queues field with Mutex-wrapped Vecs from the db data
                 let manager_queues = db_queues
@@ -169,7 +169,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let mut guarded_queue = queue.lock().await;
 
         // Check if there's an element to dequeue, and remove it if so
-        let result = if guarded_queue.get(0).is_some() {
+        let result = if guarded_queue.first().is_some() {
             Some(guarded_queue.remove(0))
         } else {
             None
@@ -267,7 +267,7 @@ mod tests {
 
     fn setup() {
         let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(path);
     }
 
     #[tokio::test]

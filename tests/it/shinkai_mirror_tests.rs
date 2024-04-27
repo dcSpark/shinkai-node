@@ -112,12 +112,12 @@ fn modify_temp_dir(temp_dir: PathBuf) {
 
     // Move file2.txt to file4.txt
     if file_to_move.exists() {
-        let _ = fs::rename(&file_to_move, &file_destination);
+        let _ = fs::rename(&file_to_move, file_destination);
     }
 
     // Create a new subfolder and a new file within it
     if fs::create_dir_all(&new_sub_folder).is_ok() {
-        let _ = File::create(&new_file_in_sub_folder).map(|mut file| {
+        let _ = File::create(new_file_in_sub_folder).map(|mut file| {
             let _ = writeln!(file, "This is a new file in the subfolder.");
         });
     }
@@ -172,30 +172,30 @@ fn mirror_sync_tests() {
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-        let node1_encryption_sk_clone = node1_encryption_sk.clone();
+        let _node1_encryption_sk_clone = node1_encryption_sk.clone();
         let node1_encryption_sk_clone2 = node1_encryption_sk.clone();
 
-        let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
+        let _node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
 
         let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
         let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
         let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
 
-        let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
+        let _node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
 
-        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
 
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -408,10 +408,10 @@ fn mirror_sync_tests() {
                     "Expected the modified file to be 'knowledge/test.txt'."
                 );
 
-                let result = syncing_folders.force_process_updates().await;
+                let _result = syncing_folders.force_process_updates().await;
                 // eprintln!("result: {:?}", result);
 
-                let resp = syncing_folders
+                let _resp = syncing_folders
                     .shinkai_manager_for_sync
                     .retrieve_vector_resource("/knowledge/test")
                     .await

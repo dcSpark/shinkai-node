@@ -1,15 +1,15 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use futures::Future;
-    use pddl_ish_parser::models::{domain::Domain, problem::Problem};
+    
+    
+    
     use pddl_ish_parser::parser::action::Action;
     use pddl_ish_parser::parser::parameter::Parameter;
-    use pddl_ish_parser::parser::{domain_parser::parse_domain, problem_parser::parse_problem};
+    use pddl_ish_parser::parser::{domain_parser::parse_domain};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-    use std::{io::Cursor, path::PathBuf};
-    use std::{pin::Pin, sync::Arc};
-    use tokio::sync::Mutex;
+    
+    
+    
 
     static DOMAIN_PDDL: &str = r#"(define (domain AI-news-summary)
             (:requirements :strips :typing)
@@ -76,7 +76,7 @@ mod tests {
         match res {
             Ok((_, domain)) => {
                 println!("Parsed domain: {:?}", domain);
-                let first_action = domain.actions.get(0);
+                let first_action = domain.actions.first();
                 assert!(first_action.is_some(), "No actions found in the domain.");
                 println!("\n\n First action: {:?}", first_action.unwrap());
             }

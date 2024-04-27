@@ -63,7 +63,8 @@ fn generate_message_with_payload<T: ToString>(
 ) -> ShinkaiMessage {
     let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(payload.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(schema)
@@ -76,8 +77,7 @@ fn generate_message_with_payload<T: ToString>(
         )
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 // Function to recursively check if the actual response contains the expected structure
@@ -291,11 +291,11 @@ fn remove_timestamps_from_shared_folder_cache_response(value: &mut serde_json::V
             map.remove("last_modified");
             // Use a closure to explicitly call `remove_timestamps_from_response`
             map.values_mut()
-                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+                .for_each(remove_timestamps_from_shared_folder_cache_response);
         }
         serde_json::Value::Array(vec) => {
             vec.iter_mut()
-                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+                .for_each(remove_timestamps_from_shared_folder_cache_response);
         }
         _ => {}
     }
@@ -480,7 +480,7 @@ async fn upload_file(
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
     eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-    let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+    let message_content = aes_encryption_key_to_string(symmetrical_sk);
     let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
         encryption_sk.clone(),
         signature_sk.clone(),
@@ -501,7 +501,7 @@ async fn upload_file(
     let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
 
     // Upload file
-    let file_data = std::fs::read(&file_path)
+    let file_data = std::fs::read(file_path)
         .map_err(|_| VRError::FailedPDFParsing)
         .unwrap();
 
@@ -743,7 +743,7 @@ fn subscription_manager_test() {
                     node1_commands_sender.clone(),
                     node1_profile_name,
                     node1_identity_name,
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_device_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_device_identity_sk),
                     node1_profile_encryption_sk.clone(),
@@ -1222,7 +1222,7 @@ fn subscription_manager_test() {
                     "subscriber_destination_path": null,
                     "subscription_description": null
                 }]"#;
-                let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
+                let expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
 
                 // Remove dates from the actual response for comparison
                 if let Some(array) = actual_resp_json.as_array_mut() {

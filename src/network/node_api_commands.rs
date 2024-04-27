@@ -81,7 +81,7 @@ impl Node {
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
         let has_permission = db
-            .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
+            .has_permission(&inbox_name.to_string(), std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
@@ -113,15 +113,15 @@ impl Node {
 
         match sender_subidentity {
             Identity::Standard(std_identity) => {
-                return Self::has_standard_identity_access(db, inbox_name, std_identity).await;
+                Self::has_standard_identity_access(db, inbox_name, std_identity).await
             }
             Identity::Device(std_device) => {
-                return Self::has_device_identity_access(db, inbox_name, std_device).await;
+                Self::has_device_identity_access(db, inbox_name, std_device).await
             }
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.to_string()
+                    inbox_name
                 ),
             }),
         }
@@ -211,7 +211,7 @@ impl Node {
                             .await;
                     let processed_response = response_handler(response);
                     let _ = res.send(Ok(processed_response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -219,12 +219,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -239,7 +239,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -345,7 +345,7 @@ impl Node {
         // TODO(Discuss): can local admin read any messages from any device or profile?
         match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
+                if value {
                     let response = Self::internal_get_last_unread_messages_from_inbox(
                         db.clone(),
                         inbox_name.to_string(),
@@ -354,7 +354,7 @@ impl Node {
                     )
                     .await;
                     let _ = res.send(Ok(response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -362,12 +362,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -382,7 +382,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -512,7 +512,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -578,7 +578,7 @@ impl Node {
                                     error: "Don't have access".to_string(),
                                     message: format!(
                                         "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                        inbox_name.to_string()
+                                        inbox_name
                                     ),
                                 }))
                                 .await;
@@ -592,12 +592,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -612,7 +612,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -753,24 +753,22 @@ impl Node {
             .as_str(),
         );
 
-        if first_device_needs_registration_code == false {
-            if main_profile_exists == false {
-                let code_type = RegistrationCodeType::Device("main".to_string());
-                let permissions = IdentityPermissions::Admin;
+        if !first_device_needs_registration_code && !main_profile_exists {
+            let code_type = RegistrationCodeType::Device("main".to_string());
+            let permissions = IdentityPermissions::Admin;
 
-                match db.generate_registration_new_code(permissions, code_type) {
-                    Ok(new_code) => {
-                        code = new_code;
-                    }
-                    Err(err) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Failed to generate registration code: {}", err),
-                            }))
-                            .await;
-                    }
+            match db.generate_registration_new_code(permissions, code_type) {
+                Ok(new_code) => {
+                    code = new_code;
+                }
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to generate registration code: {}", err),
+                        }))
+                        .await;
                 }
             }
         }
@@ -838,8 +836,8 @@ impl Node {
                             addr: None,
                             profile_signature_public_key: Some(signature_pk_obj),
                             profile_encryption_public_key: Some(encryption_pk_obj),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             identity_type: standard_identity_type,
                             permission_type,
                         };
@@ -850,9 +848,9 @@ impl Node {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
+                                        encryption_public_key,
                                     ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -898,8 +896,8 @@ impl Node {
                                     addr: None,
                                     profile_encryption_public_key: Some(encryption_pk_obj),
                                     profile_signature_public_key: Some(signature_pk_obj),
-                                    node_encryption_public_key: encryption_public_key.clone(),
-                                    node_signature_public_key: identity_public_key.clone(),
+                                    node_encryption_public_key: encryption_public_key,
+                                    node_signature_public_key: identity_public_key,
                                     identity_type: StandardIdentityType::Profile,
                                     permission_type: IdentityPermissions::Admin,
                                 };
@@ -928,8 +926,8 @@ impl Node {
 
                         let device_identity = DeviceIdentity {
                             full_identity_name: full_identity_name.clone(),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             profile_encryption_public_key: encryption_pk_obj,
                             profile_signature_public_key: signature_pk_obj,
                             device_encryption_public_key: device_encryption_pk_obj,
@@ -940,7 +938,7 @@ impl Node {
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if main_profile_exists == false && !initial_agents.is_empty() {
+                                if !main_profile_exists && !initial_agents.is_empty() {
                                     std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
                                     for agent in &initial_agents {
@@ -958,9 +956,9 @@ impl Node {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
+                                        encryption_public_key,
                                     ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -1201,7 +1199,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1240,7 +1238,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1255,7 +1253,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -1351,7 +1349,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1390,7 +1388,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1405,7 +1403,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -1625,7 +1623,7 @@ impl Node {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
-                message: format!("{}", err),
+                message: err.to_string(),
             };
             let _ = res.send(Err(api_error)).await;
             return Ok(());
@@ -1886,7 +1884,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2008,7 +2006,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2183,7 +2181,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2255,7 +2253,7 @@ impl Node {
                         message: format!("Failed to remove agent from identity manager: {}", err),
                     };
                     let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    Ok(())
                 }
             },
             Err(err) => {
@@ -2265,7 +2263,7 @@ impl Node {
                     message: format!("Failed to remove agent: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }

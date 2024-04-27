@@ -97,11 +97,11 @@ pub trait LLMProvider {
 
 fn replace_single_quotes(s: &str) -> String {
     let replaced_string = s.to_string().replace("''", "'");
-    let mut chars = replaced_string.chars().peekable();
+    let chars = replaced_string.chars().peekable();
     let mut cleaned_string = String::new();
     let mut in_quotes = false; // Tracks whether we are inside quotes
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         match c {
             // If we encounter a double quote, we flip the in_quotes flag
             '"' => {

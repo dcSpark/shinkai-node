@@ -207,15 +207,13 @@ mod tests {
 
         let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes
 
-        assert_eq!(
+        assert!(
             CronManager::should_execute_cron_task(&cron_task_should_execute, cron_time_interval),
-            true,
             "Expected should_execute_cron_task to return true for a cron task that should execute every minute"
         );
 
-        assert_eq!(
-        CronManager::should_execute_cron_task(&cron_task_should_not_execute, cron_time_interval),
-        false,
+        assert!(
+        !CronManager::should_execute_cron_task(&cron_task_should_not_execute, cron_time_interval),
         "Expected should_execute_cron_task to return false for a cron task that should not execute within the next 2 minutes"
     );
     }

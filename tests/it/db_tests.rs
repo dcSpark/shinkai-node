@@ -1,4 +1,4 @@
-use async_channel::{bounded, Receiver, Sender};
+
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -10,22 +10,22 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::db::db_errors::ShinkaiDBError;
-use shinkai_node::db::ShinkaiDB;
-use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::Node;
-use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use shinkai_node::db::ShinkaiDB;
+
+
+use std::fs;
+
+use std::path::Path;
+
+
+
+use ed25519_dalek::{SigningKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn generate_message_with_text(
@@ -37,7 +37,8 @@ fn generate_message_with_text(
     origin_destination_identity_name: String,
     scheduled_time: String,
 ) -> ShinkaiMessage {
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -53,8 +54,7 @@ fn generate_message_with_text(
             scheduled_time,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[test]
@@ -65,11 +65,11 @@ fn test_insert_message_to_all() {
     // Initialization same as in db_inbox test
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_node1_subidentity_sk, _node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (_node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     // Generate the message to be inserted
     let message = generate_message_with_text(
@@ -83,7 +83,7 @@ fn test_insert_message_to_all() {
     );
 
     // Create the DB and insert the message to all
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     assert!(shinkai_db.insert_message_to_all(&message).is_ok());
 
     // Fetch the message using `get_last_messages_from_all` method
@@ -152,11 +152,11 @@ fn test_schedule_and_get_due_scheduled_messages() {
     // Initialization same as in db_inbox test
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_node1_subidentity_sk, _node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (_node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     // Generate the message to be inserted
     let message = generate_message_with_text(
@@ -197,7 +197,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
     );
 
     // Create the DB and schedule the message
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     assert!(shinkai_db.schedule_message(&message).is_ok());
     assert!(shinkai_db.schedule_message(&message2).is_ok());

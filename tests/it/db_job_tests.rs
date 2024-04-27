@@ -21,7 +21,7 @@ fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: J
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn generate_message_with_text(
@@ -39,7 +39,8 @@ fn generate_message_with_text(
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -56,8 +57,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -102,7 +102,7 @@ mod tests {
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.parent_agent_id, agent_id);
-        assert_eq!(job.is_finished, false);
+        assert!(!job.is_finished);
     }
 
     #[test]
@@ -156,7 +156,7 @@ mod tests {
 
         // Retrieve the job and check that is_finished is set to true
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.is_finished, true);
+        assert!(job.is_finished);
     }
 
     #[tokio::test]
@@ -180,13 +180,13 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         let message = generate_message_with_text(
-            format!("Hello World"),
+            "Hello World".to_string(),
             node1_encryption_sk.clone(),
             clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_pk,
             node1_subidentity_name.to_string(),
             node1_identity_name.to_string(),
-            format!("2023-07-02T20:53:34.810Z"),
+            "2023-07-02T20:53:34.810Z".to_string(),
         );
 
         // Insert the ShinkaiMessage into the database
@@ -613,7 +613,7 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
 
-        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(db_path).unwrap();
 
         create_new_job(&mut shinkai_db, job_id.to_string(), agent_id.clone(), scope);
 

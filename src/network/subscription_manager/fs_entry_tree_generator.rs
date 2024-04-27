@@ -178,11 +178,7 @@ impl FSEntryTreeGenerator {
         for (path, permission) in results {
             let is_subpath = filtered_results.iter().any(|(acc_path, _): &(VRPath, ReadPermission)| {
                 // Check if `path` is a subpath of `acc_path`
-                if path.path_ids.len() > acc_path.path_ids.len() && path.path_ids.starts_with(&acc_path.path_ids) {
-                    true
-                } else {
-                    false
-                }
+                path.path_ids.len() > acc_path.path_ids.len() && path.path_ids.starts_with(&acc_path.path_ids)
             });
 
             if !is_subpath {
@@ -276,7 +272,9 @@ mod tests {
             },
         };
 
-        let root = FSEntryTree {
+        
+
+        FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
             last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
@@ -285,9 +283,7 @@ mod tests {
                 children.insert(shared_test_folder.name.clone(), Arc::new(shared_test_folder));
                 children
             },
-        };
-
-        root
+        }
     }
 
     #[test]

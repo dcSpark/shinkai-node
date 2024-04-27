@@ -159,13 +159,13 @@ impl Node {
             Identity::Device(_) => {
                 // This case shouldn't happen because we are filtering out device identities
                 let _ = res
-                    .send(format!("Device identities cannot have inbox permissions"))
+                    .send("Device identities cannot have inbox permissions".to_string())
                     .await;
                 return;
             }
             Identity::Agent(_) => {
                 let _ = res
-                    .send(format!("Agent identities cannot have inbox permissions"))
+                    .send("Agent identities cannot have inbox permissions".to_string())
                     .await;
                 return;
             }
@@ -210,13 +210,13 @@ impl Node {
             Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
                 Some(identity) => identity,
                 None => {
-                    let _ = res.send(format!("Device identity is not valid.")).await;
+                    let _ = res.send("Device identity is not valid.".to_string()).await;
                     return;
                 }
             },
             Identity::Agent(_) => {
                 let _ = res
-                    .send(format!("Agent identities cannot have inbox permissions"))
+                    .send("Agent identities cannot have inbox permissions".to_string())
                     .await;
                 return;
             }
@@ -245,7 +245,7 @@ impl Node {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     ) {
-        let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&&shinkai_message.clone()) {
+        let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&shinkai_message.clone()) {
             Ok(name) => name,
             Err(e) => {
                 error!("Failed to get sender name from message: {}", e);

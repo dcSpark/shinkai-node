@@ -75,7 +75,7 @@ impl JobManager {
                         None,
                         1,
                         qa_iteration_count,
-                        max_tokens_in_prompt as usize,
+                        max_tokens_in_prompt,
                     )
                     .await?;
                 } else {

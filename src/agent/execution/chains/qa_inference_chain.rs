@@ -133,7 +133,7 @@ impl JobManager {
         else if let Err(_) = answer {
             if iteration_count > max_iterations {
                 if let Some(summary_str) = &summary_text {
-                    let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(&summary_str);
+                    let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(summary_str);
                     return Ok(cleaned_answer);
                 } else {
                     return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));

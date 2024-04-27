@@ -64,10 +64,10 @@ impl ProfileBoundWriteBatch {
 impl ShinkaiDB {
     /// Fetches the ColumnFamily handle.
     pub fn get_cf_handle(&self, topic: Topic) -> Result<&ColumnFamily, ShinkaiDBError> {
-        Ok(self
+        self
             .db
             .cf_handle(topic.as_str())
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?)
+            .ok_or(ShinkaiDBError::FailedFetchingCF)
     }
 
     /// Fetches the value of a KV pair and returns it as a Vector of bytes.

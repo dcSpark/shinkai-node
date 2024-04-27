@@ -496,7 +496,7 @@ impl ExternalSubscriberManager {
                     // Attempt to retrieve vrkai and continue to the next iteration if it fails
                     let vrkai = match vector_fs_inst.retrieve_vrkai(&reader).await {
                         Ok(vrkai) => vrkai,
-                        Err(e) => {
+                        Err(_e) => {
                             // tries to create a folder with that name
                             if let Some(folder_name) = path.clone().pop() {
                                 let parent_path = path.parent_path();
@@ -508,7 +508,7 @@ impl ExternalSubscriberManager {
                     let parent_path = path.parent_path();
                     let is_last_element = index == diff_paths.len() - 1;
                     // Attempt to insert vrkai into vr_pack and log error if it fails
-                    if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
+                    if vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element).is_err() {
                         continue; // Skip to the next iteration
                     }
                 }

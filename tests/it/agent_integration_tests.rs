@@ -26,7 +26,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
+    api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
 
 use mockito::Server;
@@ -34,7 +34,7 @@ use mockito::Server;
 #[test]
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 #[test]
@@ -62,8 +62,8 @@ fn node_agent_registration() {
         let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name.clone()));
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
+        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
 
         // Agent pre-creation
 
@@ -139,7 +139,7 @@ fn node_agent_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),

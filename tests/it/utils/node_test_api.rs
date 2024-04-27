@@ -333,7 +333,7 @@ pub async fn api_agent_registration(
             })
             .await
             .unwrap();
-        let node_agent_registration = res_agent_registration_receiver.recv().await.unwrap();
+        let _node_agent_registration = res_agent_registration_receiver.recv().await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 

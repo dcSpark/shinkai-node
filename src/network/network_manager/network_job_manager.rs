@@ -152,12 +152,12 @@ impl NetworkJobManager {
         )
         .await;
 
-        let network_job_manager = Self {
+        
+
+        Self {
             network_job_queue_manager,
             network_job_processing_task: Some(job_queue_handler),
-        };
-
-        network_job_manager
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -267,8 +267,8 @@ impl NetworkJobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            let job = job_queue_manager.peek(&job_id).await;
-                            job
+                            
+                            job_queue_manager.peek(&job_id).await
                         };
 
                         match job {

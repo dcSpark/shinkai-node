@@ -152,10 +152,10 @@ impl VectorFS {
                                 resource
                                     .as_trait_object()
                                     .description()
-                                    .unwrap_or_else(|| "")
+                                    .unwrap_or("")
                                     .to_string(),
                                 ret_node.score,
-                                ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                                ret_node.node.get_text_content().unwrap_or("").to_string(),
                             );
                         }
                     }

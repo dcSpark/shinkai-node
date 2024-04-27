@@ -97,7 +97,7 @@ impl JobManager {
                     state
                         .as_ref()
                         .map(|s| s.stage.clone())
-                        .unwrap_or_else(|| "".to_string()),
+                        .unwrap_or_default(),
                 ))
             }
         };
@@ -115,7 +115,7 @@ impl JobManager {
             match new_state.stage.as_str() {
                 "does_it_need_links" => {
                     new_state.needs_links = Some(answer_str.parse::<bool>().unwrap_or(false));
-                    if new_state.needs_links.unwrap() == false {
+                    if !new_state.needs_links.unwrap() {
                         return Ok(CronExecutionChainResponse {
                             summary: new_state.summary.unwrap(),
                             needs_links: new_state.needs_links.unwrap(),

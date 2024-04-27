@@ -591,7 +591,9 @@ impl Node {
         )
         .await;
 
-        let node = Arc::new(Mutex::new(Node {
+        
+
+        Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             identity_public_key,
@@ -615,9 +617,7 @@ impl Node {
             ext_subscription_manager: ext_subscriber_manager,
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
-        }));
-
-        node
+        }))
     }
 
     // Start the node's operations.

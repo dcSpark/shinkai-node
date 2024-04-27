@@ -69,7 +69,7 @@ impl JSToolkitExecutor {
     /// Submits a health check request to /health_check and checks the response
     pub async fn submit_health_check(&self) -> Result<(), ToolError> {
         let response = self.submit_get_request("/health_check").await?;
-        if let Some(_) = response.get("status") {
+        if response.get("status").is_some() {
             Ok(())
         } else {
             Err(ToolError::JSToolkitExecutorNotAvailable)
@@ -158,7 +158,7 @@ impl JSToolkitExecutor {
         };
 
         let mut request_builder = client
-            .post(&format!("{}{}", address, endpoint))
+            .post(format!("{}{}", address, endpoint))
             .header("Content-Type", "application/json")
             .json(input_data_json);
 
@@ -201,12 +201,12 @@ impl JSToolkitExecutorProcess {
             .arg(executor_file_path)
             .arg("-w")
             .arg("-p")
-            .arg(format!("{}", DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT.to_string()))
+            .arg(*DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT)
             .stdout(Stdio::from(dev_null.try_clone().unwrap())) // Redirect stdout
             .stderr(Stdio::from(dev_null)) // Redirect stderr
             .spawn()?;
 
-        let address = format!("http://0.0.0.0:{}", DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT.to_string());
+        let address = format!("http://0.0.0.0:{}", *DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT);
 
         // Wait for 1/2 of a second for the JSToolkitExecutor process to boot up/initialize its
         // web server
@@ -214,7 +214,7 @@ impl JSToolkitExecutorProcess {
         thread::sleep(duration);
         Ok(JSToolkitExecutor::Local(JSToolkitExecutorProcess {
             child,
-            address: address,
+            address,
         }))
     }
 }

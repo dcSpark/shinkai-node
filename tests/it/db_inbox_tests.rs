@@ -1,6 +1,6 @@
 use shinkai_message_primitives::schemas::inbox_name::{InboxName, InboxNameError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
+
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
 };
@@ -26,7 +26,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn generate_message_with_text(
@@ -51,7 +51,8 @@ fn generate_message_with_text(
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -68,8 +69,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[tokio::test]
@@ -83,7 +83,7 @@ async fn test_insert_single_message_and_retrieve() {
     let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
-    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
 
     // Insert a single message
     let message = generate_message_with_text(
@@ -126,7 +126,7 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
     let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
-    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
 
     // Insert first message
     let message1 = generate_message_with_text(
@@ -234,7 +234,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 
@@ -286,7 +286,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
             "message hash: {} message content: {} message parent hash: {}",
             message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
-            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+            parent_hash.as_deref().unwrap_or("None")
         );
     }
 
@@ -354,7 +354,7 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 
@@ -407,7 +407,7 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
             "message hash: {} message content: {} message parent hash: {}",
             message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
-            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+            parent_hash.as_deref().unwrap_or("None")
         );
     }
 
@@ -557,7 +557,7 @@ async fn test_insert_messages_with_tree_structure() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 
@@ -622,7 +622,7 @@ async fn test_insert_messages_with_tree_structure() {
             "message hash: {} message content: {} message parent hash: {}",
             message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
-            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+            parent_hash.as_deref().unwrap_or("None")
         );
     }
 
@@ -720,7 +720,7 @@ async fn test_insert_messages_with_tree_structure() {
         "message hash: {} message content: {} message parent hash: {}",
         message.calculate_message_hash_for_pagination(),
         message.get_message_content().unwrap(),
-        parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        parent_hash.as_deref().unwrap_or("None")
     );
 
     // Get the last 5 messages from the inbox
@@ -800,7 +800,7 @@ async fn db_inbox() {
         "2023-07-02T20:53:34.812Z".to_string(),
     );
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None).await;
     println!("Inserted message {:?}", message.encode_message());
     let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
@@ -825,7 +825,7 @@ async fn db_inbox() {
         "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()
     );
 
-    println!("Inbox name: {}", inbox_name_value.to_string());
+    println!("Inbox name: {}", inbox_name_value);
     let last_messages_inbox = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.to_string(), 10, None)
         .unwrap();
@@ -980,8 +980,8 @@ async fn db_inbox() {
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -999,7 +999,7 @@ async fn db_inbox() {
         .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let _ = shinkai_db
+    shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
 
@@ -1010,7 +1010,7 @@ async fn db_inbox() {
         .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let _ = shinkai_db
+    shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
 
@@ -1040,8 +1040,8 @@ async fn db_inbox() {
         ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), node1_subidentity_name.to_string())
             .unwrap(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -1066,7 +1066,7 @@ async fn db_inbox() {
     assert_eq!(smart_inboxes.len(), 1);
 
     // Check if smart_inboxes contain the expected results
-    let expected_inbox_ids = vec!["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
+    let expected_inbox_ids = ["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
 
     for smart_inbox in smart_inboxes {
         assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
@@ -1134,14 +1134,14 @@ fn test_permission_errors() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     // Update local node keys
     shinkai_db
         .update_local_node_keys(
             ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-            node1_encryption_pk.clone(),
-            node1_identity_pk.clone(),
+            node1_encryption_pk,
+            node1_identity_pk,
         )
         .unwrap();
 
@@ -1153,8 +1153,8 @@ fn test_permission_errors() {
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -1167,8 +1167,8 @@ fn test_permission_errors() {
         ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), "nonexistent_identity".to_string())
             .unwrap(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -1208,7 +1208,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::ProfileNotFound(format!("Profile not found for: nonexistent_identity"))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error

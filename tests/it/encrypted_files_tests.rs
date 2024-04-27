@@ -203,7 +203,7 @@ fn sandwich_messages_with_files_test() {
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
+                let file_data = std::fs::read(file_path)
                     .map_err(|_| VRError::FailedPDFParsing)
                     .unwrap();
 

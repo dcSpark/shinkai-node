@@ -8,7 +8,7 @@ use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 
-use super::utils;
+
 
 #[cfg(test)]
 mod tests {
@@ -23,20 +23,20 @@ mod tests {
 
         rt.block_on(async {
             let node1_identity_name = "@@node1_test.sepolia-shinkai";
-            let node1_subidentity_name = "main";
-            let node1_device_name = "node1_device";
+            let _node1_subidentity_name = "main";
+            let _node1_device_name = "node1_device";
 
             let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-            let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+            let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
             let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
                 bounded(100);
 
-            let (node1_profile_identity_sk, _) = unsafe_deterministic_signature_keypair(100);
-            let (node1_profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(100);
+            let (_node1_profile_identity_sk, _) = unsafe_deterministic_signature_keypair(100);
+            let (_node1_profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(100);
 
-            let (node1_device_identity_sk, _) = unsafe_deterministic_signature_keypair(200);
-            let (node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
+            let (_node1_device_identity_sk, _) = unsafe_deterministic_signature_keypair(200);
+            let (_node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
 
             let node1_db_path = "tests/db_for_testing/test".to_string();
             let node1_vector_fs_path = "tests/vector_fs_db_for_testing/test".to_string();
@@ -63,7 +63,7 @@ mod tests {
                 shinkai_log(
                     ShinkaiLogOption::Tests,
                     ShinkaiLogLevel::Debug,
-                    &format!("Starting Node 1"),
+                    "Starting Node 1",
                 );
                 let _ = node1.await.lock().await.start().await;
             });
@@ -73,7 +73,7 @@ mod tests {
                 shinkai_log(
                     ShinkaiLogOption::Tests,
                     ShinkaiLogLevel::Debug,
-                    &format!("\n\nRegistration of an Admin Profile"),
+                    "\n\nRegistration of an Admin Profile",
                 );
 
                 {

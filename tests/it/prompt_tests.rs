@@ -2,18 +2,17 @@
 mod tests {
     use std::env;
 
-    use super::*;
+    
     use reqwest::Client;
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::agent::execution::job_prompts::Prompt;
     use shinkai_node::agent::providers::LLMProvider;
     use shinkai_node::agent::{
-        execution::job_prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
+        execution::job_prompts::{JobPromptGenerator},
         job_manager::JobManager,
-        parsing_helper::ParsingHelper,
     };
-    use tokio;
+    
 
     fn setup_vars() -> Result<(AgentLLMInterface, Client, Option<String>, Option<String>), &'static str> {
         // Extract from ENV with fallback to default values

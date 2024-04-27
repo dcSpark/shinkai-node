@@ -447,7 +447,7 @@ async fn init_ws_server(
         let db = shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
-    run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;
+    run_ws_api(node_env.ws_address, Arc::clone(&manager)).await;
 }
 
 /// Prints Useful Node information at startup

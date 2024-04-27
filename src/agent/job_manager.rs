@@ -24,7 +24,7 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
-use std::{env, mem};
+use std::{env};
 use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 4;
@@ -116,7 +116,9 @@ impl JobManager {
         )
         .await;
 
-        let job_manager = Self {
+        
+
+        Self {
             db: db.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             node_profile_name,
@@ -128,9 +130,7 @@ impl JobManager {
             vector_fs,
             embedding_generator,
             unstructured_api,
-        };
-
-        job_manager
+        }
     }
 
     pub async fn process_job_queue(
@@ -226,8 +226,8 @@ impl JobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            let job = job_queue_manager.peek(&job_id).await;
-                            job
+                            
+                            job_queue_manager.peek(&job_id).await
                         };
 
                         match job {
@@ -273,7 +273,7 @@ impl JobManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = mem::replace(&mut handles, Vec::new());
+                let handles_to_join = std::mem::take(&mut handles);
                 futures::future::join_all(handles_to_join).await;
                 handles.clear();
 
@@ -382,7 +382,7 @@ impl JobManager {
 
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id, profile).await {
+                        if let Some(serialized_agent) = identity_manager.search_local_agent(agent_id, profile).await {
                             let agent = Agent::from_serialized_agent(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             if let Some(agent) = agent_found.clone() {
@@ -399,7 +399,7 @@ impl JobManager {
                     job_id_to_return.map_err(|_| AgentError::AgentNotFound)
                 }
                 Err(err) => {
-                    return Err(AgentError::ShinkaiDB(err));
+                    Err(AgentError::ShinkaiDB(err))
                 }
             }
         }

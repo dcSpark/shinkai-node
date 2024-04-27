@@ -229,7 +229,7 @@ impl VectorFS {
     pub async fn wb_delete_folder(
         &self,
         writer: &VFSWriter,
-        mut write_batch: ProfileBoundWriteBatch,
+        write_batch: ProfileBoundWriteBatch,
     ) -> Result<ProfileBoundWriteBatch, VectorFSError> {
         self.internal_wb_delete_folder(writer, write_batch, false).await
     }
@@ -246,7 +246,7 @@ impl VectorFS {
             .await?;
 
         // Read the folder node first without removing it
-        let (folder_node, _) = self._get_node_from_core_resource(&writer).await?;
+        let (folder_node, _) = self._get_node_from_core_resource(writer).await?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
         let folder =
             FSFolder::from_vector_resource_node(folder_node.node, writer.path.clone(), &internals.last_read_index)?;
@@ -460,7 +460,7 @@ impl VectorFS {
         else {
             self.revert_internals_to_last_db_save(&writer.profile, &writer.profile)
                 .await?;
-            return Ok(move_result?);
+            move_result
         }
     }
 
@@ -478,7 +478,7 @@ impl VectorFS {
         let item_metadata = item_node.metadata;
         // And save the item into the new destination w/permissions
         let new_item = self
-            ._add_vr_header_to_core_resource(&destination_writer, header, item_metadata, current_datetime, false)
+            ._add_vr_header_to_core_resource(destination_writer, header, item_metadata, current_datetime, false)
             .await?;
 
         // Determine and set permissions based on the parent of the destination path
@@ -868,7 +868,7 @@ impl VectorFS {
 
         // Sets the Merkle hashes for a collection of folders.
         self._set_folders_merkle_hashes(
-            &writer,
+            writer,
             folder_merkle_hash_map
                 .iter()
                 .map(|(path, hash)| (path.clone(), hash.clone()))
@@ -900,7 +900,7 @@ impl VectorFS {
                 internals
                     .fs_core_resource
                     ._set_resource_merkle_hash_at_path(folder_path, merkle_hash)
-                    .map_err(|e| VectorFSError::from(e))?; // Convert VRError to VectorFSError as needed
+                    .map_err(VectorFSError::from)?; // Convert VRError to VectorFSError as needed
             }
 
             // Once done with merkle hash updates, update the merkle hashes of all folders from base_path and upwards.
@@ -970,9 +970,9 @@ impl VectorFS {
                 }
             }
             // Check if an existing VR is saved in the FSDB with the same reference string. If so, re-generate id of the current resource.
-            if let Ok(_) = self
+            if self
                 .db
-                .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
+                .get_resource(&resource.as_trait_object().reference_string(), &writer.profile).is_ok()
             {
                 resource.as_trait_object_mut().generate_and_update_resource_id();
             }
@@ -980,7 +980,7 @@ impl VectorFS {
             // Now all validation checks/setup have passed, move forward with saving header/resource/source file
             let current_datetime = ShinkaiTime::generate_time_now();
             // Update the metadata keys of the FSItem node
-            let mut node_metadata = node_metadata.unwrap_or_else(|| HashMap::new());
+            let mut node_metadata = node_metadata.unwrap_or_else(HashMap::new);
             node_metadata.insert(FSItem::vr_last_saved_metadata_key(), current_datetime.to_rfc3339());
             if let Some(sfm) = &source_file_map {
                 // Last Saved SFM
@@ -1102,7 +1102,7 @@ impl VectorFS {
             // Now all validation checks/setup have passed, move forward with saving header/source file map
             let current_datetime = ShinkaiTime::generate_time_now();
             // Update the metadata keys of the FSItem node
-            let mut node_metadata = node_metadata.unwrap_or_else(|| HashMap::new());
+            let mut node_metadata = node_metadata.unwrap_or_else(HashMap::new);
             node_metadata.insert(
                 FSItem::source_file_map_last_saved_metadata_key(),
                 current_datetime.to_rfc3339(),
@@ -1178,7 +1178,7 @@ impl VectorFS {
             )?;
 
             // Update the resource's keywords. If no keywords, copy all, else random replace a few
-            if resource.as_trait_object_mut().keywords().keyword_list.len() == 0 {
+            if resource.as_trait_object_mut().keywords().keyword_list.is_empty() {
                 resource
                     .as_trait_object_mut()
                     .keywords_mut()
@@ -1193,7 +1193,7 @@ impl VectorFS {
         };
 
         // If an embedding exists on the VR, and it is generated using the same embedding model
-        if let Some(_) = vr_header.resource_embedding.clone() {
+        if vr_header.resource_embedding.clone().is_some() {
             // Acquire a write lock on internals_map to ensure thread-safe access
             let mut internals_map = self.internals_map.write().await;
             let internals = internals_map
@@ -1305,8 +1305,8 @@ impl VectorFS {
             )?;
 
             // If new resource has keywords, and none in target copy all, else random replace a few
-            if resource_keywords.len() > 0 {
-                if parent_resource.as_trait_object_mut().keywords().keyword_list.len() == 0 {
+            if !resource_keywords.is_empty() {
+                if parent_resource.as_trait_object_mut().keywords().keyword_list.is_empty() {
                     parent_resource
                         .as_trait_object_mut()
                         .keywords_mut()

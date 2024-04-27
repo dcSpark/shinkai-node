@@ -100,7 +100,7 @@ impl LLMProvider for GenericAPI {
                             .choices
                             .first()
                             .map(|choice| choice.text.clone())
-                            .unwrap_or_else(|| String::new());
+                            .unwrap_or_else(String::new);
 
                         Self::extract_largest_json_object(&response_string)
                     }
