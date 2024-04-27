@@ -1845,6 +1845,7 @@ impl PyShinkaiMessageBuilder {
     path,
     folder_description,
     is_free,
+    has_web_alternative,
     sender,
     sender_subidentity,
     receiver,
@@ -1861,6 +1862,7 @@ impl PyShinkaiMessageBuilder {
         path: String,
         folder_description: String,
         is_free: bool,
+        has_web_alternative: bool,
         sender: String,
         sender_subidentity: ShinkaiNameString,
         receiver: String,
@@ -1886,6 +1888,7 @@ impl PyShinkaiMessageBuilder {
                             ))
                         }
                     },
+                    has_web_alternative: Some(has_web_alternative),
                     is_free,
                     folder_description,
                 },
