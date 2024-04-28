@@ -34,6 +34,7 @@ pub struct FilesystemSynchronizer {
     pub destination_path: PathBuf,
     pub profile_name: String,
     pub syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    pub should_mirror_delete: bool,
 }
 
 impl std::fmt::Debug for FilesystemSynchronizer {
@@ -53,6 +54,7 @@ impl FilesystemSynchronizer {
         destination_path: PathBuf,
         db_path: String,
         sync_interval: SyncInterval,
+        should_mirror_delete: bool,
     ) -> Result<Self, ShinkaiMirrorDBError> {
         let db = ShinkaiMirrorDB::new(&db_path)?;
         let syncing_folders_db = Arc::new(Mutex::new(db));
@@ -108,6 +110,7 @@ impl FilesystemSynchronizer {
             destination_path,
             syncing_folders_db,
             abort_handler: abort_handle,
+            should_mirror_delete
         })
     }
 

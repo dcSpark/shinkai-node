@@ -71,6 +71,14 @@ async fn main() {
                 .help("Node address for synchronization")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("should_mirror_deletes")
+                .short('m')
+                .long("should-mirror-deletes")
+                .value_name("SHOULD_MIRROR_DELETES")
+                .help("If set, files deleted locally will also be removed remotely")
+                .takes_value(false),
+        )
         .get_matches();
 
     let encrypted_file_path = env::var("ENCRYPTED_FILE_PATH")
@@ -118,6 +126,8 @@ async fn main() {
         .map(String::from)
         .or_else(|| env::var("NODE_ADDRESS").ok());
 
+    let should_mirror_deletes = matches.is_present("should_mirror_deletes");
+
     // Example of creating a FilesystemSynchronizer
     let mut shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
         Path::new(&encrypted_file_path),
@@ -135,6 +145,7 @@ async fn main() {
         destination_path,
         db_path,
         sync_interval,
+        should_mirror_deletes,
     )
     .await
     .expect("Failed to create FilesystemSynchronizer");
