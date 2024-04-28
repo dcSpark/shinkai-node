@@ -2,6 +2,8 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
+use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use crate::vector_fs::vector_fs::VectorFS;
 use aes_gcm::aead::generic_array::GenericArray;
@@ -40,6 +42,12 @@ pub struct NetworkVRKai {
     pub subscription_id: SubscriptionId,
     pub nonce: String,
     pub symmetric_key_hash: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VRPackPlusChanges {
+    pub vr_pack: VRPack,
+    pub diff: FSEntryTree,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -480,7 +488,7 @@ impl NetworkJobManager {
             .map_err(|_| NetworkJobQueueError::DecryptionFailed)?;
 
         // Deserialize the decrypted data back into Vec<(VRKai, VRPath)>
-        let mut vr_pack: VRPack = bincode::deserialize(&decrypted_data)
+        let vr_pack_plus_changes: VRPackPlusChanges = bincode::deserialize(&decrypted_data)
             .map_err(|_| NetworkJobQueueError::DeserializationFailed("Failed to deserialize VRPack".to_string()))?;
 
         // Find destination path from my_subscripton
@@ -500,9 +508,9 @@ impl NetworkJobManager {
             subscription.subscriber_profile,
         )?;
 
-        // Check if the folder already exists. If it does, we will manually extract the VRPack
         {
             let vector_fs_lock = vector_fs.upgrade().ok_or(NetworkJobQueueError::VectorFSUpgradeFailed)?;
+            let mut vr_pack = vr_pack_plus_changes.vr_pack;
 
             // If we're syncing into a different folder name, then update vr_pack name to match
             if let Ok(path_id) = destination_vr_path.last_path_id() {
@@ -511,6 +519,7 @@ impl NetworkJobManager {
                 }
             }
 
+            // Check if the folder already exists. If it does, we will manually extract the VRPack
             let path_already_exists = vector_fs_lock
                 .validate_path_points_to_folder(destination_vr_path.clone(), &local_subscriber.clone())
                 .await
@@ -539,13 +548,92 @@ impl NetworkJobManager {
                         .unwrap();
 
                     let vrkai_destination_writer = vector_fs_lock
-                        .new_writer(local_subscriber.clone(), vr_path.parent_path(), local_subscriber.clone())
+                        .new_writer(
+                            local_subscriber.clone(),
+                            vr_path.parent_path(),
+                            local_subscriber.clone(),
+                        )
                         .await
                         .unwrap();
 
                     let _resp = vector_fs_lock
                         .save_vrkai_in_folder(&vrkai_destination_writer, vr_kai)
                         .await;
+                }
+
+                // Proceed with deletions now
+                // Identify all deletions within the diff
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("handle_receiving_vr_pack_from_subscription diff: {:?}", vr_pack_plus_changes.diff),
+                );
+                let mut deletions = FSEntryTreeGenerator::find_deletions(&vr_pack_plus_changes.diff);
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("handle_receiving_vr_pack_from_subscription deletions: {:?}", deletions),
+                );
+
+                // Sort them
+                deletions.sort();
+
+                for i in 0..deletions.len() {
+                    let deletion_path = &deletions[i];
+                    let deletion_vr_path = VRPath::from_string(deletion_path)
+                        .map_err(|_| NetworkJobQueueError::InvalidVRPath(deletion_path.clone()))?;
+
+                    let deletion_writer = vector_fs_lock
+                        .new_writer(
+                            local_subscriber.clone(),
+                            deletion_vr_path.clone(),
+                            local_subscriber.clone(),
+                        )
+                        .await
+                        .unwrap();
+
+                    // Delete the item
+                    let _res = vector_fs_lock.delete_item(&deletion_writer).await;
+
+                    // Determine if the next path (if exists) has a different parent
+                    let next_different_parent = if i + 1 < deletions.len() {
+                        let next_path = VRPath::from_string(&deletions[i + 1])
+                            .map_err(|_| NetworkJobQueueError::InvalidVRPath(deletions[i + 1].clone()))?;
+                        next_path.parent_path() != deletion_vr_path.parent_path()
+                    } else {
+                        // If there's no next path, we treat it as if the next path has a different parent
+                        true
+                    };
+
+                    // If the next path has a different parent, check if the current folder is empty
+                    if next_different_parent {
+                        // Now check each parent directory up to the root
+                        let mut current_path = deletion_vr_path.clone();
+                        // We check folder by folder if they are empty to delete them
+                        // it could happen that we have /folder1/folder2/folder3/item
+                        // and we delete item, then folder3, folder2 and folder1 are empty
+                        while current_path.parent_path() != VRPath::root() {
+                            let parent_path = current_path.parent_path();
+                            // Check if the parent directory is empty
+                            let reader = vector_fs_lock
+                                .new_reader(local_subscriber.clone(), parent_path.clone(), local_subscriber.clone())
+                                .await
+                                .unwrap();
+
+                            if vector_fs_lock.is_folder_empty(&reader).await? {
+                                // If empty, delete the folder
+                                let parent_writer = vector_fs_lock
+                                    .new_writer(local_subscriber.clone(), parent_path.clone(), local_subscriber.clone())
+                                    .await
+                                    .unwrap();
+                                let _resp = vector_fs_lock.delete_folder(&parent_writer).await;
+                            } else {
+                                // If the folder is not empty, stop checking further parent folders
+                                break;
+                            }
+                            current_path = parent_path;
+                        }
+                    }
                 }
             } else {
                 let parent_writer = vector_fs_lock

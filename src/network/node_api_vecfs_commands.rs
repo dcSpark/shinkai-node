@@ -136,6 +136,7 @@ impl Node {
     }
 
     // Private method to abstract common logic
+    #[allow(clippy::too_many_arguments)]
     async fn retrieve_path_json_common(
         _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
