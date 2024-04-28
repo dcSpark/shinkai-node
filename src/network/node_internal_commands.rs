@@ -399,7 +399,6 @@ impl Node {
                 match subidentity_manager.add_agent_subidentity(agent.clone()).await {
                     Ok(_) => {
                         drop(subidentity_manager);
-                        eprintln!("Profile: {}", profile);
                         let inboxes = Self::internal_get_all_inboxes_for_profile(
                             identity_manager.clone(),
                             db.clone(),
@@ -409,7 +408,6 @@ impl Node {
 
                         let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
                         if !has_job_inbox {
-                            eprintln!("Creating job inbox");
                             // let job_scope // it should have the vrkai file in scope
                             let job_scope = JobScope {
                                 local_vrkai: vec![],
@@ -423,11 +421,13 @@ impl Node {
                                 is_hidden: Some(false),
                             };
 
-                            // should we add it to the file system?
-                            // should we also create the folders My Files (Private)?
+                            // TODO: check that agent has inferencing capabilities 
 
                             let mut job_manager_locked = job_manager.lock().await;
-                            let job_id = match job_manager_locked.process_job_creation(job_creation, profile, &agent.id.clone()).await {
+                            let job_id = match job_manager_locked
+                                .process_job_creation(job_creation, profile, &agent.id.clone())
+                                .await
+                            {
                                 Ok(job_id) => job_id,
                                 Err(err) => {
                                     return Err(NodeError {
@@ -436,24 +436,29 @@ impl Node {
                                 }
                             };
 
-                            // Add Message to job (bypass the job manager) (two messages, one for the user and one for the agent)
+                            let subidentity_manager = identity_manager.lock().await;
+                            let sender = subidentity_manager
+                                .search_identity(&profile.full_name)
+                                .await
+                                .unwrap();
                             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?.to_string();
-                            eprintln!("Inbox name: {}", inbox_name);
+                            let sender_standard = match sender {
+                                Identity::Standard(std_identity) => std_identity,
+                                _ => {
+                                    return Err(NodeError {
+                                        message: "Sender is not a StandardIdentity".to_string(),
+                                    })
+                                }
+                            };
+                            db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
                             db.update_smart_inbox_name(
                                 &inbox_name.to_string(),
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;
-                            eprintln!("finishing updating the smart inbox");
-                        }
-                        // debug
-                        let inboxes = Self::internal_get_all_inboxes_for_profile(
-                            identity_manager.clone(),
-                            db.clone(),
-                            profile.clone(),
-                        )
-                        .await;
-                        eprintln!("Inboxes after: {:?}", inboxes);
 
+                            // TODO: Add Message to job (bypass the job manager) (two messages, one for the user and one for the agent)
+                            
+                        }
                         Ok(())
                     }
                     Err(err) => {
@@ -626,9 +631,15 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in agents {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            Self::internal_add_agent(db.clone(), identity_manager.clone(), job_manager.clone(), agent, &profile_name)
-                .await
-                .map_err(|e| format!("Failed to add agent: {}", e))?;
+            Self::internal_add_agent(
+                db.clone(),
+                identity_manager.clone(),
+                job_manager.clone(),
+                agent,
+                &profile_name,
+            )
+            .await
+            .map_err(|e| format!("Failed to add agent: {}", e))?;
         }
 
         Ok(())

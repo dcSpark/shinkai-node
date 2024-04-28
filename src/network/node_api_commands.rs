@@ -512,7 +512,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -617,6 +617,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -754,24 +755,22 @@ impl Node {
             .as_str(),
         );
 
-        if first_device_needs_registration_code == false {
-            if main_profile_exists == false {
-                let code_type = RegistrationCodeType::Device("main".to_string());
-                let permissions = IdentityPermissions::Admin;
+        if !first_device_needs_registration_code && !main_profile_exists {
+            let code_type = RegistrationCodeType::Device("main".to_string());
+            let permissions = IdentityPermissions::Admin;
 
-                match db.generate_registration_new_code(permissions, code_type) {
-                    Ok(new_code) => {
-                        code = new_code;
-                    }
-                    Err(err) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Failed to generate registration code: {}", err),
-                            }))
-                            .await;
-                    }
+            match db.generate_registration_new_code(permissions, code_type) {
+                Ok(new_code) => {
+                    code = new_code;
+                }
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to generate registration code: {}", err),
+                        }))
+                        .await;
                 }
             }
         }
@@ -839,8 +838,8 @@ impl Node {
                             addr: None,
                             profile_signature_public_key: Some(signature_pk_obj),
                             profile_encryption_public_key: Some(encryption_pk_obj),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             identity_type: standard_identity_type,
                             permission_type,
                         };
@@ -851,9 +850,9 @@ impl Node {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
+                                        encryption_public_key,
                                     ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -899,8 +898,8 @@ impl Node {
                                     addr: None,
                                     profile_encryption_public_key: Some(encryption_pk_obj),
                                     profile_signature_public_key: Some(signature_pk_obj),
-                                    node_encryption_public_key: encryption_public_key.clone(),
-                                    node_signature_public_key: identity_public_key.clone(),
+                                    node_encryption_public_key: encryption_public_key,
+                                    node_signature_public_key: identity_public_key,
                                     identity_type: StandardIdentityType::Profile,
                                     permission_type: IdentityPermissions::Admin,
                                 };
@@ -929,8 +928,8 @@ impl Node {
 
                         let device_identity = DeviceIdentity {
                             full_identity_name: full_identity_name.clone(),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             profile_encryption_public_key: encryption_pk_obj,
                             profile_signature_public_key: signature_pk_obj,
                             device_encryption_public_key: device_encryption_pk_obj,
@@ -941,7 +940,7 @@ impl Node {
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if main_profile_exists == false && !initial_agents.is_empty() {
+                                if !main_profile_exists && !initial_agents.is_empty() {
                                     std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
                                     for agent in &initial_agents {
@@ -960,9 +959,9 @@ impl Node {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
+                                        encryption_public_key,
                                     ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
