@@ -300,11 +300,12 @@ impl Node {
     pub async fn local_add_agent(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
         agent: SerializedAgent,
         profile: &ShinkaiName,
         res: Sender<String>,
     ) {
-        let result = Self::internal_add_agent(db, identity_manager, agent, profile).await;
+        let result = Self::internal_add_agent(db, identity_manager, job_manager, agent, profile).await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -341,11 +342,12 @@ impl Node {
     pub async fn local_add_ollama_models(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
         input_models: Vec<String>,
         requester: ShinkaiName,
         res: Sender<Result<(), String>>,
     ) {
-        let result = Self::internal_add_ollama_models(db, identity_manager, input_models, requester).await;
+        let result = Self::internal_add_ollama_models(db, identity_manager, job_manager, input_models, requester).await;
         let _ = res.send(result).await;
     }
 

@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
+use shinkai_vector_resources::vector_resource::VectorResourceCore;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPack, VRPath};
-use shinkai_vector_resources::vector_resource::{VectorResourceCore};
-use shinkai_vector_resources::{
-    source::{VRSourceReference},
-    vector_resource::BaseVectorResource,
-};
+use shinkai_vector_resources::{source::VRSourceReference, vector_resource::BaseVectorResource};
 use std::fmt;
 
 use crate::schemas::shinkai_name::ShinkaiName;
