@@ -933,11 +933,13 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let db_clone = self.db.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_agent(
                                                     db_clone,
                                                     identity_manager_clone,
                                                     job_manager_clone,
+                                                    identity_secret_key_clone,
                                                     agent,
                                                     &profile,
                                                     res,
@@ -967,11 +969,13 @@ impl Node {
                                             let db_clone = self.db.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let job_manager_clone = self.job_manager.clone().unwrap();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_ollama_models(
                                                     db_clone,
                                                     identity_manager_clone,
                                                     job_manager_clone,
+                                                    identity_secret_key_clone,
                                                     models,
                                                     target_profile,
                                                     res,
@@ -1004,6 +1008,7 @@ impl Node {
                                             let embedding_generator_clone = Arc::new(self.embedding_generator.clone());
                                             let encryption_public_key_clone = self.encryption_public_key;
                                             let identity_public_key_clone = self.identity_public_key;
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let initial_agents_clone = self.initial_agents.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
                                             tokio::spawn(async move {
@@ -1018,6 +1023,7 @@ impl Node {
                                                     job_manager,
                                                     encryption_public_key_clone,
                                                     identity_public_key_clone,
+                                                    identity_secret_key_clone,
                                                     initial_agents_clone,
                                                     msg,
                                                     res,
@@ -1123,12 +1129,14 @@ impl Node {
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_agent(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     job_manager_clone,
+                                                    identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
                                                     res,
@@ -1383,12 +1391,14 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let identity_secret_key_clone = self.identity_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_ollama_models(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     job_manager_clone,
+                                                    identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
                                                     res,

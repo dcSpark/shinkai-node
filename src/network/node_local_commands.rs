@@ -9,6 +9,7 @@ use crate::{
     schemas::{identity::Identity, inbox_permission::InboxPermission},
 };
 use async_channel::Sender;
+use ed25519_dalek::SigningKey;
 use log::error;
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName},
@@ -301,11 +302,13 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         agent: SerializedAgent,
         profile: &ShinkaiName,
         res: Sender<String>,
     ) {
-        let result = Self::internal_add_agent(db, identity_manager, job_manager, agent, profile).await;
+        let result =
+            Self::internal_add_agent(db, identity_manager, job_manager, identity_secret_key, agent, profile).await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -343,11 +346,20 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         input_models: Vec<String>,
         requester: ShinkaiName,
         res: Sender<Result<(), String>>,
     ) {
-        let result = Self::internal_add_ollama_models(db, identity_manager, job_manager, input_models, requester).await;
+        let result = Self::internal_add_ollama_models(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            input_models,
+            requester,
+        )
+        .await;
         let _ = res.send(result).await;
     }
 

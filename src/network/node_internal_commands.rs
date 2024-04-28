@@ -15,8 +15,10 @@ use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
+use tokio::io::AsyncReadExt;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent},
@@ -390,6 +392,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         agent: SerializedAgent,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
@@ -421,8 +424,6 @@ impl Node {
                                 is_hidden: Some(false),
                             };
 
-                            // TODO: check that agent has inferencing capabilities 
-
                             let mut job_manager_locked = job_manager.lock().await;
                             let job_id = match job_manager_locked
                                 .process_job_creation(job_creation, profile, &agent.id.clone())
@@ -437,10 +438,7 @@ impl Node {
                             };
 
                             let subidentity_manager = identity_manager.lock().await;
-                            let sender = subidentity_manager
-                                .search_identity(&profile.full_name)
-                                .await
-                                .unwrap();
+                            let sender = subidentity_manager.search_identity(&profile.full_name).await.unwrap();
                             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?.to_string();
                             let sender_standard = match sender {
                                 Identity::Standard(std_identity) => std_identity,
@@ -456,8 +454,29 @@ impl Node {
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;
 
-                            // TODO: Add Message to job (bypass the job manager) (two messages, one for the user and one for the agent)
-                            
+                            {
+                                // Add Two Message from "Agent"
+                                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+
+                                // Read the content from a local file
+                                let file_path = "files/shinkai_welcome.md";
+                                let mut file = tokio::fs::File::open(file_path).await?;
+                                let mut contents = String::new();
+                                file.read_to_string(&mut contents).await?;
+
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                    job_id.to_string(),
+                                    contents,
+                                    "".to_string(),
+                                    identity_secret_key_clone,
+                                    profile.node_name.clone(),
+                                    profile.node_name.clone(),
+                                )
+                                .unwrap();
+
+                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                                    .await?;
+                            }
                         }
                         Ok(())
                     }
@@ -581,6 +600,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         input_models: Vec<String>,
         shinkai_name: ShinkaiName,
     ) -> Result<(), String> {
@@ -635,6 +655,7 @@ impl Node {
                 db.clone(),
                 identity_manager.clone(),
                 job_manager.clone(),
+                identity_secret_key.clone(),
                 agent,
                 &profile_name,
             )

@@ -629,6 +629,7 @@ impl Node {
         job_manager: Arc<Mutex<JobManager>>,
         encryption_public_key: EncryptionPublicKey,
         identity_public_key: VerifyingKey,
+        identity_secret_key: SigningKey,
         initial_agents: Vec<SerializedAgent>,
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
@@ -849,9 +850,7 @@ impl Node {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
-                                    encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key,
-                                    ),
+                                    encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
@@ -948,6 +947,7 @@ impl Node {
                                             db.clone(),
                                             identity_manager.clone(),
                                             job_manager.clone(),
+                                            identity_secret_key.clone(),
                                             agent.clone(),
                                             &profile,
                                         )
@@ -958,9 +958,7 @@ impl Node {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
-                                    encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key,
-                                    ),
+                                    encryption_public_key: encryption_public_key_to_string(encryption_public_key),
                                     identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
@@ -2019,6 +2017,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
@@ -2080,8 +2079,15 @@ impl Node {
             return Ok(());
         }
 
-        match Node::internal_add_ollama_models(db, identity_manager, job_manager, input_payload.models, requester_name)
-            .await
+        match Node::internal_add_ollama_models(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            input_payload.models,
+            requester_name,
+        )
+        .await
         {
             Ok(_) => {
                 let _ = res.send(Ok::<(), APIError>(())).await;
@@ -2105,6 +2111,7 @@ impl Node {
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -2178,6 +2185,7 @@ impl Node {
             db.clone(),
             identity_manager.clone(),
             job_manager.clone(),
+            identity_secret_key.clone(),
             serialized_agent.agent,
             &profile,
         )
