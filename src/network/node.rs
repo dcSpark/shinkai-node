@@ -1,5 +1,5 @@
 use super::network_manager::network_job_manager::{
-    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai,
+    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai, VRPackPlusChanges,
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
@@ -2208,7 +2208,7 @@ impl Node {
     }
 
     pub async fn send_encrypted_vrpack(
-        vr_pack: VRPack,
+        vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,
         encryption_key_hex: String,
         peer: SocketAddr,
@@ -2216,7 +2216,7 @@ impl Node {
     ) {
         tokio::spawn(async move {
             // Serialize only the VRKaiPath pairs
-            let serialized_data = bincode::serialize(&vr_pack).unwrap();
+            let serialized_data = bincode::serialize(&vr_pack_plus_changes).unwrap();
             let encryption_key = hex::decode(encryption_key_hex.clone()).unwrap();
             let key = GenericArray::from_slice(&encryption_key);
             let cipher = Aes256Gcm::new(key);
