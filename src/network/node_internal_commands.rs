@@ -410,9 +410,9 @@ impl Node {
                         .await;
 
                         let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
-                        let no_welcome_message = std::env::var("NO_WELCOME_MESSAGE").unwrap_or_default() == "false";
+                        let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
 
-                        if !has_job_inbox && no_welcome_message {
+                        if !has_job_inbox && welcome_message {
                             // let job_scope // it should have the vrkai file in scope
                             let job_scope = JobScope {
                                 local_vrkai: vec![],
