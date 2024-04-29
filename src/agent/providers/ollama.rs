@@ -121,10 +121,13 @@ impl LLMProvider for Ollama {
                 }
             }
 
+            // Attempt to clean up response text
+            response_text = response_text.replacen("{ \n\"answer\": \n\"", "{ \"answer\": \"", 1);
+
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Info,
-                format!("Call API Response Text: {:?}", response_text).as_str(),
+                ShinkaiLogLevel::Debug,
+                format!("Cleaned Response Text: {:?}", response_text).as_str(),
             );
 
             match serde_json::from_str::<JsonValue>(&response_text) {
@@ -136,18 +139,29 @@ impl LLMProvider for Ollama {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Error,
-                        format!("Failed to deserialize response: {:?}", e).as_str(),
+                        format!("Failed to deserialize response: {:?}. Retrying...", e).as_str(),
                     );
-            
+
                     // Attempt to escape newline characters and retry deserialization
-                    let retry_cleaned_response_text = response_text.chars().map(|c| {
-                        if c == '\n' {
-                            "\\n".to_string()  // Convert to String for consistency
-                        } else {
-                            c.to_string()  // Convert char to String
-                        }
-                    }).collect::<String>();
-            
+                    let retry_cleaned_response_text = response_text
+                        .chars()
+                        .map(|c| {
+                            if c == '\n' {
+                                "\\n".to_string() // Convert to String for consistency
+                            } else if c == '\t' {
+                                "\\t".to_string() // Convert to String for consistency
+                            } else {
+                                c.to_string() // Convert char to String
+                            }
+                        })
+                        .collect::<String>();
+
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("Retry Cleaned Response Text: {:?}", retry_cleaned_response_text).as_str(),
+                    );
+
                     match serde_json::from_str::<JsonValue>(&retry_cleaned_response_text) {
                         Ok(retry_deserialized_json) => {
                             let retry_response_string = retry_deserialized_json.to_string();
