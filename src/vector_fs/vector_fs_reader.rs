@@ -385,4 +385,21 @@ impl VectorFS {
         let vr = self.retrieve_vector_resource(&reader).await?;
         Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
     }
+
+    /// Checks if the folder at the specified path is empty.
+    pub async fn is_folder_empty(&self, reader: &VFSReader) -> Result<bool, VectorFSError> {
+        let fs_entry = self.retrieve_fs_entry(reader).await?;
+
+        match fs_entry {
+            FSEntry::Folder(folder) => {
+                // A folder is considered empty if it has no child folders and no child items.
+                Ok(folder.child_folders.is_empty() && folder.child_items.is_empty())
+            }
+            FSEntry::Root(root) => {
+                // Similarly, a root is considered empty if it has no child folders.
+                Ok(root.child_folders.is_empty())
+            }
+            _ => Err(VectorFSError::PathDoesNotPointAtFolder(reader.path.clone())),
+        }
+    }
 }

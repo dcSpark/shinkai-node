@@ -1153,3 +1153,75 @@ async fn test_vector_fs_operations() {
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());
 }
+
+#[tokio::test]
+async fn test_folder_empty_check_reuse() {
+    setup();
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let vector_fs = setup_default_vector_fs().await;
+
+    // Create a new folder that will be checked for emptiness, then filled
+    let folder_name = "test_folder";
+    let folder_path = VRPath::root().push_cloned(folder_name.to_string());
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .await
+        .unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
+
+    // Check if the new folder is empty initially
+    let reader = vector_fs
+        .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should initially be empty."
+    );
+
+    // Add a document to the folder, making it non-empty
+    let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+    let resource = BaseVectorResource::Document(doc_resource);
+    let writer = vector_fs
+        .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    vector_fs
+        .save_vector_resource_in_folder(&writer, resource, Some(source_file_map))
+        .await
+        .unwrap();
+
+    // Re-check if the folder is now non-empty
+    let reader = vector_fs
+        .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        !vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should now be non-empty."
+    );
+
+    // Create a subfolder within the initial folder
+    let subfolder_name = "subfolder1";
+    let subfolder_path = folder_path.push_cloned(subfolder_name.to_string());
+    vector_fs.create_new_folder(&writer, subfolder_name).await.unwrap();
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), subfolder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+
+    let subfolder_name = "subfolder2";
+    vector_fs.create_new_folder(&writer, subfolder_name).await.unwrap();
+
+    // Check if the folder is still recognized as non-empty after adding a subfolder
+    // This is to ensure the folder's non-empty status is consistent with its content state
+    let reader = vector_fs
+        .new_reader(default_test_profile(), subfolder_path, default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        !vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should still be non-empty after adding a subfolder."
+    );
+}
