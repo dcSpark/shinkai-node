@@ -98,7 +98,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 }
                 NodeContent::Resource(resource) => {
                     if path_depth == 1 {
-                        println!(" ");
+                        eprintln!(" ");
                     }
                     // Decide what to print for start
                     format!(
@@ -129,9 +129,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
             // Create indent string and do the final print
             let indent_string = " ".repeat(path_depth * 2) + &">".repeat(path_depth);
             if merkle_hash.len() == 0 {
-                println!("{}{}", indent_string, data,);
+                eprintln!("{}{}", indent_string, data,);
             } else {
-                println!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
+                eprintln!("{}{} | Merkle Hash: {}", indent_string, data, merkle_hash);
             }
         }
     }

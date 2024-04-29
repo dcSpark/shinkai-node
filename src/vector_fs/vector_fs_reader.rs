@@ -125,7 +125,7 @@ impl VectorFS {
 
     /// Retrieves the FSEntry for the reader's path in the VectorFS.
     pub async fn retrieve_fs_entry(&self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
 
         // Create FSRoot directly if path is root
         if reader.path.is_empty() {
@@ -330,7 +330,7 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<RetrievedNode, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
         internals
             .fs_core_resource
             .retrieve_node_at_path(path.clone(), None)
@@ -384,5 +384,22 @@ impl VectorFS {
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let vr = self.retrieve_vector_resource(&reader).await?;
         Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
+    }
+
+    /// Checks if the folder at the specified path is empty.
+    pub async fn is_folder_empty(&self, reader: &VFSReader) -> Result<bool, VectorFSError> {
+        let fs_entry = self.retrieve_fs_entry(reader).await?;
+
+        match fs_entry {
+            FSEntry::Folder(folder) => {
+                // A folder is considered empty if it has no child folders and no child items.
+                Ok(folder.child_folders.is_empty() && folder.child_items.is_empty())
+            }
+            FSEntry::Root(root) => {
+                // Similarly, a root is considered empty if it has no child folders.
+                Ok(root.child_folders.is_empty())
+            }
+            _ => Err(VectorFSError::PathDoesNotPointAtFolder(reader.path.clone())),
+        }
     }
 }

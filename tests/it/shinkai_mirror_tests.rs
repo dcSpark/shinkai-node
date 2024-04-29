@@ -273,6 +273,7 @@ fn mirror_sync_tests() {
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
+        let api_server_handler = api_server.abort_handle();
 
         let interactions_handler = tokio::spawn(async move {
             eprintln!("Starting interactions");
@@ -478,6 +479,7 @@ fn mirror_sync_tests() {
 
                 assert!(success, "Failed to match the expected file paths after 10 attempts.");
             }
+            api_server_handler.abort();
             node1_abort_handler.abort();
         });
         // Wait for all tasks to complete

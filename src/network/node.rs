@@ -1,5 +1,5 @@
 use super::network_manager::network_job_manager::{
-    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai,
+    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai, VRPackPlusChanges,
 };
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use super::node_error::NodeError;
@@ -239,6 +239,14 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<SerializedAgent>, APIError>>,
     },
+    APIRemoveAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIModifyAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     AvailableAgents {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
@@ -264,10 +272,19 @@ pub enum NodeCommand {
     IsPristine {
         res: Sender<bool>,
     },
+    APIScanOllamaModels {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<serde_json::Value>, APIError>>,
+    },
+    APIAddOllamaModels {
+        msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    },
     LocalScanOllamaModels {
-        res: Sender<Result<Vec<String>, String>>,
+        res: Sender<Result<Vec<serde_json::Value>, String>>,
     },
     AddOllamaModels {
+        target_profile: ShinkaiName,
         models: Vec<String>,
         res: Sender<Result<(), String>>,
     },
@@ -366,6 +383,9 @@ pub enum NodeCommand {
     RetrieveVRPack {
         msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
+    },
+    LocalExtManagerProcessSubscriptionUpdates {
+        res: Sender<Result<(), String>>,
     },
 }
 
@@ -941,16 +961,15 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        NodeCommand::AddOllamaModels { models, res } => {
+                                        NodeCommand::AddOllamaModels { target_profile, models, res } => {
                                             let db_clone = self.db.clone();
-                                            let node_name_clone = self.node_name.clone();
                                             let identity_manager_clone = self.identity_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_ollama_models(
                                                     db_clone,
-                                                    &node_name_clone,
                                                     identity_manager_clone,
                                                     models,
+                                                    target_profile,
                                                     res,
                                                 ).await;
                                             });
@@ -1108,7 +1127,40 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        // NodeCommand::APIJobMessage { msg, res } => self.api_job_message(msg, res).await,
+                                        // NodeCommand::APIRemoveAgent { msg, res } => self.api_remove_agent(msg, res).await,
+                                        NodeCommand::APIRemoveAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_remove_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            }); 
+                                        },
+                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await, 
+                                        NodeCommand::APIModifyAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_modify_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            }); 
+                                        },
                                         NodeCommand::APIJobMessage { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let identity_manager_clone = self.identity_manager.clone();
@@ -1292,6 +1344,38 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_list_toolkits(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIScanOllamaModels { msg, res } => self.api_scan_ollama_models(msg, res).await,
+                                        NodeCommand::APIScanOllamaModels { msg, res } => {
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_scan_ollama_models(
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg, 
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIAddOllamaModels { msg, res } => self.api_add_ollama_models(msg, res).await,
+                                        NodeCommand::APIAddOllamaModels { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_add_ollama_models(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
@@ -1839,6 +1923,16 @@ impl Node {
                                                 ).await;
                                             });
                                         },
+                                        // NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => self.local_ext_manager_process_subscription_updates(res).await,
+                                        NodeCommand::LocalExtManagerProcessSubscriptionUpdates { res } => {
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::local_ext_manager_process_subscription_updates(
+                                                    ext_subscription_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
                                         _ => (),
                                     }
                             },
@@ -2114,7 +2208,7 @@ impl Node {
     }
 
     pub async fn send_encrypted_vrpack(
-        vr_pack: VRPack,
+        vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,
         encryption_key_hex: String,
         peer: SocketAddr,
@@ -2122,7 +2216,7 @@ impl Node {
     ) {
         tokio::spawn(async move {
             // Serialize only the VRKaiPath pairs
-            let serialized_data = bincode::serialize(&vr_pack).unwrap();
+            let serialized_data = bincode::serialize(&vr_pack_plus_changes).unwrap();
             let encryption_key = hex::decode(encryption_key_hex.clone()).unwrap();
             let key = GenericArray::from_slice(&encryption_key);
             let cipher = Aes256Gcm::new(key);
