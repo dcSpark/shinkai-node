@@ -206,7 +206,7 @@ impl JobPromptGenerator {
             );
         }
 
-        let pre_task_text = format!("The user has asked: ");
+        let pre_task_text = "The user has asked: ".to_string();
         prompt.add_content(pre_task_text, SubPromptType::System, 99);
         prompt.add_content(job_task, SubPromptType::User, 100);
 
@@ -217,7 +217,7 @@ impl JobPromptGenerator {
         };
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
+            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. The JSON shouldn't be prettify so it should be in just one line. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
             SubPromptType::System,
             98
         );

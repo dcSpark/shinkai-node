@@ -138,7 +138,30 @@ impl LLMProvider for Ollama {
                         ShinkaiLogLevel::Error,
                         format!("Failed to deserialize response: {:?}", e).as_str(),
                     );
-                    Err(AgentError::SerdeError(e))
+            
+                    // Attempt to escape newline characters and retry deserialization
+                    let retry_cleaned_response_text = response_text.chars().map(|c| {
+                        if c == '\n' {
+                            "\\n".to_string()  // Convert to String for consistency
+                        } else {
+                            c.to_string()  // Convert char to String
+                        }
+                    }).collect::<String>();
+            
+                    match serde_json::from_str::<JsonValue>(&retry_cleaned_response_text) {
+                        Ok(retry_deserialized_json) => {
+                            let retry_response_string = retry_deserialized_json.to_string();
+                            Self::extract_largest_json_object(&retry_response_string)
+                        }
+                        Err(retry_e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to deserialize response on retry: {:?}", retry_e).as_str(),
+                            );
+                            Err(AgentError::SerdeError(retry_e))
+                        }
+                    }
                 }
             }
         } else {
