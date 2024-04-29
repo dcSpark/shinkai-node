@@ -327,6 +327,7 @@ fn mirror_sync_tests() {
                 Path::new("./").to_path_buf(),
                 "db_tests_persistence/".to_string(),
                 SyncInterval::None,
+                false,
             )
             .await
             .unwrap();

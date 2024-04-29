@@ -73,7 +73,7 @@ async fn main() {
         )
         .arg(
             Arg::with_name("should_mirror_deletes")
-                .short('m')
+                .short('r')
                 .long("should-mirror-deletes")
                 .value_name("SHOULD_MIRROR_DELETES")
                 .help("If set, files deleted locally will also be removed remotely")

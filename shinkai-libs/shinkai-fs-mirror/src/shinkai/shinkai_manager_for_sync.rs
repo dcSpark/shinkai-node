@@ -2,16 +2,13 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::http_requests::{
-    request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse,
-};
+use crate::http_requests::{request_post, request_post_multipart, PostDataResponse, PostRequestError};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use rand::RngCore;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
 };
@@ -267,6 +264,33 @@ impl ShinkaiManagerForSync {
                     Err(_) => Err(PostRequestError::RequestFailed("Upload task panicked".to_string())),
                 }
             }
+        }
+    }
+
+    // Add a new function to delete an item
+    pub async fn delete_item(&self, path: &str) -> Result<(), PostRequestError> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_delete_item(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            self.node_receiver_subidentity.clone(),
+        ).map_err(|err| PostRequestError::Unknown(err.to_string()))?; 
+
+        let delete_item_message = serde_json::json!(shinkai_message);
+        let response = request_post(
+            self.node_address.clone(),
+            delete_item_message.to_string(),
+            "/v1/vec_fs/remove_item",
+        )
+        .await;
+
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
         }
     }
 
