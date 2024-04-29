@@ -14,7 +14,7 @@ use super::LocalFileParser;
 impl LocalFileParser {
     #[cfg(feature = "desktop-only")]
     pub fn process_md_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        let md_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedJSONParsing)?;
+        let md_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedMDParsing)?;
 
         let arena = Arena::new();
         let root = parse_document(&arena, &md_string, &Options::default());
