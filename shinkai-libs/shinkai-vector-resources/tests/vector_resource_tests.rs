@@ -1190,3 +1190,13 @@ async fn local_md_parsing_test() {
         .unwrap()
         .contains("A powerful native Rust"));
 }
+
+#[tokio::test]
+async fn local_html_parsing_test() {
+    let source_file_name = "unstructured.html";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+
+    let result = LocalFileParser::process_html_file(buffer, &source_file_name, 400);
+
+    assert!(result.is_ok());
+}
