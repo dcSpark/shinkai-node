@@ -247,6 +247,7 @@ impl JobManager {
     }
 
     /// Temporary function to process the files in the job message for tasks
+    #[allow(clippy::too_many_arguments)]
     pub async fn should_process_job_files_for_tasks_take_over(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -416,6 +417,7 @@ impl JobManager {
 
     /// Processes the files sent together with the current job_message into Vector Resources,
     /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_files_for_vector_resources(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -526,6 +528,7 @@ impl JobManager {
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
     /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
         _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
