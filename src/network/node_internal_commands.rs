@@ -524,9 +524,9 @@ impl Node {
         input_models: Vec<String>,
         shinkai_name: ShinkaiName,
     ) -> Result<(), String> {
-        let requester_profile = match shinkai_name.profile_name {
-            Some(profile) => profile,
-            None => return Err("Profile name is required.".to_string()),
+        let requester_profile = match shinkai_name.extract_profile() {
+            Ok(profile) => profile,
+            Err(e) => return Err(e.to_string()),
         };
 
         let available_models = Self::internal_scan_ollama_models().await.map_err(|e| e.message)?;
@@ -553,7 +553,7 @@ impl Node {
 
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
-                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", requester_profile, sanitized_model))
+                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", requester_profile.full_name, sanitized_model))
                         .expect("Failed to create ShinkaiName"),
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
