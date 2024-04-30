@@ -13,7 +13,7 @@ use reqwest::Client as AsyncClient;
 use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native-http")]
-use std::io::{prelude::*};
+use std::io::prelude::*;
 
 use std::time::Duration;
 
@@ -231,7 +231,6 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[async_recursion]
     #[cfg(feature = "native-http")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
     pub async fn generate_embedding_tei(
@@ -239,93 +238,67 @@ impl RemoteEmbeddingGenerator {
         input_strings: Vec<String>,
         ids: Vec<String>,
     ) -> Result<Vec<Embedding>, VRError> {
-        // Prepare the request body
-        let request_body = EmbeddingArrayRequestBody {
-            inputs: input_strings.iter().map(|s| s.to_string()).collect(),
-        };
-
-        // Create the HTTP client with a custom timeout
-        let timeout = Duration::from_secs(60);
-        let client = ClientBuilder::new().timeout(timeout).build()?;
-
-        // Build the request
-        let mut request = client
-            .post(&format!("{}", self.tei_endpoint_url()))
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        // Add the API key to the header if it's available
-        if let Some(api_key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", api_key));
-        }
-
-        // Send the request with retries
         let max_retries = 3;
         let mut retry_count = 0;
-        let response = loop {
-            let cloned_request = match request.try_clone() {
-                Some(req) => req,
-                None => return Err(VRError::RequestFailed("Failed to clone request for retry".into())),
+        let mut shortening_retry = 0;
+        let mut current_input_strings = input_strings.clone();
+
+        loop {
+            // Prepare the request body
+            let request_body = EmbeddingArrayRequestBody {
+                inputs: current_input_strings.iter().map(|s| s.to_string()).collect(),
             };
-            match cloned_request.send().await {
-                Ok(response) => break response,
-                Err(err) => {
-                    if retry_count < max_retries {
-                        retry_count += 1;
-                        eprintln!(
-                            "Request failed with error: {}. Retrying ({}/{})...",
-                            err, retry_count, max_retries
-                        );
-                    } else {
-                        return Err(VRError::RequestFailed(format!(
-                            "HTTP request failed after {} retries: {}",
-                            max_retries, err
-                        )));
+
+            // Create the HTTP client with a custom timeout
+            let timeout = Duration::from_secs(60);
+            let client = ClientBuilder::new().timeout(timeout).build()?;
+
+            // Build the request
+            let mut request = client
+                .post(&format!("{}", self.tei_endpoint_url()))
+                .header("Content-Type", "application/json")
+                .json(&request_body);
+
+            // Add the API key to the header if it's available
+            if let Some(api_key) = &self.api_key {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+
+            // Send the request
+            let response = request.send().await;
+
+            match response {
+                Ok(response) if response.status().is_success() => {
+                    let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>().await;
+                    match embedding_response {
+                        Ok(embedding_response) => {
+                            // Create a Vec<Embedding> by iterating over ids and embeddings
+                            let embeddings: Result<Vec<Embedding>, _> = ids
+                                .iter()
+                                .zip(embedding_response.into_iter())
+                                .map(|(id, embedding)| {
+                                    Ok(Embedding {
+                                        id: id.clone(),
+                                        vector: embedding,
+                                    })
+                                })
+                                .collect();
+                            return embeddings;
+                        }
+                        Err(err) => {
+                            return Err(VRError::RequestFailed(format!(
+                                "Failed to deserialize response JSON: {}",
+                                err
+                            )));
+                        }
                     }
                 }
-            }
-        };
-
-        // Check if the response is successful
-        if response.status().is_success() {
-            let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>().await;
-
-            match embedding_response {
-                Ok(embedding_response) => {
-                    // Create a Vec<Embedding> by iterating over ids and embeddings
-                    let embeddings: Result<Vec<Embedding>, _> = ids
-                        .iter()
-                        .zip(embedding_response.into_iter())
-                        .map(|(id, embedding)| {
-                            Ok(Embedding {
-                                id: id.clone(),
-                                vector: embedding,
-                            })
-                        })
-                        .collect();
-
-                    // Return the embeddings
-                    embeddings
-                }
-                Err(err) => Err(VRError::RequestFailed(format!(
-                    "Failed to deserialize response JSON: {}",
-                    err
-                ))),
-            }
-        } else {
-            // Check specifically for a 413 status code (Payload Too Large)
-            if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-                if let Some(max_size) = input_strings.iter().map(|s| s.len()).max() {
-                    // A way to exit the recursion worst case
-                    if max_size <= 50 {
-                        return Err(VRError::RequestFailed(format!(
-                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
-                            response.status()
-                        )));
-                    }
-                    // Shortens any strings which are too long
-                    let shortened_max_size = if max_size > 50 { max_size - 50 } else { 50 };
-                    let shortened_input_strings: Vec<String> = input_strings
+                Ok(response) if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE => {
+                    let max_size = current_input_strings.iter().map(|s| s.len()).max().unwrap_or(0);
+                    // Increase the number of characters removed based on the number of retries
+                    let reduction_step = if shortening_retry > 1 { 100 * shortening_retry } else { 50 };
+                    let shortened_max_size = max_size.saturating_sub(reduction_step).max(5);
+                    current_input_strings = current_input_strings
                         .iter()
                         .map(|s| {
                             if s.len() > shortened_max_size {
@@ -335,20 +308,33 @@ impl RemoteEmbeddingGenerator {
                             }
                         })
                         .collect();
-
-                    return self.generate_embedding_tei(shortened_input_strings, ids).await;
-                } else {
+                    retry_count = 0;
+                    shortening_retry += 1;
+                    if shortening_retry > 10 {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                            response.status()
+                        )));
+                    }
+                    continue;
+                }
+                Ok(response) => {
                     return Err(VRError::RequestFailed(format!(
-                        "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                        "HTTP request failed with status: {}",
                         response.status()
                     )));
                 }
-            } else {
-                // Handle other non-successful HTTP responses (e.g., server error)
-                Err(VRError::RequestFailed(format!(
-                    "HTTP request failed with status: {}",
-                    response.status()
-                )))
+                Err(err) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        continue;
+                    } else {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after {} retries: {}",
+                            max_retries, err
+                        )));
+                    }
+                }
             }
         }
     }
