@@ -19,6 +19,7 @@ impl EmbeddingModelType {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string(),
             EmbeddingModelType::OpenAI(model) => model.to_string(),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
         }
     }
 
@@ -29,6 +30,9 @@ impl EmbeddingModelType {
         }
         if let Ok(model) = OpenAIModelType::from_string(s) {
             return Ok(EmbeddingModelType::OpenAI(model));
+        }
+        if let Ok(model) = OllamaTextEmbeddingsInference::from_string(s) {
+            return Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(model));
         }
         Err(VRError::InvalidModelArchitecture)
     }
@@ -61,7 +65,7 @@ impl EmbeddingModelType {
                 OpenAIModelType::OpenAITextEmbeddingAda002 => CONTEXT_8200,
             },
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
-                OllamaTextEmbeddingsInference::NomicEmbedText => 8192,
+                OllamaTextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
             },
         }
     }
@@ -75,11 +79,6 @@ impl fmt::Display for EmbeddingModelType {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => write!(f, "{}", model),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum OllamaTextEmbeddingsInference {
-    NomicEmbedText,
 }
 
 /// Hugging Face's Text Embeddings Inference
@@ -220,10 +219,33 @@ impl fmt::Display for OpenAIModelType {
     }
 }
 
+// Ollama Text Embeddings Inference
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum OllamaTextEmbeddingsInference {
+    AllMiniLML6v2,
+}
+
+impl OllamaTextEmbeddingsInference {
+    const ALL_MINI_LML6V2: &'static str = "ollama/all-MiniLM-L6-v2";
+
+    /// Converts the OllamaTextEmbeddingsInference to a string
+    fn to_string(&self) -> String {
+        match self {
+            OllamaTextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
+        }
+    }
+
+    /// Parses a string into an OllamaTextEmbeddingsInference
+    fn from_string(s: &str) -> Result<Self, VRError> {
+        match s {
+            Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
+            _ => Err(VRError::InvalidModelArchitecture),
+        }
+    }
+}
+
 impl fmt::Display for OllamaTextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            OllamaTextEmbeddingsInference::NomicEmbedText => write!(f, "nomic-embed-text"),
-        }
+        write!(f, "{}", self.to_string())
     }
 }
