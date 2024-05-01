@@ -1,7 +1,7 @@
 use crate::resource_errors::VRError;
- // pub use llm::ModelArchitecture;
+// pub use llm::ModelArchitecture;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 // Alias for embedding model type string
 pub type EmbeddingModelTypeString = String;
@@ -10,6 +10,7 @@ pub type EmbeddingModelTypeString = String;
 pub enum EmbeddingModelType {
     TextEmbeddingsInference(TextEmbeddingsInference),
     OpenAI(OpenAIModelType),
+    OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference),
 }
 
 impl EmbeddingModelType {
@@ -18,6 +19,7 @@ impl EmbeddingModelType {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string(),
             EmbeddingModelType::OpenAI(model) => model.to_string(),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
         }
     }
 
@@ -28,6 +30,9 @@ impl EmbeddingModelType {
         }
         if let Ok(model) = OpenAIModelType::from_string(s) {
             return Ok(EmbeddingModelType::OpenAI(model));
+        }
+        if let Ok(model) = OllamaTextEmbeddingsInference::from_string(s) {
+            return Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(model));
         }
         Err(VRError::InvalidModelArchitecture)
     }
@@ -59,6 +64,11 @@ impl EmbeddingModelType {
             EmbeddingModelType::OpenAI(model) => match model {
                 OpenAIModelType::OpenAITextEmbeddingAda002 => CONTEXT_8200,
             },
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
+                OllamaTextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => CONTEXT_512,
+                OllamaTextEmbeddingsInference::Other(_) => CONTEXT_512,
+            },
         }
     }
 }
@@ -68,11 +78,12 @@ impl fmt::Display for EmbeddingModelType {
         match self {
             EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string().fmt(f),
             EmbeddingModelType::OpenAI(model) => model.to_string().fmt(f),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => write!(f, "{}", model),
         }
     }
 }
 
-/// Hugging Face's Text Embeddings Inference Server
+/// Hugging Face's Text Embeddings Inference
 /// (https://github.com/huggingface/text-embeddings-inference)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TextEmbeddingsInference {
@@ -205,6 +216,44 @@ impl OpenAIModelType {
 }
 
 impl fmt::Display for OpenAIModelType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+// Ollama Text Embeddings Inference
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum OllamaTextEmbeddingsInference {
+    AllMiniLML6v2,
+    #[allow(non_camel_case_types)]
+    SnowflakeArcticEmbed_M,
+    Other(String), // Added variant to handle other cases
+}
+
+impl OllamaTextEmbeddingsInference {
+    const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
+    const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
+
+    /// Converts the OllamaTextEmbeddingsInference to a string
+    fn to_string(&self) -> String {
+        match self {
+            OllamaTextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => Self::SNOWFLAKE_ARCTIC_EMBED_M.to_string(),
+            OllamaTextEmbeddingsInference::Other(name) => name.clone(), // Handle the Other variant
+        }
+    }
+
+    /// Parses a string into an OllamaTextEmbeddingsInference
+    fn from_string(s: &str) -> Result<Self, VRError> {
+        match s {
+            Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
+            Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            other => Ok(OllamaTextEmbeddingsInference::Other(other.to_string())), // Handle the Other variant
+        }
+    }
+}
+
+impl fmt::Display for OllamaTextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_string())
     }
