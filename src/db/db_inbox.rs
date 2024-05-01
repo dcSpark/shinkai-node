@@ -10,11 +10,8 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
-use crate::schemas::{
-    identity::{StandardIdentity},
-    inbox_permission::InboxPermission,
-    smart_inbox::SmartInbox,
-};
+use crate::schemas::smart_inbox::AgentSubset;
+use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
@@ -484,7 +481,7 @@ impl ShinkaiDB {
         &self,
         profile_name_identity: StandardIdentity,
     ) -> Result<Vec<SmartInbox>, ShinkaiDBError> {
-        let inboxes = self.get_inboxes_for_profile(profile_name_identity)?;
+        let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone())?;
 
         let mut smart_inboxes = Vec::new();
 
@@ -525,12 +522,35 @@ impl ShinkaiDB {
                 false
             };
 
+            let agent_subset = {
+                let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
+                match profile_result {
+                    Ok(p) => {
+                        if inbox_id.starts_with("job_inbox::") {
+                            match InboxName::new(inbox_id.clone())? {
+                                InboxName::JobInbox { unique_id, .. } => {
+                                    let job = self.get_job(&unique_id)?;
+                                    let agent_id = job.parent_agent_id;
+                                    let agent = self.get_agent(&agent_id, &p)?;
+                                    agent.map(AgentSubset::from_serialized_agent)
+                                }
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    },
+                    Err(_) => None,
+                }
+            };
+
             let smart_inbox = SmartInbox {
                 inbox_id: inbox_id.clone(),
                 custom_name,
                 last_message,
                 is_finished,
                 job_scope,
+                agent: agent_subset,
             };
 
             smart_inboxes.push(smart_inbox);
