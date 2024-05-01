@@ -1,7 +1,7 @@
 use crate::resource_errors::VRError;
- // pub use llm::ModelArchitecture;
+// pub use llm::ModelArchitecture;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 // Alias for embedding model type string
 pub type EmbeddingModelTypeString = String;
@@ -232,7 +232,7 @@ pub enum OllamaTextEmbeddingsInference {
 
 impl OllamaTextEmbeddingsInference {
     const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
-    const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:m";
+    const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
 
     /// Converts the OllamaTextEmbeddingsInference to a string
     fn to_string(&self) -> String {

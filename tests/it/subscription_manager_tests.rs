@@ -13,7 +13,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{PaymentOption, SubscriptionPayment};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIUnshareFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, IdentityPermissions, MessageSchemaType, RegistrationCodeType
+    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, MessageSchemaType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
@@ -366,11 +366,11 @@ fn remove_timestamps_from_shared_folder_cache_response(value: &mut serde_json::V
             map.remove("last_modified");
             // Use a closure to explicitly call `remove_timestamps_from_response`
             map.values_mut()
-                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+                .for_each(remove_timestamps_from_shared_folder_cache_response);
         }
         serde_json::Value::Array(vec) => {
             vec.iter_mut()
-                .for_each(|v| remove_timestamps_from_shared_folder_cache_response(v));
+                .for_each(remove_timestamps_from_shared_folder_cache_response);
         }
         _ => {}
     }
@@ -555,7 +555,7 @@ async fn upload_file(
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
     eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-    let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+    let message_content = aes_encryption_key_to_string(symmetrical_sk);
     let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
         encryption_sk.clone(),
         signature_sk.clone(),
