@@ -549,7 +549,7 @@ impl Node {
                     .iter()
                     .find(|m| m["name"].as_str() == Some(model))
                     .unwrap();
-                let external_url = model_data["port_used"].as_str().unwrap_or("http://localhost:11434");
+                let external_url = format!("http://localhost:{}", model_data["port_used"].as_str().unwrap_or("11434"));
 
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
