@@ -67,7 +67,7 @@ impl LocalFileParser {
 
         let mut text_groups: Vec<TextGroup> = Vec::new();
 
-        // heading_parents is used to keep track of the depth of the headings
+        // to keep track of the current parent headings
         let mut heading_parents: Vec<usize> = Vec::with_capacity(6);
 
         // Iterate through HTML elements and text nodes in order
@@ -91,7 +91,7 @@ impl LocalFileParser {
                             }
 
                             // Push current text and start a new text group on section elements
-                            if el_name == "article" || el_name == "section" {
+                            if el_name == "article" || el_name == "section" || el_name == "table" || el_name == "hr" {
                                 LocalFileParser::push_text_group_by_depth(
                                     text_groups,
                                     heading_parents.len(),
@@ -128,12 +128,12 @@ impl LocalFileParser {
                             }
 
                             match el_name.as_str() {
-                                "div" | "button" | "label" => {
+                                "div" | "button" | "label" | "footer" => {
                                     if node_text.len() > 0 && !node_text.ends_with(char::is_whitespace) {
                                         node_text.push_str(" ");
                                     }
                                 }
-                                "p" | "br" => {
+                                "p" | "br" | "blockquote" => {
                                     if !node_text.is_empty() {
                                         node_text.push_str("\n");
                                     }
@@ -178,6 +178,11 @@ impl LocalFileParser {
                                             node_text.push_str(&format!(" {}", inner_text));
                                         }
                                     }
+                                    "blockquote" => {
+                                        inner_text.split("\n").for_each(|line| {
+                                            node_text.push_str(&format!("> {}\n", line));
+                                        });
+                                    }
                                     "code" => {
                                         node_text.push_str(&format!("`{}`", inner_text));
                                     }
@@ -187,10 +192,30 @@ impl LocalFileParser {
                                     "ol" => {
                                         // replace asterisks with numbers
                                         inner_text.split("\n").enumerate().for_each(|(index, line)| {
-                                            if line.len() > 2 {
+                                            if line.len() > 2 && line.starts_with("* ") {
                                                 node_text.push_str(&format!("{}. {}\n", index + 1, &line[2..]));
                                             }
                                         });
+                                    }
+                                    // Push table data to a text group
+                                    "table" => {
+                                        LocalFileParser::push_text_group_by_depth(
+                                            text_groups,
+                                            heading_parents.len(),
+                                            inner_text.trim().to_owned(),
+                                            max_node_text_size,
+                                        );
+                                    }
+                                    "caption" => {
+                                        node_text.push_str(&format!("{}\n", inner_text.trim()));
+                                    }
+                                    "tr" => {
+                                        let row_text = inner_text.trim();
+                                        let row_text = row_text.trim_end_matches(';');
+                                        node_text.push_str(&format!("{}\n", row_text));
+                                    }
+                                    "td" | "th" => {
+                                        node_text.push_str(&format!("{}; ", inner_text));
                                     }
                                     _ => {
                                         node_text.push_str(&inner_text);
