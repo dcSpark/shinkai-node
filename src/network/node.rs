@@ -41,8 +41,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use shinkai_vector_resources::vector_resource::VRPack;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -391,7 +390,7 @@ pub enum NodeCommand {
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
 pub static NEW_PROFILE_DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
-    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+    EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
 
 lazy_static! {
     /// Hard-coded list of supported embedding models that is set when creating a new profile.

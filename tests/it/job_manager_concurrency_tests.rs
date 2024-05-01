@@ -21,7 +21,7 @@ use shinkai_node::db::{ShinkaiDB, Topic};
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -86,8 +86,8 @@ async fn setup_default_vector_fs() -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
-    let supported_embedding_models = vec![EmbeddingModelType::TextEmbeddingsInference(
-        TextEmbeddingsInference::AllMiniLML6v2,
+    let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
     VectorFS::new(
@@ -116,8 +116,8 @@ async fn test_process_job_queue_concurrency() {
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<ShinkaiDB>,
-                              vector_fs: Weak<VectorFS>,
-                              node_name: ShinkaiName,
+                              _vector_fs: Weak<VectorFS>,
+                              _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {
@@ -238,8 +238,8 @@ async fn test_sequential_process_for_same_job_id() {
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<ShinkaiDB>,
-                              vector_fs: Weak<VectorFS>,
-                              node_name: ShinkaiName,
+                              _vector_fs: Weak<VectorFS>,
+                              _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
                               _: UnstructuredAPI| {

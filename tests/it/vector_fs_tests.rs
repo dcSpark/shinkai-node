@@ -11,14 +11,14 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{
-    DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
+    DistributionInfo, SourceFile, SourceFileMap, SourceFileType,
 };
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResource, VectorResourceCore,
+    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResourceCore,
     VectorResourceSearch,
 };
 use std::collections::HashMap;
@@ -43,8 +43,8 @@ async fn setup_default_vector_fs() -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
-    let supported_embedding_models = vec![EmbeddingModelType::TextEmbeddingsInference(
-        TextEmbeddingsInference::AllMiniLML6v2,
+    let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
     VectorFS::new(
@@ -64,7 +64,7 @@ pub async fn get_shinkai_intro_doc_async(
 ) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
     let source_file_name = "shinkai_intro.pdf";
-    let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
+    let buffer = std::fs::read(format!("files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
 
     let unstructured = UnstructuredAPI::new_default();
 

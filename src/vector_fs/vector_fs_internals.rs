@@ -6,7 +6,7 @@ use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    model_type::{EmbeddingModelType, TextEmbeddingsInference},
+    model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     source::DistributionInfo,
     vector_resource::{MapVectorResource, VRSourceReference, VectorResourceCore},
 };
@@ -52,7 +52,7 @@ impl VectorFSInternals {
     pub async fn new_empty() -> Self {
         let node_name = ShinkaiName::from_node_name("@@node1_test.shinkai".to_string()).unwrap();
         let default_embedding_model =
-            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
         let supported_embedding_models = vec![default_embedding_model.clone()];
         Self::new(node_name, default_embedding_model, supported_embedding_models).await
     }

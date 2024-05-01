@@ -66,6 +66,8 @@ impl EmbeddingModelType {
             },
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => match model {
                 OllamaTextEmbeddingsInference::AllMiniLML6v2 => CONTEXT_512,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => CONTEXT_512,
+                OllamaTextEmbeddingsInference::Other(_) => CONTEXT_512,
             },
         }
     }
@@ -223,15 +225,21 @@ impl fmt::Display for OpenAIModelType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OllamaTextEmbeddingsInference {
     AllMiniLML6v2,
+    #[allow(non_camel_case_types)]
+    SnowflakeArcticEmbed_M,
+    Other(String), // Added variant to handle other cases
 }
 
 impl OllamaTextEmbeddingsInference {
-    const ALL_MINI_LML6V2: &'static str = "ollama/all-MiniLM-L6-v2";
+    const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
+    const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:m";
 
     /// Converts the OllamaTextEmbeddingsInference to a string
     fn to_string(&self) -> String {
         match self {
             OllamaTextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => Self::SNOWFLAKE_ARCTIC_EMBED_M.to_string(),
+            OllamaTextEmbeddingsInference::Other(name) => name.clone(), // Handle the Other variant
         }
     }
 
@@ -239,7 +247,8 @@ impl OllamaTextEmbeddingsInference {
     fn from_string(s: &str) -> Result<Self, VRError> {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
-            _ => Err(VRError::InvalidModelArchitecture),
+            Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            other => Ok(OllamaTextEmbeddingsInference::Other(other.to_string())), // Handle the Other variant
         }
     }
 }
