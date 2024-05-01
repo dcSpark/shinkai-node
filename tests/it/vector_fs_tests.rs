@@ -13,9 +13,7 @@ use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{
-    DistributionInfo, SourceFile, SourceFileMap, SourceFileType,
-};
+use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, SourceFileType};
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResourceCore,
@@ -82,7 +80,7 @@ pub async fn get_shinkai_intro_doc_async(
     .await
     .unwrap();
 
-    let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
+    let file_type = SourceFileType::detect_file_type(source_file_name).unwrap();
     let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
     let mut map = HashMap::new();
     map.insert(VRPath::root(), source_file);
@@ -554,7 +552,7 @@ async fn test_vector_fs_saving_reading() {
         .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
         .await
         .unwrap();
-    assert!(res.len() > 0);
+    assert!(!res.is_empty());
 }
 
 #[tokio::test]
@@ -569,7 +567,7 @@ async fn test_vector_fs_operations() {
         .unwrap();
     let folder_name = "first_folder";
     let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
-    vector_fs.create_new_folder(&writer, folder_name.clone()).await.unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
 
     // Sets the permission to Private from default Whitelist (for later test cases)
     let perm_writer = vector_fs
@@ -615,10 +613,10 @@ async fn test_vector_fs_operations() {
     // Create a Vector Resource and source file to be added into the VectorFS
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
     let mut resource = BaseVectorResource::Document(doc_resource);
-    let resource_name = resource.as_trait_object().name().clone();
+    let resource_name = resource.as_trait_object().name();
     let resource_ref_string = resource.as_trait_object().reference_string();
     let resource_merkle_root = resource.as_trait_object().get_merkle_root();
-    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count().clone();
+    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count();
     let writer = vector_fs
         .new_writer(
             default_test_profile(),
@@ -691,7 +689,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Copy from new root folder to 2nd folder inside of first folder
     let root_folder_file_path = new_root_folder_path.push_cloned(resource_name.to_string());
@@ -720,7 +718,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Copy first folder as a whole into new root folder
     let new_root_folder_first_folder_path = new_root_folder_path.push_cloned(folder_name.to_string());
@@ -1187,7 +1185,7 @@ async fn test_folder_empty_check_reuse() {
         .await
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(&writer, resource, Some(source_file_map))
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
         .await
         .unwrap();
 

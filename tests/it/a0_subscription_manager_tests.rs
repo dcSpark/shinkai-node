@@ -1531,8 +1531,8 @@ fn subscription_manager_test() {
                                                 "child_folders": [],
                                                 "child_items": [
                                                     {
-                                                        "name": "shinkai_intro",
-                                                        "path": "/shared_test_folder/zeko/paper/shinkai_intro"
+                                                        "name": "Zeko_Mina_Rollup",
+                                                        "path": "/shared_test_folder/zeko/paper/Zeko_Mina_Rollup"
                                                     },
                                                 ]
                                             }
@@ -1557,7 +1557,7 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        // eprintln!("Actual structure: {:?}", actual_resp_json);
+                        eprintln!("Actual structure: {:?}", actual_resp_json);
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -1570,7 +1570,7 @@ fn subscription_manager_test() {
                 // Create /shared_test_folder/zeko/paper
                 remove_item(
                     &node1_commands_sender,
-                    "/shared_test_folder/zeko/paper/shinkai_intro",
+                    "/shared_test_folder/zeko/paper/Zeko_Mina_Rollup",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
