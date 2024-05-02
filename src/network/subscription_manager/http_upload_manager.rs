@@ -18,3 +18,11 @@
 
 // we need to save the links somewhere. db then?
 // delete all the links on unshare
+
+
+// pub struct HttpSubscriptionUploadManager {
+//     queue: Vec<HttpUpload>,
+// }
+
+// instead of saving stuff to db maybe we could load the files
+// from an API call to the provider
