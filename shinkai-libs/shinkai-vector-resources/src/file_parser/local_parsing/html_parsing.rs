@@ -70,14 +70,36 @@ impl LocalFileParser {
         // to keep track of the current parent headings
         let mut heading_parents: Vec<usize> = Vec::with_capacity(6);
 
+        // Parent nodes propagate context to child nodes.
+        // Nodes can alter their state and propagate them to their children.
+        struct HTMLNodeContext {
+            is_preformatted: bool, // pre tags
+            is_ordered_list: bool, // ol tags
+            list_item_start: u64,  // start attribute for ol tags
+            list_depth: u64,       // nested lists
+        }
+
+        impl Default for HTMLNodeContext {
+            fn default() -> Self {
+                HTMLNodeContext {
+                    is_preformatted: false,
+                    is_ordered_list: false,
+                    list_item_start: 0,
+                    list_depth: 0,
+                }
+            }
+        }
+
         // Iterate through HTML elements and text nodes in order
         fn iter_nodes<'a>(
             element: ElementRef<'a>,
             text_groups: &mut Vec<TextGroup>,
             max_node_text_size: u64,
             heading_parents: &mut Vec<usize>,
+            context: HTMLNodeContext,
         ) -> String {
             let mut node_text = "".to_string();
+            let mut list_item_index = context.list_item_start;
 
             for node in element.children() {
                 match node.value() {
@@ -95,7 +117,7 @@ impl LocalFileParser {
                                 LocalFileParser::push_text_group_by_depth(
                                     text_groups,
                                     heading_parents.len(),
-                                    node_text.clone(),
+                                    node_text.trim().to_owned(),
                                     max_node_text_size,
                                 );
                                 node_text.clear();
@@ -146,11 +168,42 @@ impl LocalFileParser {
                                         node_text.push_str(&format!(" ![{}]({})", alt, src));
                                     }
                                 }
+                                "ol" => {
+                                    if !node_text.is_empty() && !node_text.ends_with("\n") {
+                                        node_text.push_str("\n");
+                                    }
+
+                                    let start = element.attr("start").unwrap_or("1");
+                                    list_item_index = start.parse::<u64>().unwrap_or(1);
+                                }
+                                "ul" => {
+                                    if !node_text.is_empty() && !node_text.ends_with("\n") {
+                                        node_text.push_str("\n");
+                                    }
+                                    list_item_index = 1;
+                                }
                                 _ => (),
                             }
 
+                            let list_depth = if el_name == "ol" || el_name == "ul" {
+                                context.list_depth + 1
+                            } else {
+                                context.list_depth
+                            };
+
                             // Process child nodes
-                            let inner_text = iter_nodes(element, text_groups, max_node_text_size, heading_parents);
+                            let inner_text = iter_nodes(
+                                element,
+                                text_groups,
+                                max_node_text_size,
+                                heading_parents,
+                                HTMLNodeContext {
+                                    is_preformatted: context.is_preformatted || el_name == "pre",
+                                    is_ordered_list: (context.is_ordered_list || el_name == "ol") && el_name != "ul",
+                                    list_item_start: list_item_index,
+                                    list_depth,
+                                },
+                            );
 
                             // Process inner text returned from child nodes
                             if inner_text.len() > 0 {
@@ -165,7 +218,7 @@ impl LocalFileParser {
                                         LocalFileParser::push_text_group_by_depth(
                                             text_groups,
                                             heading_depth,
-                                            inner_text.clone(),
+                                            inner_text.trim().to_owned(),
                                             max_node_text_size,
                                         );
                                     }
@@ -187,15 +240,25 @@ impl LocalFileParser {
                                         node_text.push_str(&format!("`{}`", inner_text));
                                     }
                                     "li" => {
-                                        node_text.push_str(&format!("* {}\n", inner_text));
-                                    }
-                                    "ol" => {
-                                        // replace asterisks with numbers
-                                        inner_text.split("\n").enumerate().for_each(|(index, line)| {
-                                            if line.len() > 2 && line.starts_with("* ") {
-                                                node_text.push_str(&format!("{}. {}\n", index + 1, &line[2..]));
+                                        let list_depth = if context.list_depth > 0 { context.list_depth } else { 1 };
+                                        let indentation = "\t".repeat((list_depth - 1) as usize);
+
+                                        if context.is_ordered_list {
+                                            let li_value = element.attr("value").unwrap_or("");
+                                            if let Some(value) = li_value.parse::<u64>().ok() {
+                                                list_item_index = value;
                                             }
-                                        });
+
+                                            node_text.push_str(&format!(
+                                                "{}{}. {}\n",
+                                                indentation,
+                                                list_item_index,
+                                                inner_text.trim()
+                                            ));
+                                            list_item_index += 1;
+                                        } else {
+                                            node_text.push_str(&format!("{}* {}\n", indentation, inner_text.trim()));
+                                        }
                                     }
                                     // Push table data to a text group
                                     "table" => {
@@ -229,11 +292,15 @@ impl LocalFileParser {
                             continue;
                         }
 
-                        // remove multiple whitespaces
-                        let re = Regex::new(r"\s{2,}").unwrap();
-                        let sanitized_text = re.replace_all(&text.text, " ");
+                        // Save preformatted text as is, otherwise remove extra whitespaces
+                        if context.is_preformatted {
+                            node_text.push_str(&text.text);
+                        } else {
+                            let re = Regex::new(r"\s{2,}|\n").unwrap();
+                            let sanitized_text = re.replace_all(&text.text, " ");
 
-                        node_text.push_str(&sanitized_text);
+                            node_text.push_str(&sanitized_text);
+                        }
                     }
                     _ => (),
                 };
@@ -247,12 +314,13 @@ impl LocalFileParser {
             &mut text_groups,
             max_node_text_size,
             &mut heading_parents,
+            HTMLNodeContext::default(),
         );
 
         LocalFileParser::push_text_group_by_depth(
             &mut text_groups,
             heading_parents.len(),
-            result_text.clone(),
+            result_text.trim().to_owned(),
             max_node_text_size,
         );
 

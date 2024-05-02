@@ -1,7 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::file_parser::local_parsing::LocalFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -1193,10 +1192,29 @@ async fn local_md_parsing_test() {
 
 #[tokio::test]
 async fn local_html_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "unstructured.html";
     let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
 
-    let result = LocalFileParser::process_html_file(buffer, &source_file_name, 400);
+    // Perform vector search
+    let query_string = "What are the Product Offerings?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    assert!(result.is_ok());
+    assert!(results[0].score > 0.4);
+    assert!(results[..=2]
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("Python Library")));
 }
