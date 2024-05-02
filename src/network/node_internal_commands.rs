@@ -488,10 +488,8 @@ impl Node {
                             .map(|model| {
                                 let mut model_clone = model.clone();
                                 if let Some(obj) = model_clone.as_object_mut() {
-                                    obj.insert(
-                                        "port_used".to_string(),
-                                        serde_json::Value::String(url.split(':').nth(2).unwrap_or("").to_string()),
-                                    );
+                                    let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                    obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
                                 }
                                 model_clone
                             })
@@ -549,12 +547,18 @@ impl Node {
                     .iter()
                     .find(|m| m["name"].as_str() == Some(model))
                     .unwrap();
-                let external_url = format!("http://localhost:{}", model_data["port_used"].as_str().unwrap_or("11434"));
+                let external_url = format!(
+                    "http://localhost:{}/api/generate",
+                    model_data["port_used"].as_str().unwrap_or("11434")
+                );
 
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
-                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", requester_profile.full_name, sanitized_model))
-                        .expect("Failed to create ShinkaiName"),
+                    full_identity_name: ShinkaiName::new(format!(
+                        "{}/agent/o_{}",
+                        requester_profile.full_name, sanitized_model
+                    ))
+                    .expect("Failed to create ShinkaiName"),
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
