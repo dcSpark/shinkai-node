@@ -2008,7 +2008,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
