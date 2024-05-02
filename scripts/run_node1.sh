@@ -14,7 +14,7 @@ export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
-export EMBEDDINGS_SERVER_URL="https://public.shinkai.com/x-em"
+export EMBEDDINGS_SERVER_URL="http://localhost:11434"
 export UNSTRUCTURED_SERVER_URL="https://public.shinkai.com/x-un"
 
 # export TELEMETRY_ENDPOINT="https://apm-node-b1.shinkai.com/api/default"
