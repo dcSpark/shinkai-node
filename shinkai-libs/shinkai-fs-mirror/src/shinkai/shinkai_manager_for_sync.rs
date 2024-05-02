@@ -278,13 +278,42 @@ impl ShinkaiManagerForSync {
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),
             self.node_receiver_subidentity.clone(),
-        ).map_err(|err| PostRequestError::Unknown(err.to_string()))?; 
+        )
+        .map_err(|err| PostRequestError::Unknown(err.to_string()))?;
 
         let delete_item_message = serde_json::json!(shinkai_message);
         let response = request_post(
             self.node_address.clone(),
             delete_item_message.to_string(),
             "/v1/vec_fs/remove_item",
+        )
+        .await;
+
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+      // Add a new function to delete an item
+      pub async fn delete_folder(&self, path: &str) -> Result<(), PostRequestError> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_delete_folder(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            self.node_receiver_subidentity.clone(),
+        )
+        .map_err(|err| PostRequestError::Unknown(err.to_string()))?;
+
+        let delete_item_message = serde_json::json!(shinkai_message);
+        let response = request_post(
+            self.node_address.clone(),
+            delete_item_message.to_string(),
+            "/v1/vec_fs/remove_folder",
         )
         .await;
 
