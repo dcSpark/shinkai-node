@@ -6063,7 +6063,6 @@ dependencies = [
 >>>>>>> b0c817a8 (working for R2! need to reset credentials)
  "mockito",
  "num_cpus",
- "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",

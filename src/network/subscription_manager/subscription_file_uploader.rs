@@ -16,6 +16,7 @@
 // - Arcweave
 
 use aws_config::meta::region::RegionProviderChain;
+use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 use aws_types::region::Region;
 use reqwest::{Client, Error as ReqwestError};
@@ -132,21 +133,59 @@ pub async fn download_file(
     }
 }
 
-// Need to implement it manually
-// /// Generate a temporary link for downloading an entire folder based on the FileDestination.
-// pub async fn generate_temporary_download_link(folder_path: &str, destination: &FileDestination) -> Result<String, FileTransferError> {
-//     match destination {
-//         FileDestination::R2(manager) => {
-//             // Assuming R2Manager has a method to generate a temporary link for a folder
-//             manager.generate_temporary_link_for_folder(folder_path).await
-//         },
-//         FileDestination::Http { url, .. } => {
-//             // For HTTP, we might need to construct a URL that points to a directory listing or a zipped folder
-//             // This is highly dependent on the HTTP server's capabilities and configuration
-//             Ok(format!("{}/{}", url, folder_path))
-//         },
-//     }
-// }
+// Function to generate a temporary shareable link for a file for 1 hour
+pub async fn generate_temporary_shareable_link(
+    path: &str,
+    filename: &str,
+    destination: &FileDestination,
+) -> Result<String, FileTransferError> {
+    match destination {
+        FileDestination::S3(client, bucket) => {
+            let key = format!("{}/{}", path, filename);
+            let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
+                .expires_in(std::time::Duration::from_secs(3600))
+                .build()
+                .map_err(|e| FileTransferError::Other(format!("Presigning config error: {:?}", e)))?;
+
+            let presigned_req = client
+                .get_object()
+                .bucket(bucket)
+                .key(&key)
+                .response_content_type("application/octet-stream")
+                .presigned(presigning_config)
+                .await
+                .map_err(|e| FileTransferError::Other(format!("S3 presigned URL error: {:?}", e)))?;
+
+            Ok(presigned_req.uri().to_string())
+        }
+        FileDestination::R2(client, bucket) => {
+            // Similar to S3, assuming R2 supports the same presigned URL generation
+            let key = format!("{}/{}", path, filename);
+            let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
+                .expires_in(std::time::Duration::from_secs(3600))
+                .build()
+                .map_err(|e| FileTransferError::Other(format!("Presigning config error: {:?}", e)))?;
+
+            let presigned_req = client
+                .get_object()
+                .bucket(bucket)
+                .key(&key)
+                .response_content_type("application/octet-stream")
+                .presigned(presigning_config)
+                .await
+                .map_err(|e| FileTransferError::Other(format!("R2 presigned URL error: {:?}", e)))?;
+
+            Ok(presigned_req.uri().to_string())
+        }
+        FileDestination::Http { url, .. } => {
+            // For HTTP, we might need to handle this differently as HTTP servers do not typically support presigned URLs
+            // This would depend on the specific server's capabilities or additional server-side logic to handle temporary links
+            Err(FileTransferError::Other(
+                "HTTP destination does not support presigned URLs".to_string(),
+            ))
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -161,6 +200,7 @@ mod tests {
         let file_path = "test_path_a/test_path_b";
 
         // Set environment variables for AWS credentials
+        // TODO: Remove this and also reset Cloudflare's token!!!
         std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
         std::env::set_var(
             "AWS_SECRET_ACCESS_KEY",
@@ -192,6 +232,63 @@ mod tests {
         // Optionally, you can check if the file exists at the URL (requires additional GET request logic)
         let download_result = download_file(file_path, &file_name, destination).await;
         assert!(download_result.is_ok());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_upload_download_and_link_r2() -> Result<(), Box<dyn std::error::Error>> {
+        // Setup test data
+        let file_name = format!("test_file_{}.txt", Uuid::new_v4());
+        let file_contents = b"Hello, R2!"; // Dummy file contents
+        let file_path = "test_path_a/test_path_b";
+
+        // Set environment variables for AWS credentials
+        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
+        std::env::set_var(
+            "AWS_SECRET_ACCESS_KEY",
+            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
+        );
+
+        // Setup the S3Client for R2 using environment configuration
+        let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
+        let config = aws_config::load_from_env().await;
+        let s3_config = config
+            .into_builder()
+            .endpoint_url(cloudflare_kv_uri)
+            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
+            .build();
+
+        let client = S3Client::new(&s3_config);
+
+        // Setup the destination
+        let bucket_name = "shinkai-streamer";
+        let destination = FileDestination::R2(client, bucket_name.to_string());
+
+        // Upload the file
+        let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
+        assert!(upload_result.is_ok(), "Upload failed: {:?}", upload_result);
+
+        // Generate a temporary shareable link
+        let link_result = generate_temporary_shareable_link(file_path, &file_name, &destination).await;
+        assert!(link_result.is_ok(), "Failed to generate link: {:?}", link_result);
+        let link = link_result.unwrap();
+
+        // Download the file using the generated link (simulating HTTP GET request)
+        let client = reqwest::Client::new();
+        let download_response = client.get(&link).send().await?;
+        assert!(
+            download_response.status().is_success(),
+            "Download failed: HTTP {}",
+            download_response.status()
+        );
+
+        let downloaded_bytes = download_response.bytes().await?;
+        assert_eq!(
+            downloaded_bytes.as_ref(),
+            file_contents,
+            "Downloaded content does not match uploaded content"
+        );
 
         Ok(())
     }
