@@ -218,24 +218,28 @@ impl FilesystemSynchronizer {
         _profile_name: &str,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
     ) -> Vec<PathBuf> {
-        // Scan the local folder for existing files and store them in a HashSet for quick lookup
+        // Scan the local folder for existing files and store them in a HashMap for quick lookup
         let current_folder_files = Self::scan_folders(folder_to_watch)
             .into_iter()
             .map(|(path, _)| path.strip_prefix(folder_to_watch).unwrap_or(&path).to_path_buf())
-            .collect::<HashSet<_>>();
+            .map(|path| (path, ())) // Create a tuple with a dummy value
+            .collect::<HashMap<_, _>>();
+
         eprintln!("Current folder files: {:?}", current_folder_files);
-    
+
         let mut files_to_remove = Vec::new();
         let syncing_folders = syncing_folders_db.lock().await;
-    
+
         // Retrieve all file mirror states from the database
         if let Ok(all_file_mirror_states) = syncing_folders.all_file_mirror_states() {
             eprintln!("All file mirror states: {:?}", all_file_mirror_states);
             for (db_path, _) in all_file_mirror_states {
-                let normalized_db_path = Path::new(&db_path).strip_prefix(folder_to_watch).unwrap_or(Path::new(&db_path));
-    
+                let normalized_db_path = Path::new(&db_path)
+                    .strip_prefix(folder_to_watch)
+                    .unwrap_or(Path::new(&db_path));
+
                 // Check if the file from the database is not present in the current folder files
-                if !current_folder_files.contains(normalized_db_path) {
+                if !current_folder_files.contains_key(normalized_db_path) {
                     // If the file is not present locally, add it to the removal list
                     let full_path_to_remove = destination_path.join(normalized_db_path);
                     files_to_remove.push(full_path_to_remove);
@@ -244,7 +248,7 @@ impl FilesystemSynchronizer {
         } else {
             eprintln!("Failed to retrieve file mirror states from the database.");
         }
-    
+
         files_to_remove
     }
 
@@ -597,25 +601,25 @@ impl FilesystemSynchronizer {
 
                 let paths_to_create: Vec<PathBuf> = files_to_update.iter().map(|(path, _)| path.clone()).collect();
 
-                // // First, create necessary folders based on the files' relative paths
-                // Self::create_folders(
-                //     shinkai_manager_for_sync,
-                //     &paths_to_create,
-                //     folder_to_watch,
-                //     destination_path,
-                // )
-                // .await?;
+                // First, create necessary folders based on the files' relative paths
+                Self::create_folders(
+                    shinkai_manager_for_sync,
+                    &paths_to_create,
+                    folder_to_watch,
+                    destination_path,
+                )
+                .await?;
 
-                // // Then, upload the files
-                // Self::upload_files(
-                //     shinkai_manager_for_sync,
-                //     files_to_update,
-                //     profile_name,
-                //     destination_path,
-                //     syncing_folders_db,
-                //     folder_to_watch,
-                // )
-                // .await?;
+                // Then, upload the files
+                Self::upload_files(
+                    shinkai_manager_for_sync,
+                    files_to_update,
+                    profile_name,
+                    destination_path,
+                    syncing_folders_db.clone(),
+                    folder_to_watch,
+                )
+                .await?;
 
                 // if delete files is enabled, delete files that are not in the local registry
                 if should_mirror_delete {
@@ -638,12 +642,12 @@ impl FilesystemSynchronizer {
                     //     // Remove the file extension
                     //     let file_path_without_extension = Path::new(&file_path_str).with_extension("");
                     //     let mut file_path_final = file_path_without_extension.to_string_lossy().to_string();
-                
+
                     //     // Ensure the path starts with a "/"
                     //     if !file_path_final.starts_with('/') {
                     //         file_path_final.insert(0, '/');
                     //     }
-                
+
                     //     match shinkai_manager_for_sync.delete_item(&file_path_final).await {
                     //         Ok(_) => eprintln!("Successfully deleted: {}", file_path_final),
                     //         Err(e) => eprintln!("Failed to delete {}: {:?}", file_path_final, e),
@@ -793,7 +797,7 @@ impl FilesystemSynchronizer {
 
         match (datetime_from_name_or_parent, file_metadata_datetime) {
             (Some(datetime_str), Some(metadata_datetime)) => {
-                // If both datetime are available, choose the filename's datetime if valid, else choose the oldest
+                // If both datetime are available, choose the oldest (most likely the path)
                 let datetime: chrono::DateTime<chrono::Utc> = metadata_datetime.into();
                 let metadata_datetime_str = datetime.to_rfc3339();
                 Ok(Some(Self::choose_oldest_datetime(
