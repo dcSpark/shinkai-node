@@ -48,6 +48,8 @@ mod tests {
                 }),
                 created_datetime: "2024-04-17T05:09:42.777742Z".to_string(),
                 last_written_datetime: "2024-04-17T05:09:43.284776Z".to_string(),
+                is_folder: false,
+                child_item_count: 0,
             },
         )]);
 
@@ -105,6 +107,8 @@ mod tests {
                     distribution_info: None,
                     created_datetime: "2024-04-17T05:04:10.468603Z".to_string(),
                     last_written_datetime: "2024-04-17T05:04:11.024986Z".to_string(),
+                    is_folder: false,
+                    child_item_count: 0,
                 },
             ),
             (
@@ -116,6 +120,8 @@ mod tests {
                     distribution_info: None,
                     created_datetime: "2024-04-17T05:03:23.035381Z".to_string(),
                     last_written_datetime: "2024-04-17T05:04:11.027076Z".to_string(),
+                    is_folder: true,
+                    child_item_count: 1,
                 },
             ),
             (
@@ -127,6 +133,8 @@ mod tests {
                     distribution_info: None,
                     created_datetime: "2024-04-17T05:03:12.686786Z".to_string(),
                     last_written_datetime: "2024-04-17T05:04:11.045692Z".to_string(),
+                    is_folder: true,
+                    child_item_count: 1,
                 },
             ),
         ]);

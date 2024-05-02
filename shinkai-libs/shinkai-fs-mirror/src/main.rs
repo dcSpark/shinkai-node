@@ -79,6 +79,14 @@ async fn main() {
                 .help("If set, files deleted locally will also be removed remotely")
                 .takes_value(false),
         )
+        .arg(
+            Arg::with_name("upload_timeout")
+                .short('u')
+                .long("upload-timeout")
+                .value_name("UPLOAD_TIMEOUT")
+                .help("Upload timeout in seconds (optional)")
+                .takes_value(true),
+        )
         .get_matches();
 
     let encrypted_file_path = env::var("ENCRYPTED_FILE_PATH")
@@ -128,6 +136,11 @@ async fn main() {
 
     let should_mirror_deletes = matches.is_present("should_mirror_deletes");
 
+    let upload_timeout = matches
+        .value_of("upload_timeout")
+        .map(|s| s.parse::<u64>().expect("Failed to parse upload timeout"))
+        .map(Duration::from_secs);
+
     // Example of creating a FilesystemSynchronizer
     let mut shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
         Path::new(&encrypted_file_path),
@@ -146,6 +159,7 @@ async fn main() {
         db_path,
         sync_interval,
         should_mirror_deletes,
+        upload_timeout
     )
     .await
     .expect("Failed to create FilesystemSynchronizer");
