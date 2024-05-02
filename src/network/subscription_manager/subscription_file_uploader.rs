@@ -17,12 +17,16 @@
 
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::types::EncodingType;
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
-use aws_types::region::Region;
 use reqwest::{Client, Error as ReqwestError};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+
 use thiserror::Error;
+use serde_json::Value;
+use aws_types::region::Region;
+use async_recursion::async_recursion;
+use urlencoding::decode;
 
 #[derive(Error, Debug)]
 pub enum FileTransferError {
@@ -41,6 +45,12 @@ pub enum FileDestination {
     S3(S3Client, FileDestinationBucket),
     R2(S3Client, FileDestinationBucket),
     Http { url: String, auth_headers: Value },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FileDestinationPath {
+    pub path: String,
+    pub is_folder: bool,
 }
 
 pub async fn upload_file(
@@ -130,6 +140,72 @@ pub async fn download_file(
                 )))
             }
         }
+    }
+}
+
+#[async_recursion]
+pub async fn list_folder_contents(
+    destination: &FileDestination,
+    folder_path: &str,
+) -> Result<Vec<FileDestinationPath>, FileTransferError> {
+    match destination {
+        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+            let mut folder_contents = Vec::new();
+            let mut continuation_token: Option<String> = None;
+
+            loop {
+                let mut request_builder = client
+                    .list_objects_v2()
+                    .bucket(bucket)
+                    .prefix(folder_path)
+                    .encoding_type(EncodingType::Url);
+
+                if let Some(token) = &continuation_token {
+                    request_builder = request_builder.continuation_token(token);
+                }
+
+                let response = request_builder.send().await.map_err(|sdk_error| {
+                    FileTransferError::Other(format!("Failed to list folder contents: {:?}", sdk_error))
+                })?;
+
+                // Handle files and directories
+                if let Some(contents) = response.clone().contents {
+                    for object in contents {
+                        if let Some(key) = object.key {
+                            let decoded_key = decode(&key).unwrap_or_default().to_string();
+                            let is_folder = decoded_key.ends_with('/');
+                            let clean_path = if is_folder { decoded_key.trim_end_matches('/') } else { &decoded_key };
+                            folder_contents.push(FileDestinationPath {
+                                path: clean_path.to_string(),
+                                is_folder,
+                            });
+                        }
+                    }
+                }
+
+                if response.is_truncated().unwrap_or_default() {
+                    continuation_token = response.next_continuation_token().map(|s| s.to_string());
+                } else {
+                    break;
+                }
+            }
+
+            // Optionally, recursively list contents of subdirectories
+            let mut i = 0;
+            while i < folder_contents.len() {
+                let item = &folder_contents[i];
+                if item.is_folder {
+                    let subfolder_contents = list_folder_contents(destination, &item.path).await?;
+                    folder_contents.extend(subfolder_contents);
+                }
+                i += 1;
+            }
+
+            Ok(folder_contents)
+        }
+        FileDestination::Http { .. } => Err(FileTransferError::Other(
+            "Listing folder contents is not supported for HTTP destinations.".to_string(),
+        )),
     }
 }
 
@@ -289,6 +365,49 @@ mod tests {
             file_contents,
             "Downloaded content does not match uploaded content"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_list_folder_contents_r2() -> Result<(), Box<dyn std::error::Error>> {
+        // Set environment variables for AWS credentials
+        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
+        std::env::set_var(
+            "AWS_SECRET_ACCESS_KEY",
+            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
+        );
+
+        // Setup the S3Client for R2 using environment configuration
+        let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
+        let config = aws_config::load_from_env().await;
+        let s3_config = config
+            .into_builder()
+            .endpoint_url(cloudflare_kv_uri)
+            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
+            .build();
+
+        let client = S3Client::new(&s3_config);
+
+        // Setup the destination
+        let bucket_name = "shinkai-streamer";
+        let destination = FileDestination::R2(client, bucket_name.to_string());
+
+        // Folder path to list contents
+        let folder_path = "";
+
+        // Call the list_folder_contents function
+        let list_result = list_folder_contents(&destination, folder_path).await;
+        println!("results: {:?}", list_result);
+
+        // Assert that the list operation was successful
+        assert!(list_result.is_ok());
+
+        // Optionally, check the contents of the list
+        if let Ok(contents) = list_result {
+            assert!(!contents.is_empty(), "The folder contents should not be empty");
+            println!("Folder contents: {:?}", contents);
+        }
 
         Ok(())
     }
