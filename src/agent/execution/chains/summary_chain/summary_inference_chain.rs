@@ -1,5 +1,6 @@
 use crate::agent::error::AgentError;
 use crate::agent::execution::chains::inference_chain_router::InferenceChainDecision;
+use crate::agent::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
@@ -241,19 +242,14 @@ impl JobManager {
         Ok(filtered_answer)
     }
 
-    /// Checks if the job's task asks to summarize in one of many ways.
-    pub async fn validate_user_message_requests_summary(
+    /// Validates that the message is relevant enough (from quick checking) to bother doing a wide amount of  embedding checking.
+    async fn validate_user_message_first_pass(
         user_message: ParsedUserMessage,
         generator: RemoteEmbeddingGenerator,
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
-    ) -> Option<InferenceChainDecision> {
-        // If there are no VRs in the scope, we don't use the summary chain for now (may change when we do advanced message history summarization)
-        if job_scope.is_empty() {
-            return None;
-        }
-
-        // Temporary approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
+    ) -> bool {
+        /// Temporary english-only approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
         let direct_substrings = vec![
             "summary",
             "sumry",
@@ -280,28 +276,74 @@ impl JobManager {
             "recap",
             " re cap ",
         ];
-        // Check if any of the direct substrings are in the user message before progressing forward
-        let user_message_no_code_blocks = user_message.get_output_string_without_codeblocks();
-        if !direct_substrings
-            .iter()
-            .any(|substring| user_message_no_code_blocks.contains(substring))
-        {
-            return None;
-        }
+        let direct_other_substrings = vec![
+            "explain",
+            "what is",
+            "what do",
+            "what does",
+            "detail",
+            "overview",
+            "rundown",
+        ];
 
+        // Check if any of the direct substrings are in the user message
+        let user_message_no_code_blocks = user_message.get_output_string_without_codeblocks();
+        let substring_result = direct_substrings.iter().any(|substring| {
+            user_message_no_code_blocks
+                .to_lowercase()
+                .contains(&substring.to_lowercase())
+        });
+
+        // If no summary substring and no previous message, check with "other" phrases to improve quality
+        if !substring_result && step_history.is_empty() && !job_scope.is_empty() {
+            // First do another substring check to keep things efficient/fast, before using the other embeddings
+            let other_substring_result = direct_other_substrings.iter().any(|substring| {
+                user_message_no_code_blocks
+                    .to_lowercase()
+                    .contains(&substring.to_lowercase())
+            });
+            if other_substring_result {
+                if let Ok(other_check_result) = other_check(&generator, &user_message, &job_scope).await {
+                    if other_check_result.0 {
+                        return true;
+                    }
+                }
+            }
+        }
+        substring_result
+    }
+
+    /// Checks if the job's task asks to summarize in one of many ways.
+    pub async fn validate_user_message_requests_summary(
+        user_message: ParsedUserMessage,
+        generator: RemoteEmbeddingGenerator,
+        job_scope: &JobScope,
+        step_history: &Vec<JobStepResult>,
+    ) -> Option<InferenceChainDecision> {
         let mut this_check_result = (false, 0.0);
         let mut these_check_result = (false, 0.0);
         let mut message_history_check_result = (false, 0.0);
+
+        // If there are no VRs in the scope, we don't use the summary chain for now (may change when we do advanced message history summarization)
+        if job_scope.is_empty() {
+            return None;
+        }
+
+        // Do the quick first pass check
+        let first_pass_result =
+            Self::validate_user_message_first_pass(user_message.clone(), generator.clone(), &job_scope, &step_history)
+                .await;
+        if !first_pass_result {
+            return None;
+        }
 
         // Perform the vector search detailed checks.
         these_check_result = these_check(&generator, &user_message, job_scope)
             .await
             .unwrap_or((false, 0.0));
-
         this_check_result = this_check(&generator, &user_message, job_scope, step_history)
             .await
             .unwrap_or((false, 0.0));
-
         // For now we don't use the message history check as its just useless/inefficient to do the embeddings gen
         // Later on may be useful
         // message_history_check = message_history_check(&generator, &user_message)
@@ -385,6 +427,22 @@ async fn this_check(
     let check = this_score > passing && !job_scope.is_empty() && !code_block_exists;
 
     Ok((check, this_score))
+}
+
+/// Checks if the user message's similarity score passes for any of the other summary-esque strings (used only if no prev messages)
+async fn other_check(
+    generator: &RemoteEmbeddingGenerator,
+    user_message: &ParsedUserMessage,
+    job_scope: &JobScope,
+) -> Result<(bool, f32), AgentError> {
+    // Get user message embedding, without code blocks for clarity in task
+    let user_message_embedding = user_message
+        .generate_embedding_filtered(generator.clone(), false, true)
+        .await?;
+    let passing = passing_score(&generator.clone());
+    let these_score = top_score_summarize_other_embeddings(generator.clone(), &user_message_embedding).await?;
+    println!("Top These score: {:.2}", these_score);
+    Ok((these_score > passing && !job_scope.is_empty(), these_score))
 }
 
 /// Checks if the user message's similarity score passes for the "message history" summary string

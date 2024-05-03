@@ -23,6 +23,15 @@ pub async fn top_score_summarize_this_embeddings(
     Ok(top_score_embeddings(embeddings, user_message_embedding).await)
 }
 
+/// Scores job task embedding against other summary embeddings and returns the highest score.
+pub async fn top_score_summarize_other_embeddings(
+    generator: RemoteEmbeddingGenerator,
+    user_message_embedding: &Embedding,
+) -> Result<f32, VRError> {
+    let embeddings = summarize_other_embeddings(generator).await?;
+    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
+}
+
 /// Scores job task embedding against message history summary embeddings and returns the highest score.
 pub async fn top_score_message_history_summary_embeddings(
     generator: RemoteEmbeddingGenerator,
@@ -84,6 +93,28 @@ pub async fn summarize_this_embeddings(
         "Wrap this up in a summary".to_string(),
         "Break this down for me".to_string(),
         "Condense this into a summary".to_string(),
+    ];
+    let ids = vec!["".to_string(); strings.len()];
+    let embeddings = generator.generate_embeddings(&strings, &ids).await;
+    if let Err(e) = embeddings {
+        println!("Failed generating this embeddings: {:?}", e);
+        return Err(e);
+    }
+
+    Ok(strings.into_iter().zip(embeddings.unwrap().into_iter()).collect())
+}
+
+/// Returns summary embeddings related to specific requests for summarization
+pub async fn summarize_other_embeddings(
+    generator: RemoteEmbeddingGenerator,
+) -> Result<Vec<(String, Embedding)>, VRError> {
+    let strings = vec![
+        "Explain what this is".to_string(),
+        "What do this/these document(s) talk about".to_string(),
+        "What is this about?".to_string(),
+        "Go into detail on this".to_string(),
+        "Overview these".to_string(),
+        "Give me a rundown".to_string(),
     ];
     let ids = vec!["".to_string(); strings.len()];
     let embeddings = generator.generate_embeddings(&strings, &ids).await;
