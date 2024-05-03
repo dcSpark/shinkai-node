@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use chrono::Datelike;
 use chrono::TimeZone;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -56,6 +57,7 @@ impl FilesystemSynchronizer {
         db_path: String,
         sync_interval: SyncInterval,
         should_mirror_delete: bool,
+        upload_timeout: Option<Duration>,
     ) -> Result<Self, ShinkaiMirrorDBError> {
         let db = ShinkaiMirrorDB::new(&db_path)?;
         let syncing_folders_db = Arc::new(Mutex::new(db));
@@ -79,6 +81,7 @@ impl FilesystemSynchronizer {
                             &destination_clone,
                             syncing_folders_db_clone.clone(),
                             should_mirror_delete,
+                            upload_timeout,
                         )
                         .await;
                         eprintln!("Immediate sync finished. Result: {:?}", result);
@@ -93,6 +96,7 @@ impl FilesystemSynchronizer {
                                 &destination_clone,
                                 syncing_folders_db_clone.clone(),
                                 should_mirror_delete,
+                                upload_timeout,
                             )
                             .await;
                             eprintln!("Syncing folders finished. Result: {:?}", result);
@@ -223,10 +227,9 @@ impl FilesystemSynchronizer {
     ) -> Vec<PathBuf> {
         // Scan the local folder for existing files and store them in a HashMap for quick lookup
         let current_folder_files = Self::scan_folders(folder_to_watch)
-            .into_iter()
-            .map(|(path, _)| path.strip_prefix(folder_to_watch).unwrap_or(&path).to_path_buf())
+            .into_keys()
             .map(|path| {
-                let mut full_path = destination_path.join(&path);
+                let mut full_path = destination_path.join(path);
                 if !full_path.to_string_lossy().starts_with('/') {
                     full_path = PathBuf::from("/").join(full_path);
                 }
@@ -386,6 +389,7 @@ impl FilesystemSynchronizer {
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         folder_to_watch: &PathBuf,
+        upload_timeout: Option<Duration>,
     ) -> Result<(), PostRequestError> {
         let total_files = files.len();
         let mut uploaded_files_count = 0;
@@ -419,7 +423,13 @@ impl FilesystemSynchronizer {
 
             loop {
                 let upload_result: Result<Vec<FileUploadResponse>, PostRequestError> = shinkai_manager_for_sync
-                    .upload_file(&file_data, filename, &destination_str, creation_datetime_str.clone())
+                    .upload_file(
+                        &file_data,
+                        filename,
+                        &destination_str,
+                        creation_datetime_str.clone(),
+                        upload_timeout,
+                    )
                     .await;
 
                 match upload_result {
@@ -593,6 +603,7 @@ impl FilesystemSynchronizer {
         }
     }
 
+    #[allow(dead_code)]
     fn stop(self) {
         if let Some(handle) = self.abort_handler {
             handle.abort();
@@ -606,6 +617,7 @@ impl FilesystemSynchronizer {
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         should_mirror_delete: bool,
+        upload_timeout: Option<Duration>,
     ) -> Result<(), PostRequestError> {
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
@@ -659,6 +671,7 @@ impl FilesystemSynchronizer {
                     destination_path,
                     syncing_folders_db.clone(),
                     folder_to_watch,
+                    upload_timeout,
                 )
                 .await?;
 
@@ -736,6 +749,7 @@ impl FilesystemSynchronizer {
             &self.destination_path,
             self.syncing_folders_db.clone(),
             self.should_mirror_delete,
+            None,
         )
         .await
     }
@@ -874,9 +888,16 @@ impl FilesystemSynchronizer {
     }
 
     pub fn extract_datetime_from_path(path: &Path) -> Option<String> {
+        Self::extract_datetime_from_path_with_date_provider(path, chrono::Utc::now)
+    }
+
+    pub fn extract_datetime_from_path_with_date_provider<F>(path: &Path, current_date_provider: F) -> Option<String>
+    where
+        F: Fn() -> chrono::DateTime<chrono::Utc>,
+    {
         let path_str = path.to_string_lossy();
         // Regular expression to find a date in the format YYYYMMDD
-        let re = regex::Regex::new(r"(\d{4})(?:-)?(\d{2})(?:-)?(\d{2})").unwrap();
+        let re = regex::Regex::new(r"(\d{4})(?:[-_])?(\d{2})(?:[-_])?(\d{2})").unwrap();
 
         if let Some(caps) = re.captures(&path_str) {
             if caps.len() == 4 {
@@ -891,6 +912,32 @@ impl FilesystemSynchronizer {
                 }
             }
         }
+
+        // If no full date, try to match YYYY_MM without a day
+        let re_month_year = regex::Regex::new(r".*(\d{4})_(\d{2}).*").unwrap();
+        if let Some(caps) = re_month_year.captures(&path_str) {
+            if caps.len() == 3 {
+                let year = caps[1].parse::<i32>().unwrap();
+                let month = caps[2].parse::<u32>().unwrap();
+
+                let current_date = current_date_provider();
+                let current_year = current_date.year();
+                let current_month = current_date.month();
+
+                if year == current_year && month == current_month {
+                    // Same month and year, return None
+                    return None;
+                } else if year == current_year && month < current_month || year < current_year {
+                    // Calculate the first moment of the next month
+                    let next_month = if month == 12 { 1 } else { month + 1 };
+                    let next_month_year = if month == 12 { year + 1 } else { year };
+                    let first_moment = chrono::NaiveDate::from_ymd(next_month_year, next_month, 1).and_hms(0, 0, 0);
+                    let first_moment_datetime = chrono::DateTime::<chrono::Utc>::from_utc(first_moment, chrono::Utc);
+                    return Some(first_moment_datetime.to_rfc3339());
+                }
+            }
+        }
+
         None
     }
 

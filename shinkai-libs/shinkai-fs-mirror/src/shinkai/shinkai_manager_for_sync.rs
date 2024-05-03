@@ -125,6 +125,7 @@ impl ShinkaiManagerForSync {
         filename: &str,
         destination: &str,
         file_datetime: Option<String>,
+        upload_timeout: Option<Duration>,
     ) -> Result<T, PostRequestError> {
         let start_time = std::time::Instant::now(); // Start timing
 
@@ -161,7 +162,8 @@ impl ShinkaiManagerForSync {
         let inbox_message_creation = serde_json::json!(shinkai_message);
 
         // Create a timeout task
-        let timeout_task = sleep(Duration::from_secs(600));
+        let timeout_duration = upload_timeout.unwrap_or(Duration::from_secs(1200));
+        let timeout_task = sleep(timeout_duration);
 
         // Clone self to be able to move it into the async block
         let node_address = self.node_address.clone();
@@ -325,7 +327,7 @@ impl ShinkaiManagerForSync {
 
     // Need review
     pub async fn get_node_folder(&self, path: &str) -> Result<serde_json::Value, PostRequestError> {
-        let formatted_path = if path.starts_with("/") {
+        let formatted_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("/{}", path)
@@ -363,12 +365,12 @@ impl ShinkaiManagerForSync {
         let formatted_path = if path == "/" {
             path.to_string()
         } else {
-            let mut name = if !path.starts_with("/") {
+            let mut name = if !path.starts_with('/') {
                 format!("/{}", path) // Add "/" at the start if not present
             } else {
                 path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -412,7 +414,7 @@ impl ShinkaiManagerForSync {
     }
 
     pub async fn retrieve_vector_resource(&self, path: &str) -> Result<PostDataResponse, PostRequestError> {
-        let formatted_path = if path.starts_with("/") {
+        let formatted_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("/{}", path)
