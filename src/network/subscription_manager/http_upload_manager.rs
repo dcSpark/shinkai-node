@@ -19,10 +19,27 @@
 // we need to save the links somewhere. db then?
 // delete all the links on unshare
 
+use std::{collections::HashMap, sync::Weak};
 
-// pub struct HttpSubscriptionUploadManager {
-//     queue: Vec<HttpUpload>,
-// }
+use dashmap::DashMap;
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId};
+
+use crate::{db::ShinkaiDB, vector_fs::vector_fs::VectorFS};
+
+pub enum SubscriptionStatus {
+    NotStarted,
+    Syncing,
+    Ready,
+}
+
+pub struct HttpSubscriptionUploadManager {
+    pub db: Weak<ShinkaiDB>,
+    pub vector_fs: Weak<VectorFS>,
+    pub node_name: ShinkaiName,
+    pub is_syncing: bool,
+    pub subscription_file_map: DashMap<SubscriptionId, HashMap<String, bool>>,
+    pub subscription_status: DashMap<SubscriptionId, SubscriptionStatus>,
+}
 
 // instead of saving stuff to db maybe we could load the files
 // from an API call to the provider
