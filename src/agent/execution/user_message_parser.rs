@@ -124,6 +124,12 @@ impl ParsedUserMessage {
         ParsedUserMessage::new_from_elements(filtered_elements).get_output_string()
     }
 
+    /// Returns a string representation of the user message, filtered by the given parameters
+    pub fn get_output_string_without_codeblocks(&self) -> String {
+        let filtered_elements = self.get_elements_filtered(false, true);
+        ParsedUserMessage::new_from_elements(filtered_elements).get_output_string()
+    }
+
     /// Generates an embedding for the user message using it's entire output string, with a default empty id
     pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Embedding, VRError> {
         let embedding = generator.generate_embedding_default(&self.get_output_string()).await?;

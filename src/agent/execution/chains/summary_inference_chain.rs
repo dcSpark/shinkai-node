@@ -14,7 +14,9 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_vector_resources::model_type::{
+    EmbeddingModelType, OllamaTextEmbeddingsInference, TextEmbeddingsInference,
+};
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -41,7 +43,6 @@ impl JobManager {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
-        eprintln!("001------ In summary inference chain");
         // Perform the checks
         let this_check = this_check(&generator, &user_message, full_job.scope(), &full_job.step_history).await?;
         let these_check = these_check(&generator, &user_message, full_job.scope()).await?;
@@ -52,8 +53,6 @@ impl JobManager {
             .into_iter()
             .filter(|check| check.0)
             .fold((false, 0.0f32), |acc, check| if check.1 > acc.1 { check } else { acc });
-
-        eprintln!("002------ Highest score check: {:?}", highest_score_check);
 
         // Later implement this alternative summary flow
         // if message_history_check.1 == highest_score_check.1 {
@@ -98,7 +97,6 @@ impl JobManager {
         user_profile: ShinkaiName,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
-        eprintln!("003------ In summary job context sub chain");
         let scope = full_job.scope();
         let resource_count =
             JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
@@ -116,7 +114,6 @@ impl JobManager {
         let mut num_resources_processed = 0;
         let mut detailed_summaries = Vec::new();
         while let Some(resources) = chunks.next().await {
-            println!("Received chunk of resources: {}", resources.len());
             let resource_count = resources.len();
 
             // Create a future for each resource in the chunk
@@ -242,44 +239,90 @@ impl JobManager {
         Ok(filtered_answer)
     }
 
-    // TODO: Optimization. Directly check if the text holds any substring of summary/summarize/recap botched or not. If yes, only then do the embedding checks.
-    /// Checks if the job's task asks to summarize in one of many ways using vector search.
+    /// Checks if the job's task asks to summarize in one of many ways.
     pub async fn validate_user_message_requests_summary(
         user_message: ParsedUserMessage,
         generator: RemoteEmbeddingGenerator,
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
     ) -> bool {
-        // Perform the checks
+        // Temporary approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
+        let direct_substrings = vec![
+            "summary",
+            "sumry",
+            "sunnary",
+            "sunary",
+            "summry",
+            "summry",
+            "summari",
+            "sumery",
+            "sumnary",
+            "sumarry",
+            "summarey",
+            "sumary",
+            "summarize",
+            "sumrize",
+            "sumrise",
+            "summarise",
+            "sumarise",
+            "sumarize",
+            "sunnarize",
+            "sunrize",
+            "sunarize",
+            "sunarise",
+            "recap",
+            " re cap ",
+        ];
+        // Check if any of the direct substrings are in the user message before progressing forward
+        let user_message_no_code_blocks = user_message.get_output_string_without_codeblocks();
+        if !direct_substrings
+            .iter()
+            .any(|substring| user_message_no_code_blocks.contains(substring))
+        {
+            return false;
+        }
+
+        // Perform the vector search detailed checks. We check each one immediately for efficiency.
         let these_check = these_check(&generator, &user_message, job_scope)
             .await
             .unwrap_or((false, 0.0));
+        if these_check.0 {
+            return true;
+        }
+
         let this_check = this_check(&generator, &user_message, job_scope, step_history)
             .await
             .unwrap_or((false, 0.0));
+        if this_check.0 {
+            return true;
+        }
+
         let message_history_check = message_history_check(&generator, &user_message)
             .await
             .unwrap_or((false, 0.0));
+        if message_history_check.0 {
+            return true;
+        }
 
-        // Check if any of the conditions passed
         these_check.0 || this_check.0 || message_history_check.0
     }
 }
 
 /// Returns the passing score for the summary chain checks
 fn passing_score(generator: &RemoteEmbeddingGenerator) -> f32 {
-    if generator.model_type()
-        == EmbeddingModelType::TextEmbeddingsInference(
-            shinkai_vector_resources::model_type::TextEmbeddingsInference::AllMiniLML6v2,
-        )
-    {
-        0.68
-    } else {
-        eprintln!(
-            "Embedding model type not accounted for in Summary Chain detection! Add: {:?}",
-            generator.model_type()
-        );
-        0.75
+    match generator.model_type() {
+        EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2) => 0.68,
+        EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::AllMiniLML6v2) => 0.68,
+        EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M) => {
+            0.85
+        }
+        _ => {
+            eprintln!(
+                "Embedding model type not accounted for in Summary Chain detection! Add: {:?}",
+                generator.model_type()
+            );
+            0.75
+        }
     }
 }
 
@@ -317,10 +360,6 @@ async fn this_check(
 
     // Get current job task code block count, and the previous job task's code block count if it exists in step history
     let current_code_block_count = user_message.get_code_block_elements().len();
-
-    for step in step_history {
-        println!("Step: {:?}", step);
-    }
 
     // Get current user message code block count, and the previous user message's code block count if it exists in step history
     let current_code_block_count = user_message.get_code_block_elements().len();
