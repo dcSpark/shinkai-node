@@ -145,7 +145,7 @@ pub trait LLMProvider {
 
     /// Given a JSON string, it cleans it up and returns a more likely readable JSON string
     fn json_string_cleanup(s: &str) -> String {
-        let mut response_string = replace_single_quotes(s);
+        let mut response_string =
 
         // Quote & underscore fixes
         response_string = response_string.replace("\\'", "\'");
