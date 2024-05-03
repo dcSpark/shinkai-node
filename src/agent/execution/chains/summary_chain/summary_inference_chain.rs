@@ -1,4 +1,5 @@
 use crate::agent::error::AgentError;
+use crate::agent::execution::chains::inference_chain_router::InferenceChainDecision;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
@@ -42,11 +43,12 @@ impl JobManager {
         user_profile: ShinkaiName,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
+        score_results: ((bool, f32), (bool, f32), (bool, f32)),
     ) -> Result<String, AgentError> {
         // Perform the checks
-        let this_check = this_check(&generator, &user_message, full_job.scope(), &full_job.step_history).await?;
-        let these_check = these_check(&generator, &user_message, full_job.scope()).await?;
-        let message_history_check = message_history_check(&generator, &user_message).await?;
+        let this_check = score_results.0;
+        let these_check = score_results.1;
+        let message_history_check = score_results.2;
 
         let checks = vec![this_check, these_check, message_history_check];
         let highest_score_check = checks
@@ -245,7 +247,12 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
-    ) -> bool {
+    ) -> Option<InferenceChainDecision> {
+        // If there are no VRs in the scope, we don't use the summary chain for now (may change when we do advanced message history summarization)
+        if job_scope.is_empty() {
+            return None;
+        }
+
         // Temporary approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
         let direct_substrings = vec![
             "summary",
@@ -279,32 +286,33 @@ impl JobManager {
             .iter()
             .any(|substring| user_message_no_code_blocks.contains(substring))
         {
-            return false;
+            return None;
         }
 
-        // Perform the vector search detailed checks. We check each one immediately for efficiency.
-        let these_check = these_check(&generator, &user_message, job_scope)
+        let mut this_check_result = (false, 0.0);
+        let mut these_check_result = (false, 0.0);
+        let mut message_history_check_result = (false, 0.0);
+
+        // Perform the vector search detailed checks.
+        these_check_result = these_check(&generator, &user_message, job_scope)
             .await
             .unwrap_or((false, 0.0));
-        if these_check.0 {
-            return true;
-        }
 
-        let this_check = this_check(&generator, &user_message, job_scope, step_history)
+        this_check_result = this_check(&generator, &user_message, job_scope, step_history)
             .await
             .unwrap_or((false, 0.0));
-        if this_check.0 {
-            return true;
-        }
 
-        let message_history_check = message_history_check(&generator, &user_message)
-            .await
-            .unwrap_or((false, 0.0));
-        if message_history_check.0 {
-            return true;
-        }
+        // For now we don't use the message history check as its just useless/inefficient to do the embeddings gen
+        // Later on may be useful
+        // message_history_check = message_history_check(&generator, &user_message)
+        //     .await
+        //     .unwrap_or((false, 0.0));
 
-        these_check.0 || this_check.0 || message_history_check.0
+        Some(InferenceChainDecision::SummaryChain((
+            this_check_result,
+            these_check_result,
+            message_history_check_result,
+        )))
     }
 }
 

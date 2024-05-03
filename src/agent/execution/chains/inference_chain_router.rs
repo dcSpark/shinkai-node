@@ -18,9 +18,10 @@ use tracing::instrument;
 
 use super::cron_creation_chain::CronCreationChainResponse;
 
-pub enum InferenceChain {
+/// The output result of the inference chain router
+pub enum InferenceChainDecision {
     QAChain,
-    SummaryChain,
+    SummaryChain(((bool, f32), (bool, f32), (bool, f32))),
     ToolExecutionChain,
     CodingChain,
     CronCreationChain,
@@ -61,7 +62,7 @@ impl JobManager {
         )
         .await;
         match chosen_chain {
-            InferenceChain::SummaryChain => {
+            InferenceChainDecision::SummaryChain(score_results) => {
                 inference_response_content = JobManager::start_summary_inference_chain(
                     db,
                     vector_fs,
@@ -73,10 +74,11 @@ impl JobManager {
                     user_profile,
                     3,
                     max_tokens_in_prompt,
+                    score_results,
                 )
                 .await?
             }
-            InferenceChain::QAChain => {
+            InferenceChainDecision::QAChain => {
                 let qa_iteration_count = if full_job.scope.contains_significant_content() {
                     3
                 } else {
@@ -120,12 +122,12 @@ impl JobManager {
         user_profile: Option<ShinkaiName>,
     ) -> Result<(CronCreationChainResponse, HashMap<String, String>), AgentError> {
         // TODO: this part is very similar to the above function so it is easier to merge them.
-        let chosen_chain = InferenceChain::CronCreationChain;
+        let chosen_chain = InferenceChainDecision::CronCreationChain;
         let mut inference_response_content = CronCreationChainResponse::default();
         let mut new_execution_context = HashMap::new();
 
         match chosen_chain {
-            InferenceChain::CronCreationChain => {
+            InferenceChainDecision::CronCreationChain => {
                 if let Some(agent) = agent_found {
                     inference_response_content = JobManager::start_cron_creation_chain(
                         db,
@@ -162,14 +164,14 @@ impl JobManager {
         links: Vec<String>,
         prev_execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
-        chosen_chain: InferenceChain,
+        chosen_chain: InferenceChainDecision,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
         let mut inference_response_content: String = String::new();
         let mut new_execution_context = HashMap::new();
 
         // Note: Faking it until you merge it
         match chosen_chain {
-            InferenceChain::CronExecutionChainMainTask => {
+            InferenceChainDecision::CronExecutionChainMainTask => {
                 if let Some(agent) = agent_found {
                     let response = JobManager::start_cron_execution_chain_for_main_task(
                         db,
@@ -190,7 +192,7 @@ impl JobManager {
                     return Err(AgentError::AgentNotFound);
                 }
             }
-            InferenceChain::CronExecutionChainSubtask => {
+            InferenceChainDecision::CronExecutionChainSubtask => {
                 if let Some(agent) = agent_found {
                     inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
                         db,
@@ -224,9 +226,9 @@ async fn choose_inference_chain(
     generator: RemoteEmbeddingGenerator,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
-) -> InferenceChain {
+) -> InferenceChainDecision {
     eprintln!("Choosing inference chain");
-    if JobManager::validate_user_message_requests_summary(
+    if let Some(summary_chain_decision) = JobManager::validate_user_message_requests_summary(
         parsed_user_message,
         generator.clone(),
         job_scope,
@@ -234,8 +236,8 @@ async fn choose_inference_chain(
     )
     .await
     {
-        InferenceChain::SummaryChain
+        summary_chain_decision
     } else {
-        InferenceChain::QAChain
+        InferenceChainDecision::QAChain
     }
 }
