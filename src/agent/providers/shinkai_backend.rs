@@ -48,7 +48,7 @@ impl LLMProvider for ShinkaiBackend {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
-                let messages_json = match self.model_type.as_str() {
+                let messages_json = match self.model_type.to_uppercase().as_str() {
                     "PREMIUM_TEXT_INFERENCE"
                     | "PREMIUM_VISION_INFERENCE"
                     | "STANDARD_TEXT_INFERENCE"
@@ -63,7 +63,12 @@ impl LLMProvider for ShinkaiBackend {
                             }
                         }
                     }
-                    _ => return Err(AgentError::InvalidModelType("Unsupported model type".to_string())),
+                    _ => {
+                        return Err(AgentError::InvalidModelType(format!(
+                            "Unsupported model type: {:?}",
+                            self.model_type
+                        )))
+                    }
                 };
                 // eprintln!("Messages JSON: {:?}", messages_json);
 

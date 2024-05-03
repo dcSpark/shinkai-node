@@ -41,6 +41,7 @@ impl JobManager {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
+        eprintln!("001------ In summary inference chain");
         // Perform the checks
         let this_check = this_check(&generator, &user_message, full_job.scope(), &full_job.step_history).await?;
         let these_check = these_check(&generator, &user_message, full_job.scope()).await?;
@@ -51,6 +52,8 @@ impl JobManager {
             .into_iter()
             .filter(|check| check.0)
             .fold((false, 0.0f32), |acc, check| if check.1 > acc.1 { check } else { acc });
+
+        eprintln!("002------ Highest score check: {:?}", highest_score_check);
 
         // Later implement this alternative summary flow
         // if message_history_check.1 == highest_score_check.1 {
@@ -95,6 +98,7 @@ impl JobManager {
         user_profile: ShinkaiName,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
+        eprintln!("003------ In summary job context sub chain");
         let scope = full_job.scope();
         let resource_count =
             JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;

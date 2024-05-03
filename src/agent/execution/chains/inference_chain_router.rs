@@ -186,22 +186,6 @@ impl JobManager {
                     )
                     .await?;
                     inference_response_content = response.summary;
-
-                    // new_execution_context.insert(
-                    //     "previous_step_response".to_string(),
-                    //     inference_response_content.clone().cron_expression,
-                    // );
-                    // new_execution_context.insert(
-                    //     "previous_step_response".to_string(),
-                    //     inference_response_content.clone().pddl_plan_problem,
-                    // );
-                    // new_execution_context.insert(
-                    //     "previous_step_response".to_string(),
-                    //     inference_response_content.clone().pddl_plan_domain,
-                    // );
-
-                    // new_execution_context
-                    //     .insert("previous_step_response".to_string(), inference_response_content.clone());
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }
