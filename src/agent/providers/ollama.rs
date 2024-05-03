@@ -123,6 +123,8 @@ impl LLMProvider for Ollama {
 
             // Attempt to clean up response text
             response_text = response_text.replacen("{ \n\"answer\": \n\"", "{ \"answer\": \"", 1);
+            response_text = response_text.replacen("answer\" : \n\"", "answer\": \"", 1);
+
 
             shinkai_log(
                 ShinkaiLogOption::JobExecution,

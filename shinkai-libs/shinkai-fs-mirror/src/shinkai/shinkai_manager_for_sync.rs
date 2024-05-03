@@ -2,16 +2,13 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::http_requests::{
-    request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse,
-};
+use crate::http_requests::{request_post, request_post_multipart, PostDataResponse, PostRequestError};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use rand::RngCore;
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
 };
@@ -128,6 +125,7 @@ impl ShinkaiManagerForSync {
         filename: &str,
         destination: &str,
         file_datetime: Option<String>,
+        upload_timeout: Option<Duration>,
     ) -> Result<T, PostRequestError> {
         let start_time = std::time::Instant::now(); // Start timing
 
@@ -164,7 +162,8 @@ impl ShinkaiManagerForSync {
         let inbox_message_creation = serde_json::json!(shinkai_message);
 
         // Create a timeout task
-        let timeout_task = sleep(Duration::from_secs(600));
+        let timeout_duration = upload_timeout.unwrap_or(Duration::from_secs(1200));
+        let timeout_task = sleep(timeout_duration);
 
         // Clone self to be able to move it into the async block
         let node_address = self.node_address.clone();
@@ -270,9 +269,65 @@ impl ShinkaiManagerForSync {
         }
     }
 
+    // Add a new function to delete an item
+    pub async fn delete_item(&self, path: &str) -> Result<(), PostRequestError> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_delete_item(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            self.node_receiver_subidentity.clone(),
+        )
+        .map_err(|err| PostRequestError::Unknown(err.to_string()))?;
+
+        let delete_item_message = serde_json::json!(shinkai_message);
+        let response = request_post(
+            self.node_address.clone(),
+            delete_item_message.to_string(),
+            "/v1/vec_fs/remove_item",
+        )
+        .await;
+
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+      // Add a new function to delete an item
+      pub async fn delete_folder(&self, path: &str) -> Result<(), PostRequestError> {
+        let shinkai_message = ShinkaiMessageBuilder::vecfs_delete_folder(
+            path,
+            self.my_encryption_secret_key.clone(),
+            self.my_signature_secret_key.clone(),
+            self.receiver_public_key,
+            self.sender.clone(),
+            self.sender_subidentity.clone(),
+            self.node_receiver.clone(),
+            self.node_receiver_subidentity.clone(),
+        )
+        .map_err(|err| PostRequestError::Unknown(err.to_string()))?;
+
+        let delete_item_message = serde_json::json!(shinkai_message);
+        let response = request_post(
+            self.node_address.clone(),
+            delete_item_message.to_string(),
+            "/v1/vec_fs/remove_folder",
+        )
+        .await;
+
+        match response {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
     // Need review
     pub async fn get_node_folder(&self, path: &str) -> Result<serde_json::Value, PostRequestError> {
-        let formatted_path = if path.starts_with("/") {
+        let formatted_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("/{}", path)
@@ -310,12 +365,12 @@ impl ShinkaiManagerForSync {
         let formatted_path = if path == "/" {
             path.to_string()
         } else {
-            let mut name = if !path.starts_with("/") {
+            let mut name = if !path.starts_with('/') {
                 format!("/{}", path) // Add "/" at the start if not present
             } else {
                 path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -359,7 +414,7 @@ impl ShinkaiManagerForSync {
     }
 
     pub async fn retrieve_vector_resource(&self, path: &str) -> Result<PostDataResponse, PostRequestError> {
-        let formatted_path = if path.starts_with("/") {
+        let formatted_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("/{}", path)

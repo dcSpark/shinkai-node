@@ -1260,7 +1260,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFSRetrieveVRObject>(
             node_name,
@@ -1319,7 +1319,7 @@ impl Node {
             }
         };
 
-        let json_resp = match result.to_json_value() {
+        let json_resp = match result.encode_as_base64() {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -1343,7 +1343,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIVecFSRetrieveVRObject>(
             node_name,
@@ -1402,7 +1402,7 @@ impl Node {
             }
         };
 
-        let json_resp = match result.to_json_value() {
+        let resp = match result.encode_as_base64() {
             Ok(result) => result,
             Err(e) => {
                 let api_error = APIError {
@@ -1414,7 +1414,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
+        let _ = res.send(Ok(resp)).await.map_err(|_| ());
         Ok(())
     }
 }

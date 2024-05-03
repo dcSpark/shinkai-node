@@ -203,8 +203,6 @@ impl ShinkaiMirrorDB {
             .ok_or_else(|| ShinkaiMirrorDBError::ColumnFamilyNotFound(MirrorTopic::FileMirror.as_str().to_string()))?;
     
         let prefix = format!("{}_{}",  profile_name, key_prefix.to_string_lossy());
-        eprintln!("Deleting keys with prefix: {}", prefix);
-    
         let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
     
         while let Some(result) = iter.next() {
@@ -215,14 +213,8 @@ impl ShinkaiMirrorDB {
                         Err(_) => continue,
                     };
     
-                    eprintln!("Considering key for deletion: {:?}", key_str);
-                    eprintln!("Against prefix: {:?}", prefix);
-    
                     if key_str.starts_with(&prefix) {
-                        eprintln!("they match");
                         self.db.delete_cf(cf_handle, &key).map_err(ShinkaiMirrorDBError::from)?;
-                    } else {
-                        eprintln!("they don't match");
                     }
                 }
                 Err(e) => return Err(ShinkaiMirrorDBError::from(e)),

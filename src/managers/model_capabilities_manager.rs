@@ -379,6 +379,9 @@ impl ModelCapabilitiesManager {
                     return 32_000;
                 } else if ollama.model_type.starts_with("mixtral:8x22b") {
                     return 65_000;
+                } else if ollama.model_type.starts_with("llama3-gradient") {
+                    eprintln!("llama3-gradient detected");
+                    return 256_000;
                 } else if ollama.model_type.starts_with("llama3") {
                     return 8_000;
                 }
