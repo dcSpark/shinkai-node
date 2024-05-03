@@ -107,37 +107,20 @@ impl ShinkaiDB {
     pub fn remove_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Get cf handle for NodeAndUsers topic
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-
-        // Prefix used to identify all keys related to the agent
+    
+        // Construct the key for the specific agent to be removed
         let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
-        let agent_prefix = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
-
+        let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
+    
         // Check if the agent exists
-        let agent_exists = self.db.get_cf(cf_node_and_users, agent_prefix.as_bytes())?.is_some();
+        let agent_exists = self.db.get_cf(cf_node_and_users, agent_key.as_bytes())?.is_some();
         if !agent_exists {
             return Err(ShinkaiDBError::DataNotFound);
         }
-
-        // Create a new RocksDB WriteBatch
-        let mut batch = rocksdb::WriteBatch::default();
-
-        // Iterate over all keys with the agent prefix to remove them
-        let iter = self.db.prefix_iterator_cf(cf_node_and_users, agent_prefix.as_bytes());
-        for item in iter {
-            match item {
-                Ok((key, _)) => {
-                    // Convert the key from bytes to a UTF-8 string
-                    let key_str = String::from_utf8(key.to_vec())
-                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
-                    batch.delete_cf(cf_node_and_users, &key_str);
-                }
-                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-            }
-        }
-
-        // Write the batch
-        self.db.write(batch)?;
-
+    
+        // Delete the specific agent key
+        self.db.delete_cf(cf_node_and_users, agent_key.as_bytes())?;
+    
         Ok(())
     }
 
