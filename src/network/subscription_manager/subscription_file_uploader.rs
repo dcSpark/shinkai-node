@@ -22,10 +22,10 @@ use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 use reqwest::{Client, Error as ReqwestError};
 use serde::{Deserialize, Serialize};
 
-use thiserror::Error;
-use serde_json::Value;
-use aws_types::region::Region;
 use async_recursion::async_recursion;
+use aws_types::region::Region;
+use serde_json::Value;
+use thiserror::Error;
 use urlencoding::decode;
 
 #[derive(Error, Debug)]
@@ -45,12 +45,6 @@ pub enum FileDestination {
     S3(S3Client, FileDestinationBucket),
     R2(S3Client, FileDestinationBucket),
     Http { url: String, auth_headers: Value },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileDestinationPath {
-    pub path: String,
-    pub is_folder: bool,
 }
 
 pub async fn upload_file(
@@ -147,7 +141,13 @@ pub async fn download_file(
 pub async fn list_folder_contents(
     destination: &FileDestination,
     folder_path: &str,
-) -> Result<Vec<FileDestinationPath>, FileTransferError> {
+) -> Result<Vec<String>, FileTransferError> {
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct FileDestinationPath {
+        pub path: String,
+        pub is_folder: bool,
+    }
+
     match destination {
         FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
             let mut folder_contents = Vec::new();
@@ -174,7 +174,11 @@ pub async fn list_folder_contents(
                         if let Some(key) = object.key {
                             let decoded_key = decode(&key).unwrap_or_default().to_string();
                             let is_folder = decoded_key.ends_with('/');
-                            let clean_path = if is_folder { decoded_key.trim_end_matches('/') } else { &decoded_key };
+                            let clean_path = if is_folder {
+                                decoded_key.trim_end_matches('/')
+                            } else {
+                                &decoded_key
+                            };
                             folder_contents.push(FileDestinationPath {
                                 path: clean_path.to_string(),
                                 is_folder,
@@ -191,17 +195,19 @@ pub async fn list_folder_contents(
             }
 
             // Optionally, recursively list contents of subdirectories
+            let mut all_paths = Vec::new();
             let mut i = 0;
             while i < folder_contents.len() {
                 let item = &folder_contents[i];
+                all_paths.push(item.path.clone());
                 if item.is_folder {
                     let subfolder_contents = list_folder_contents(destination, &item.path).await?;
-                    folder_contents.extend(subfolder_contents);
+                    all_paths.extend(subfolder_contents);
                 }
                 i += 1;
             }
 
-            Ok(folder_contents)
+            Ok(all_paths)
         }
         FileDestination::Http { .. } => Err(FileTransferError::Other(
             "Listing folder contents is not supported for HTTP destinations.".to_string(),
