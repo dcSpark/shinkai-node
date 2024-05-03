@@ -328,6 +328,7 @@ fn mirror_sync_tests() {
                 "db_tests_persistence/".to_string(),
                 SyncInterval::None,
                 false,
+                None,
             )
             .await
             .unwrap();
