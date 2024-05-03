@@ -377,11 +377,11 @@ pub enum NodeCommand {
     },
     RetrieveVRKai {
         msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<String, APIError>>,
     },
     RetrieveVRPack {
         msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
+        res: Sender<Result<String, APIError>>,
     },
     LocalExtManagerProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
