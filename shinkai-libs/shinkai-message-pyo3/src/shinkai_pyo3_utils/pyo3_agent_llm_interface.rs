@@ -2,10 +2,10 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
 use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::Groq;
 use shinkai_message_primitives::schemas::agents::serialized_agent::LocalLLM;
 use shinkai_message_primitives::schemas::agents::serialized_agent::Ollama;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
-use shinkai_message_primitives::schemas::agents::serialized_agent::Groq;
 use shinkai_message_primitives::schemas::agents::serialized_agent::ShinkaiBackend;
 
 #[pyclass]
@@ -80,7 +80,7 @@ impl PyAgentLLMInterface {
             AgentLLMInterface::Ollama(ollama) => Ok(format!("ollama:{}", ollama.model_type)),
             AgentLLMInterface::Groq(groq) => Ok(format!("groq:{}", groq.model_type)),
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                Ok(format!("shinkai-backend:{}", shinkai_backend.model_type))
+                Ok(format!("shinkai-backend:{}", shinkai_backend.model_type()))
             }
             AgentLLMInterface::LocalLLM(_) => Ok("LocalLLM".to_string()),
         }

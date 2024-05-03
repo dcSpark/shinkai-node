@@ -269,6 +269,7 @@ impl RemoteEmbeddingGenerator {
         id: String,
         model: String,
     ) -> Result<Embedding, VRError> {
+        let max_retries = 3;
         let mut retry_count = 0;
         let mut shortening_retry = 0;
         let mut input_string = input_string.clone();

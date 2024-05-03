@@ -1,8 +1,8 @@
 use crate::schemas::shinkai_name::ShinkaiName;
-use serde::{Deserialize, Serialize, Serializer};
-use std::str::FromStr;
 use serde::de::{self, Deserializer, Visitor};
+use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
+use std::str::FromStr;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -25,7 +25,7 @@ pub enum AgentLLMInterface {
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
     LocalLLM(LocalLLM),
-    Groq(Groq)
+    Groq(Groq),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -36,14 +36,32 @@ pub struct Ollama {
     pub model_type: String,
 }
 
+impl Ollama {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Groq {
     pub model_type: String,
 }
 
+impl Groq {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ShinkaiBackend {
-    pub model_type: String,
+    model_type: String,
+}
+
+impl ShinkaiBackend {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_uppercase()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

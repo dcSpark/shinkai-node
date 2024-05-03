@@ -48,7 +48,7 @@ impl LLMProvider for ShinkaiBackend {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
-                let messages_json = match self.model_type.to_uppercase().as_str() {
+                let messages_json = match self.model_type().to_uppercase().as_str() {
                     "PREMIUM_TEXT_INFERENCE"
                     | "PREMIUM_VISION_INFERENCE"
                     | "STANDARD_TEXT_INFERENCE"
@@ -66,14 +66,14 @@ impl LLMProvider for ShinkaiBackend {
                     _ => {
                         return Err(AgentError::InvalidModelType(format!(
                             "Unsupported model type: {:?}",
-                            self.model_type
+                            self.model_type()
                         )))
                     }
                 };
                 // eprintln!("Messages JSON: {:?}", messages_json);
 
                 let mut payload = json!({
-                    "model": self.model_type,
+                    "model": self.model_type(),
                     "messages": messages_json,
                     "temperature": 0.7,
                     // "max_tokens": result.remaining_tokens, // TODO: Check if this is necessary
@@ -81,7 +81,7 @@ impl LLMProvider for ShinkaiBackend {
 
                 // Openai doesn't support json_object response format for vision models. wut?
                 // Add json_object only for PREMIUM_TEXT_INFERENCE
-                if self.model_type == "PREMIUM_TEXT_INFERENCE" {
+                if self.model_type() == "PREMIUM_TEXT_INFERENCE" {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
@@ -146,7 +146,7 @@ impl LLMProvider for ShinkaiBackend {
 
                         // TODO: refactor parsing logic so it's reusable
                         // If not an error, but actual response
-                        if self.model_type.contains("vision") {
+                        if self.model_type().contains("vision") {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
                                 .choices

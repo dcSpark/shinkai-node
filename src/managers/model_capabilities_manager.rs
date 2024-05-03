@@ -140,7 +140,7 @@ impl ModelCapabilitiesManager {
                 _ => vec![],
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
@@ -204,7 +204,7 @@ impl ModelCapabilitiesManager {
                 _ => ModelCost::Unknown,
             },
             AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
                 "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
                     ModelCost::GoodValue
@@ -223,7 +223,7 @@ impl ModelCapabilitiesManager {
             AgentLLMInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
             AgentLLMInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
             AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -289,7 +289,7 @@ impl ModelCapabilitiesManager {
                 Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
-                shinkai_backend.model_type.clone(),
+                shinkai_backend.model_type().clone(),
             )),
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral")
@@ -353,11 +353,11 @@ impl ModelCapabilitiesManager {
                 0
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type == "PREMIUM_TEXT_INFERENCE"
-                    || shinkai_backend.model_type == "PREMIUM_VISION_INFERENCE"
+                if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
+                    || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
                 {
                     128_000
-                } else if shinkai_backend.model_type == "STANDARD_TEXT_INFERENCE" {
+                } else if shinkai_backend.model_type() == "STANDARD_TEXT_INFERENCE" {
                     32_000
                 } else {
                     let normalized_model = Self::normalize_model(&model.clone());
@@ -472,7 +472,7 @@ impl ModelCapabilitiesManager {
                 "".to_string()
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type.starts_with("gpt") {
+                if shinkai_backend.model_type().starts_with("gpt") {
                     "gpt-4-32k".to_string()
                 } else {
                     "gpt-4".to_string()
