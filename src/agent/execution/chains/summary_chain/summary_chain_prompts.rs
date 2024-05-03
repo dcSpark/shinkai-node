@@ -1,4 +1,4 @@
-use super::super::prompts::{JobPromptGenerator, Prompt, SubPromptType};
+use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
 use crate::agent::{
     execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
     job::JobStepResult,

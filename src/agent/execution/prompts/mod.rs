@@ -1,4 +1,3 @@
-pub mod chain_prompts;
 pub mod cron_prompts;
 pub mod general_prompts;
 pub mod prompts;
