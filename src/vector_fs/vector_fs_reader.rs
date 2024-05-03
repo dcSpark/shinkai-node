@@ -409,7 +409,7 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<usize, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
         let folder_count = internals
             .fs_core_resource
             .retrieve_resource_nodes_exhaustive(Some(path.clone()))
@@ -423,7 +423,7 @@ impl VectorFS {
         path: VRPath,
         profile: &ShinkaiName,
     ) -> Result<usize, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
         let count = internals
             .fs_core_resource
             .retrieve_vrheader_nodes_exhaustive(Some(path.clone()))
@@ -437,7 +437,7 @@ impl VectorFS {
         &self,
         reader: VFSReader,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(&reader.profile).await?;
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
         let vrheader_nodes = internals
             .fs_core_resource
             .retrieve_vrheader_nodes_exhaustive(Some(reader.path.clone()));

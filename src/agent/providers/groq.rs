@@ -1,4 +1,4 @@
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
@@ -18,6 +18,7 @@ impl LLMProvider for Groq {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
@@ -28,7 +29,7 @@ impl LLMProvider for Groq {
                 let model = AgentLLMInterface::Groq(groq);
                 let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(mut v) => {
                         // Assuming `v` is a serde_json::Value representing an array of messages

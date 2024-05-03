@@ -176,6 +176,7 @@ impl Agent {
                     self.external_url.as_ref(),
                     self.api_key.as_ref(),
                     prompt.clone(),
+                    self.model.clone(),
                 )
                 .await
             }
