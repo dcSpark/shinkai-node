@@ -2,7 +2,7 @@ use super::{BaseVectorResource, VRBaseType, VRHeader, VRKeywords, VectorResource
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
-use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, OllamaTextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiTime};
 use crate::source::{DistributionInfo, SourceReference, VRSourceReference};
@@ -582,7 +582,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
             is_merkelized,
             DistributionInfo::new_empty(),
         )

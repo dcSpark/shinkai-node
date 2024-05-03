@@ -170,6 +170,15 @@ impl Agent {
                     )
                     .await
             }
+            AgentLLMInterface::Groq(groq) => {
+                groq.call_api(
+                    &self.client,
+                    self.external_url.as_ref(),
+                    self.api_key.as_ref(),
+                    prompt.clone(),
+                )
+                .await
+            }
             AgentLLMInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }

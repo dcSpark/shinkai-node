@@ -181,6 +181,9 @@ impl ModelCapabilitiesManager {
                     vec![]
                 }
             }
+            AgentLLMInterface::Groq(groq) => {
+                vec![ModelCapability::TextInference]
+            }
         }
     }
 
@@ -210,24 +213,15 @@ impl ModelCapabilitiesManager {
                 _ => ModelCost::Unknown,
             },
             AgentLLMInterface::Ollama(_) => ModelCost::Cheap,
+            AgentLLMInterface::Groq(_) => ModelCost::Cheap,
         }
     }
 
     // Static method to get privacy of an agent model
     pub fn get_agent_privacy(model: &AgentLLMInterface) -> ModelPrivacy {
         match model {
-            AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-3.5-turbo-1106" => ModelPrivacy::RemoteGreedy,
-                "gpt-4-1106-preview" => ModelPrivacy::RemoteGreedy,
-                "gpt-4-vision-preview" => ModelPrivacy::RemoteGreedy,
-                "dall-e-3" => ModelPrivacy::RemoteGreedy,
-                _ => ModelPrivacy::Unknown,
-            },
-            AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
-                "togethercomputer/llama-2-70b-chat" => ModelPrivacy::RemoteGreedy,
-                "yorickvp/llava-13b" => ModelPrivacy::RemoteGreedy,
-                _ => ModelPrivacy::Unknown,
-            },
+            AgentLLMInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
+            AgentLLMInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
             AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
                 "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -236,6 +230,7 @@ impl ModelCapabilitiesManager {
                 _ => ModelPrivacy::Unknown,
             },
             AgentLLMInterface::Ollama(_) => ModelPrivacy::Local,
+            AgentLLMInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
         }
     }
 
@@ -319,6 +314,11 @@ impl ModelCapabilitiesManager {
                     Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
                 }
             }
+            AgentLLMInterface::Groq(groq) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -364,6 +364,14 @@ impl ModelCapabilitiesManager {
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())
                 }
             }
+            AgentLLMInterface::Groq(groq) => {
+                // Fill in the appropriate logic for GenericAPI
+                if groq.model_type == "llama3-70b-8192" {
+                    8_000
+                } else {
+                    4096
+                }
+            }
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
                     return 32_000;
@@ -372,6 +380,9 @@ impl ModelCapabilitiesManager {
                     //  32_000
                 } else if ollama.model_type.starts_with("mixtral:8x22b") {
                     return 65_000;
+                } else if ollama.model_type.starts_with("llama3-gradient") {
+                    eprintln!("llama3-gradient detected");
+                    return 256_000;
                 } else if ollama.model_type.starts_with("llama3") {
                     return 8_000;
                 }
@@ -418,6 +429,10 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
+            AgentLLMInterface::Groq(_) => {
+                // Fill in the appropriate logic for Ollama
+                4096
+            }
         }
     }
 
@@ -449,6 +464,10 @@ impl ModelCapabilitiesManager {
                 "".to_string()
             }
             AgentLLMInterface::LocalLLM(_) => {
+                // Fill in the appropriate logic for LocalLLM
+                "".to_string()
+            }
+            AgentLLMInterface::Groq(_) => {
                 // Fill in the appropriate logic for LocalLLM
                 "".to_string()
             }

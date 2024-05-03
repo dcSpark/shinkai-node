@@ -12,14 +12,12 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{
-    DistributionInfo, DistributionOrigin, SourceFile, SourceFileMap, SourceFileType, SourceReference,
-};
+use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, SourceFileType};
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResource, VectorResourceCore,
+    BaseVectorResource, DocumentVectorResource, VRKai, VRPath, VRSourceReference, VectorResourceCore,
     VectorResourceSearch,
 };
 use std::collections::HashMap;
@@ -44,8 +42,8 @@ async fn setup_default_vector_fs() -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let fs_db_path = format!("db_tests/{}", "vector_fs");
     let profile_list = vec![default_test_profile()];
-    let supported_embedding_models = vec![EmbeddingModelType::TextEmbeddingsInference(
-        TextEmbeddingsInference::AllMiniLML6v2,
+    let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
     )];
 
     VectorFS::new(
@@ -65,7 +63,7 @@ pub async fn get_shinkai_intro_doc_async(
 ) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
     let source_file_name = "shinkai_intro.pdf";
-    let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
+    let buffer = std::fs::read(format!("files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
 
     let unstructured = UnstructuredAPI::new_default();
 
@@ -83,7 +81,7 @@ pub async fn get_shinkai_intro_doc_async(
     .await
     .unwrap();
 
-    let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
+    let file_type = SourceFileType::detect_file_type(source_file_name).unwrap();
     let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
     let mut map = HashMap::new();
     map.insert(VRPath::root(), source_file);
@@ -178,7 +176,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs().await;
 
-    let fs_internals = vector_fs.get_profile_fs_internals_copy(&default_test_profile()).await;
+    let fs_internals = vector_fs.get_profile_fs_internals_cloned(&default_test_profile()).await;
     assert!(fs_internals.is_ok())
 }
 
@@ -249,7 +247,7 @@ async fn test_vector_fs_saving_reading() {
         .is_err());
 
     let internals = vector_fs
-        .get_profile_fs_internals_read_only(&default_test_profile())
+        .get_profile_fs_internals_cloned(&default_test_profile())
         .await
         .unwrap();
     // internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
@@ -504,7 +502,7 @@ async fn test_vector_fs_saving_reading() {
 
     {
         let internals = vector_fs
-            .get_profile_fs_internals_read_only(&default_test_profile())
+            .get_profile_fs_internals_cloned(&default_test_profile())
             .await
             .unwrap();
 
@@ -555,7 +553,7 @@ async fn test_vector_fs_saving_reading() {
         .vector_search_vector_resource(&reader, query_embedding.clone(), 100)
         .await
         .unwrap();
-    assert!(res.len() > 0);
+    assert!(!res.is_empty());
 }
 
 #[tokio::test]
@@ -570,7 +568,7 @@ async fn test_vector_fs_operations() {
         .unwrap();
     let folder_name = "first_folder";
     let first_folder_path = VRPath::root().push_cloned(folder_name.to_string());
-    vector_fs.create_new_folder(&writer, folder_name.clone()).await.unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
 
     // Sets the permission to Private from default Whitelist (for later test cases)
     let perm_writer = vector_fs
@@ -616,10 +614,10 @@ async fn test_vector_fs_operations() {
     // Create a Vector Resource and source file to be added into the VectorFS
     let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
     let mut resource = BaseVectorResource::Document(doc_resource);
-    let resource_name = resource.as_trait_object().name().clone();
+    let resource_name = resource.as_trait_object().name();
     let resource_ref_string = resource.as_trait_object().reference_string();
     let resource_merkle_root = resource.as_trait_object().get_merkle_root();
-    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count().clone();
+    let resource_node_count = resource.as_document_resource_cloned().unwrap().node_count();
     let writer = vector_fs
         .new_writer(
             default_test_profile(),
@@ -692,7 +690,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Copy from new root folder to 2nd folder inside of first folder
     let root_folder_file_path = new_root_folder_path.push_cloned(resource_name.to_string());
@@ -721,7 +719,7 @@ async fn test_vector_fs_operations() {
     assert_eq!(resource_merkle_root, retrieved_vr.as_trait_object().get_merkle_root());
     assert_ne!(resource_ref_string, retrieved_vr.as_trait_object().reference_string());
 
-    vector_fs.print_profile_vector_fs_resource(default_test_profile());
+    vector_fs.print_profile_vector_fs_resource(default_test_profile()).await;
 
     // Copy first folder as a whole into new root folder
     let new_root_folder_first_folder_path = new_root_folder_path.push_cloned(folder_name.to_string());
@@ -1044,7 +1042,57 @@ async fn test_vector_fs_operations() {
     assert!(folder_deletion_check, "The folder should now not exist.");
 
     //
-    // Validate that after everything, in-memory state == fsdb state
+    // Validate that for every folder/item, there is a matching path permission, and no more
+    //
+    let reader = orig_writer
+        .new_reader_copied_data(VRPath::root(), &mut vector_fs)
+        .await
+        .unwrap();
+
+    let fs_internals = vector_fs
+        .get_profile_fs_internals_cloned(&default_test_profile())
+        .await
+        .unwrap();
+
+    println!("\n\n\nVectorFS:");
+    fs_internals
+        .fs_core_resource
+        .print_all_nodes_exhaustive(None, true, false);
+
+    let all_read_perms = vector_fs
+        .find_paths_with_read_permissions_as_hashmap(&reader, vec![ReadPermission::Public, ReadPermission::Private])
+        .await
+        .unwrap();
+    let all_write_perms = vector_fs
+        .find_paths_with_write_permissions_as_hashmap(&reader, vec![WritePermission::Private])
+        .await
+        .unwrap();
+    let read_perms_count = all_read_perms.len();
+    let write_perms_count = all_write_perms.len();
+
+    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+    let all_internals_paths = ret_nodes.iter().map(|p| p.retrieval_path.clone());
+    let paths_count = all_internals_paths.len();
+
+    println!("All read read perms: {:?}", all_read_perms.keys());
+    println!("All write write perms: {:?}", all_write_perms.keys());
+
+    for path in all_internals_paths {
+        println!("Path: {}", path);
+        assert_eq!(all_read_perms.contains_key(&path), true);
+        assert_eq!(all_write_perms.contains_key(&path), true);
+    }
+    for path in all_read_perms.keys() {
+        assert_eq!(all_write_perms.contains_key(&path), true);
+    }
+    for path in all_write_perms.keys() {
+        assert_eq!(all_read_perms.contains_key(&path), true);
+    }
+    assert_eq!(read_perms_count, paths_count);
+    assert_eq!(write_perms_count, paths_count);
+
+    //
+    // Validate that after everything, in-memory state == fsdb state after reverting
     //
     let reader = orig_writer
         .new_reader_copied_data(VRPath::root(), &mut vector_fs)
@@ -1062,6 +1110,8 @@ async fn test_vector_fs_operations() {
     let new_state = vector_fs.retrieve_fs_path_simplified_json(&reader).await.unwrap();
 
     assert_eq!(current_state, new_state);
+
+    // Verify that
 
     //
     // Verify Simplified FSEntry types parse properly
@@ -1101,6 +1151,78 @@ async fn test_vector_fs_operations() {
 
     let simplified_folder = SimplifiedFSEntry::from_json(&json);
     assert!(simplified_folder.is_ok());
+}
+
+#[tokio::test]
+async fn test_folder_empty_check_reuse() {
+    setup();
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let vector_fs = setup_default_vector_fs().await;
+
+    // Create a new folder that will be checked for emptiness, then filled
+    let folder_name = "test_folder";
+    let folder_path = VRPath::root().push_cloned(folder_name.to_string());
+    let writer = vector_fs
+        .new_writer(default_test_profile(), VRPath::root(), default_test_profile())
+        .await
+        .unwrap();
+    vector_fs.create_new_folder(&writer, folder_name).await.unwrap();
+
+    // Check if the new folder is empty initially
+    let reader = vector_fs
+        .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should initially be empty."
+    );
+
+    // Add a document to the folder, making it non-empty
+    let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+    let resource = BaseVectorResource::Document(doc_resource);
+    let writer = vector_fs
+        .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    vector_fs
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file_map.clone()))
+        .await
+        .unwrap();
+
+    // Re-check if the folder is now non-empty
+    let reader = vector_fs
+        .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        !vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should now be non-empty."
+    );
+
+    // Create a subfolder within the initial folder
+    let subfolder_name = "subfolder1";
+    let subfolder_path = folder_path.push_cloned(subfolder_name.to_string());
+    vector_fs.create_new_folder(&writer, subfolder_name).await.unwrap();
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), subfolder_path.clone(), default_test_profile())
+        .await
+        .unwrap();
+
+    let subfolder_name = "subfolder2";
+    vector_fs.create_new_folder(&writer, subfolder_name).await.unwrap();
+
+    // Check if the folder is still recognized as non-empty after adding a subfolder
+    // This is to ensure the folder's non-empty status is consistent with its content state
+    let reader = vector_fs
+        .new_reader(default_test_profile(), subfolder_path, default_test_profile())
+        .await
+        .unwrap();
+    assert!(
+        !vector_fs.is_folder_empty(&reader).await.unwrap(),
+        "The folder should still be non-empty after adding a subfolder."
+    );
 }
 
 #[tokio::test]

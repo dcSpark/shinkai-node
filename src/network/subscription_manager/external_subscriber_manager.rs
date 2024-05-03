@@ -2,6 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
@@ -225,15 +226,90 @@ impl ExternalSubscriberManager {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn process_subscription_request_state_updates(
-        job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
+    async fn process_subscription_updates(
+        _job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
         db: Weak<ShinkaiDB>,
-        _: Weak<VectorFS>, // vector_fs
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         identity_manager: Weak<Mutex<IdentityManager>>,
-        _: Arc<DashMap<String, SharedFolderInfo>>, // shared_folders_tree
+        subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
+        shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+    ) {
+        let subscriptions_ids_to_process: Vec<SubscriptionId> = {
+            let db = match db.upgrade() {
+                Some(db) => db,
+                None => {
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Error,
+                        "Database instance is not available",
+                    );
+                    return;
+                }
+            };
+            match db.all_subscribers_subscription() {
+                Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to fetch subscriptions: {:?}", e),
+                    );
+                    return;
+                }
+            }
+        };
+
+        let filtered_subscription_ids = subscriptions_ids_to_process
+            .into_iter()
+            .filter(|subscription_id| {
+                let subscription_id_str = subscription_id.get_unique_id().to_string();
+                if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
+                    let folder_path = &arc_tuple.0;
+                    let last_sync_version = &arc_tuple.1;
+                    if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(folder_path) {
+                        let current_version = *current_version_arc.value();
+                        return current_version != *last_sync_version;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<SubscriptionId>>();
+
+        for subscription_id in filtered_subscription_ids {
+            shinkai_log(
+                ShinkaiLogOption::ExtSubscriptions,
+                ShinkaiLogLevel::Debug,
+                format!(
+                    "Sending request to subscriber: {:?} from: {:?}",
+                    subscription_id.get_unique_id().to_string(),
+                    node_name
+                )
+                .as_str(),
+            );
+            let _ = Self::create_and_send_request_updated_state(
+                subscription_id,
+                db.clone(),
+                my_encryption_secret_key.clone(),
+                my_signature_secret_key.clone(),
+                node_name.clone(),
+                identity_manager.clone(),
+            )
+            .await;
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_subscription_request_state_updates(
+        job_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
+        db: Weak<ShinkaiDB>,
+        _vector_fs: Weak<VectorFS>,
+        node_name: ShinkaiName,
+        my_signature_secret_key: SigningKey,
+        my_encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Weak<Mutex<IdentityManager>>,
+        _shared_folders_tree: Arc<DashMap<String, SharedFolderInfo>>,
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         _: usize, // tread_number
@@ -246,32 +322,16 @@ impl ExternalSubscriberManager {
 
         let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
 
+        if is_testing {
+            return tokio::spawn(async {});
+        }
+
         tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Info,
                 "process_subscription_request_state_updates> Starting subscribers processing loop",
             );
-
-            if is_testing {
-                // Wait until subscription_ids_are_sync has at least 1 value
-                loop {
-                    if !subscription_ids_are_sync.is_empty() {
-                        shinkai_log(
-                            ShinkaiLogOption::ExtSubscriptions,
-                            ShinkaiLogLevel::Debug,
-                            format!(
-                                "IS TESTING> subscription_ids_are_sync is not empty: {:?}. Starting loop...",
-                                subscription_ids_are_sync
-                            )
-                            .as_str(),
-                        );
-                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                        break;
-                    }
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                }
-            }
 
             loop {
                 // Game Plan:
@@ -280,92 +340,17 @@ impl ExternalSubscriberManager {
                 // 2. Filter out subscriptions that are already on sync
                 // 3. Request subscribers folder state (async)
 
-                // Scope for acquiring and releasing the lock quickly
-                let subscriptions_ids_to_process: Vec<SubscriptionId> = {
-                    let db = match db.upgrade() {
-                        Some(db) => db,
-                        None => {
-                            shinkai_log(
-                                ShinkaiLogOption::ExtSubscriptions,
-                                ShinkaiLogLevel::Error,
-                                "Database instance is not available",
-                            );
-                            break; // or continue based on your error handling policy
-                        }
-                    };
-                    match db.all_subscribers_subscription() {
-                        Ok(subscriptions) => subscriptions.into_iter().map(|s| s.subscription_id).collect(),
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::ExtSubscriptions,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to fetch subscriptions: {:?}", e),
-                            );
-                            Vec::new() // Continue the loop, even if fetching subscriptions failed
-                        }
-                    }
-                };
-
-                // We keep a ephemeral versioning of the shared folders to know if a specific subscription is already sync
-                // This is useful to avoid processing the same subscription multiple times
-                let filtered_subscription_ids = subscriptions_ids_to_process
-                    .into_iter()
-                    .filter(|subscription_id| {
-                        let subscription_id_str = subscription_id.get_unique_id().to_string();
-                        if let Some(ref arc_tuple) = subscription_ids_are_sync.get(&subscription_id_str) {
-                            let folder_path = &arc_tuple.0;
-                            let last_sync_version = &arc_tuple.1;
-                            // Use the cloned version here
-                            if let Some(current_version_arc) = shared_folders_to_ephemeral_versioning.get(folder_path) {
-                                let current_version = *current_version_arc.value();
-                                return current_version != *last_sync_version;
-                            }
-                        }
-                        true
-                    })
-                    .collect::<Vec<SubscriptionId>>();
-
-                // Check if a job with this subscription_id is already queued in the job_manager
-                let mut post_filtered_subscription_ids = Vec::new();
-                for subscription_id in filtered_subscription_ids {
-                    let subscription_id_str = subscription_id.get_unique_id().to_string();
-                    // Perform the asynchronous check
-                    let is_not_queued = {
-                        let job_queue_manager_clone = Arc::clone(&job_queue_manager);
-                        let result = job_queue_manager_clone
-                            .lock()
-                            .await
-                            .peek(&subscription_id_str)
-                            .await
-                            .map_or(true, |opt| opt.is_none());
-                        result
-                    };
-                    if is_not_queued {
-                        post_filtered_subscription_ids.push(subscription_id);
-                    }
-                }
-                // Now we send requests to the subscribers to get their current state
-                for subscription_id in post_filtered_subscription_ids.clone() {
-                    shinkai_log(
-                        ShinkaiLogOption::ExtSubscriptions,
-                        ShinkaiLogLevel::Debug,
-                        format!(
-                            "Sending request to subscriber: {:?} from: {:?}",
-                            subscription_id.get_unique_id().to_string(),
-                            node_name
-                        )
-                        .as_str(),
-                    );
-                    let _ = Self::create_and_send_request_updated_state(
-                        subscription_id,
-                        db.clone(),
-                        my_encryption_secret_key.clone(),
-                        my_signature_secret_key.clone(),
-                        node_name.clone(),
-                        identity_manager.clone(),
-                    )
-                    .await;
-                }
+                Self::process_subscription_updates(
+                    job_queue_manager.clone(),
+                    db.clone(),
+                    node_name.clone(),
+                    my_signature_secret_key.clone(),
+                    my_encryption_secret_key.clone(),
+                    identity_manager.clone(),
+                    subscription_ids_are_sync.clone(),
+                    shared_folders_to_ephemeral_versioning.clone(),
+                )
+                .await;
 
                 // End Phase 1
 
@@ -375,11 +360,7 @@ impl ExternalSubscriberManager {
                 // handles.clear();
 
                 // Wait for interval_minutes before the next iteration
-                if !is_testing {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
-                } else {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; 
-                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
             }
         })
     }
@@ -446,10 +427,11 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Local shared folder state: {:?}", local_shared_folder_state).as_str(),
             );
-            eprintln!(
-                ">> (process_subscription_job_message_queued) Local shared folder state: {:?}",
-                local_shared_folder_state
-            );
+            // eprintln!("\n\n-----------------------------------");
+            // eprintln!(
+            //     ">> (process_subscription_job_message_queued) Local shared folder state: {:?}",
+            //     local_shared_folder_state
+            // );
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -459,6 +441,10 @@ impl ExternalSubscriberManager {
                 )
                 .as_str(),
             );
+            // eprintln!(
+            //     ">> (process_subscription_job_message_queued) Subscriber folder state: {:?}",
+            //     subscription_with_tree.subscriber_folder_tree
+            // );
             // Calculate diff
             let diff = FSEntryTreeGenerator::compare_fs_item_trees(
                 &subscription_with_tree.subscriber_folder_tree,
@@ -469,6 +455,8 @@ impl ExternalSubscriberManager {
                 ShinkaiLogLevel::Debug,
                 format!("Diff: {:?}", diff).as_str(),
             );
+            // eprintln!(">> (process_subscription_job_message_queued) Diff: {:?}", diff);
+            // eprintln!("\n\n-----------------------------------");
 
             // If at least one diff was found, retrieve the VRPack for the path
             if !diff.children.is_empty() {
@@ -519,7 +507,7 @@ impl ExternalSubscriberManager {
                         Err(e) => {
                             // tries to create a folder with that name
                             if let Some(folder_name) = path.clone().pop() {
-                                let parent_path = path.parent_path(); 
+                                let parent_path = path.parent_path();
                                 let _ = vr_pack.create_folder(&folder_name, parent_path);
                             }
                             continue; // Skip to the next iteration
@@ -545,8 +533,10 @@ impl ExternalSubscriberManager {
                         .await?;
                     drop(identity_manager);
 
+                    let vr_pack_plus_changes = VRPackPlusChanges { vr_pack, diff };
+
                     let result = Self::send_vr_pack_to_peer(
-                        vr_pack,
+                        vr_pack_plus_changes,
                         subscription_id.clone(),
                         standard_identity,
                         subscription_with_tree.symmetric_key,
@@ -582,7 +572,7 @@ impl ExternalSubscriberManager {
     }
 
     pub async fn send_vr_pack_to_peer(
-        vr_pack: VRPack,
+        vr_pack_plus_changes: VRPackPlusChanges,
         subscription_id: SubscriptionId,
         receiver_identity: StandardIdentity,
         symmetric_key: String,
@@ -606,7 +596,14 @@ impl ExternalSubscriberManager {
         );
 
         // Call the send_encrypted_vrkaipath_pairs function
-        Node::send_encrypted_vrpack(vr_pack, subscription_id, symmetric_key, receiver_socket_addr, receiver_name).await;
+        Node::send_encrypted_vrpack(
+            vr_pack_plus_changes,
+            subscription_id,
+            symmetric_key,
+            receiver_socket_addr,
+            receiver_name,
+        )
+        .await;
         Ok(())
     }
 
@@ -929,7 +926,7 @@ impl ExternalSubscriberManager {
                     .await
                     .map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
                 let results = vector_fs
-                    .find_paths_with_read_permissions(&perms_reader, vec![ReadPermission::Public])
+                    .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
                     .await?;
 
                 // Use the new function to filter results to only include top-level folders
@@ -950,13 +947,15 @@ impl ExternalSubscriberManager {
                     Ok(req) => Some(req),
                     Err(_) => None, // Instead of erroring out, we return None for folders without requirements
                 };
-                let tree = FSEntryTreeGenerator::shared_folders_to_tree(
+                let tree = match FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
-                )
-                .await?;
+                ).await {
+                    Ok(tree) => tree,
+                    Err(_) => continue,
+                };
 
                 let result = SharedFolderInfo {
                     path: path_str.clone(),
@@ -1207,20 +1206,8 @@ impl ExternalSubscriberManager {
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
-        if let Some(profile_name) = requester_shinkai_identity.get_profile_name_string() {
-            let key_shared_folder = format!("{}:::{}", profile_name, path);
-            self.shared_folders_trees.remove(&key_shared_folder);
-            Ok(true)
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::ExtSubscriptions,
-                ShinkaiLogLevel::Error,
-                format!("Profile name not found for {:?}", requester_shinkai_identity).as_str(),
-            );
-            Err(SubscriberManagerError::VectorFSNotAvailable(
-                "Profile name not found".to_string(),
-            ))
-        }
+        let _ = self.update_shared_folders().await;
+        Ok(true)
     }
 
     pub async fn subscribe_to_shared_folder(
@@ -1594,6 +1581,20 @@ impl ExternalSubscriberManager {
         }
 
         Ok(())
+    }
+
+    pub async fn test_process_subscription_updates(&self) {
+        Self::process_subscription_updates(
+            self.subscriptions_queue_manager.clone(),
+            self.db.clone(),
+            self.node_name.clone(),
+            self.my_signature_secret_key.clone(),
+            self.my_encryption_secret_key.clone(),
+            self.identity_manager.clone(),
+            self.subscription_ids_are_sync.clone(),
+            self.shared_folders_to_ephemeral_versioning.clone(),
+        )
+        .await;
     }
 }
 

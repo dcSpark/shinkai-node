@@ -28,10 +28,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use std::{
-    io::{Error},
-    net::SocketAddr,
-};
+use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -86,7 +83,8 @@ impl Node {
     pub async fn internal_get_all_inboxes_for_profile(
         identity_manager: Arc<Mutex<IdentityManager>>,
         db: Arc<ShinkaiDB>,
-        full_profile_name: ShinkaiName) -> Vec<String> {
+        full_profile_name: ShinkaiName,
+    ) -> Vec<String> {
         // Obtain the IdentityManager and ShinkaiDB locks
         let identity_manager = identity_manager.lock().await;
 
@@ -409,6 +407,29 @@ impl Node {
         }
     }
 
+    pub async fn internal_remove_agent(
+        db: Arc<ShinkaiDB>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        agent_id: String,
+        profile: &ShinkaiName,
+    ) -> Result<(), NodeError> {
+        match db.remove_agent(&agent_id, profile) {
+            Ok(()) => {
+                let mut subidentity_manager = identity_manager.lock().await;
+                match subidentity_manager.remove_agent_subidentity(&agent_id).await {
+                    Ok(_) => Ok(()),
+                    Err(err) => {
+                        error!("Failed to remove subidentity: {}", err);
+                        Err(NodeError {
+                            message: format!("Failed to remove device subidentity: {}", err),
+                        })
+                    }
+                }
+            }
+            Err(e) => Err(NodeError::from(e)),
+        }
+    }
+
     pub async fn ping_all(
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -447,56 +468,73 @@ impl Node {
         Ok(())
     }
 
-    pub async fn internal_scan_ollama_models() -> Result<Vec<String>, NodeError> {
+    pub async fn internal_scan_ollama_models() -> Result<Vec<serde_json::Value>, NodeError> {
+        let urls = vec!["http://localhost:11434/api/tags", "http://localhost:11435/api/tags"];
         let client = reqwest::Client::new();
-        let res = client
-            .get("http://localhost:11434/api/tags")
-            .send()
-            .await
-            .map_err(|e| NodeError {
-                message: format!("Failed to send request: {}", e),
-            })?
-            .json::<serde_json::Value>()
-            .await
-            .map_err(|e| NodeError {
-                message: format!("Failed to parse response: {}", e),
-            })?;
+        let mut all_models = Vec::new();
 
-        let models = res["models"].as_array().ok_or_else(|| NodeError {
-            message: "Unexpected response format".to_string(),
-        })?;
+        for url in urls {
+            let res = client.get(url).send().await;
 
-        let names = models
-            .iter()
-            .filter_map(|model| model["name"].as_str().map(String::from))
-            .collect();
+            match res {
+                Ok(response) => match response.json::<serde_json::Value>().await {
+                    Ok(json) => {
+                        let models = json["models"].as_array().ok_or_else(|| NodeError {
+                            message: format!("Unexpected response format from {}", url),
+                        })?;
 
-        Ok(names)
+                        let models_with_port: Vec<serde_json::Value> = models
+                            .iter()
+                            .map(|model| {
+                                let mut model_clone = model.clone();
+                                if let Some(obj) = model_clone.as_object_mut() {
+                                    let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                    obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                                }
+                                model_clone
+                            })
+                            .collect();
+
+                        all_models.extend(models_with_port);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse response from {}: {}", url, e);
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to send request to {}: {}", url, e);
+                }
+            }
+        }
+
+        if all_models.is_empty() {
+            Err(NodeError {
+                message: "No models could be retrieved from any source.".to_string(),
+            })
+        } else {
+            Ok(all_models)
+        }
     }
 
     pub async fn internal_add_ollama_models(
         db: Arc<ShinkaiDB>,
-        node_name: String,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_models: Vec<String>,
+        shinkai_name: ShinkaiName,
     ) -> Result<(), String> {
-        {
-            db.main_profile_exists(node_name.as_str())
-                .map_err(|e| format!("Failed to check if main profile exists: {}", e))?;
-        }
+        let requester_profile = match shinkai_name.extract_profile() {
+            Ok(profile) => profile,
+            Err(e) => return Err(e.to_string()),
+        };
 
         let available_models = Self::internal_scan_ollama_models().await.map_err(|e| e.message)?;
 
         // Ensure all input models are available
         for model in &input_models {
-            if !available_models.contains(model) {
+            if !available_models.iter().any(|m| m["name"].as_str() == Some(model)) {
                 return Err(format!("Model '{}' is not available.", model));
             }
         }
-
-        // Assuming global_identity is available
-        let global_identity = ShinkaiName::from_node_and_profile_names(node_name, "main".to_string()).unwrap();
-        let external_url = "http://localhost:11434"; // Common URL for all Ollama models
 
         let agents: Vec<SerializedAgent> = input_models
             .iter()
@@ -504,11 +542,21 @@ impl Node {
                 // Replace non-alphanumeric characters with underscores for full_identity_name
                 let sanitized_model = Regex::new(r"[^a-zA-Z0-9]").unwrap().replace_all(model, "_").to_string();
 
+                // Determine which URL to use based on the availability of the models
+                let model_data = available_models
+                    .iter()
+                    .find(|m| m["name"].as_str() == Some(model))
+                    .unwrap();
+                let external_url = format!(
+                    "http://localhost:{}/api/generate",
+                    model_data["port_used"].as_str().unwrap_or("11434")
+                );
+
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",
-                        global_identity.full_name, sanitized_model
+                        requester_profile.full_name, sanitized_model
                     ))
                     .expect("Failed to create ShinkaiName"),
                     perform_locally: false,
@@ -516,7 +564,7 @@ impl Node {
                     api_key: Some("".to_string()),
                     model: AgentLLMInterface::Ollama(Ollama {
                         model_type: model.clone(),
-                    }), // Creates the Ollama model
+                    }),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

@@ -1,10 +1,7 @@
 use super::DistributionInfo;
 
 use crate::resource_errors::VRError;
-use crate::source::notary_source::{
-    NotarizedSourceReference, TLSNotarizedSourceFile, TLSNotaryProof,
-};
-
+use crate::source::notary_source::{NotarizedSourceReference, TLSNotarizedSourceFile, TLSNotaryProof};
 
 use regex::Regex;
 
@@ -80,12 +77,11 @@ impl VRSourceReference {
     /// Creates a VRSourceReference using file_name/content to auto-detect and create an instance of Self.
     /// Errors if can not detect matching extension in file_name.
     pub fn from_file(file_name: &str, text_chunking_strategy: TextChunkingStrategy) -> Result<Self, VRError> {
-        let re = Regex::new(r"\.[^.]+$").unwrap();
-        let file_name_without_extension = re.replace(file_name, "");
+        let file_name_without_extension = SourceFileType::clean_string_of_extension(file_name);
         // Attempt to auto-detect, else use file extension
         let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
-            Ok(VRSourceReference::new_uri_ref(&file_name_without_extension))
+            Ok(VRSourceReference::new_uri_ref(&file_name))
         } else {
             let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
             Ok(VRSourceReference::new_source_file_ref(
@@ -441,14 +437,19 @@ impl SourceFileType {
 
     /// Clones and cleans the input string of its file extension at the end, if it exists.
     pub fn clean_string_of_extension(file_name: &str) -> String {
-        let re = Regex::new(r"\.[^.]+$").unwrap();
-        let file_name_without_extension = re.replace(file_name, "").to_string();
-
-        // Check if the result is empty, return the original file_name if so
-        if file_name_without_extension.is_empty() {
+        // If the file extension is not detected/supported, return the original file_name
+        if SourceFileType::detect_file_type(file_name).is_err() {
             file_name.to_string()
         } else {
-            file_name_without_extension
+            let re = Regex::new(r"\.[^.]+$").unwrap();
+            let file_name_without_extension = re.replace(file_name, "").to_string();
+
+            // Check if the result is empty, return the original file_name if so as a backup
+            if file_name_without_extension.is_empty() {
+                file_name.to_string()
+            } else {
+                file_name_without_extension
+            }
         }
     }
 }

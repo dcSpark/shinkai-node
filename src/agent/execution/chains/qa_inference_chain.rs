@@ -133,7 +133,7 @@ impl JobManager {
         else if let Err(_) = answer {
             if iteration_count > max_iterations {
                 if let Some(summary_str) = &summary_text {
-                    let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(&summary_str);
+                    let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(summary_str);
                     return Ok(cleaned_answer);
                 } else {
                     return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
@@ -220,6 +220,7 @@ impl JobManager {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn no_json_object_retry_logic(
     response: Result<JsonValue, AgentError>,
     db: Arc<ShinkaiDB>,

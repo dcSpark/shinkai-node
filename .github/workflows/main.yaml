@@ -1,4 +1,21 @@
-on: ["push"]
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/main.yml"
+      - "Cargo.*"
+      - "shinkai-libs/**"
+      - "src/**"
+      - "tests/**"
+  pull_request:
+    branches: [ main ]
+    types: [ opened, reopened, synchronize, ready_for_review ]
+    paths:
+      - ".github/workflows/main.yml"
+      - "Cargo.*"
+      - "shinkai-libs/**"
+      - "src/**"
+      - "tests/**"
 
 name: Shinkai Test Workflow
 
@@ -9,6 +26,7 @@ concurrency:
 jobs:
   test:
     runs-on: self-hosted
+    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -18,8 +36,12 @@ jobs:
 
       - name: Build testing image
         run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
+
       - name: Run tests primitives cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}        
+        run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}
+
+      - name: Run tests mirror cargo tests
+        run: docker run --rm --entrypoint /entrypoints/run-main-mirror-cargo-tests.sh testing_image:${SHORT_SHA}
 
       - name: Run tests main cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
@@ -33,6 +55,7 @@ jobs:
 
   test-wasm:
     runs-on: self-hosted
+    if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -47,7 +70,7 @@ jobs:
         run: docker run --rm --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Run tests shinkai-message-pyo3 python tests
-        run: docker run --rm --entrypoint /entrypoints/run-python-tests.sh testing_image_wasm:${SHORT_SHA}        
+        run: docker run --rm --entrypoint /entrypoints/run-python-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Remove image
         if: always()

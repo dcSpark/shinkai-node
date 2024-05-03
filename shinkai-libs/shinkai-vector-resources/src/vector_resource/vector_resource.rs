@@ -10,6 +10,7 @@ use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::model_type::EmbeddingModelTypeString;
+use crate::model_type::OllamaTextEmbeddingsInference;
 use crate::model_type::TextEmbeddingsInference;
 use crate::resource_errors::VRError;
 
@@ -177,7 +178,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Returns the embedding model type used by the Vector Resource.
     fn embedding_model_used(&self) -> EmbeddingModelType {
         EmbeddingModelType::from_string(&self.embedding_model_used_string()).unwrap_or(
-            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::Other(
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::Other(
                 self.embedding_model_used_string().to_string(),
             )),
         )
