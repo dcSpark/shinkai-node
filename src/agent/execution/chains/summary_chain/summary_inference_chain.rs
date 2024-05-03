@@ -275,16 +275,17 @@ impl JobManager {
             "sunarise",
             "recap",
             " re cap ",
-        ];
-        let direct_other_substrings = vec![
-            "explain",
-            "what is",
-            "what do",
-            "what does",
-            "detail",
             "overview",
-            "rundown",
+            "over view",
+            "overiew",
+            "ovrview",
+            "verview",
+            "overvue",
+            "overvew",
+            "overew",
+            "overbiew",
         ];
+        let direct_other_substrings = vec!["explain", "what is", "what do", "what does", "detail", "rundown"];
 
         // Check if any of the direct substrings are in the user message
         let user_message_no_code_blocks = user_message.get_output_string_without_codeblocks();

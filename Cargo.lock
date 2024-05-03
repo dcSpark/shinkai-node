@@ -5398,6 +5398,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.20",
  "lru",
+ "minidom",
  "mockito",
  "num_cpus",
  "opentelemetry",

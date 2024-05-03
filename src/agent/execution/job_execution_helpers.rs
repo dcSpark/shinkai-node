@@ -173,7 +173,7 @@ impl JobManager {
         let prompt_cloned = filled_prompt.clone();
         let task_response = tokio::spawn(async move {
             let agent = Agent::from_serialized_agent(agent_cloned);
-            agent.inference(prompt_cloned).await
+            agent.inference_json(prompt_cloned).await
         })
         .await;
 
@@ -182,6 +182,27 @@ impl JobManager {
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
             format!("inference_agent_json> response: {:?}", response).as_str(),
+        );
+
+        response
+    }
+
+    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response contains
+    /// valid XML, which is returned as a JsonValue. If it isn't re-inferences to ensure that it is returned as one.
+    pub async fn inference_agent_xml(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
+        let agent_cloned = agent.clone();
+        let prompt_cloned = filled_prompt.clone();
+        let task_response = tokio::spawn(async move {
+            let agent = Agent::from_serialized_agent(agent_cloned);
+            agent.inference_xml(prompt_cloned).await
+        })
+        .await;
+
+        let response = task_response?;
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("inference_agent_xml> response: {:?}", response).as_str(),
         );
 
         response
@@ -344,7 +365,7 @@ async fn internal_json_not_found_retry(
             original_prompt,
             json_key_to_correct,
         );
-        agent.inference(prompt).await
+        agent.inference_json(prompt).await
     })
     .await;
     let response = match response {

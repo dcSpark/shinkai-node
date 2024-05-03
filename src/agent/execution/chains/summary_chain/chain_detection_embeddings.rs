@@ -68,6 +68,7 @@ pub async fn summarize_these_embeddings(
         "Summarize these documents/files".to_string(),
         "Give me a summary of these docs/files".to_string(),
         "Summarize the chat context".to_string(),
+        "Overview all of these documents".to_string(),
     ];
     let ids = vec!["".to_string(); strings.len()];
     let embeddings = generator.generate_embeddings(&strings, &ids).await?;
@@ -92,7 +93,7 @@ pub async fn summarize_this_embeddings(
         "Condense this into a summary".to_string(),
         "Wrap this up in a summary".to_string(),
         "Break this down for me".to_string(),
-        "Condense this into a summary".to_string(),
+        "Give me an overview".to_string(),
     ];
     let ids = vec!["".to_string(); strings.len()];
     let embeddings = generator.generate_embeddings(&strings, &ids).await;
@@ -113,7 +114,6 @@ pub async fn summarize_other_embeddings(
         "What do this/these document(s) talk about".to_string(),
         "What is this about?".to_string(),
         "Go into detail on this".to_string(),
-        "Overview these".to_string(),
         "Give me a rundown".to_string(),
     ];
     let ids = vec!["".to_string(); strings.len()];
