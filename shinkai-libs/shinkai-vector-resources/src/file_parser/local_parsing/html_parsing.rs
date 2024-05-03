@@ -47,6 +47,12 @@ pub fn extract_core_content(file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
                     return main_element.inner_html().into_bytes();
                 }
             }
+
+            if let Ok(body_selector) = Selector::parse("body") {
+                if let Some(body_element) = document.select(&body_selector).next() {
+                    return body_element.inner_html().into_bytes();
+                }
+            }
         }
     }
 
@@ -54,7 +60,9 @@ pub fn extract_core_content(file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
 }
 
 impl LocalFileParser {
-    const IGNORED_ELEMENTS: &'static [&'static str] = &["head", "script", "svg"];
+    const IGNORED_ELEMENTS: &'static [&'static str] = &[
+        "base", "head", "link", "meta", "noscript", "script", "style", "svg", "template",
+    ];
     const HTML_HEADERS: &'static [&'static str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
     pub fn process_html_file(
@@ -237,7 +245,11 @@ impl LocalFileParser {
                                         });
                                     }
                                     "code" => {
-                                        node_text.push_str(&format!("`{}`", inner_text));
+                                        if context.is_preformatted {
+                                            node_text.push_str(&format!("```\n{}\n```\n", inner_text));
+                                        } else {
+                                            node_text.push_str(&format!("`{}`", inner_text));
+                                        }
                                     }
                                     "li" => {
                                         let list_depth = if context.list_depth > 0 { context.list_depth } else { 1 };
