@@ -59,8 +59,18 @@ pub struct ShinkaiBackend {
 }
 
 impl ShinkaiBackend {
+    pub fn new(model_type: &str) -> Self {
+        ShinkaiBackend {
+            model_type: model_type.to_uppercase(),
+        }
+    }
+
     pub fn model_type(&self) -> String {
         self.model_type.to_uppercase()
+    }
+
+    pub fn set_model_type(&mut self, model_type: &str) {
+        self.model_type = model_type.to_string();
     }
 }
 

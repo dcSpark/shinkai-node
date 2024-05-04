@@ -75,6 +75,7 @@ mod tests {
                         vec![],
                         Some(elements),
                         None,
+                        1,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -102,6 +103,7 @@ mod tests {
                         vec![],
                         Some("".to_string()),
                         None,
+                        1,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -122,9 +124,15 @@ mod tests {
     ) {
         for _ in 0..3 {
             let result = match &provider {
-                AgentLLMInterface::OpenAI(openai) => openai.call_api(client, url, api_key, prompt.clone()).await,
+                AgentLLMInterface::OpenAI(openai) => {
+                    openai
+                        .call_api(client, url, api_key, prompt.clone(), provider.clone())
+                        .await
+                }
                 AgentLLMInterface::GenericAPI(genericapi) => {
-                    genericapi.call_api(client, url, api_key, prompt.clone()).await
+                    genericapi
+                        .call_api(client, url, api_key, prompt.clone(), provider.clone())
+                        .await
                 }
                 _ => unimplemented!(), // or handle other cases as needed
             };
@@ -137,6 +145,45 @@ mod tests {
                     assert!(json_result.is_ok());
                 }
                 Err(e) => panic!("API call failed: {:?}", e),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_removing_low_priority_prompts() {
+        init_default_tracing();
+
+        let elements_list: Vec<Vec<String>> =
+            vec![get_elements_whats_zeko_with_6_resp() /* add more elements here */];
+
+        for elements in elements_list {
+            let mut prompt = JobPromptGenerator::simple_doc_description(elements);
+
+            for sp in &prompt.sub_prompts {
+                eprintln!("Subprompt: {:?}", sp);
+            }
+
+            eprintln!(
+                "Before removing len: {} - lowest priority: {:?}---------------------------\n",
+                prompt.sub_prompts.len(),
+                prompt.lowest_priority
+            );
+            for i in 0..prompt.sub_prompts.len() {
+                eprintln!("Iteration count: {}", i);
+                prompt.remove_lowest_priority_sub_prompt();
+                eprintln!(
+                    "After removing len: {} - lowest priority: {:?}\n",
+                    &prompt.sub_prompts.len(),
+                    prompt.lowest_priority
+                );
+                for sp in &prompt.sub_prompts {
+                    eprintln!("Subprompt: {:?}", sp);
+                }
+            }
+
+            eprintln!("\n--------------------------------------------------------");
+            for sp in prompt.sub_prompts {
+                eprintln!("Subprompt: {:?}", sp);
             }
         }
     }

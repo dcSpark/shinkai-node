@@ -98,9 +98,7 @@ fn node_agent_registration() {
         let agent_name = ShinkaiName::new(
             format!(
                 "{}/{}/agent/{}",
-                node1_identity_name,
-                node1_subidentity_name,
-                node1_agent
+                node1_identity_name, node1_subidentity_name, node1_agent
             )
             .to_string(),
         )
@@ -114,9 +112,7 @@ fn node_agent_registration() {
             model_type: "mistral".to_string(),
         };
 
-        let _shinkai_backend = ShinkaiBackend {
-            model_type: "gpt-4-1106-preview".to_string(),
-        };
+        let _shinkai_backend = ShinkaiBackend::new("gpt-4-1106-preview");
 
         let agent = SerializedAgent {
             id: node1_agent.to_string(),
@@ -542,7 +538,6 @@ fn node_agent_registration() {
                 }
                 eprintln!("### node1_last_messages: {:?}", node1_last_messages);
                 assert!(is_message_found);
-
             }
             {
                 // Send a scheduled message

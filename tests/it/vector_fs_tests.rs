@@ -1070,7 +1070,7 @@ async fn test_vector_fs_operations() {
     let read_perms_count = all_read_perms.len();
     let write_perms_count = all_write_perms.len();
 
-    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive_unordered(None);
     let all_internals_paths = ret_nodes.iter().map(|p| p.retrieval_path.clone());
     let paths_count = all_internals_paths.len();
 

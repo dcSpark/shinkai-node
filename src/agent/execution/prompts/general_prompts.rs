@@ -137,7 +137,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(format!("Here is content from a document:"), SubPromptType::User, 99);
         for node in nodes {
-            prompt.add_content(format!("{}", node), SubPromptType::User, 99);
+            prompt.add_content(format!("{}", node), SubPromptType::User, 98);
         }
         prompt.add_content(
             format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),

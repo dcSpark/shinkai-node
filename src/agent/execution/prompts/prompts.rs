@@ -173,9 +173,9 @@ impl SubPrompt {
 pub struct Prompt {
     /// Sub-prompts that make up this prompt
     pub sub_prompts: Vec<SubPrompt>,
-    /// The lowest priority value held in sub_prompts
+    /// The lowest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
     pub lowest_priority: u8,
-    /// The highest priority value held in sub_prompts
+    /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
     pub highest_priority: u8,
 }
 
@@ -244,6 +244,10 @@ impl Prompt {
     /// Updates the lowest and highest priority values of self using the
     /// existing priority values of the sub_prompts.
     fn update_sub_prompts_priorities(&mut self) {
+        // Set to the defaults, which get updated if there are sub_prompts
+        self.lowest_priority = 100;
+        self.highest_priority = 0;
+
         for sub_prompt in self.sub_prompts.iter() {
             match &sub_prompt {
                 SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
@@ -255,12 +259,6 @@ impl Prompt {
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
             }
-        }
-
-        // If no sub_prompts, then set to defaults
-        if self.sub_prompts.len() == 0 {
-            self.lowest_priority = 100;
-            self.highest_priority = 0;
         }
     }
 
@@ -345,6 +343,7 @@ impl Prompt {
     /// Used primarily for cutting down prompt when it is too large to fit in context window.
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
         let lowest_priority = self.lowest_priority;
+        eprintln!("Lowest priority: {}", lowest_priority);
         if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
             SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
