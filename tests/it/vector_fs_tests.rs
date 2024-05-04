@@ -1,5 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_node::agent::execution::user_message_parser::ParsedUserMessage;
 use shinkai_node::agent::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
@@ -1069,7 +1070,7 @@ async fn test_vector_fs_operations() {
     let read_perms_count = all_read_perms.len();
     let write_perms_count = all_write_perms.len();
 
-    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+    let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive_unordered(None);
     let all_internals_paths = ret_nodes.iter().map(|p| p.retrieval_path.clone());
     let paths_count = all_internals_paths.len();
 
@@ -1223,3 +1224,76 @@ async fn test_folder_empty_check_reuse() {
         "The folder should still be non-empty after adding a subfolder."
     );
 }
+
+#[tokio::test]
+async fn test_remove_code_blocks_with_parsed_user_message() {
+    // Example strings containing code blocks
+    let example1 = "Here is some text.\n```\nlet x = 10;\n```\nAnd here is more text.";
+    let example2 = "Another example with a `single backtick`, and a code block:\n```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```\nEnd of example.";
+    let example3 = "Text before code block 1.\n```\nCode Block 1\n```\nText between code block 1 and 2.\n```\nCode Block 2\n```\nText between code block 2 and 3.\n```\nCode Block 3\n```\nText after code block 3.";
+
+    // Create a parsed job task for each example
+    let parsed_user_message1 = ParsedUserMessage::new(example1.to_string());
+    let parsed_user_message2 = ParsedUserMessage::new(example2.to_string());
+    let parsed_user_message3 = ParsedUserMessage::new(example3.to_string());
+
+    // Extract only the code blocks from each parsed job task
+    let code_blocks1 = parsed_user_message1.get_output_string_filtered(true, false);
+    let code_blocks2 = parsed_user_message2.get_output_string_filtered(true, false);
+    let code_blocks3 = parsed_user_message3.get_output_string_filtered(true, false);
+
+    // Expected code blocks strings
+    let expected_code_blocks1 = "```\nlet x = 10;\n```";
+    let expected_code_blocks2 = "```\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+    let expected_code_blocks3 = "```\nCode Block 1\n```\n\n```\nCode Block 2\n```\n\n```\nCode Block 3\n```";
+
+    // Assert that the extracted code blocks match the expected strings
+    assert_eq!(code_blocks1, expected_code_blocks1);
+    assert_eq!(code_blocks2, expected_code_blocks2);
+    assert_eq!(code_blocks3, expected_code_blocks3);
+}
+
+// #[tokio::test]
+// async fn test_parse_list_elements() {
+//     // Example strings containing different types of lists
+//     let example1 = "Here is some text.\n- Item 1\n- Item 2\nAnd here is more text.";
+//     let example2 = "Another example text.\n* Item 1\n* Item 2\n* Item 3\nEnd of example.";
+//     let example3 = "Text before numbered list.\n1. Item 1\n2. Item 2\n3. Item 3\nText after numbered list.";
+
+//     // Create a parsed job task for each example
+//     let parsed_user_message1 = ParsedUserMessage::new(example1.to_string());
+//     let parsed_user_message2 = ParsedUserMessage::new(example2.to_string());
+//     let parsed_user_message3 = ParsedUserMessage::new(example3.to_string());
+
+//     // Assuming a method to count list elements in the parsed job task
+//     let list_count1 = parsed_user_message1.get_elements_filtered(true, true, false).len();
+//     let list_count2 = parsed_user_message2.get_elements_filtered(true, true, false).len();
+//     let list_count3 = parsed_user_message3.get_elements_filtered(true, true, false).len();
+
+//     // Expected number of list elements
+//     let expected_list_count1 = 2;
+//     let expected_list_count2 = 3;
+//     let expected_list_count3 = 3;
+
+//     // Assert that the counted list elements match the expected numbers
+//     assert_eq!(
+//         list_count1, expected_list_count1,
+//         "List count in example1 does not match."
+//     );
+//     assert_eq!(
+//         list_count2, expected_list_count2,
+//         "List count in example2 does not match."
+//     );
+//     assert_eq!(
+//         list_count3, expected_list_count3,
+//         "List count in example3 does not match."
+//     );
+
+//     // Print each list element for visual inspection (assuming a method to iterate and print list elements)
+//     println!("List elements in example1:");
+//     parsed_user_message1.print_list_elements();
+//     println!("List elements in example2:");
+//     parsed_user_message2.print_list_elements();
+//     println!("List elements in example3:");
+//     parsed_user_message3.print_list_elements();
+// }

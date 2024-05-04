@@ -702,7 +702,7 @@ impl VectorFS {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
 
         // Fetches the actual available paths in the FS. // TODO: Remove this and make sure perms are actually accurate.
-        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive_unordered(None);
         let mut all_internals_paths = HashMap::new();
         ret_nodes.iter().for_each(|p| {
             all_internals_paths.insert(p.retrieval_path.clone(), true);
@@ -744,7 +744,7 @@ impl VectorFS {
         let fs_internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
 
         // Fetches the actual available paths in the FS. // TODO: Remove this and make sure perms are actually accurate.
-        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive(None, false);
+        let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive_unordered(None);
         let mut all_internals_paths = HashMap::new();
         ret_nodes.iter().for_each(|p| {
             all_internals_paths.insert(p.retrieval_path.clone(), true);

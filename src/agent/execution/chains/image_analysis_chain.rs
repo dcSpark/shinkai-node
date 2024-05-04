@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 
 
 use crate::{
-    agent::{error::AgentError, execution::job_prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
+    agent::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
     db::ShinkaiDB,
 };
 
@@ -44,7 +44,7 @@ impl JobManager {
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
-        let response_json = JobManager::inference_agent(agent.clone(), image_prompt).await?;
+        let response_json = JobManager::inference_agent_json(agent.clone(), image_prompt).await?;
         let mut new_execution_context = HashMap::new();
 
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")

@@ -142,15 +142,11 @@ async fn main() {
         .map(Duration::from_secs);
 
     // Example of creating a FilesystemSynchronizer
-    let mut shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
+    let shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
         Path::new(&encrypted_file_path),
         passphrase.as_deref().unwrap_or(""),
     )
     .expect("Failed to initialize ShinkaiManagerForSync");
-
-    if node_address.is_some() {
-        shinkai_manager.node_address = node_address.unwrap();
-    }
 
     let synchronizer = FilesystemSynchronizer::new(
         shinkai_manager,

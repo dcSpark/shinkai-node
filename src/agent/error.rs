@@ -64,6 +64,7 @@ pub enum AgentError {
     LLMProviderInferenceLimitReached(String),
     LLMProviderUnexpectedError(String),
     FailedSerdeParsingJSONString(String, serde_json::Error),
+    FailedSerdeParsingXMLString(String, minidom::Error),
     ShinkaiMessageBuilderError(String),
 }
 
@@ -109,7 +110,7 @@ impl fmt::Display for AgentError {
             AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
             AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
             AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
-            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this job_task: {}", s),
+            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this user_message: {}", s),
             AgentError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
             AgentError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
             AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
@@ -135,6 +136,7 @@ impl fmt::Display for AgentError {
             AgentError::LLMProviderInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
             AgentError::LLMProviderUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
             AgentError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
+            AgentError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
             AgentError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
      
         }
@@ -197,6 +199,7 @@ impl AgentError {
             AgentError::LLMProviderInferenceLimitReached(_) => "LLMProviderInferenceLimitReached",
             AgentError::LLMProviderUnexpectedError(_) => "LLMProviderUnexpectedError",
             AgentError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
+            AgentError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
             AgentError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
         };
 

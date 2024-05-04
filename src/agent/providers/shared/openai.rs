@@ -1,20 +1,15 @@
-use std::collections::HashMap;
-
-
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::Prompt;
+use crate::agent::execution::prompts::prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use serde::de::Deserializer;
-
-
 use serde::ser::{SerializeMap, SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-
 use serde_json::{self};
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
-
+use std::collections::HashMap;
+use tiktoken_rs::ChatCompletionRequestMessage;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -77,6 +72,38 @@ pub struct OpenAIApiMessage {
     pub content: MessageContent,
 }
 
+impl OpenAIApiMessage {
+    /// Converts ChatCompletionRequestMessages to OpenAIApiMessages
+    pub fn from_chat_completion_messages(
+        chat_completion_messages: Vec<ChatCompletionRequestMessage>,
+    ) -> Result<Vec<OpenAIApiMessage>, AgentError> {
+        let mut messages: Vec<OpenAIApiMessage> = chat_completion_messages
+            .into_iter()
+            .filter_map(|message| {
+                if let Some(content) = message.content {
+                    let message_content = match &message.name {
+                        Some(name) if name == "image" => MessageContent::ImageUrl { url: content },
+                        _ => MessageContent::Text(content),
+                    };
+
+                    Some(OpenAIApiMessage {
+                        role: message.role,
+                        content: message_content,
+                    })
+                } else {
+                    eprintln!(
+                        "Warning: Message with role '{}' has no content. Ignoring.",
+                        message.role
+                    );
+                    None
+                }
+            })
+            .collect();
+
+        Ok(messages)
+    }
+}
+
 impl Serialize for OpenAIApiMessage {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -104,67 +131,28 @@ pub struct ApiPayload {
     max_tokens: usize,
 }
 
-pub fn openai_prepare_messages(
-    model: &AgentLLMInterface,
-    _model_type: String,
-    prompt: Prompt,
-    total_tokens: usize,
-) -> Result<PromptResult, AgentError> {
-    let half_total_tokens = total_tokens.checked_div(2).ok_or(AgentError::UnexpectedPromptResult(
-        "Failed dividing total_tokens.".to_string(),
-    ))?;
-    let tiktoken_messages = prompt.generate_openai_messages(Some(half_total_tokens))?;
+pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, AgentError> {
+    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
 
-    let filtered_tiktoken_messages: Vec<_> = tiktoken_messages
+    // Generate the messages and filter out images
+    let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;
+    let filtered_chat_completion_messages: Vec<_> = chat_completion_messages
         .clone()
         .into_iter()
         .filter(|message| message.name.as_deref() != Some("image"))
         .collect();
 
-    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&filtered_tiktoken_messages)
-        .map_err(AgentError::TokenizationError)?;
-    let mut max_tokens = std::cmp::max(5, total_tokens.saturating_sub(used_tokens));
-    max_tokens = std::cmp::min(
-        max_tokens,
-        ModelCapabilitiesManager::get_max_output_tokens(&model.clone()),
-    );
+    // Get a more accurate estimate of the number of used tokens
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&filtered_chat_completion_messages);
+    // Calculate the remaining output tokens available
+    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(&model, used_tokens);
 
-    let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
-        .into_iter()
-        .filter_map(|message| {
-            if let Some(content) = message.content {
-                let message_content = match &message.name {
-                    Some(name) if name == "image" => MessageContent::ImageUrl { url: content },
-                    _ => MessageContent::Text(content),
-                };
+    // Converts the ChatCompletionMessages to OpenAIApiMessages
+    let messages = OpenAIApiMessage::from_chat_completion_messages(filtered_chat_completion_messages)?;
 
-                Some(OpenAIApiMessage {
-                    role: message.role,
-                    content: message_content,
-                })
-            } else {
-                eprintln!(
-                    "Warning: Message with role '{}' has no content. Ignoring.",
-                    message.role
-                );
-                None
-            }
-        })
-        .collect();
-
-    if let Some(last_message) = messages.last_mut() {
-        match &mut last_message.content {
-            MessageContent::Text(text) => {
-                if !text.ends_with(" ```") {
-                    text.push_str(" ```json");
-                }
-            }
-            _ => {}
-        }
-    }
     let messages_json = serde_json::to_value(&messages)?;
     Ok(PromptResult {
         value: PromptResultEnum::Value(messages_json),
-        remaining_tokens: max_tokens,
+        remaining_tokens: remaining_output_tokens,
     })
 }

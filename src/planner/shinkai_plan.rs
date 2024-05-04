@@ -1,14 +1,14 @@
+use crate::agent::execution::prompts::prompts::Prompt;
 use futures::Future;
 use pddl_ish_parser::models::domain::Domain;
 use pddl_ish_parser::parser::action::Action;
-
-
-
-use std::{pin::Pin, sync::Arc};
-use tokio::sync::Mutex;
-use pddl_ish_parser::parser::problem_parser::parse_problem;
 use pddl_ish_parser::parser::domain_parser::parse_domain;
-
+use pddl_ish_parser::parser::problem_parser::parse_problem;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use std::{io::Cursor, pin::Pin, sync::Arc};
+use tokio::sync::Mutex;
 
 pub type ExecuteActionFn =
     fn(&Action, &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
@@ -91,7 +91,7 @@ impl ShinkaiPlan {
             }
         }
     }
-    
+
     pub fn validate_pddl_problem(pddl: String) -> Result<(), String> {
         eprintln!("Validating PDDL problem");
         match parse_problem(&pddl) {

@@ -1,4 +1,4 @@
-use super::execution::job_prompts::{Prompt, SubPromptType};
+use super::execution::prompts::prompts::{Prompt, SubPromptType};
 use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;
@@ -72,30 +72,44 @@ impl Agent {
     }
 
     /// Inferences the LLM model tied to the agent to get a response back.
-    /// Note, all `content` is expected to use prompts from the PromptGenerator,
-    /// meaning that they tell/force the LLM to always respond in JSON. We automatically
-    /// parse the JSON object out of the response into a JsonValue, perform retries, and error if no object is found after everything.
-    pub async fn inference(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
+    /// We automatically  parse the JSON object out of the response into a JsonValue, perform retries,
+    /// and error if no object is found after everything.
+    pub async fn inference_json(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
         let mut response = self.internal_inference_matching_model(prompt.clone()).await;
         let mut attempts = 0;
 
         let mut new_prompt = prompt.clone();
         while let Err(err) = &response {
-            if attempts >= 3 {
+            if attempts > 5 {
                 break;
             }
             attempts += 1;
+            let priority = attempts;
 
             // If serde failed parsing the json string, then use advanced retrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
-                new_prompt.add_content(response_json.to_string(), SubPromptType::Assistant, 100);
+                new_prompt.add_content(format!("Here is your JSON answer:"), SubPromptType::Assistant, priority);
+                new_prompt.add_content(
+                    format!("```{}```", response_json.to_string()),
+                    SubPromptType::Assistant,
+                    priority,
+                );
+                new_prompt.add_content(
+                    format!("No, that is not valid JSON. This is the error reported for the above json string:"),
+                    SubPromptType::User,
+                    priority,
+                );
+                new_prompt.add_content(
+                    format!("```{}```", serde_error.to_string()),
+                    SubPromptType::User,
+                    priority,
+                );
                 new_prompt.add_content(
                     format!(
-                        "`{}` \nFix this error in your response so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always use single quotes (never double quotes) inside of the strings.",
-                        serde_error.to_string()
+                        "You are an advanced JSON assistant who can fix any invalid JSON string. Fix the json string so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always escape quotes properly inside of strings!",
                     ),
                     SubPromptType::User,
-                    100,
+                    priority,
                 );
                 response = self.internal_inference_matching_model(new_prompt.clone()).await;
             }
@@ -110,6 +124,59 @@ impl Agent {
         Ok(cleaned_json)
     }
 
+    /// Inferences the LLM model tied to the agent to get a response back.
+    /// We automatically  parse the XML response into a JsonValue, perform retries,
+    /// and error if no object is found after everything.
+    pub async fn inference_xml(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
+        let mut response = self.internal_inference_matching_model(prompt.clone()).await;
+        let mut attempts = 0;
+
+        // TODO: Implement the retry logic once you get the xml working
+
+        // let mut new_prompt = prompt.clone();
+        // while let Err(err) = &response {
+        //     if attempts > 5 {
+        //         break;
+        //     }
+        //     attempts += 1;
+        //     let priority = attempts;
+
+        //     // If serde failed parsing the json string, then use advanced retrying
+        //     if let AgentError::FailedSerdeParsingJSONString(response_xml, serde_error) = err {
+        //         new_prompt.add_content(format!("Here is your XML answer:"), SubPromptType::Assistant, priority);
+        //         new_prompt.add_content(
+        //             format!("```{}```", response_json.to_string()),
+        //             SubPromptType::Assistant,
+        //             priority,
+        //         );
+        //         new_prompt.add_content(
+        //             format!("No, that is not valid JSON. This is the error reported for the above json string:"),
+        //             SubPromptType::User,
+        //             priority,
+        //         );
+        //         new_prompt.add_content(
+        //             format!("```{}```", serde_error.to_string()),
+        //             SubPromptType::User,
+        //             priority,
+        //         );
+        //         new_prompt.add_content(
+        //             format!(
+        //                 "You are an advanced JSON assistant who can fix any invalid JSON string. Fix the json string so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always escape quotes properly inside of strings!",
+        //             ),
+        //             SubPromptType::User,
+        //             priority,
+        //         );
+        //         response = self.internal_inference_matching_model(new_prompt.clone()).await;
+        //     }
+        //     // Otherwise if another error happened, best to retry whole inference to start from scratch/get new response
+        //     else {
+        //         response = self.internal_inference_matching_model(prompt.clone()).await;
+        //     }
+        // }
+
+        response
+    }
+
     async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
         match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
@@ -119,6 +186,7 @@ impl Agent {
                         self.external_url.as_ref(),
                         self.api_key.as_ref(),
                         prompt.clone(),
+                        self.model.clone(),
                     )
                     .await
             }
@@ -129,6 +197,7 @@ impl Agent {
                         self.external_url.as_ref(),
                         self.api_key.as_ref(),
                         prompt.clone(),
+                        self.model.clone(),
                     )
                     .await
             }
@@ -139,6 +208,7 @@ impl Agent {
                         self.external_url.as_ref(),
                         self.api_key.as_ref(),
                         prompt.clone(),
+                        self.model.clone(),
                     )
                     .await
             }
@@ -149,6 +219,7 @@ impl Agent {
                         self.external_url.as_ref(),
                         self.api_key.as_ref(),
                         prompt.clone(),
+                        self.model.clone(),
                     )
                     .await
             }
@@ -158,6 +229,7 @@ impl Agent {
                     self.external_url.as_ref(),
                     self.api_key.as_ref(),
                     prompt.clone(),
+                    self.model.clone(),
                 )
                 .await
             }

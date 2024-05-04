@@ -1,6 +1,7 @@
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -10,7 +11,6 @@ use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -43,18 +43,17 @@ impl LLMProvider for ShinkaiBackend {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
-                let messages_json = match self.model_type.as_str() {
-                    "PREMIUM_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE" => {
-                        let open_ai = OpenAI {
-                            model_type: self.model_type.clone(),
-                        };
-                        let model = AgentLLMInterface::OpenAI(open_ai);
-                        let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                        let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let messages_json = match self.model_type().to_uppercase().as_str() {
+                    "PREMIUM_TEXT_INFERENCE"
+                    | "PREMIUM_VISION_INFERENCE"
+                    | "STANDARD_TEXT_INFERENCE"
+                    | "FREE_TEXT_INFERENCE" => {
+                        let result = openai_prepare_messages(&model, prompt)?;
                         match result.value {
                             PromptResultEnum::Value(v) => v,
                             _ => {
@@ -64,12 +63,17 @@ impl LLMProvider for ShinkaiBackend {
                             }
                         }
                     }
-                    _ => return Err(AgentError::InvalidModelType("Unsupported model type".to_string())),
+                    _ => {
+                        return Err(AgentError::InvalidModelType(format!(
+                            "Unsupported model type: {:?}",
+                            self.model_type()
+                        )))
+                    }
                 };
                 // eprintln!("Messages JSON: {:?}", messages_json);
 
                 let mut payload = json!({
-                    "model": self.model_type,
+                    "model": self.model_type(),
                     "messages": messages_json,
                     "temperature": 0.7,
                     // "max_tokens": result.remaining_tokens, // TODO: Check if this is necessary
@@ -77,7 +81,7 @@ impl LLMProvider for ShinkaiBackend {
 
                 // Openai doesn't support json_object response format for vision models. wut?
                 // Add json_object only for PREMIUM_TEXT_INFERENCE
-                if self.model_type == "PREMIUM_TEXT_INFERENCE" {
+                if self.model_type() == "PREMIUM_TEXT_INFERENCE" {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
@@ -142,7 +146,7 @@ impl LLMProvider for ShinkaiBackend {
 
                         // TODO: refactor parsing logic so it's reusable
                         // If not an error, but actual response
-                        if self.model_type.contains("vision") {
+                        if self.model_type().contains("vision") {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
                                 .choices
