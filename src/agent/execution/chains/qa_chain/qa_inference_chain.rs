@@ -89,6 +89,7 @@ impl JobManager {
                 ret_nodes,
                 summary_text.clone(),
                 Some(full_job.step_history.clone()),
+                iteration_count,
             )
         };
 

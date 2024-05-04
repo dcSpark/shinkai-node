@@ -101,6 +101,7 @@ impl JobPromptGenerator {
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
+        iteration_count: u64,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
@@ -126,6 +127,21 @@ impl JobPromptGenerator {
                 SubPromptType::User,
                 99,
             );
+        }
+        // If this is the first iteration count, then we want to add the retrieved nodes as sub-prompts as it had no previous context
+        if !ret_nodes.is_empty() && iteration_count == 1 {
+            // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
+            prompt.add_content(
+                "Here is a list of relevant new content provided for you to potentially use while answering:"
+                    .to_string(),
+                SubPromptType::System,
+                97,
+            );
+            for node in ret_nodes {
+                if let Some(content) = node.format_for_prompt(3500) {
+                    prompt.add_content(content, SubPromptType::System, 97);
+                }
+            }
         }
 
         let pre_task_text = format!("The user has asked: ");
