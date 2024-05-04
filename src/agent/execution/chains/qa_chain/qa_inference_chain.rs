@@ -1,6 +1,6 @@
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::JobPromptGenerator;
-use crate::agent::job::{Job, JobLike};
+use crate::agent::execution::prompts::prompts::JobPromptGenerator;
+use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
@@ -11,7 +11,7 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::{RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -19,7 +19,7 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
 
 impl JobManager {
-    /// An inference chain for question-answer job tasks which vector searches the Vector Resources
+    /// An inference chain for question-answer user messages which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]
@@ -27,7 +27,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
-        job_task: String,
+        user_message: String,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
@@ -41,7 +41,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
-            &format!("start_qa_inference_chain>  message: {:?}", job_task),
+            &format!("start_qa_inference_chain>  message: {:?}", user_message),
         );
 
         //
@@ -50,8 +50,8 @@ impl JobManager {
         // to be able to find all the information related to the user's questions. This will likely be needed when lots of VRs are part of the scope.
         //
 
-        // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
-        let query_text = search_text.clone().unwrap_or(job_task.clone());
+        // Use search_text if available (on recursion), otherwise use user_message to generate the query (on first iteration)
+        let query_text = search_text.clone().unwrap_or(user_message.clone());
 
         // Vector Search if the scope isn't empty.
         let scope_is_empty = full_job.scope().is_empty();
@@ -76,24 +76,25 @@ impl JobManager {
         // Use the default prompt if not reached final iteration count, else use final prompt
         let is_not_final = iteration_count < max_iterations && !scope_is_empty;
         let filled_prompt = if is_not_final {
-            JobPromptGenerator::response_prompt_with_vector_search(
-                job_task.clone(),
+            JobPromptGenerator::qa_response_prompt_with_vector_search(
+                user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),
                 Some(query_text),
                 Some(full_job.step_history.clone()),
             )
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(
-                job_task.clone(),
+            JobPromptGenerator::qa_response_prompt_with_vector_search_final(
+                user_message.clone(),
                 ret_nodes,
                 summary_text.clone(),
                 Some(full_job.step_history.clone()),
+                iteration_count,
             )
         };
 
         // Inference the agent's LLM with the prompt
-        let response = JobManager::inference_agent(agent.clone(), filled_prompt.clone()).await;
+        let response = JobManager::inference_agent_json(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
         if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
@@ -106,7 +107,7 @@ impl JobManager {
                 db,
                 vector_fs,
                 full_job,
-                job_task,
+                user_message,
                 agent,
                 execution_context,
                 generator,
@@ -136,14 +137,14 @@ impl JobManager {
                     let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(summary_str);
                     return Ok(cleaned_answer);
                 } else {
-                    return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+                    return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
                 }
             }
         }
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response(
+        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response_with_json(
             agent.clone(),
             response_json.clone(),
             filled_prompt.clone(),
@@ -153,7 +154,7 @@ impl JobManager {
         .await
         {
             Ok((summary_str, new_resp_json)) => {
-                let new_search_text = match &JobManager::advanced_extract_key_from_inference_response(
+                let new_search_text = match &JobManager::advanced_extract_key_from_inference_response_with_json(
                     agent.clone(),
                     new_resp_json.clone(),
                     filled_prompt.clone(),
@@ -186,7 +187,7 @@ impl JobManager {
         if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt =
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
-            let response = JobManager::inference_agent(agent.clone(), retry_prompt).await;
+            let response = JobManager::inference_agent_json(agent.clone(), retry_prompt).await;
             if let Ok(response_json) = response {
                 match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
                     Ok(search_str) => {
@@ -205,7 +206,7 @@ impl JobManager {
             db,
             vector_fs,
             full_job,
-            job_task.to_string(),
+            user_message.to_string(),
             agent,
             execution_context,
             generator,
@@ -226,7 +227,7 @@ async fn no_json_object_retry_logic(
     db: Arc<ShinkaiDB>,
     vector_fs: Arc<VectorFS>,
     full_job: Job,
-    job_task: String,
+    user_message: String,
     agent: SerializedAgent,
     execution_context: HashMap<String, String>,
     generator: RemoteEmbeddingGenerator,
@@ -244,7 +245,7 @@ async fn no_json_object_retry_logic(
                 db,
                 vector_fs,
                 full_job,
-                job_task.to_string(),
+                user_message.to_string(),
                 agent,
                 execution_context,
                 generator,

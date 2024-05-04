@@ -1,7 +1,7 @@
 use crate::{
     agent::{
         error::AgentError,
-        execution::job_prompts::{Prompt, SubPrompt},
+        execution::prompts::prompts::{Prompt, SubPrompt},
     },
     managers::model_capabilities_manager::{Base64ImageString, PromptResult, PromptResultEnum},
 };
@@ -53,9 +53,6 @@ pub fn llama_prepare_messages(
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
     let mut messages_string = prompt.generate_genericapi_messages(None)?;
-    if !messages_string.ends_with(" ```") {
-        messages_string.push_str(" ```json");
-    }
 
     Ok(PromptResult {
         value: PromptResultEnum::Text(messages_string.clone()),
@@ -70,9 +67,6 @@ pub fn llava_prepare_messages(
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
     let mut messages_string = prompt.generate_genericapi_messages(None)?;
-    if !messages_string.ends_with(" ```") {
-        messages_string.push_str(" ```json");
-    }
 
     if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
         if let SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, priority) = sub_prompt {

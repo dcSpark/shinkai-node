@@ -1,6 +1,7 @@
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -20,14 +21,16 @@ impl LLMProvider for GenericAPI {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/inference");
-                let mut messages_string = prompt.generate_genericapi_messages(None)?;
-                if !messages_string.ends_with(" ```") {
-                    messages_string.push_str(" ```json");
-                }
+
+                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
+                let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
+                let max_output_tokens = ModelCapabilitiesManager::get_max_output_tokens(&model);
+                let messages_string = prompt.generate_genericapi_messages(Some(max_input_tokens))?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -35,17 +38,9 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
-                // TODO: implement diff tokenizers depending on the model
-                let generic = GenericAPI {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::GenericAPI(generic);
-                let mut max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                max_tokens = std::cmp::max(5, max_tokens - (messages_string.len() / 2));
-
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": max_tokens,
+                    "max_tokens": max_output_tokens,
                     "prompt": messages_string,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
@@ -88,7 +83,6 @@ impl LLMProvider for GenericAPI {
                     ShinkaiLogLevel::Info,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-
                 let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&response_text);
 
                 match data_resp {

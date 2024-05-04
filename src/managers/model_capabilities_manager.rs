@@ -1,7 +1,7 @@
 use crate::{
     agent::{
         error::AgentError,
-        execution::job_prompts::Prompt,
+        execution::prompts::prompts::Prompt,
         providers::shared::{
             openai::openai_prepare_messages,
             togetherai::{llama_prepare_messages, llava_prepare_messages},
@@ -140,7 +140,7 @@ impl ModelCapabilitiesManager {
                 _ => vec![],
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
@@ -204,7 +204,7 @@ impl ModelCapabilitiesManager {
                 _ => ModelCost::Unknown,
             },
             AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
                 "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
                     ModelCost::GoodValue
@@ -223,7 +223,7 @@ impl ModelCapabilitiesManager {
             AgentLLMInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
             AgentLLMInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
             AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -265,9 +265,7 @@ impl ModelCapabilitiesManager {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
-                    let total_tokens = Self::get_max_tokens(model);
-                    let tiktoken_messages =
-                        openai_prepare_messages(model, openai.clone().model_type, prompt, total_tokens)?;
+                    let tiktoken_messages = openai_prepare_messages(&model, prompt)?;
                     Ok(tiktoken_messages)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
@@ -291,7 +289,7 @@ impl ModelCapabilitiesManager {
                 Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
-                shinkai_backend.model_type.clone(),
+                shinkai_backend.model_type().clone(),
             )),
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral")
@@ -324,6 +322,7 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    /// Returns the maximum number of tokens allowed for the given model.
     pub fn get_max_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
@@ -339,7 +338,8 @@ impl ModelCapabilitiesManager {
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
                 } else if genericapi.model_type.starts_with("mistralai/Mistral-7B-Instruct-v0.2") {
-                    32_000
+                    16_000
+                    //  32_000
                 } else if genericapi.model_type.starts_with("meta-llama/Llama-3") {
                     8_000
                 } else if genericapi.model_type.starts_with("mistralai/Mixtral-8x22B") {
@@ -353,11 +353,11 @@ impl ModelCapabilitiesManager {
                 0
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type == "PREMIUM_TEXT_INFERENCE"
-                    || shinkai_backend.model_type == "PREMIUM_VISION_INFERENCE"
+                if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
+                    || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
                 {
                     128_000
-                } else if shinkai_backend.model_type == "STANDARD_TEXT_INFERENCE" {
+                } else if shinkai_backend.model_type() == "STANDARD_TEXT_INFERENCE" {
                     32_000
                 } else {
                     let normalized_model = Self::normalize_model(&model.clone());
@@ -376,7 +376,8 @@ impl ModelCapabilitiesManager {
                 if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
                     return 32_000;
                 } else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
-                    return 32_000;
+                    return 16_000;
+                    //  32_000
                 } else if ollama.model_type.starts_with("mixtral:8x22b") {
                     return 65_000;
                 } else if ollama.model_type.starts_with("llama3-gradient") {
@@ -395,6 +396,17 @@ impl ModelCapabilitiesManager {
         }
     }
 
+    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
+    pub fn get_max_input_tokens(model: &AgentLLMInterface) -> usize {
+        let max_tokens = Self::get_max_tokens(model);
+        let max_output_tokens = Self::get_max_output_tokens(model);
+        if max_tokens > max_output_tokens {
+            max_tokens - max_output_tokens
+        } else {
+            max_output_tokens
+        }
+    }
+
     pub fn get_max_output_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(_) => {
@@ -402,8 +414,11 @@ impl ModelCapabilitiesManager {
                 4096
             }
             AgentLLMInterface::GenericAPI(_) => {
-                // Fill in the appropriate logic for GenericAPI
-                4096
+                if Self::get_max_tokens(model) < 8500 {
+                    2800
+                } else {
+                    4096
+                }
             }
             AgentLLMInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM
@@ -422,6 +437,17 @@ impl ModelCapabilitiesManager {
                 4096
             }
         }
+    }
+
+    /// Returns the remaining number of output tokens allowed for the LLM to use
+    pub fn get_remaining_output_tokens(model: &AgentLLMInterface, used_tokens: usize) -> usize {
+        let max_tokens = Self::get_max_tokens(model);
+        let mut remaining_output_tokens = max_tokens.saturating_sub(used_tokens);
+        remaining_output_tokens = std::cmp::min(
+            remaining_output_tokens,
+            ModelCapabilitiesManager::get_max_output_tokens(&model.clone()),
+        );
+        remaining_output_tokens
     }
 
     // Note(Nico): this may be necessary bc some libraries are not caught up with the latest models e.g. tiktoken-rs
@@ -449,7 +475,7 @@ impl ModelCapabilitiesManager {
                 "".to_string()
             }
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type.starts_with("gpt") {
+                if shinkai_backend.model_type().starts_with("gpt") {
                     "gpt-4-32k".to_string()
                 } else {
                     "gpt-4".to_string()
@@ -472,7 +498,8 @@ impl ModelCapabilitiesManager {
         buffered_token_count
     }
 
-    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> Result<usize, String> {
+    /// Counts the number of tokens from the list of messages
+    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> usize {
         let average_token_size = 4; // Average size of a token (in characters)
         let buffer_percentage = 0.15; // Buffer to account for tokenization variance
 
@@ -493,6 +520,7 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        Ok(buffered_token_count)
+        // Rob note: Multiplying this estimation, as for mixtral 8x7b it's been extremely off
+        (buffered_token_count as f64 * 2.5).floor() as usize
     }
 }

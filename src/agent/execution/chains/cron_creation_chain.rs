@@ -1,7 +1,7 @@
 
 use crate::agent::error::AgentError;
-use crate::agent::execution::job_prompts::JobPromptGenerator;
-use crate::agent::job::{Job};
+use crate::agent::execution::prompts::prompts::JobPromptGenerator;
+use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::parsing_helper::ParsingHelper;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -229,7 +229,7 @@ impl JobManager {
     pub async fn start_cron_creation_chain(
         db: Arc<ShinkaiDB>,
         full_job: Job,
-        job_task: String,
+        user_message: String,
         agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
@@ -241,10 +241,10 @@ impl JobManager {
         max_iterations: u64,
         state: Option<CronCreationState>,
     ) -> Result<CronCreationChainResponse, AgentError> {
-        println!("start_cron_creation_chain>  message: {:?}", job_task);
+        println!("start_cron_creation_chain>  message: {:?}", user_message);
 
         if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+            return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
         }
 
         // TODO: we need the vector search for the tools
@@ -300,7 +300,7 @@ impl JobManager {
             }
         };
 
-        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        let response_json = JobManager::inference_agent_json(agent.clone(), filled_prompt).await?;
         let mut cleaned_answer = String::new();
 
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
@@ -354,7 +354,7 @@ impl JobManager {
                     Self::start_cron_creation_chain(
                         db,
                         full_job,
-                        job_task.to_string(),
+                        user_message.to_string(),
                         agent,
                         execution_context,
                         user_profile,
@@ -386,7 +386,7 @@ impl JobManager {
                 Self::start_cron_creation_chain(
                     db,
                     full_job,
-                    job_task.to_string(),
+                    user_message.to_string(),
                     agent,
                     execution_context,
                     user_profile,
@@ -417,7 +417,7 @@ impl JobManager {
             Self::start_cron_creation_chain(
                 db,
                 full_job,
-                job_task.to_string(),
+                user_message.to_string(),
                 agent,
                 execution_context,
                 user_profile,

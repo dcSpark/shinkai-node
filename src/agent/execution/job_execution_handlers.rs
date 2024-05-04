@@ -17,14 +17,15 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 
-
 use crate::{
     agent::{
-        error::AgentError, execution::chains::inference_chain_router::InferenceChain, job::Job, job_manager::JobManager,
+        error::AgentError, execution::chains::inference_chain_router::InferenceChainDecision, job::Job,
+        job_manager::JobManager,
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    planner::kai_files::{KaiJobFile, KaiSchemaType}, vector_fs::{vector_fs::VectorFS},
+    planner::kai_files::{KaiJobFile, KaiSchemaType},
+    vector_fs::vector_fs::VectorFS,
 };
 
 impl JobManager {
@@ -73,7 +74,8 @@ impl JobManager {
         };
 
         let inbox_name_result =
-            Self::insert_kai_job_file_into_inbox(db.clone(), vector_fs.clone(), "cron_request".to_string(), kai_file).await;
+            Self::insert_kai_job_file_into_inbox(db.clone(), vector_fs.clone(), "cron_request".to_string(), kai_file)
+                .await;
 
         match inbox_name_result {
             Ok(inbox_name) => {
@@ -149,7 +151,7 @@ impl JobManager {
                         prev_execution_context.clone(),
                         Some(profile.clone()),
                         // TODO(Nico): probably the router should do the inference but we are not clear how yet
-                        InferenceChain::CronExecutionChainMainTask,
+                        InferenceChainDecision::CronExecutionChainMainTask,
                     )
                     .await?;
                 shinkai_log(
@@ -196,7 +198,7 @@ impl JobManager {
                                         vec![],
                                         prev_execution_context.clone(),
                                         Some(profile.clone()),
-                                        InferenceChain::CronExecutionChainSubtask,
+                                        InferenceChainDecision::CronExecutionChainSubtask,
                                     )
                                     .await?;
 

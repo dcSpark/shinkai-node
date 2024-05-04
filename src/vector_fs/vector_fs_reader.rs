@@ -10,10 +10,10 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::SourceFileMap;
-use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, NodeContent, RetrievedNode, VRKai, VRPack, VectorResourceCore,
 };
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceSearch};
 
 /// A struct that represents having access rights to read the VectorFS under a profile/at a specific path.
 /// If a VFSReader struct is constructed, that means the `requester_name` has passed
@@ -401,5 +401,62 @@ impl VectorFS {
             }
             _ => Err(VectorFSError::PathDoesNotPointAtFolder(reader.path.clone())),
         }
+    }
+
+    /// Returns the number of folders under the path specified in the VectorFS.
+    pub async fn count_number_of_folders_under_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<usize, VectorFSError> {
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
+        let folder_count = internals
+            .fs_core_resource
+            .retrieve_resource_nodes_exhaustive(Some(path.clone()))
+            .len();
+        Ok(folder_count)
+    }
+
+    /// Returns the number of items under the path specified in the VectorFS.
+    pub async fn count_number_of_items_under_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<usize, VectorFSError> {
+        let internals = self.get_profile_fs_internals_cloned(profile).await?;
+        let count = internals
+            .fs_core_resource
+            .retrieve_vrheader_nodes_exhaustive(Some(path.clone()))
+            .len();
+        Ok(count)
+    }
+
+    /// Returns all VRHeaderNodes under the path specified in the VectorFS, recursively (aka. any depth).
+    /// These represent the VRs in the VectorFS.
+    pub async fn retrieve_all_vr_header_nodes_underneath_folder(
+        &self,
+        reader: VFSReader,
+    ) -> Result<Vec<RetrievedNode>, VectorFSError> {
+        let internals = self.get_profile_fs_internals_cloned(&reader.profile).await?;
+        let vrheader_nodes = internals
+            .fs_core_resource
+            .retrieve_vrheader_nodes_exhaustive(Some(reader.path.clone()));
+
+        Ok(vrheader_nodes)
+    }
+
+    /// Returns all VectorFS paths of items underneath the path specified (any depth underneath).
+    pub async fn retrieve_all_item_paths_underneath_folder(
+        &self,
+        reader: VFSReader,
+    ) -> Result<Vec<VRPath>, VectorFSError> {
+        let vrheader_nodes_all_depths = self.retrieve_all_vr_header_nodes_underneath_folder(reader).await?;
+
+        let paths = vrheader_nodes_all_depths
+            .iter()
+            .map(|ret_node| ret_node.retrieval_path.clone())
+            .collect::<Vec<VRPath>>();
+
+        Ok(paths)
     }
 }

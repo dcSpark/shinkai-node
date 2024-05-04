@@ -1,12 +1,10 @@
+use crate::{
+    agent::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
+    db::ShinkaiDB,
+};
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 use std::{collections::HashMap, sync::Arc};
-
-
-use crate::{
-    agent::{error::AgentError, execution::job_prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
-    db::ShinkaiDB,
-};
 
 #[derive(Debug, Clone, Default)]
 pub struct CronExecutionChainResponse {
@@ -39,7 +37,7 @@ impl JobManager {
         }
 
         let web_prompt = JobPromptGenerator::cron_subtask(task_description.clone(), web_content.clone());
-        let response_json = JobManager::inference_agent(agent.clone(), web_prompt).await?;
+        let response_json = JobManager::inference_agent_json(agent.clone(), web_prompt).await?;
 
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
         {
@@ -102,7 +100,7 @@ impl JobManager {
             }
         };
 
-        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        let response_json = JobManager::inference_agent_json(agent.clone(), filled_prompt).await?;
 
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
         {

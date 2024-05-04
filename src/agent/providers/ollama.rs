@@ -1,7 +1,8 @@
+use crate::agent::job_manager::JobManager;
 use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::LLMProvider;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -34,13 +35,10 @@ impl LLMProvider for Ollama {
         url: Option<&String>,
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/generate");
-            let ollama = Ollama {
-                model_type: self.model_type.clone(),
-            };
-            let model = AgentLLMInterface::Ollama(ollama);
             let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
             let (messages_string, asset_content) = match messages_result.value {
                 PromptResultEnum::Text(v) => (v, None),
@@ -97,6 +95,7 @@ impl LLMProvider for Ollama {
                     Ok(chunk) => {
                         let chunk_str = String::from_utf8_lossy(&chunk);
                         let chunk_str = chunk_str.chars().filter(|c| !c.is_control()).collect::<String>();
+
                         let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {

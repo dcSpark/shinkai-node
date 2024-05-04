@@ -328,6 +328,16 @@ impl VectorResourceCore for DocumentVectorResource {
         self.nodes.iter().cloned().collect()
     }
 
+    /// Returns all nodes in the DocumentVectorResource as references to nodes
+    fn get_root_nodes_ref(&self) -> Vec<&Node> {
+        self.nodes.iter().collect()
+    }
+
+    /// Returns all embeddings in the DocumentVectorResource as references to embeddings
+    fn get_root_embeddings_ref(&self) -> Vec<&Embedding> {
+        self.embeddings.iter().collect()
+    }
+
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node_dt_specified(
         &mut self,
