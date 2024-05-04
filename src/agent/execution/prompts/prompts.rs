@@ -343,7 +343,6 @@ impl Prompt {
     /// Used primarily for cutting down prompt when it is too large to fit in context window.
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
         let lowest_priority = self.lowest_priority;
-        eprintln!("Lowest priority: {}", lowest_priority);
         if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
             SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
@@ -452,7 +451,7 @@ impl Prompt {
 
     // Generates generic api messages as a single string.
     pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
-        // pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<PromptResult, AgentError> {
+        // let limit = max_input_tokens.unwrap_or(4000 as usize);
         let limit = max_input_tokens.unwrap_or(4000 as usize);
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit);
