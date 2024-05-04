@@ -55,7 +55,7 @@ impl Groq {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ShinkaiBackend {
-    model_type: String,
+    pub model_type: String,
 }
 
 impl ShinkaiBackend {

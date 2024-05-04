@@ -170,7 +170,7 @@ impl JobManager {
         max_tokens_in_prompt: usize,
         attempt_count: u64,
     ) -> Result<String, AgentError> {
-        let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+        let mut resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
         // TODO: Make sure the whole document gets parsed into chunks that fit the LLMs max tokens minus some front buffer for the actual prompt
         // Split the list of resource_sub_prompts into chunks that fit in the max tokens in prompt

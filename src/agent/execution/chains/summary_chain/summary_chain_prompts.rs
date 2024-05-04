@@ -12,9 +12,12 @@ impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
     pub fn summary_chain_detailed_summary_prompt(
         user_message: ParsedUserMessage,
-        resource_sub_prompts: Vec<SubPrompt>,
+        mut resource_sub_prompts: Vec<SubPrompt>,
         resource_source: VRSourceReference,
     ) -> Prompt {
+        // Reverse the sorting of resource_sub_prompts
+        resource_sub_prompts.reverse();
+
         let mut prompt = Prompt::new();
 
         // Intro
@@ -53,9 +56,12 @@ impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
     pub fn summary_chain_detailed_summary_prompt_xml(
         user_message: ParsedUserMessage,
-        resource_sub_prompts: Vec<SubPrompt>,
+        mut resource_sub_prompts: Vec<SubPrompt>,
         resource_source: VRSourceReference,
     ) -> Prompt {
+        // Reverse the sorting of resource_sub_prompts
+        resource_sub_prompts.reverse();
+
         let mut prompt = Prompt::new();
 
         // Intro
