@@ -561,41 +561,46 @@ impl Node {
         let mut all_models = Vec::new();
 
         for url in urls {
-            let res = client
-                .get(url)
-                .send()
-                .await
-                .map_err(|e| NodeError {
-                    message: format!("Failed to send request to {}: {}", url, e),
-                })?
-                .json::<serde_json::Value>()
-                .await
-                .map_err(|e| NodeError {
-                    message: format!("Failed to parse response from {}: {}", url, e),
-                })?;
+            let res = client.get(url).send().await;
 
-            let models = res["models"].as_array().ok_or_else(|| NodeError {
-                message: format!("Unexpected response format from {}", url),
-            })?;
+            match res {
+                Ok(response) => match response.json::<serde_json::Value>().await {
+                    Ok(json) => {
+                        let models = json["models"].as_array().ok_or_else(|| NodeError {
+                            message: format!("Unexpected response format from {}", url),
+                        })?;
 
-            let models_with_port: Vec<serde_json::Value> = models
-                .iter()
-                .map(|model| {
-                    let mut model_clone = model.clone();
-                    if let Some(obj) = model_clone.as_object_mut() {
-                        obj.insert(
-                            "port_used".to_string(),
-                            serde_json::Value::String(url.split(':').nth(2).unwrap_or("").to_string()),
-                        );
+                        let models_with_port: Vec<serde_json::Value> = models
+                            .iter()
+                            .map(|model| {
+                                let mut model_clone = model.clone();
+                                if let Some(obj) = model_clone.as_object_mut() {
+                                    let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                    obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                                }
+                                model_clone
+                            })
+                            .collect();
+
+                        all_models.extend(models_with_port);
                     }
-                    model_clone
-                })
-                .collect();
-
-            all_models.extend(models_with_port);
+                    Err(e) => {
+                        log::error!("Failed to parse response from {}: {}", url, e);
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to send request to {}: {}", url, e);
+                }
+            }
         }
 
-        Ok(all_models)
+        if all_models.is_empty() {
+            Err(NodeError {
+                message: "No models could be retrieved from any source.".to_string(),
+            })
+        } else {
+            Ok(all_models)
+        }
     }
 
     pub async fn internal_add_ollama_models(
@@ -606,9 +611,9 @@ impl Node {
         input_models: Vec<String>,
         shinkai_name: ShinkaiName,
     ) -> Result<(), String> {
-        let requester_profile = match shinkai_name.profile_name {
-            Some(profile) => profile,
-            None => return Err("Profile name is required.".to_string()),
+        let requester_profile = match shinkai_name.extract_profile() {
+            Ok(profile) => profile,
+            Err(e) => return Err(e.to_string()),
         };
 
         let available_models = Self::internal_scan_ollama_models().await.map_err(|e| e.message)?;
@@ -631,12 +636,18 @@ impl Node {
                     .iter()
                     .find(|m| m["name"].as_str() == Some(model))
                     .unwrap();
-                let external_url = model_data["port_used"].as_str().unwrap_or("http://localhost:11434");
+                let external_url = format!(
+                    "http://localhost:{}/api/generate",
+                    model_data["port_used"].as_str().unwrap_or("11434")
+                );
 
                 SerializedAgent {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
-                    full_identity_name: ShinkaiName::new(format!("{}/agent/o_{}", requester_profile, sanitized_model))
-                        .expect("Failed to create ShinkaiName"),
+                    full_identity_name: ShinkaiName::new(format!(
+                        "{}/agent/o_{}",
+                        requester_profile.full_name, sanitized_model
+                    ))
+                    .expect("Failed to create ShinkaiName"),
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),

@@ -2007,7 +2007,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2276,7 +2276,7 @@ impl Node {
                         message: format!("Failed to remove agent from identity manager: {}", err),
                     };
                     let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    Ok(())
                 }
             },
             Err(err) => {
@@ -2286,7 +2286,7 @@ impl Node {
                     message: format!("Failed to remove agent: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }

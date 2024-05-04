@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use chrono::Datelike;
 use chrono::TimeZone;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,7 @@ use crate::shinkai::shinkai_manager_for_sync::ShinkaiManagerForSync;
 pub struct SyncingFolder {
     local_last_synchronized_file_datetime: SystemTime,
     merkle_hash: Option<String>,
+    is_folder: bool,
 }
 
 pub enum SyncInterval {
@@ -34,6 +36,7 @@ pub struct FilesystemSynchronizer {
     pub destination_path: PathBuf,
     pub profile_name: String,
     pub syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    pub should_mirror_delete: bool,
 }
 
 impl std::fmt::Debug for FilesystemSynchronizer {
@@ -53,6 +56,8 @@ impl FilesystemSynchronizer {
         destination_path: PathBuf,
         db_path: String,
         sync_interval: SyncInterval,
+        should_mirror_delete: bool,
+        upload_timeout: Option<Duration>,
     ) -> Result<Self, ShinkaiMirrorDBError> {
         let db = ShinkaiMirrorDB::new(&db_path)?;
         let syncing_folders_db = Arc::new(Mutex::new(db));
@@ -75,6 +80,8 @@ impl FilesystemSynchronizer {
                             &profile_name_clone,
                             &destination_clone,
                             syncing_folders_db_clone.clone(),
+                            should_mirror_delete,
+                            upload_timeout,
                         )
                         .await;
                         eprintln!("Immediate sync finished. Result: {:?}", result);
@@ -88,6 +95,8 @@ impl FilesystemSynchronizer {
                                 &profile_name_clone,
                                 &destination_clone,
                                 syncing_folders_db_clone.clone(),
+                                should_mirror_delete,
+                                upload_timeout,
                             )
                             .await;
                             eprintln!("Syncing folders finished. Result: {:?}", result);
@@ -108,6 +117,7 @@ impl FilesystemSynchronizer {
             destination_path,
             syncing_folders_db,
             abort_handler: abort_handle,
+            should_mirror_delete,
         })
     }
 
@@ -207,6 +217,82 @@ impl FilesystemSynchronizer {
         files_to_update
     }
 
+    /// the function scans the server for files that are not present in the local folder
+    /// and returns a list of files to remove (and folders which they should be ignored)
+    pub async fn scan_server_to_files_to_remove(
+        destination_path: PathBuf,
+        folder_to_watch: &PathBuf,
+        _profile_name: &str,
+        syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+    ) -> Vec<PathBuf> {
+        // Scan the local folder for existing files and store them in a HashMap for quick lookup
+        let current_folder_files = Self::scan_folders(folder_to_watch)
+            .into_keys()
+            .map(|path| {
+                let mut full_path = destination_path.join(path);
+                if !full_path.to_string_lossy().starts_with('/') {
+                    full_path = PathBuf::from("/").join(full_path);
+                }
+                // Remove the file extension
+                full_path.set_extension("");
+                (full_path, ())
+            }) // Create a tuple with a dummy value
+            .collect::<HashMap<_, _>>();
+
+        let mut files_to_remove = Vec::new();
+        let syncing_folders = syncing_folders_db.lock().await;
+
+        // Retrieve all file mirror states from the database
+        if let Ok(all_file_mirror_states) = syncing_folders.all_file_mirror_states() {
+            for (db_path, file_info) in all_file_mirror_states {
+                let normalized_db_path = Path::new(&db_path)
+                    .strip_prefix(folder_to_watch)
+                    .unwrap_or(Path::new(&db_path));
+
+                // Check if the file from the database is not present in the current folder files
+                if !current_folder_files.contains_key(normalized_db_path) && !file_info.is_folder {
+                    // If the file is not present locally, add it to the removal list
+                    let full_path_to_remove = destination_path.join(normalized_db_path);
+                    files_to_remove.push(full_path_to_remove);
+                }
+            }
+        } else {
+            eprintln!("Failed to retrieve file mirror states from the database.");
+        }
+
+        files_to_remove
+    }
+
+    pub async fn remove_empty_folders(
+        shinkai_manager_for_sync: &ShinkaiManagerForSync,
+    ) -> Result<(), PostRequestError> {
+        // Attempt to retrieve the folder from the node to ensure it exists
+        match shinkai_manager_for_sync.get_node_folder("/").await {
+            Ok(result) => {
+                // Extract paths and check for empty folders
+                let paths_and_file_info = Self::extract_paths_and_hashes(&result);
+
+                for (path, file_info) in paths_and_file_info {
+                    if file_info.is_folder && file_info.child_item_count == 0 {
+                        // If the folder is empty, send a request to delete it
+                        let delete_result = shinkai_manager_for_sync.delete_folder(&path).await;
+                        if let Err(e) = delete_result {
+                            eprintln!("Failed to delete empty folder {}: {:?}", path, e);
+                        } else {
+                            eprintln!("Deleted empty folder {}", path);
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Failed to get node folder: {:?}", e);
+                Err(e)
+            }
+        }
+    }
+
     pub fn scan_folders(folder_to_watch: &PathBuf) -> HashMap<PathBuf, SystemTime> {
         let mut folder_files = HashMap::new();
 
@@ -303,6 +389,7 @@ impl FilesystemSynchronizer {
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
         folder_to_watch: &PathBuf,
+        upload_timeout: Option<Duration>,
     ) -> Result<(), PostRequestError> {
         let total_files = files.len();
         let mut uploaded_files_count = 0;
@@ -331,12 +418,18 @@ impl FilesystemSynchronizer {
                 PostRequestError::Unknown("Failed to extract creation datetime".into())
             })?;
 
-            let retry_delays = vec![0, 60, 300]; // Retry delays in seconds: immediately, after 1 minute, and after 5 minutes
+            let retry_delays = [0, 60, 300]; // Retry delays in seconds: immediately, after 1 minute, and after 5 minutes
             let mut attempt = 0;
 
             loop {
                 let upload_result: Result<Vec<FileUploadResponse>, PostRequestError> = shinkai_manager_for_sync
-                    .upload_file(&file_data, filename, &destination_str, creation_datetime_str.clone())
+                    .upload_file(
+                        &file_data,
+                        filename,
+                        &destination_str,
+                        creation_datetime_str.clone(),
+                        upload_timeout,
+                    )
                     .await;
 
                 match upload_result {
@@ -352,6 +445,7 @@ impl FilesystemSynchronizer {
                         let syncing_folder = SyncingFolder {
                             local_last_synchronized_file_datetime: modified_time,
                             merkle_hash: Some(response.merkle_hash.clone()),
+                            is_folder: false,
                         };
                         db.add_or_update_file_mirror_state(profile_name.to_string(), file_path_for_db, syncing_folder)
                             .map_err(|_| PostRequestError::Unknown("Failed to update file mirror state".into()))?;
@@ -409,7 +503,6 @@ impl FilesystemSynchronizer {
 
                 // Iterate through each file found on the node
                 for (node_path, file_info) in paths_and_file_info.iter() {
-
                     let local_path_without_extension = Path::new(node_path).with_extension("");
                     // Check if the file exists locally and in the registry
                     match db.get_file_mirror_state(profile_name.to_string(), local_path_without_extension.clone()) {
@@ -430,6 +523,7 @@ impl FilesystemSynchronizer {
                                 let syncing_folder = SyncingFolder {
                                     local_last_synchronized_file_datetime: file_modified_time_system,
                                     merkle_hash: Some(file_info.merkle_hash.clone()),
+                                    is_folder: file_info.is_folder,
                                 };
                                 db.add_or_update_file_mirror_state(
                                     profile_name.to_string(),
@@ -454,6 +548,7 @@ impl FilesystemSynchronizer {
                             let syncing_folder = SyncingFolder {
                                 local_last_synchronized_file_datetime: file_modified_time_system,
                                 merkle_hash: Some(file_info.merkle_hash.clone()),
+                                is_folder: file_info.is_folder,
                             };
                             db.add_or_update_file_mirror_state(
                                 profile_name.to_string(),
@@ -496,7 +591,7 @@ impl FilesystemSynchronizer {
                 eprintln!("Failed to get node folder: {:?}", e);
                 if let PostRequestError::FSFolderNotFound(_) = e {
                     let db = syncing_folders_db.lock().await;
-                    let _ = db.delete_keys_with_profile_and_prefix(&profile_name, &destination_path);
+                    let _ = db.delete_keys_with_profile_and_prefix(profile_name, &destination_path);
                     eprintln!(
                         "Deleted all keys for profile: '{}' with prefix: '{}' due to FS folder not found.",
                         profile_name, destination_path_str
@@ -508,6 +603,7 @@ impl FilesystemSynchronizer {
         }
     }
 
+    #[allow(dead_code)]
     fn stop(self) {
         if let Some(handle) = self.abort_handler {
             handle.abort();
@@ -520,6 +616,8 @@ impl FilesystemSynchronizer {
         profile_name: &str,
         destination_path: &PathBuf,
         syncing_folders_db: Arc<Mutex<ShinkaiMirrorDB>>,
+        should_mirror_delete: bool,
+        upload_timeout: Option<Duration>,
     ) -> Result<(), PostRequestError> {
         // Check the health of the external service before proceeding
         match shinkai_manager_for_sync.check_node_health().await {
@@ -571,10 +669,49 @@ impl FilesystemSynchronizer {
                     files_to_update,
                     profile_name,
                     destination_path,
-                    syncing_folders_db,
+                    syncing_folders_db.clone(),
                     folder_to_watch,
+                    upload_timeout,
                 )
-                .await
+                .await?;
+
+                // if delete files is enabled, delete files that are not in the local registry
+                if should_mirror_delete {
+                    eprintln!("Searching for files to delete (not in the local registry anymore)...");
+                    let files_to_delete = Self::scan_server_to_files_to_remove(
+                        destination_path.clone(),
+                        folder_to_watch,
+                        profile_name,
+                        syncing_folders_db.clone(),
+                    )
+                    .await;
+                    // eprintln!("Files to delete: {:?}", files_to_delete);
+
+                    for file_path in files_to_delete {
+                        // Convert PathBuf to a string, remove the leading "./", and remove the file extension
+                        let mut file_path_str = file_path.to_string_lossy().into_owned();
+                        if file_path_str.starts_with("./") {
+                            file_path_str = file_path_str[2..].to_string();
+                        }
+                        // Remove the file extension
+                        let file_path_without_extension = Path::new(&file_path_str).with_extension("");
+                        let mut file_path_final = file_path_without_extension.to_string_lossy().to_string();
+
+                        // Ensure the path starts with a "/"
+                        if !file_path_final.starts_with('/') {
+                            file_path_final.insert(0, '/');
+                        }
+
+                        match shinkai_manager_for_sync.delete_item(&file_path_final).await {
+                            Ok(_) => eprintln!("Successfully deleted: {}", file_path_final),
+                            Err(e) => eprintln!("Failed to delete {}: {:?}", file_path_final, e),
+                        }
+                    }
+
+                    let _ = Self::remove_empty_folders(shinkai_manager_for_sync).await;
+                }
+
+                Ok(())
             }
             Err(health_check_error) => {
                 // Handle the case where the health check fails
@@ -611,6 +748,8 @@ impl FilesystemSynchronizer {
             &self.profile_name,
             &self.destination_path,
             self.syncing_folders_db.clone(),
+            self.should_mirror_delete,
+            None,
         )
         .await
     }
@@ -661,6 +800,18 @@ impl FilesystemSynchronizer {
                             .get("distribution_info")
                             .and_then(|di| serde_json::from_value::<DistributionInfo>(di.clone()).ok());
 
+                        let is_folder = obj.contains_key("child_folders") || obj.contains_key("child_items");
+                        let child_item_count = obj
+                            .get("child_items")
+                            .and_then(|ci| ci.as_array())
+                            .map_or(0, |ci| ci.len());
+                        let child_folder_count = obj
+                            .get("child_folders")
+                            .and_then(|cf| cf.as_array())
+                            .map_or(0, |cf| cf.len());
+
+                        let total_child_count = child_item_count + child_folder_count;
+
                         let file_info = FileInfo {
                             merkle_hash: merkle_hash.clone(),
                             name,
@@ -668,6 +819,8 @@ impl FilesystemSynchronizer {
                             distribution_info,
                             created_datetime,
                             last_written_datetime,
+                            is_folder,
+                            child_item_count: total_child_count,
                         };
 
                         paths_and_file_info.insert(path.clone(), file_info);
@@ -715,7 +868,7 @@ impl FilesystemSynchronizer {
 
         match (datetime_from_name_or_parent, file_metadata_datetime) {
             (Some(datetime_str), Some(metadata_datetime)) => {
-                // If both datetime are available, choose the filename's datetime if valid, else choose the oldest
+                // If both datetime are available, choose the oldest (most likely the path)
                 let datetime: chrono::DateTime<chrono::Utc> = metadata_datetime.into();
                 let metadata_datetime_str = datetime.to_rfc3339();
                 Ok(Some(Self::choose_oldest_datetime(
@@ -735,9 +888,16 @@ impl FilesystemSynchronizer {
     }
 
     pub fn extract_datetime_from_path(path: &Path) -> Option<String> {
+        Self::extract_datetime_from_path_with_date_provider(path, chrono::Utc::now)
+    }
+
+    pub fn extract_datetime_from_path_with_date_provider<F>(path: &Path, current_date_provider: F) -> Option<String>
+    where
+        F: Fn() -> chrono::DateTime<chrono::Utc>,
+    {
         let path_str = path.to_string_lossy();
         // Regular expression to find a date in the format YYYYMMDD
-        let re = regex::Regex::new(r"(\d{4})(?:-)?(\d{2})(?:-)?(\d{2})").unwrap();
+        let re = regex::Regex::new(r"(\d{4})(?:[-_])?(\d{2})(?:[-_])?(\d{2})").unwrap();
 
         if let Some(caps) = re.captures(&path_str) {
             if caps.len() == 4 {
@@ -752,6 +912,32 @@ impl FilesystemSynchronizer {
                 }
             }
         }
+
+        // If no full date, try to match YYYY_MM without a day
+        let re_month_year = regex::Regex::new(r".*(\d{4})_(\d{2}).*").unwrap();
+        if let Some(caps) = re_month_year.captures(&path_str) {
+            if caps.len() == 3 {
+                let year = caps[1].parse::<i32>().unwrap();
+                let month = caps[2].parse::<u32>().unwrap();
+
+                let current_date = current_date_provider();
+                let current_year = current_date.year();
+                let current_month = current_date.month();
+
+                if year == current_year && month == current_month {
+                    // Same month and year, return None
+                    return None;
+                } else if year == current_year && month < current_month || year < current_year {
+                    // Calculate the first moment of the next month
+                    let next_month = if month == 12 { 1 } else { month + 1 };
+                    let next_month_year = if month == 12 { year + 1 } else { year };
+                    let first_moment = chrono::NaiveDate::from_ymd(next_month_year, next_month, 1).and_hms(0, 0, 0);
+                    let first_moment_datetime = chrono::DateTime::<chrono::Utc>::from_utc(first_moment, chrono::Utc);
+                    return Some(first_moment_datetime.to_rfc3339());
+                }
+            }
+        }
+
         None
     }
 

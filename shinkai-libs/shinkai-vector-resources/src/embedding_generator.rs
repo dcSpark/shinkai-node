@@ -1,5 +1,5 @@
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
@@ -13,7 +13,7 @@ use reqwest::Client as AsyncClient;
 use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "native-http")]
-use std::io::{prelude::*};
+use std::io::prelude::*;
 
 use std::time::Duration;
 
@@ -109,6 +109,14 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             EmbeddingModelType::TextEmbeddingsInference(_) => {
                 self.generate_embedding_tei_blocking(input_strings.clone(), ids.clone())
             }
+            EmbeddingModelType::OllamaTextEmbeddingsInference(_) => {
+                let mut embeddings = Vec::new();
+                for (input_string, id) in input_strings.iter().zip(ids) {
+                    let embedding = self.generate_embedding_ollama_blocking(input_string, id)?;
+                    embeddings.push(embedding);
+                }
+                Ok(embeddings)
+            }
             _ => {
                 let mut embeddings = Vec::new();
                 for (input_string, id) in input_strings.iter().zip(ids) {
@@ -154,9 +162,19 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
             .collect();
 
-        match self.model_type {
+        match self.model_type.clone() {
             EmbeddingModelType::TextEmbeddingsInference(_) => {
                 self.generate_embedding_tei(input_strings.clone(), ids.clone()).await
+            }
+            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => {
+                let mut embeddings = Vec::new();
+                for (input_string, id) in input_strings.iter().zip(ids) {
+                    let embedding = self
+                        .generate_embedding_ollama(input_string.clone(), id.clone(), model.to_string())
+                        .await?;
+                    embeddings.push(embedding);
+                }
+                Ok(embeddings)
             }
             _ => {
                 let mut embeddings = Vec::new();
@@ -213,7 +231,8 @@ impl RemoteEmbeddingGenerator {
 
     /// Create a RemoteEmbeddingGenerator that uses the default model and server
     pub fn new_default() -> RemoteEmbeddingGenerator {
-        let model_architecture = EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+        let model_architecture =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
             api_url: DEFAULT_EMBEDDINGS_SERVER_URL.to_string(),
@@ -231,51 +250,105 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[async_recursion]
+    /// String of the main endpoint url for generating embeddings via
+    /// Ollama Text Embedding Interface server
+    fn ollama_endpoint_url(&self) -> String {
+        if self.api_url.ends_with('/') {
+            format!("{}api/embeddings", self.api_url)
+        } else {
+            format!("{}/api/embeddings", self.api_url)
+        }
+    }
+
     #[cfg(feature = "native-http")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
-    pub async fn generate_embedding_tei(
+    /// pub async fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
+    pub async fn generate_embedding_ollama(
         &self,
-        input_strings: Vec<String>,
-        ids: Vec<String>,
-    ) -> Result<Vec<Embedding>, VRError> {
-        // Prepare the request body
-        let request_body = EmbeddingArrayRequestBody {
-            inputs: input_strings.iter().map(|s| s.to_string()).collect(),
-        };
-
-        // Create the HTTP client with a custom timeout
-        let timeout = Duration::from_secs(60);
-        let client = ClientBuilder::new().timeout(timeout).build()?;
-
-        // Build the request
-        let mut request = client
-            .post(&format!("{}", self.tei_endpoint_url()))
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        // Add the API key to the header if it's available
-        if let Some(api_key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", api_key));
-        }
-
-        // Send the request with retries
+        input_string: String,
+        id: String,
+        model: String,
+    ) -> Result<Embedding, VRError> {
         let max_retries = 3;
         let mut retry_count = 0;
-        let response = loop {
-            let cloned_request = match request.try_clone() {
-                Some(req) => req,
-                None => return Err(VRError::RequestFailed("Failed to clone request for retry".into())),
+        let mut shortening_retry = 0;
+        let mut input_string = input_string.clone();
+
+        loop {
+            // Prepare the request body
+            let request_body = OllamaEmbeddingsRequestBody {
+                model: model.clone(),
+                prompt: input_string.clone(),
             };
-            match cloned_request.send().await {
-                Ok(response) => break response,
+
+            // Create the HTTP client with a custom timeout
+            let timeout = Duration::from_secs(60);
+            let client = ClientBuilder::new().timeout(timeout).build()?;
+
+            // Build the request
+            let mut request = client
+                .post(&format!("{}", self.ollama_endpoint_url()))
+                .header("Content-Type", "application/json")
+                .json(&request_body);
+
+            // Add the API key to the header if it's available
+            if let Some(api_key) = &self.api_key {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+
+            // Send the request
+            let response = request.send().await;
+
+            match response {
+                Ok(response) if response.status().is_success() => {
+                    let embedding_response: Result<OllamaEmbeddingsResponse, _> =
+                        response.json::<OllamaEmbeddingsResponse>().await;
+                    match embedding_response {
+                        Ok(embedding_response) => {
+                            let embedding = Embedding {
+                                id: String::from(id),
+                                vector: embedding_response.embedding,
+                            };
+                            return Ok(embedding);
+                        }
+                        Err(err) => {
+                            return Err(VRError::RequestFailed(format!(
+                                "Failed to deserialize response JSON: {}",
+                                err
+                            )));
+                        }
+                    }
+                }
+                Ok(response) if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE => {
+                    // Calculate the maximum size allowed based on the number of retries
+                    let reduction_step = if shortening_retry > 1 {
+                        100 * shortening_retry
+                    } else {
+                        50
+                    };
+                    let shortened_max_size = input_string.len().saturating_sub(reduction_step).max(5);
+                    input_string = input_string.chars().take(shortened_max_size).collect();
+
+                    retry_count = 0;
+                    shortening_retry += 1;
+                    if shortening_retry > 10 {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                            response.status()
+                        )));
+                    }
+                    continue;
+                }
+                Ok(response) => {
+                    return Err(VRError::RequestFailed(format!(
+                        "HTTP request failed with status: {}",
+                        response.status()
+                    )));
+                }
                 Err(err) => {
                     if retry_count < max_retries {
                         retry_count += 1;
-                        eprintln!(
-                            "Request failed with error: {}. Retrying ({}/{})...",
-                            err, retry_count, max_retries
-                        );
+                        continue;
                     } else {
                         return Err(VRError::RequestFailed(format!(
                             "HTTP request failed after {} retries: {}",
@@ -284,48 +357,131 @@ impl RemoteEmbeddingGenerator {
                     }
                 }
             }
+        }
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Generate an Embedding for an input string by using the external Ollama API.
+    fn generate_embedding_ollama_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
+        // Prepare the request body
+        let request_body = OllamaEmbeddingsRequestBody {
+            model: self.model_type.to_string(),
+            prompt: String::from(input_string),
         };
+
+        // Create the HTTP client
+        let client = Client::new();
+
+        // Build the request
+        let mut request = client
+            .post(&format!("{}", self.ollama_endpoint_url()))
+            .header("Content-Type", "application/json")
+            .json(&request_body);
+
+        // Add the API key to the header if it's available
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        // Send the request and check for errors
+        let response = request.send().map_err(|err| {
+            // Handle any HTTP client errors here (e.g., request creation failure)
+            VRError::RequestFailed(format!("HTTP request failed: {}", err))
+        })?;
 
         // Check if the response is successful
         if response.status().is_success() {
-            let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>().await;
+            // Deserialize the response JSON into a struct
+            let embedding_response: OllamaEmbeddingsResponse = response
+                .json()
+                .map_err(|err| VRError::RequestFailed(format!("Failed to deserialize response JSON: {}", err)))?;
 
-            match embedding_response {
-                Ok(embedding_response) => {
-                    // Create a Vec<Embedding> by iterating over ids and embeddings
-                    let embeddings: Result<Vec<Embedding>, _> = ids
-                        .iter()
-                        .zip(embedding_response.into_iter())
-                        .map(|(id, embedding)| {
-                            Ok(Embedding {
-                                id: id.clone(),
-                                vector: embedding,
-                            })
-                        })
-                        .collect();
-
-                    // Return the embeddings
-                    embeddings
-                }
-                Err(err) => Err(VRError::RequestFailed(format!(
-                    "Failed to deserialize response JSON: {}",
-                    err
-                ))),
-            }
+            // Use the response to create an Embedding instance
+            Ok(Embedding {
+                id: String::from(id),
+                vector: embedding_response.embedding,
+            })
         } else {
-            // Check specifically for a 413 status code (Payload Too Large)
-            if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-                if let Some(max_size) = input_strings.iter().map(|s| s.len()).max() {
-                    // A way to exit the recursion worst case
-                    if max_size <= 50 {
-                        return Err(VRError::RequestFailed(format!(
-                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
-                            response.status()
-                        )));
+            // Handle non-successful HTTP responses (e.g., server error)
+            Err(VRError::RequestFailed(format!(
+                "HTTP request failed with status: {}",
+                response.status()
+            )))
+        }
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Generates embeddings using Hugging Face's Text Embedding Interface server
+    pub async fn generate_embedding_tei(
+        &self,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
+    ) -> Result<Vec<Embedding>, VRError> {
+        let max_retries = 3;
+        let mut retry_count = 0;
+        let mut shortening_retry = 0;
+        let mut current_input_strings = input_strings.clone();
+
+        loop {
+            // Prepare the request body
+            let request_body = EmbeddingArrayRequestBody {
+                inputs: current_input_strings.iter().map(|s| s.to_string()).collect(),
+            };
+
+            // Create the HTTP client with a custom timeout
+            let timeout = Duration::from_secs(60);
+            let client = ClientBuilder::new().timeout(timeout).build()?;
+
+            // Build the request
+            let mut request = client
+                .post(&format!("{}", self.tei_endpoint_url()))
+                .header("Content-Type", "application/json")
+                .json(&request_body);
+
+            // Add the API key to the header if it's available
+            if let Some(api_key) = &self.api_key {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+
+            // Send the request
+            let response = request.send().await;
+
+            match response {
+                Ok(response) if response.status().is_success() => {
+                    let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>().await;
+                    match embedding_response {
+                        Ok(embedding_response) => {
+                            // Create a Vec<Embedding> by iterating over ids and embeddings
+                            let embeddings: Result<Vec<Embedding>, _> = ids
+                                .iter()
+                                .zip(embedding_response.into_iter())
+                                .map(|(id, embedding)| {
+                                    Ok(Embedding {
+                                        id: id.clone(),
+                                        vector: embedding,
+                                    })
+                                })
+                                .collect();
+                            return embeddings;
+                        }
+                        Err(err) => {
+                            return Err(VRError::RequestFailed(format!(
+                                "Failed to deserialize response JSON: {}",
+                                err
+                            )));
+                        }
                     }
-                    // Shortens any strings which are too long
-                    let shortened_max_size = if max_size > 50 { max_size - 50 } else { 50 };
-                    let shortened_input_strings: Vec<String> = input_strings
+                }
+                Ok(response) if response.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE => {
+                    let max_size = current_input_strings.iter().map(|s| s.len()).max().unwrap_or(0);
+                    // Increase the number of characters removed based on the number of retries
+                    let reduction_step = if shortening_retry > 1 {
+                        100 * shortening_retry
+                    } else {
+                        50
+                    };
+                    let shortened_max_size = max_size.saturating_sub(reduction_step).max(5);
+                    current_input_strings = current_input_strings
                         .iter()
                         .map(|s| {
                             if s.len() > shortened_max_size {
@@ -335,20 +491,33 @@ impl RemoteEmbeddingGenerator {
                             }
                         })
                         .collect();
-
-                    return self.generate_embedding_tei(shortened_input_strings, ids).await;
-                } else {
+                    retry_count = 0;
+                    shortening_retry += 1;
+                    if shortening_retry > 10 {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                            response.status()
+                        )));
+                    }
+                    continue;
+                }
+                Ok(response) => {
                     return Err(VRError::RequestFailed(format!(
-                        "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
+                        "HTTP request failed with status: {}",
                         response.status()
                     )));
                 }
-            } else {
-                // Handle other non-successful HTTP responses (e.g., server error)
-                Err(VRError::RequestFailed(format!(
-                    "HTTP request failed with status: {}",
-                    response.status()
-                )))
+                Err(err) => {
+                    if retry_count < max_retries {
+                        retry_count += 1;
+                        continue;
+                    } else {
+                        return Err(VRError::RequestFailed(format!(
+                            "HTTP request failed after {} retries: {}",
+                            max_retries, err
+                        )));
+                    }
+                }
             }
         }
     }
@@ -574,6 +743,17 @@ struct EmbeddingResponse {
 #[derive(Serialize)]
 struct EmbeddingArrayRequestBody {
     inputs: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct OllamaEmbeddingsRequestBody {
+    model: String,
+    prompt: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaEmbeddingsResponse {
+    embedding: Vec<f32>,
 }
 
 // /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.

@@ -1,7 +1,7 @@
 use crate::{
     schemas::shinkai_subscription_req::SubscriptionPayment,
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
     },
 };
 use ed25519_dalek::SigningKey;
@@ -242,6 +242,60 @@ impl ShinkaiMessageBuilder {
 
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
+    pub fn vecfs_delete_item(
+        path: &str,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIVecFsDeleteItem { path: path.to_string() };
+
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::VecFsDeleteItem,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    pub fn vecfs_delete_folder(
+        path: &str,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let payload = APIVecFsDeleteFolder { path: path.to_string() };
+
+        Self::create_vecfs_message(
+            payload,
+            MessageSchemaType::VecFsDeleteFolder,
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+            sender,
+            sender_subidentity,
+            node_receiver,
+            node_receiver_subidentity,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn vecfs_retrieve_resource(
         path: &str,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -366,9 +420,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let payload = APIUnshareFolder {
-            path,
-        };
+        let payload = APIUnshareFolder { path };
         Self::create_vecfs_message(
             payload,
             MessageSchemaType::UnshareFolder,

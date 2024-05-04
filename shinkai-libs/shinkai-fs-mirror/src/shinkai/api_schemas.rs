@@ -15,6 +15,8 @@ pub struct FileInfo {
     pub distribution_info: Option<DistributionInfo>,
     pub created_datetime: String,
     pub last_written_datetime: String,
+    pub is_folder: bool,
+    pub child_item_count: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
