@@ -414,8 +414,11 @@ impl ModelCapabilitiesManager {
                 4096
             }
             AgentLLMInterface::GenericAPI(_) => {
-                // Fill in the appropriate logic for GenericAPI
-                4096
+                if Self::get_max_tokens(model) < 8500 {
+                    2800
+                } else {
+                    4096
+                }
             }
             AgentLLMInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM

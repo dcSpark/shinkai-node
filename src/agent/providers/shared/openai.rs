@@ -133,8 +133,6 @@ pub struct ApiPayload {
 
 pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, AgentError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
-    println!("!200 Model type: {:?}", model);
-    println!("!201 Max input tokens: {}", max_input_tokens);
 
     // Generate the messages and filter out images
     let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;

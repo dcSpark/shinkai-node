@@ -1,6 +1,6 @@
 use crate::{
     agent::{error::AgentError, job::JobStepResult},
-    managers::model_capabilities_manager::ModelCapabilitiesManager,
+    managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult},
     tools::router::ShinkaiTool,
 };
 use serde::{Deserialize, Serialize};
@@ -355,13 +355,10 @@ impl Prompt {
 
     /// Removes lowest priority sub-prompts until the total token count is under the specified cap.
     /// Returns the sub-prompts that were removed, in the same order that they were in.
-    pub fn remove_subprompts_until_under_max(
-        &mut self,
-        max_prompt_tokens: usize,
-    ) -> Result<Vec<SubPrompt>, AgentError> {
+    pub fn remove_subprompts_until_under_max(&mut self, max_prompt_tokens: usize) -> Vec<SubPrompt> {
         let mut removed_subprompts = vec![];
 
-        let mut current_token_count = self.generate_chat_completion_messages()?.1;
+        let mut current_token_count = self.generate_chat_completion_messages().1;
         while current_token_count > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
@@ -373,7 +370,7 @@ impl Prompt {
         }
 
         removed_subprompts.reverse();
-        Ok(removed_subprompts)
+        removed_subprompts
     }
 
     /// Removes all sub-prompts from the prompt.
@@ -421,7 +418,7 @@ impl Prompt {
 
     /// Generates a tuple of a list of ChatCompletionRequestMessages and their token length,
     /// ready to be used with OpenAI inferencing.
-    fn generate_chat_completion_messages(&self) -> Result<(Vec<ChatCompletionRequestMessage>, usize), AgentError> {
+    fn generate_chat_completion_messages(&self) -> (Vec<ChatCompletionRequestMessage>, usize) {
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
         let mut current_length: usize = 0;
 
@@ -432,7 +429,7 @@ impl Prompt {
             tiktoken_messages.push(new_message);
         }
 
-        Ok((tiktoken_messages, current_length))
+        (tiktoken_messages, current_length)
     }
 
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
@@ -445,121 +442,42 @@ impl Prompt {
 
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
-        prompt_copy.remove_subprompts_until_under_max(limit)?;
+        prompt_copy.remove_subprompts_until_under_max(limit);
 
         // Generate the output chat completion request messages
-        let (output_messages, token_count) = prompt_copy.generate_chat_completion_messages()?;
+        let (output_messages, _) = prompt_copy.generate_chat_completion_messages();
 
         Ok(output_messages)
     }
 
-    // First version of generic. Probably we will need to pass a model name and a max tokens
-    // to this function. No any model name will work with the tokenizers so probably we will need
-    // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
-    /// TODO: Update to work with priority system for prompt size reducing
-    pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
-        // TODO: Update to Llama tokenizer here
-        let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
-        // let model = "llama2"; // TODO: change to something that actually fits
+    // Generates generic api messages as a single string.
+    pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
+        // pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<PromptResult, AgentError> {
+        let limit = max_input_tokens.unwrap_or(4000 as usize);
+        let mut prompt_copy = self.clone();
+        prompt_copy.remove_subprompts_until_under_max(limit);
 
         let mut messages: Vec<String> = Vec::new();
-        let mut current_length: usize = 0;
-        let mut user_content_added = false;
-        let mut system_content_added = false;
-        let mut at_least_one_user_content = false;
-        let mut first_user_content: Option<String> = None;
-        let mut first_user_content_position: Option<usize> = None;
-
-        // First, calculate the total length of EBNF content. We want to add it no matter what or
-        // the response will be invalid.
-        for sub_prompt in &self.sub_prompts {
-            if let SubPrompt::EBNF(_, ebnf, _, retry) = sub_prompt {
-                let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
-                current_length += new_message.len();
-            }
-        }
-
-        // Then, process all sub-prompts in their original order
+        // Process all sub-prompts in their original order
         for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
                 }
-                SubPrompt::Content(prompt_type, content, priority_value) => {
-                    if content == &*do_not_mention_prompt || content == "" {
-                        continue;
-                    }
+                SubPrompt::Content(prompt_type, content, _priority_value) => {
                     let mut new_message = "".to_string();
                     if prompt_type == &SubPromptType::System || prompt_type == &SubPromptType::Assistant {
-                        new_message = format!("{}", content.clone());
-                    } else {
-                        new_message = format!("- {}", content.clone());
-                        at_least_one_user_content = true;
-                        if first_user_content.is_none() {
-                            first_user_content = Some(new_message.clone());
-                            first_user_content_position = Some(i);
-                        }
-                    }
-
-                    if prompt_type == &SubPromptType::User {
-                        at_least_one_user_content = true;
-                    }
-
-                    let new_message_length = new_message.len();
-                    if current_length + new_message_length > limit {
-                        continue;
+                        new_message = format!("Sys: {}\n", content.clone());
+                    } else if prompt_type == &SubPromptType::User {
+                        new_message = format!("User: {}\n", content.clone());
                     }
                     messages.push(new_message);
-                    current_length += new_message_length;
-
-                    match prompt_type {
-                        SubPromptType::User => user_content_added = true,
-                        SubPromptType::System => system_content_added = true,
-                        SubPromptType::Assistant => system_content_added = true,
-                    }
                 }
-                SubPrompt::EBNF(_, ebnf, _, retry) => {
-                    let new_message = self.generate_ebnf_response_string(ebnf, retry.clone());
+                SubPrompt::EBNF(_, content, _, _) => {
+                    let new_message = format!("```{}```\n", content.clone());
                     messages.push(new_message);
                 }
             }
-        }
-
-        if !at_least_one_user_content {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Error,
-                "No content was added to compute the prompt",
-            );
-        }
-
-        if !user_content_added && first_user_content.is_some() {
-            let remaining_tokens = limit - current_length;
-            if remaining_tokens >= 3 {
-                let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
-                if let Some(position) = first_user_content_position {
-                    if position < messages.len() {
-                        messages.insert(position, truncated_content.to_string());
-                    } else {
-                        // If the position is out of bounds, append the content at the end of the vector
-                        messages.push(truncated_content.to_string());
-                    }
-                }
-            }
-        } else if !user_content_added {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Error,
-                "No user content was added to compute the prompt",
-            );
-        }
-
-        if !system_content_added {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Error,
-                "No system content was added to compute the prompt",
-            );
         }
 
         let output = messages.join(" ");

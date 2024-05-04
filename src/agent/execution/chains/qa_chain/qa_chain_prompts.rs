@@ -14,17 +14,22 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Add up to previous 10 step results from history
+        // Add previous step results from history
         let mut step_history_is_empty = true;
         if let Some(step_history) = job_step_history {
             step_history_is_empty = step_history.is_empty();
-            prompt.add_step_history(step_history, 10, 98);
+            // If no vec search results, return up to 10 as likely to be relevant
+            if ret_nodes.is_empty() {
+                prompt.add_step_history(step_history, 10, 96);
+            } else {
+                prompt.add_step_history(step_history, 2, 97);
+            }
         }
 
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
-            100
+            99
         );
 
         if let Some(summary) = summary_text {
@@ -105,17 +110,22 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Add up to previous 10 step results from history
+        // Add previous step results from history
         let mut step_history_is_empty = true;
         if let Some(step_history) = job_step_history {
             step_history_is_empty = step_history.is_empty();
-            prompt.add_step_history(step_history, 10, 98);
+            // If no vec search results, return up to 10 as likely to be relevant
+            if ret_nodes.is_empty() {
+                prompt.add_step_history(step_history, 10, 96);
+            } else {
+                prompt.add_step_history(step_history, 2, 97);
+            }
         }
 
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
-            100
+            98
         );
 
         if let Some(summary) = summary_text {
