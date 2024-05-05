@@ -13,6 +13,7 @@ mod schemas;
 mod tools;
 mod utils;
 mod vector_fs;
+mod welcome_files;
 
 use runner::{initialize_node, run_node_tasks};
 

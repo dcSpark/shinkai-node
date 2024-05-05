@@ -512,7 +512,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -617,6 +617,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -625,8 +626,10 @@ impl Node {
         first_device_needs_registration_code: bool,
         embedding_generator: Arc<RemoteEmbeddingGenerator>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
         encryption_public_key: EncryptionPublicKey,
         identity_public_key: VerifyingKey,
+        identity_secret_key: SigningKey,
         initial_agents: Vec<SerializedAgent>,
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
@@ -753,24 +756,22 @@ impl Node {
             .as_str(),
         );
 
-        if first_device_needs_registration_code == false {
-            if main_profile_exists == false {
-                let code_type = RegistrationCodeType::Device("main".to_string());
-                let permissions = IdentityPermissions::Admin;
+        if !first_device_needs_registration_code && !main_profile_exists {
+            let code_type = RegistrationCodeType::Device("main".to_string());
+            let permissions = IdentityPermissions::Admin;
 
-                match db.generate_registration_new_code(permissions, code_type) {
-                    Ok(new_code) => {
-                        code = new_code;
-                    }
-                    Err(err) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Failed to generate registration code: {}", err),
-                            }))
-                            .await;
-                    }
+            match db.generate_registration_new_code(permissions, code_type) {
+                Ok(new_code) => {
+                    code = new_code;
+                }
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to generate registration code: {}", err),
+                        }))
+                        .await;
                 }
             }
         }
@@ -795,12 +796,14 @@ impl Node {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
+        let create_default_folders = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
         vector_fs
             .initialize_new_profiles(
                 &node_name,
                 profile_list,
                 embedding_generator.model_type.clone(),
                 NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+                create_default_folders,
             )
             .await?;
 
@@ -838,8 +841,8 @@ impl Node {
                             addr: None,
                             profile_signature_public_key: Some(signature_pk_obj),
                             profile_encryption_public_key: Some(encryption_pk_obj),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             identity_type: standard_identity_type,
                             permission_type,
                         };
@@ -849,10 +852,8 @@ impl Node {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
-                                    encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
-                                    ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    encryption_public_key: encryption_public_key_to_string(encryption_public_key),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -898,8 +899,8 @@ impl Node {
                                     addr: None,
                                     profile_encryption_public_key: Some(encryption_pk_obj),
                                     profile_signature_public_key: Some(signature_pk_obj),
-                                    node_encryption_public_key: encryption_public_key.clone(),
-                                    node_signature_public_key: identity_public_key.clone(),
+                                    node_encryption_public_key: encryption_public_key,
+                                    node_signature_public_key: identity_public_key,
                                     identity_type: StandardIdentityType::Profile,
                                     permission_type: IdentityPermissions::Admin,
                                 };
@@ -928,8 +929,8 @@ impl Node {
 
                         let device_identity = DeviceIdentity {
                             full_identity_name: full_identity_name.clone(),
-                            node_encryption_public_key: encryption_public_key.clone(),
-                            node_signature_public_key: identity_public_key.clone(),
+                            node_encryption_public_key: encryption_public_key,
+                            node_signature_public_key: identity_public_key,
                             profile_encryption_public_key: encryption_pk_obj,
                             profile_signature_public_key: signature_pk_obj,
                             device_encryption_public_key: device_encryption_pk_obj,
@@ -940,13 +941,15 @@ impl Node {
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if main_profile_exists == false && !initial_agents.is_empty() {
+                                if !main_profile_exists && !initial_agents.is_empty() {
                                     std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
                                     for agent in &initial_agents {
                                         Self::internal_add_agent(
                                             db.clone(),
                                             identity_manager.clone(),
+                                            job_manager.clone(),
+                                            identity_secret_key.clone(),
                                             agent.clone(),
                                             &profile,
                                         )
@@ -957,10 +960,8 @@ impl Node {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     node_name: node_name.get_node_name_string().clone(),
-                                    encryption_public_key: encryption_public_key_to_string(
-                                        encryption_public_key.clone(),
-                                    ),
-                                    identity_public_key: signature_public_key_to_string(identity_public_key.clone()),
+                                    encryption_public_key: encryption_public_key_to_string(encryption_public_key),
+                                    identity_public_key: signature_public_key_to_string(identity_public_key),
                                 };
                                 let _ = res.send(Ok(success_response)).await.map_err(|_| ());
                             }
@@ -2017,6 +2018,8 @@ impl Node {
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
@@ -2078,7 +2081,16 @@ impl Node {
             return Ok(());
         }
 
-        match Node::internal_add_ollama_models(db, identity_manager, input_payload.models, requester_name).await {
+        match Node::internal_add_ollama_models(
+            db,
+            identity_manager,
+            job_manager,
+            identity_secret_key,
+            input_payload.models,
+            requester_name,
+        )
+        .await
+        {
             Ok(_) => {
                 let _ = res.send(Ok::<(), APIError>(())).await;
                 return Ok(());
@@ -2100,6 +2112,8 @@ impl Node {
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -2169,7 +2183,16 @@ impl Node {
             }
         };
 
-        match Self::internal_add_agent(db.clone(), identity_manager.clone(), serialized_agent.agent, &profile).await {
+        match Self::internal_add_agent(
+            db.clone(),
+            identity_manager.clone(),
+            job_manager.clone(),
+            identity_secret_key.clone(),
+            serialized_agent.agent,
+            &profile,
+        )
+        .await
+        {
             Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
@@ -2183,7 +2206,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2326,7 +2349,7 @@ impl Node {
                         Ok(_) => {
                             let _ = res.send(Ok("Agent modified successfully".to_string())).await;
                             Ok(())
-                        },
+                        }
                         Err(err) => {
                             let api_error = APIError {
                                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
