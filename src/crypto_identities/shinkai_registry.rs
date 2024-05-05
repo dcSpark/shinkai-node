@@ -121,6 +121,19 @@ impl OnchainIdentity {
                 address.to_string()
             };
 
+            // Append default ports if missing
+            let address = if !address.contains(':') {
+                if first_address.starts_with("https://") {
+                    format!("{}:443", address)
+                } else if first_address.starts_with("http://") {
+                    format!("{}:80", address)
+                } else {
+                    address
+                }
+            } else {
+                address
+            };
+
             // Try to parse the address directly first
             match address.parse::<SocketAddr>() {
                 Ok(addr) => Ok(addr),
