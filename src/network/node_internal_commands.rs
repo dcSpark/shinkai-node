@@ -9,15 +9,17 @@ use crate::schemas::{
     inbox_permission::InboxPermission,
     smart_inbox::SmartInbox,
 };
+use crate::welcome_files::welcome_message::WELCOME_MESSAGE;
 use async_channel::Sender;
 use chashmap::CHashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
+use shinkai_vector_resources::vector_resource::VRPath;
 use tokio::io::AsyncReadExt;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
@@ -413,12 +415,16 @@ impl Node {
                         let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
 
                         if !has_job_inbox && welcome_message {
-                            // let job_scope // it should have the vrkai file in scope
+                            let shinkai_folder_fs = VectorFSFolderScopeEntry {
+                                name: "Shinkai".to_string(),
+                                path: VRPath::from_string("/My Files (Private)").unwrap(),
+                            };
+
                             let job_scope = JobScope {
                                 local_vrkai: vec![],
                                 local_vrpack: vec![],
                                 vector_fs_items: vec![],
-                                vector_fs_folders: vec![],
+                                vector_fs_folders: vec![shinkai_folder_fs],
                                 network_folders: vec![],
                             };
                             let job_creation = JobCreationInfo {
@@ -460,15 +466,9 @@ impl Node {
                                 // Add Two Message from "Agent"
                                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
-                                // Read the content from a local file
-                                let file_path = "files/shinkai_welcome.md";
-                                let mut file = tokio::fs::File::open(file_path).await?;
-                                let mut contents = String::new();
-                                file.read_to_string(&mut contents).await?;
-
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                                     job_id.to_string(),
-                                    contents,
+                                    WELCOME_MESSAGE.to_string(),
                                     "".to_string(),
                                     identity_secret_key_clone,
                                     profile.node_name.clone(),

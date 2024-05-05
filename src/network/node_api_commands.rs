@@ -802,6 +802,7 @@ impl Node {
                 profile_list,
                 embedding_generator.model_type.clone(),
                 NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+                true,
             )
             .await?;
 

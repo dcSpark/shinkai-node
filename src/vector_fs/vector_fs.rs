@@ -1,3 +1,6 @@
+use crate::welcome_files::shinkai_faq::SHINKAI_FAQ_VRKAI;
+use crate::welcome_files::shinkai_whitepaper::SHINKAI_WHITEPAPER_VRKAI;
+
 use super::vector_fs_internals::VectorFSInternals;
 
 use super::vector_fs_reader::VFSReader;
@@ -7,7 +10,7 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_resource::{VRPath, VectorResourceCore, VectorResourceSearch};
+use shinkai_vector_resources::vector_resource::{VRKai, VRPath, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
@@ -66,6 +69,7 @@ impl VectorFS {
                 profile_list,
                 default_embedding_model,
                 supported_embedding_models,
+                false,
             )
             .await?;
 
@@ -133,6 +137,7 @@ impl VectorFS {
         profile_list: Vec<ShinkaiName>,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
+        create_default_folders: bool,
     ) -> Result<(), VectorFSError> {
         // Acquire a read lock for checking existing profiles
         let mut internals_map_read = self.internals_map.read().await;
@@ -150,6 +155,27 @@ impl VectorFS {
                     supported_embedding_models.clone(),
                 )
                 .await?;
+
+                // Creates default folders and files if create_default_folders is true
+                if create_default_folders {
+                    let writer = self.new_writer(profile.clone(), VRPath::root(), profile.clone()).await?;
+                    self.create_new_folder(&writer, "My Files (Private)").await?;
+                    self.create_new_folder(&writer, "My Subscriptions").await?;
+                    self.create_new_folder(&writer, "For Sharing").await?;
+
+                    let my_files = VRPath::from_string("/My Files (Private)").unwrap();
+                    let writer = self.new_writer(profile.clone(), my_files.clone(), profile.clone()).await?;
+                    self.create_new_folder(&writer, "Shinkai").await?;
+
+
+                    // Create a default file in the "My Files (Private)" folder
+                    let shinkai_folder = my_files.push_cloned("Shinkai".to_string());
+                    let writer = self.new_writer(profile.clone(), shinkai_folder, profile.clone()).await?;
+                    let shinkai_faq = VRKai::from_base64(SHINKAI_FAQ_VRKAI).unwrap();
+                    let shinkai_whitepaper = VRKai::from_base64(SHINKAI_WHITEPAPER_VRKAI).unwrap();
+                    let _save_result = self.save_vrkai_in_folder(&writer, shinkai_faq).await;
+                    let _save_result = self.save_vrkai_in_folder(&writer, shinkai_whitepaper).await;
+                }
 
                 // Re-acquire the read lock for the next iteration
                 internals_map_read = self.internals_map.read().await;
