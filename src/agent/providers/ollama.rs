@@ -120,7 +120,6 @@ impl LLMProvider for Ollama {
                 match item {
                     Ok(chunk) => {
                         let chunk_str = String::from_utf8_lossy(&chunk).to_string();
-
                         let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {
@@ -150,7 +149,6 @@ impl LLMProvider for Ollama {
                 ShinkaiLogLevel::Debug,
                 format!("Cleaned Response Text: {:?}", response_text).as_str(),
             );
-            eprintln!(">>> Response Text: {:?}", response_text);
 
             match parse_markdown_to_json(&response_text) {
                 Ok(json) => {

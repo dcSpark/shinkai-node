@@ -41,13 +41,13 @@ impl JobPromptGenerator {
         // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics and/or chapters in the content with 1-2 sentences describing each . Follow this markdown format when responding, and include nothing else but the output markdown answer inside the answer section: ";
+        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics and/or chapters in the content with 1-2 sentences describing each. Follow this markdown format when responding, and include nothing else but answer inside the # Answer section: ";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         let markdown_message = r#"# Answer\n ## {{Content Title}}\n\n{{Introductory paragraph}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}"}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
-        let task_message = "Do not respond with absolutely anything else, except with the output markdown holding, which fulfills the users summary request: \n";
+        let task_message = "Do not respond with absolutely anything else, except with the output markdown format, which fulfills the users summary request: \n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt

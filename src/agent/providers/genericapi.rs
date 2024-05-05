@@ -39,6 +39,7 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
+                eprintln!("max_output_tokens: {:?}", max_output_tokens);
                 let payload = json!({
                     "model": self.model_type,
                     "max_tokens": max_output_tokens,
@@ -50,8 +51,10 @@ impl LLMProvider for GenericAPI {
                     "repetition_penalty": 1,
                     "stream_tokens": false,
                     "stop": [
+                        "<|eot_id|>",
                         "[/INST]",
-                        "</s>"
+                        "</s>",
+                        "\\n Sys:"
                     ],
                     "negative_prompt": "",
                     "safety_model": "",
@@ -86,22 +89,43 @@ impl LLMProvider for GenericAPI {
                 );
                 let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&response_text);
 
-                match parse_markdown_to_json(&response_text) {
-                    Ok(json) => {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Debug,
-                            format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                        );
-                        Ok(json)
+                match data_resp {
+                    Ok(data) => {
+                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
+                        // and from those the longest one. I haven't see multiple choices so far though.
+                        let response_string: String = data
+                            .output
+                            .choices
+                            .first()
+                            .map(|choice| choice.text.clone())
+                            .unwrap_or_else(|| String::new());
+
+                        match parse_markdown_to_json(&response_string) {
+                            Ok(json) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Debug,
+                                    format!("Parsed JSON from Markdown: {:?}", json).as_str(),
+                                );
+                                Ok(json)
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
+                                );
+                                Err(e)
+                            }
+                        }
                     }
                     Err(e) => {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
+                            format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(e)
+                        Err(AgentError::SerdeError(e))
                     }
                 }
             } else {

@@ -51,11 +51,6 @@ impl JobPromptGenerator {
             99
         );
         prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
-        prompt.add_ebnf(
-            String::from(r#"# Answer"#),
-            SubPromptType::System,
-            100,
-        );
 
         prompt
     }
@@ -105,12 +100,12 @@ impl JobPromptGenerator {
 
         if let Some(key) = json_key_to_correct {
             final_content += &format!(
-                "Make sure to not forget to include the `{}` key as specified in the EBNF",
+                "Make sure to not forget to include the `{}` section as specified in the markdown response",
                 key
             );
         } else {
             final_content += &format!(
-                "Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one",
+                "Look at the markdown sections provided earlier and respond exactly the same but formatted using the best matching one",
             );
         }
 
@@ -183,12 +178,6 @@ impl JobPromptGenerator {
         //         ),
         //         SubPromptType::User,
         //         100);
-
-        prompt.add_ebnf(
-            String::from(r#"# Answer"#), // 'explanation' ':' string,
-            SubPromptType::System,
-            100,
-        );
 
         prompt
     }

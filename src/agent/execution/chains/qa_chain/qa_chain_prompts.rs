@@ -66,11 +66,6 @@ impl JobPromptGenerator {
             SubPromptType::System,
             100,
         );
-        prompt.add_ebnf(
-            String::from(r#"# Answer"#),
-            SubPromptType::System,
-            100,
-        );
 
         let this_clause = if step_history_is_empty {
             "When the user talks about `it` or `this`, they are referencing the content."
@@ -164,15 +159,9 @@ impl JobPromptGenerator {
         };
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
+            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed. Start your response with # Answer.", this_clause),
             SubPromptType::System,
             98
-        );
-
-        prompt.add_ebnf(
-            String::from(r#"# Answer"#),
-            SubPromptType::System,
-            100,
         );
 
         prompt
