@@ -54,6 +54,12 @@ pub fn llama_prepare_messages(
 ) -> Result<PromptResult, AgentError> {
     let mut messages_string = prompt.generate_genericapi_messages(None)?;
 
+    if messages_string.len() > total_tokens {
+        return Err(AgentError::TokenLimit(
+            "Total tokens exceeded by message length".to_string(),
+        ));
+    }
+
     Ok(PromptResult {
         value: PromptResultEnum::Text(messages_string.clone()),
         remaining_tokens: total_tokens - messages_string.len(),

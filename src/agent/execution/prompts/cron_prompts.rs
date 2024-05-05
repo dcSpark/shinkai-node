@@ -33,7 +33,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
+            String::from(r#"# Answer"#),
             SubPromptType::System,
             100,
         );
@@ -70,7 +70,7 @@ impl JobPromptGenerator {
             100);
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            String::from(r#"# Explanation"#),
             SubPromptType::System,
             100,
         );

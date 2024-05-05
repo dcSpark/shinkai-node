@@ -86,7 +86,7 @@ impl SubPrompt {
                     format!("An EBNF option to respond with: {} ", ebnf)
                 } else {
                     format!(
-                        "Then respond using the following EBNF and absolutely nothing else: {} ",
+                        "Then respond using the following markdown formatting and absolutely nothing else: {} ",
                         ebnf
                     )
                 }
@@ -397,7 +397,7 @@ impl Prompt {
             format!("An EBNF option to respond with: {} ", ebnf)
         } else {
             format!(
-                "Then respond using the following EBNF and absolutely nothing else: {} ",
+                "Then respond using the following markdown formatting and absolutely nothing else: {} ",
                 ebnf
             )
         }
@@ -473,7 +473,7 @@ impl Prompt {
                     messages.push(new_message);
                 }
                 SubPrompt::EBNF(_, content, _, _) => {
-                    let new_message = format!("```{}```\n", content.clone());
+                    let new_message = format!("{}\n", content.clone());
                     messages.push(new_message);
                 }
             }

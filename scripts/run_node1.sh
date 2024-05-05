@@ -25,9 +25,9 @@ export STATIC_SERVER_PORT="9554"
 export STATIC_SERVER_IP="0.0.0.0"
 export STATIC_SERVER_FOLDER="./static_server_example"
 
-export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision,groq"
-export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com,https://api.groq.com/openai/v1"
-export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview,groq:llama3-8b-8192"
+export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision,groq,llama3_gradient,llama_3_together"
+export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com,https://api.groq.com/openai/v1,http://localhost:11434,https://api.together.xyz"
+export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview,groq:llama3-8b-8192,ollama:llama3-gradient:8b-instruct-1048k-q3_K_M,genericapi:meta-llama/Llama-3-8b-chat-hf"
 
 export RPC_URL="https://rpc.sepolia.org"
 export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"

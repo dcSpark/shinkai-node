@@ -6,6 +6,7 @@ use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::LLMProvider;
 use async_trait::async_trait;
 use futures::StreamExt;
+use regex::Regex;
 use reqwest::Client;
 use serde_json;
 use serde_json::json;
@@ -25,6 +26,32 @@ fn truncate_image_content_in_payload(payload: &mut JsonValue) {
             }
         }
     }
+}
+
+pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
+    let mut sections = serde_json::Map::new();
+    let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
+    let mut current_section = None;
+    let mut content = String::new();
+
+    for line in markdown.lines() {
+        if let Some(caps) = re.captures(line) {
+            if let Some(section) = current_section {
+                sections.insert(section, JsonValue::String(content.trim().to_string()));
+                content.clear();
+            }
+            current_section = Some(caps[1].to_string());
+        } else if current_section.is_some() {
+            content.push_str(line);
+            content.push('\n');
+        }
+    }
+
+    if let Some(section) = current_section {
+        sections.insert(section, JsonValue::String(content.trim().to_string()));
+    }
+
+    Ok(JsonValue::Object(sections))
 }
 
 #[async_trait]
@@ -59,7 +86,6 @@ impl LLMProvider for Ollama {
             let mut payload = json!({
                 "model": self.model_type,
                 "prompt": messages_string,
-                "format": "json",
                 "stream": true, // Yeah let's go wild and stream the response
                 // Include any other optional parameters as needed
                 // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
@@ -93,8 +119,7 @@ impl LLMProvider for Ollama {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk);
-                        let chunk_str = chunk_str.chars().filter(|c| !c.is_control()).collect::<String>();
+                        let chunk_str = String::from_utf8_lossy(&chunk).to_string();
 
                         let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
@@ -120,63 +145,29 @@ impl LLMProvider for Ollama {
                 }
             }
 
-            // Attempt to clean up response text
-            response_text = response_text.replacen("{ \n\"answer\": \n\"", "{ \"answer\": \"", 1);
-            response_text = response_text.replacen("answer\" : \n\"", "answer\": \"", 1);
-
-
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
                 format!("Cleaned Response Text: {:?}", response_text).as_str(),
             );
+            eprintln!(">>> Response Text: {:?}", response_text);
 
-            match serde_json::from_str::<JsonValue>(&response_text) {
-                Ok(deserialized_json) => {
-                    let response_string = deserialized_json.to_string();
-                    Self::extract_largest_json_object(&response_string)
+            match parse_markdown_to_json(&response_text) {
+                Ok(json) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
+                    );
+                    Ok(json)
                 }
                 Err(e) => {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Error,
-                        format!("Failed to deserialize response: {:?}. Retrying...", e).as_str(),
+                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
                     );
-
-                    // Attempt to escape newline characters and retry deserialization
-                    let retry_cleaned_response_text = response_text
-                        .chars()
-                        .map(|c| {
-                            if c == '\n' {
-                                "\\n".to_string() // Convert to String for consistency
-                            } else if c == '\t' {
-                                "\\t".to_string() // Convert to String for consistency
-                            } else {
-                                c.to_string() // Convert char to String
-                            }
-                        })
-                        .collect::<String>();
-
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Debug,
-                        format!("Retry Cleaned Response Text: {:?}", retry_cleaned_response_text).as_str(),
-                    );
-
-                    match serde_json::from_str::<JsonValue>(&retry_cleaned_response_text) {
-                        Ok(retry_deserialized_json) => {
-                            let retry_response_string = retry_deserialized_json.to_string();
-                            Self::extract_largest_json_object(&retry_response_string)
-                        }
-                        Err(retry_e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                format!("Failed to deserialize response on retry: {:?}", retry_e).as_str(),
-                            );
-                            Err(AgentError::SerdeError(retry_e))
-                        }
-                    }
+                    Err(e)
                 }
             }
         } else {

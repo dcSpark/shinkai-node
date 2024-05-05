@@ -1,4 +1,5 @@
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::ollama::parse_markdown_to_json;
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
@@ -71,7 +72,7 @@ impl LLMProvider for Groq {
                     "max_tokens": result.remaining_tokens,
                 });
 
-                payload["response_format"] = json!({ "type": "json_object" });
+                // payload["response_format"] = json!({ "type": "json_object" });
 
                 let mut payload_log = payload.clone();
                 shinkai_log(
@@ -100,6 +101,7 @@ impl LLMProvider for Groq {
                     ShinkaiLogLevel::Debug,
                     format!("Groq Call API Response Text: {:?}", response_text).as_str(),
                 );
+                eprintln!("Groq Call API Response Text: {:?}", response_text);
 
                 match data_resp {
                     Ok(value) => {
@@ -131,7 +133,24 @@ impl LLMProvider for Groq {
                             })
                             .collect::<Vec<String>>()
                             .join(" ");
-                        Self::extract_largest_json_object(&response_string)
+                        match parse_markdown_to_json(&response_string) {
+                            Ok(json) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Debug,
+                                    format!("Parsed JSON from Markdown: {:?}", json).as_str(),
+                                );
+                                Ok(json)
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
+                                );
+                                Err(e)
+                            }
+                        }
                     }
                     Err(e) => {
                         shinkai_log(

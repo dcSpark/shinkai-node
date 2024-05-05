@@ -27,7 +27,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             99
         );
@@ -67,7 +67,7 @@ impl JobPromptGenerator {
             100,
         );
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
+            String::from(r#"# Answer"#),
             SubPromptType::System,
             100,
         );
@@ -90,11 +90,10 @@ impl JobPromptGenerator {
         }
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'search' ':' string, 'summary': 'string' }'"#),
+            String::from(r#"# Search\n{{content}}\n\n# Summary\n{{content}}"#),
             SubPromptType::System,
             100,
         );
-        prompt.add_content(format!("```json"), SubPromptType::System, 100);
 
         prompt
     }
@@ -123,7 +122,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string(),
             SubPromptType::System,
             98
         );
@@ -165,18 +164,16 @@ impl JobPromptGenerator {
         };
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question with as much information as is available. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and `\n` separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
+            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:", this_clause),
             SubPromptType::System,
             98
         );
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
+            String::from(r#"# Answer"#),
             SubPromptType::System,
             100,
         );
-
-        prompt.add_content(format!("```json"), SubPromptType::System, 100);
 
         prompt
     }

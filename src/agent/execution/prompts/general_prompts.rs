@@ -52,7 +52,7 @@ impl JobPromptGenerator {
         );
         prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#),
+            String::from(r#"# Answer"#),
             SubPromptType::System,
             100,
         );
@@ -69,7 +69,7 @@ impl JobPromptGenerator {
         100
     );
         prompt.add_ebnf(
-            String::from(r#"'{' 'search' ':' string }'"#),
+            String::from(r#"# Search"#),
             SubPromptType::System,
             100,
         );
@@ -101,7 +101,7 @@ impl JobPromptGenerator {
 
         // Final content to be added with the specific instructions
         let mut final_content =
-            r#"No, I need it to be properly formatted as a flat JSON with the correct field/key names, and no objects inside of each other. "#.to_string();
+            r#"No, I need it to be properly formatted as a markdown with the correct section names. "#.to_string();
 
         if let Some(key) = json_key_to_correct {
             final_content += &format!(
@@ -116,7 +116,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the flat JSON and absolutely no explanation or anything else: "#,
+                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: "#,
                 final_content
             ),
             SubPromptType::User,
@@ -185,7 +185,7 @@ impl JobPromptGenerator {
         //         100);
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#), // 'explanation' ':' string,
+            String::from(r#"# Answer"#), // 'explanation' ':' string,
             SubPromptType::System,
             100,
         );
@@ -257,7 +257,6 @@ Respond using the following EBNF and absolutely nothing else:
 
     Only respond with an answer if you are not using any tools. Make sure the response matches the EBNF and includes absolutely nothing else. 
 
-    ```json
     "#
     );
     pub static ref tool_selection_prompt: String = String::from(

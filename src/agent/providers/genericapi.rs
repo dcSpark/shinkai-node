@@ -2,6 +2,7 @@ use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::ollama::parse_markdown_to_json;
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -85,26 +86,22 @@ impl LLMProvider for GenericAPI {
                 );
                 let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&response_text);
 
-                match data_resp {
-                    Ok(data) => {
-                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
-                        // and from those the longest one. I haven't see multiple choices so far though.
-                        let response_string: String = data
-                            .output
-                            .choices
-                            .first()
-                            .map(|choice| choice.text.clone())
-                            .unwrap_or_else(|| String::new());
-
-                        Self::extract_largest_json_object(&response_string)
+                match parse_markdown_to_json(&response_text) {
+                    Ok(json) => {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Debug,
+                            format!("Parsed JSON from Markdown: {:?}", json).as_str(),
+                        );
+                        Ok(json)
                     }
                     Err(e) => {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Failed to parse response: {:?}", e).as_str(),
+                            format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        Err(e)
                     }
                 }
             } else {
