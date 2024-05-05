@@ -523,4 +523,226 @@ impl ModelCapabilitiesManager {
         // Rob note: Multiplying this estimation, as for mixtral 8x7b it's been extremely off
         (buffered_token_count as f64 * 2.5).floor() as usize
     }
+
+    /// Counts the number of tokens from the list of messages for llama3 model,
+    /// where every three normal letters (a-zA-Z) allow an empty space to not be counted,
+    /// and other symbols are counted as 1 token.
+    /// This implementation avoids floating point arithmetic by scaling counts.
+    pub fn num_tokens_from_llama3(messages: &[ChatCompletionRequestMessage]) -> usize {
+        let mut token_count = 0;
+        let mut alphabetic_count = 0; // Total count of alphabetic characters
+        let mut space_count = 0; // Total count of spaces
+    
+        for message in messages {
+            // Include the role prefix in the token count
+            let role_prefix = match message.role.as_str() {
+                "user" => "User: ",
+                "sys" => "Sys: ",
+                _ => "",
+            };
+            let full_message = format!("{}{}", role_prefix, message.content.as_ref().unwrap_or(&"".to_string()));
+    
+            // First pass: count alphabetic characters and spaces
+            for c in full_message.chars() {
+                if c.is_ascii_alphabetic() {
+                    alphabetic_count += 1;
+                } else if c.is_whitespace() {
+                    space_count += 1;
+                }
+            }
+    
+            // Calculate how many spaces can be ignored
+            let spaces_to_ignore = alphabetic_count / 3;
+    
+            // Determine the alphabetic token weight based on the number of alphabetic characters
+            let alphabetic_token_weight = if alphabetic_count > 500 { 8 } else { 10 };
+    
+            // Second pass: count tokens, adjusting for spaces that can be ignored
+            for c in full_message.chars() {
+                if c.is_ascii_alphabetic() {
+                    token_count += alphabetic_token_weight; // Counting as 1/3, so add 1 to the scaled count
+                } else if c.is_whitespace() {
+                    if spaces_to_ignore > 0 {
+                        space_count -= 10; // Reduce the count of spaces to ignore by the scaling factor
+                    } else {
+                        token_count += 30; // Count the space as a full token if not enough alphabetic characters
+                    }
+                } else {
+                    token_count += 30; // Non-alphabetic characters count as a full token, add 3 to the scaled count
+                }
+            }
+        }
+        (token_count / 30) + 1 // Divide the scaled count by 30 and floor the result, add 1 to account for any remainder
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiktoken_rs::ChatCompletionRequestMessage;
+
+    // Helper function to convert a vector of ChatCompletionRequestMessage to a single string
+    fn messages_to_string(messages: &[ChatCompletionRequestMessage]) -> String {
+        messages
+            .iter()
+            .map(|message| {
+                format!(
+                    "{}: {} ({})",
+                    message.role,
+                    message.content.as_ref().unwrap_or(&"".to_string()),
+                    message.name.as_ref().unwrap_or(&"".to_string())
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn test_num_tokens_from_messages_empty() {
+        let messages: Vec<ChatCompletionRequestMessage> = vec![];
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+        // assert_eq!(num_tokens, 0);
+        // assert_eq!(num_tokens_llama3, 1);
+    }
+
+    #[test]
+    fn test_num_tokens_from_messages_single_message() {
+        let messages = vec![ChatCompletionRequestMessage {
+            role: "user".to_string(),
+            content: Some("Hello, how are you?".to_string()),
+            name: Some("Alice".to_string()),
+            function_call: None,
+        }];
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+        // assert_eq!(num_tokens, 15);
+        // assert_eq!(num_tokens_llama3, 10);
+    }
+
+    #[test]
+    fn test_num_tokens_from_messages_multiple_messages() {
+        let messages = vec![
+            ChatCompletionRequestMessage {
+                role: "user".to_string(),
+                content: Some("Hello".to_string()),
+                name: Some("Alice".to_string()),
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "bot".to_string(),
+                content: Some("Hi there!".to_string()),
+                name: Some("Bob".to_string()),
+                function_call: None,
+            },
+        ];
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+        // assert_eq!(num_tokens, 17);
+        // assert_eq!(num_tokens_llama3, 9);
+    }
+
+    #[test]
+    fn test_num_tokens_from_messages_complex_content() {
+        let messages = vec![ChatCompletionRequestMessage {
+            role: "user".to_string(),
+            content: Some("Hello, how are you doing today? I hope everything is fine.".to_string()),
+            name: Some("Alice".to_string()),
+            function_call: None,
+        }];
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+        // assert_eq!(num_tokens, 35);
+        // assert_eq!(num_tokens_llama3, 19);
+    }
+
+    #[test]
+    fn test_num_tokens_from_complex_scenario() {
+        let messages = vec![
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("The user has asked: ".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "user".to_string(),
+                content: Some("tell me about Minecraft".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("Use the content to directly answer the user's question with as much information as is available. If the user talks about `it` or `this`, they are referencing the content. Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and '\\n' separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("Then respond using the following EBNF and absolutely nothing else: '{' 'answer' ':' string '}' ".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("```json".to_string()),
+                name: None,
+                function_call: None,
+            },
+        ];
+
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+    }
+
+    #[test]
+    fn test_num_tokens_from_poker_probability_explanation() {
+        let messages = vec![
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("Calculating the probabilities of winning in Texas Hold'em is a complex task that involves combinatorics and an understanding of the game's rules. Here's a simplified version of how you might approach writing code to calculate these probabilities in Python. This example assumes you have a function that can evaluate the strength of a hand and that you are calculating the probability for a specific point in the game (e.g., after the flop).".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("```python\nimport itertools\nimport random\n\n# Assume hand_strength is a function that takes a list of cards and returns a score indicating the strength of the hand.\n\ndef calculate_probabilities(player_hand, community_cards, deck):\n    wins = 0\n    iterations = 10000  # Number of simulations to run\n    for _ in range(iterations):\n        # Shuffle the deck and deal out the rest of the community cards plus opponent's cards\n        random.shuffle(deck)\n        remaining_community = deck[:5-len(community_cards)]\n        opponent_hand = deck[5-len(community_cards):7-len(community_cards)]\n        final_community = community_cards + remaining_community\n\n        # Evaluate the hands\n        player_score = hand_strength(player_hand + final_community)\n        opponent_score = hand_strength(opponent_hand + final_community)\n\n        # Compare the hands to determine a win\n        if player_score > opponent_score:\n            wins += 1\n\n    # Calculate the probability\n    probability = wins / iterations\n    return probability\n\n# Example usage:\n# Assuming the deck is a list of all 52 cards, player_hand is the player's 2 cards, and community_cards are the cards on the board\n# deck = [...]\n# player_hand = [...]\n# community_cards = [...]\n# win_probability = calculate_probabilities(player_hand, community_cards, deck)\n# print('Winning Probability:', win_probability)\n```".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("The function `calculate_probabilities` runs a Monte Carlo simulation to estimate the winning probability for a player's hand against a single opponent. Note that in a real poker game, you would need to evaluate against multiple opponents, deal with incomplete information, and dynamically adjust as the community cards are revealed. For a more accurate probability calculation, consider factors like the number of players, their ranges, and how the hand could develop with future community cards".to_string()),
+                name: None,
+                function_call: None,
+            },
+        ];
+
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+    }
 }
