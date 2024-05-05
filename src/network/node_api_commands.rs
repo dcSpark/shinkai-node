@@ -796,13 +796,14 @@ impl Node {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
+        let create_default_folders = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
         vector_fs
             .initialize_new_profiles(
                 &node_name,
                 profile_list,
                 embedding_generator.model_type.clone(),
                 NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
-                true,
+                create_default_folders,
             )
             .await?;
 
