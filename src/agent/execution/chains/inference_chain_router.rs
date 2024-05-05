@@ -46,7 +46,6 @@ impl JobManager {
         user_profile: ShinkaiName,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
         // Initializations
-        // Initializations
         let mut inference_response_content = String::new();
         let mut new_execution_context = HashMap::new();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
