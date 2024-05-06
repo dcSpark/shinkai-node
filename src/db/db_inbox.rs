@@ -2,6 +2,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use rocksdb::{Error, WriteBatch};
 
+use serde_json::Value;
 use shinkai_message_primitives::shinkai_message::shinkai_message::NodeApiData;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
