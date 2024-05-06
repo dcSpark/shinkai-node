@@ -361,7 +361,6 @@ impl Prompt {
         let mut removed_subprompts = vec![];
 
         let mut current_token_count = self.generate_chat_completion_messages().1;
-        while current_token_count > max_prompt_tokens + 200 {
         while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
@@ -483,8 +482,6 @@ impl Prompt {
                 }
             }
         }
-        eprintln!("Messages length: {:?}", messages.len());
-
         let output = messages.join(" ");
         // eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)

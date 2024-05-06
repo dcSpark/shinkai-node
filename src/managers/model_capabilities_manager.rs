@@ -1,11 +1,6 @@
 use crate::{
     agent::{
-        error::AgentError,
-        execution::prompts::prompts::Prompt,
-        providers::shared::{
-            openai::openai_prepare_messages,
-            togetherai::{llama_prepare_messages, llava_prepare_messages},
-        },
+        error::AgentError, execution::prompts::prompts::Prompt, providers::shared::{openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}},
     },
     db::ShinkaiDB,
 };
@@ -579,7 +574,11 @@ impl ModelCapabilitiesManager {
                     "sys" => "Sys: ",
                     _ => "",
                 };
-                let full_message = format!("{}{}\n", role_prefix, message.content.as_ref().unwrap_or(&"".to_string()));
+                let full_message = format!(
+                    "{}{}\n",
+                    role_prefix,
+                    message.content.as_ref().unwrap_or(&"".to_string())
+                );
                 Self::count_tokens_from_message_llama3(&full_message)
             })
             .sum()
