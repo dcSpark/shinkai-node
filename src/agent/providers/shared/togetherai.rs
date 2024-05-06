@@ -3,7 +3,7 @@ use crate::{
         error::AgentError,
         execution::prompts::prompts::{Prompt, SubPrompt},
     },
-    managers::model_capabilities_manager::{Base64ImageString, PromptResult, PromptResultEnum},
+    managers::model_capabilities_manager::{Base64ImageString, ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,17 +52,16 @@ pub fn llama_prepare_messages(
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
-    let mut messages_string = prompt.generate_genericapi_messages(None)?;
+    let mut messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
 
-    if messages_string.len() > total_tokens {
-        return Err(AgentError::TokenLimit(
-            "Total tokens exceeded by message length".to_string(),
-        ));
-    }
+    let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
+    eprintln!("messages_string: {:?}", messages_string);
+    eprintln!("used_tokens: {:?}", used_tokens);
+    eprintln!("total_tokens: {:?}", total_tokens);
 
     Ok(PromptResult {
         value: PromptResultEnum::Text(messages_string.clone()),
-        remaining_tokens: total_tokens - messages_string.len(),
+        remaining_tokens: total_tokens - used_tokens,
     })
 }
 

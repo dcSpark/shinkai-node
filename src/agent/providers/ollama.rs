@@ -29,12 +29,16 @@ fn truncate_image_content_in_payload(payload: &mut JsonValue) {
 }
 
 pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
+    // Find the index of the first '#' and slice the string from there
+    let start_index = markdown.find('#').unwrap_or(0);
+    let trimmed_markdown = &markdown[start_index..];
+
     let mut sections = serde_json::Map::new();
     let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
     let mut current_section = None;
     let mut content = String::new();
 
-    for line in markdown.lines() {
+    for line in trimmed_markdown.lines() {
         if let Some(caps) = re.captures(line) {
             if let Some(section) = current_section {
                 sections.insert(section, JsonValue::String(content.trim().to_string()));
@@ -42,6 +46,10 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
             }
             current_section = Some(caps[1].to_string());
         } else if current_section.is_some() {
+            content.push_str(line);
+            content.push('\n');
+        } else {
+            current_section = Some("".to_string());
             content.push_str(line);
             content.push('\n');
         }
@@ -115,20 +123,25 @@ impl LLMProvider for Ollama {
 
             let mut stream = res.bytes_stream();
             let mut response_text = String::new();
-
+            let mut previous_json_chunk: String = String::new();
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                        let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                        if !previous_json_chunk.is_empty() {
+                            chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
+                        }
                         let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {
+                                previous_json_chunk = "".to_string();
                                 if let Some(response) = data.response.as_str() {
                                     response_text.push_str(response);
                                 }
                             }
                             Err(e) => {
                                 eprintln!("Failed to parse line: {:?}", e);
+                                previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }
                         }

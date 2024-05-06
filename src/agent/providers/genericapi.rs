@@ -54,7 +54,7 @@ impl LLMProvider for GenericAPI {
                         "<|eot_id|>",
                         "[/INST]",
                         "</s>",
-                        "\\n Sys:"
+                        "Sys:"
                     ],
                     "negative_prompt": "",
                     "safety_model": "",
