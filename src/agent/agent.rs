@@ -88,14 +88,14 @@ impl Agent {
 
             // If serde failed parsing the json string, then use advanced retrying
             if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
-                new_prompt.add_content(format!("Here is your JSON answer:"), SubPromptType::Assistant, priority);
+                new_prompt.add_content(format!("Here is your markdown answer:"), SubPromptType::Assistant, priority);
                 new_prompt.add_content(
                     format!("```{}```", response_json.to_string()),
                     SubPromptType::Assistant,
                     priority,
                 );
                 new_prompt.add_content(
-                    format!("No, that is not valid JSON. This is the error reported for the above json string:"),
+                    format!("No, that is not valid markdown with the specified template. This is the error reported for the above markdown string:"),
                     SubPromptType::User,
                     priority,
                 );
@@ -106,7 +106,7 @@ impl Agent {
                 );
                 new_prompt.add_content(
                     format!(
-                        "You are an advanced JSON assistant who can fix any invalid JSON string. Fix the json string so that it can be properly parsed as an actual json object. Remember that the JSON must be flat, with no objects or lists inside of any fields, only a single string per field. Always escape quotes properly inside of strings!",
+                        "You are an advanced assistant who can fix any invalid markdown without its proper template. Always escape quotes properly inside of strings!",
                     ),
                     SubPromptType::User,
                     priority,

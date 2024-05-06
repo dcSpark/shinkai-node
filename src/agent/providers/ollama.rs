@@ -29,12 +29,16 @@ fn truncate_image_content_in_payload(payload: &mut JsonValue) {
 }
 
 pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
+    // Find the index of the first '#' and slice the string from there
+    let start_index = markdown.find('#').unwrap_or(0);
+    let trimmed_markdown = &markdown[start_index..];
+
     let mut sections = serde_json::Map::new();
     let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
     let mut current_section = None;
     let mut content = String::new();
 
-    for line in markdown.lines() {
+    for line in trimmed_markdown.lines() {
         if let Some(caps) = re.captures(line) {
             if let Some(section) = current_section {
                 sections.insert(section, JsonValue::String(content.trim().to_string()));

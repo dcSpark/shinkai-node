@@ -47,7 +47,7 @@ impl JobPromptGenerator {
         let markdown_message = r#"# Answer\n ## {{Content Title}}\n\n{{Introductory paragraph}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}"}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
-        let task_message = "Do not respond with absolutely anything else, except with the output markdown format, which fulfills the users summary request: \n";
+        let task_message = "Do not respond with absolutely anything else, except with markdown format using the specified template, which fulfills the users summary request: \n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt
