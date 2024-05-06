@@ -1,3 +1,4 @@
+# OpenSea Posts
 Timestamp: {{{timestamp:2024-04-15T18:32:45+00:00}}}
 Username: {{{username:kendale}}}
 Content: 🚀 KoL Token has successfully launched! Trading Party on OpenSea!
