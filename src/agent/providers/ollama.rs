@@ -48,6 +48,10 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
         } else if current_section.is_some() {
             content.push_str(line);
             content.push('\n');
+        } else {
+            current_section = Some("".to_string());
+            content.push_str(line);
+            content.push('\n');
         }
     }
 
