@@ -123,20 +123,25 @@ impl LLMProvider for Ollama {
 
             let mut stream = res.bytes_stream();
             let mut response_text = String::new();
-
+            let mut previous_json_chunk: String = String::new();
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                        let mut chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                        if !previous_json_chunk.is_empty() {
+                            chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
+                        }
                         let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                         match data_resp {
                             Ok(data) => {
+                                previous_json_chunk = "".to_string();
                                 if let Some(response) = data.response.as_str() {
                                     response_text.push_str(response);
                                 }
                             }
                             Err(e) => {
                                 eprintln!("Failed to parse line: {:?}", e);
+                                previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }
                         }
