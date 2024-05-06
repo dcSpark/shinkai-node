@@ -579,7 +579,7 @@ impl ModelCapabilitiesManager {
                     "sys" => "Sys: ",
                     _ => "",
                 };
-                let full_message = format!("{}{}", role_prefix, message.content.as_ref().unwrap_or(&"".to_string()));
+                let full_message = format!("{}{}\n", role_prefix, message.content.as_ref().unwrap_or(&"".to_string()));
                 Self::count_tokens_from_message_llama3(&full_message)
             })
             .sum()

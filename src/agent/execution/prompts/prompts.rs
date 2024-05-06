@@ -459,11 +459,11 @@ impl Prompt {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
         let limit = max_input_tokens.unwrap_or(4000 as usize);
         let mut prompt_copy = self.clone();
-        let sub_prompts_filtered = prompt_copy.remove_subprompts_until_under_max(limit);
+        prompt_copy.remove_subprompts_until_under_max(limit);
 
         let mut messages: Vec<String> = Vec::new();
         // Process all sub-prompts in their original order
-        for (i, sub_prompt) in sub_prompts_filtered.iter().enumerate() {
+        for (i, sub_prompt) in prompt_copy.sub_prompts.iter().enumerate() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
