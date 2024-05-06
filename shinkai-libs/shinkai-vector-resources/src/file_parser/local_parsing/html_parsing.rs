@@ -61,7 +61,7 @@ pub fn extract_core_content(file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
 
 impl LocalFileParser {
     const IGNORED_ELEMENTS: &'static [&'static str] = &[
-        "base", "head", "link", "meta", "noscript", "script", "style", "svg", "template",
+        "base", "head", "link", "meta", "noscript", "script", "style", "svg", "template", "title",
     ];
     const HTML_HEADERS: &'static [&'static str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
@@ -80,22 +80,12 @@ impl LocalFileParser {
 
         // Parent nodes propagate context to child nodes.
         // Nodes can alter their state and propagate them to their children.
+        #[derive(Default)]
         struct HTMLNodeContext {
             is_preformatted: bool, // pre tags
             is_ordered_list: bool, // ol tags
             list_item_start: u64,  // start attribute for ol tags
             list_depth: u64,       // nested lists
-        }
-
-        impl Default for HTMLNodeContext {
-            fn default() -> Self {
-                HTMLNodeContext {
-                    is_preformatted: false,
-                    is_ordered_list: false,
-                    list_item_start: 0,
-                    list_depth: 0,
-                }
-            }
         }
 
         // Iterate through HTML elements and text nodes in order
@@ -133,6 +123,14 @@ impl LocalFileParser {
 
                             // Header elements
                             if LocalFileParser::HTML_HEADERS.contains(&el_name.as_str()) {
+                                LocalFileParser::push_text_group_by_depth(
+                                    text_groups,
+                                    heading_parents.len(),
+                                    node_text.trim().to_owned(),
+                                    max_node_text_size,
+                                );
+                                node_text.clear();
+
                                 let heading_level = el_name
                                     .chars()
                                     .last()
@@ -254,6 +252,10 @@ impl LocalFileParser {
                                     "li" => {
                                         let list_depth = if context.list_depth > 0 { context.list_depth } else { 1 };
                                         let indentation = "\t".repeat((list_depth - 1) as usize);
+
+                                        if !node_text.is_empty() && !node_text.ends_with("\n") {
+                                            node_text.push_str("\n");
+                                        }
 
                                         if context.is_ordered_list {
                                             let li_value = element.attr("value").unwrap_or("");
