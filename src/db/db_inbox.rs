@@ -506,14 +506,33 @@ impl ShinkaiDB {
                 None => inbox_id.clone(), // Use the inbox_id as the default value if the custom name is not found
             };
 
-            let mut job_scope: Option<JobScope> = None;
+            let mut job_scope_value: Option<Value> = None;
 
             // Determine if the inbox is finished
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone())? {
                     InboxName::JobInbox { unique_id, .. } => {
                         let job = self.get_job(&unique_id)?;
-                        job_scope = Some(job.scope);
+                        let mut scope_value = job.scope.to_json_value()?;
+            
+                        // Assuming embeddings are stored in a predictable location in the JSON structure
+                        if let Value::Object(ref mut map) = scope_value {
+                            // Iterate through local_vrkai and remove embeddings from each entry
+                            if let Some(Value::Array(local_vrkais)) = map.get_mut("local_vrkai") {
+                                for local_vrkai in local_vrkais.iter_mut() {
+                                    if let Value::Object(local_vrkai_map) = local_vrkai {
+                                        // Remove the embeddings field
+                                        if let Some(vrkai) = local_vrkai_map.get_mut("vrkai") {
+                                            if let Value::Object(vrkai_map) = vrkai {
+                                                vrkai_map.remove("embeddings");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+            
+                        job_scope_value = Some(scope_value);
                         job.is_finished
                     }
                     _ => false,
@@ -549,7 +568,7 @@ impl ShinkaiDB {
                 custom_name,
                 last_message,
                 is_finished,
-                job_scope,
+                job_scope: job_scope_value,
                 agent: agent_subset,
             };
 
