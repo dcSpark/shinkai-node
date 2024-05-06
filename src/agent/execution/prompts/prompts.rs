@@ -362,6 +362,7 @@ impl Prompt {
 
         let mut current_token_count = self.generate_chat_completion_messages().1;
         while current_token_count > max_prompt_tokens + 200 {
+        while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
                     current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
@@ -458,11 +459,11 @@ impl Prompt {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
         let limit = max_input_tokens.unwrap_or(4000 as usize);
         let mut prompt_copy = self.clone();
-        prompt_copy.remove_subprompts_until_under_max(limit);
+        let sub_prompts_filtered = prompt_copy.remove_subprompts_until_under_max(limit);
 
         let mut messages: Vec<String> = Vec::new();
         // Process all sub-prompts in their original order
-        for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
+        for (i, sub_prompt) in sub_prompts_filtered.iter().enumerate() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
