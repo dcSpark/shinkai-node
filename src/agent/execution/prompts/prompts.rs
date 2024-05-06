@@ -140,9 +140,6 @@ impl SubPrompt {
         }
 
         let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()]);
-        eprintln!("completion_message: {:?}", completion_message);
-        eprintln!("new_message_tokens: {:?}", new_message_tokens);
-        eprintln!("\n\n ------------------ \n\n");
         new_message_tokens
     }
 
