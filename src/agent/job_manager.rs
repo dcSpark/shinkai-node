@@ -382,7 +382,7 @@ impl JobManager {
 
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id, profile).await {
+                        if let Some(serialized_agent) = identity_manager.search_local_agent(agent_id, profile).await {
                             let agent = Agent::from_serialized_agent(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             if let Some(agent) = agent_found.clone() {
@@ -399,7 +399,7 @@ impl JobManager {
                     job_id_to_return.map_err(|_| AgentError::AgentNotFound)
                 }
                 Err(err) => {
-                    return Err(AgentError::ShinkaiDB(err));
+                    Err(AgentError::ShinkaiDB(err))
                 }
             }
         }

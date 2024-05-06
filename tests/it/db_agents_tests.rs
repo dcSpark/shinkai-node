@@ -20,7 +20,7 @@ mod tests {
         },
         shinkai_utils::{shinkai_logging::init_default_tracing, utils::hash_string},
     };
-    use shinkai_node::agent::{agent::Agent, error::AgentError, execution::job_prompts::JobPromptGenerator};
+    use shinkai_node::agent::{agent::Agent, error::AgentError, execution::prompts::prompts::JobPromptGenerator};
 
     use super::*;
 
@@ -275,7 +275,7 @@ mod tests {
         );
 
         let response = agent
-            .inference(JobPromptGenerator::basic_instant_response_prompt(
+            .inference_json(JobPromptGenerator::basic_instant_response_prompt(
                 "Hello!".to_string(),
                 None,
             ))

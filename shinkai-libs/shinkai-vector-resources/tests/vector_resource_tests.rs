@@ -1057,10 +1057,7 @@ async fn local_txt_metadata_parsing_test() {
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
     assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
-    assert_ne!(
-        results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(),
-        "br0K3n"
-    );
+    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();
@@ -1115,15 +1112,8 @@ async fn local_csv_metadata_parsing_test() {
 
     assert!(results2[0].score > 0.4);
     assert!(results2[0].node.get_text_content().unwrap().contains("Qantas"));
-    assert!(!results2[0]
-        .node
-        .get_text_content()
-        .unwrap()
-        .contains("!{{{carry_pets:true}}}!"));
-    assert_eq!(
-        results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(),
-        "true"
-    );
+    assert!(!results2[0].node.get_text_content().unwrap().contains("!{{{carry_pets:true}}}!"));
+    assert_eq!(results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(), "true");
 }
 
 #[tokio::test]

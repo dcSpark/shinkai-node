@@ -1,6 +1,6 @@
 use super::error::AgentError;
-
-use super::execution::job_prompts::JobPromptGenerator;
+use super::execution::chains::tool_execution_chain;
+use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
 
 use regex::Regex;
@@ -30,13 +30,13 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_agent(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_agent_json(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error
                 }
             };
-            let (answer, _new_resp_json) = match JobManager::advanced_extract_key_from_inference_response(
+            let (answer, _new_resp_json) = match JobManager::advanced_extract_key_from_inference_response_with_json(
                 agent.clone(),
                 response_json,
                 prompt.clone(),

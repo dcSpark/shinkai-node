@@ -248,7 +248,7 @@ impl OllamaTextEmbeddingsInference {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(OllamaTextEmbeddingsInference::AllMiniLML6v2),
             Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
-            other => Ok(OllamaTextEmbeddingsInference::Other(other.to_string())), // Handle the Other variant
+            _ => Err(VRError::InvalidModelArchitecture),
         }
     }
 }

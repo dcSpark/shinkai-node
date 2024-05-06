@@ -1,6 +1,7 @@
-use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
+use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -41,17 +42,14 @@ impl LLMProvider for OpenAI {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
+        model: AgentLLMInterface,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-                let open_ai = OpenAI {
-                    model_type: self.model_type.clone(),
-                };
-                let model = AgentLLMInterface::OpenAI(open_ai);
-                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
+
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
                     _ => {

@@ -25,7 +25,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         generator: &dyn EmbeddingGenerator,
         percent_to_verify: f32,
     ) -> Result<bool, VRError> {
-        let all_nodes = self.retrieve_nodes_exhaustive(None, false);
+        let all_nodes = self.retrieve_nodes_exhaustive_unordered(None);
         let percent_to_verify = percent_to_verify.max(0.0).min(1.0);
         let num_to_verify = (all_nodes.len() as f32 * percent_to_verify).ceil() as usize;
         // Ensure at least one node is verified always
@@ -60,7 +60,8 @@ pub trait VectorResourceSearch: VectorResourceCore {
     /// Returns every single node at any depth in the whole Vector Resource, including the Vector Resources nodes themselves,
     /// and the Nodes they hold additionally. If a starting_path is provided then fetches all nodes from there,
     /// else starts at root. If resources_only is true, only Vector Resources are returned.
-    fn retrieve_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
+    /// Of note: This method does not guarantee ordering of the nodes, no matter what kind of VR this is used on.
+    fn retrieve_nodes_exhaustive_unordered(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new_empty();
         let mut nodes = self.vector_search_customized(
             empty_embedding,
@@ -70,10 +71,34 @@ pub trait VectorResourceSearch: VectorResourceCore {
             starting_path,
         );
 
-        if resources_only {
-            nodes.retain(|node| matches!(node.node.content, NodeContent::Resource(_)));
-        }
+        nodes
+    }
 
+    /// Retrieves any resource nodes from the Vector Resource at any level of depth under starting path.
+    fn retrieve_resource_nodes_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
+        let mut nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
+        nodes.retain(|node| matches!(node.node.content, NodeContent::Resource(_)));
+        nodes
+    }
+
+    /// Retrieves any text nodes from the Vector Resource at any level of depth under starting path.
+    fn retrieve_text_nodes_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
+        let mut nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
+        nodes.retain(|node| matches!(node.node.content, NodeContent::Text(_)));
+        nodes
+    }
+
+    /// Retrieves any external content nodes from the Vector Resource at any level of depth under starting path.
+    fn retrieve_external_content_nodes_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
+        let mut nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
+        nodes.retain(|node| matches!(node.node.content, NodeContent::ExternalContent(_)));
+        nodes
+    }
+
+    /// Retrieves any VRHeader nodes from the Vector Resource at any level of depth under starting path.
+    fn retrieve_vrheader_nodes_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedNode> {
+        let mut nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
+        nodes.retain(|node| matches!(node.node.content, NodeContent::VRHeader(_)));
         nodes
     }
 
@@ -82,7 +107,12 @@ pub trait VectorResourceSearch: VectorResourceCore {
     /// `shorten_data` - Cuts the string content short to improve readability.
     /// `resources_only` - Only prints Vector Resources
     fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
-        let nodes = self.retrieve_nodes_exhaustive(starting_path, resources_only);
+        let mut nodes = vec![];
+        if resources_only {
+            nodes = self.retrieve_resource_nodes_exhaustive(starting_path);
+        } else {
+            nodes = self.retrieve_nodes_exhaustive_unordered(starting_path);
+        }
         for node in nodes {
             let ret_path = node.retrieval_path;
             let _path = ret_path.format_to_string();

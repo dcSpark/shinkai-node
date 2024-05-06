@@ -305,7 +305,10 @@ impl VRPack {
 
     /// Unpacks all VRKais in the VRPack, each as a tuple containing a VRKai and its corresponding VRPath where it was held at.
     pub fn unpack_all_vrkais(&self) -> Result<Vec<(VRKai, VRPath)>, VRError> {
-        let nodes = self.resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+        let nodes = self
+            .resource
+            .as_trait_object()
+            .retrieve_nodes_exhaustive_unordered(None);
 
         let mut vrkais_with_paths = Vec::new();
         for retrieved_node in nodes {
@@ -328,7 +331,7 @@ impl VRPack {
         let nodes = self
             .resource
             .as_trait_object()
-            .retrieve_nodes_exhaustive(starting_path, false);
+            .retrieve_nodes_exhaustive_unordered(starting_path);
         for node in nodes {
             let ret_path = node.retrieval_path;
             let _path = ret_path.format_to_string();
@@ -759,7 +762,7 @@ impl VRPack {
 
     /// Counts the number of VRKais and folders in the BaseVectorResource.
     fn num_of_vrkais_and_folders(resource: &BaseVectorResource) -> (u64, u64) {
-        let nodes = resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+        let nodes = resource.as_trait_object().retrieve_nodes_exhaustive_unordered(None);
 
         let (vrkais_count, folders_count) = nodes.iter().fold((0u64, 0u64), |(vrkais, folders), retrieved_node| {
             match retrieved_node.node.content {
@@ -774,7 +777,10 @@ impl VRPack {
 
     /// Generates a simplified JSON representation of the contents of the VRPack.
     pub fn to_json_contents_simplified(&self) -> Result<String, VRError> {
-        let nodes = self.resource.as_trait_object().retrieve_nodes_exhaustive(None, false);
+        let nodes = self
+            .resource
+            .as_trait_object()
+            .retrieve_nodes_exhaustive_unordered(None);
 
         let mut content_vec = Vec::new();
 

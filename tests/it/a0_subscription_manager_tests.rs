@@ -630,6 +630,7 @@ async fn upload_file(
 
 #[test]
 fn subscription_manager_test() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     setup();
     let rt = Runtime::new().unwrap();

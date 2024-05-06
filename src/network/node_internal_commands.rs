@@ -9,12 +9,18 @@ use crate::schemas::{
     inbox_permission::InboxPermission,
     smart_inbox::SmartInbox,
 };
+use crate::welcome_files::welcome_message::WELCOME_MESSAGE;
 use async_channel::Sender;
 use chashmap::CHashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
+use shinkai_vector_resources::vector_resource::VRPath;
+use tokio::io::AsyncReadExt;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
+use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent},
@@ -387,14 +393,95 @@ impl Node {
     pub async fn internal_add_agent(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         agent: SerializedAgent,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
         match db.add_agent(agent.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
-                match subidentity_manager.add_agent_subidentity(agent).await {
-                    Ok(_) => Ok(()),
+                match subidentity_manager.add_agent_subidentity(agent.clone()).await {
+                    Ok(_) => {
+                        drop(subidentity_manager);
+                        let inboxes = Self::internal_get_all_inboxes_for_profile(
+                            identity_manager.clone(),
+                            db.clone(),
+                            profile.clone(),
+                        )
+                        .await;
+
+                        let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
+                        let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+
+                        if !has_job_inbox && welcome_message {
+                            let shinkai_folder_fs = VectorFSFolderScopeEntry {
+                                name: "Shinkai".to_string(),
+                                path: VRPath::from_string("/My Files (Private)").unwrap(),
+                            };
+
+                            let job_scope = JobScope {
+                                local_vrkai: vec![],
+                                local_vrpack: vec![],
+                                vector_fs_items: vec![],
+                                vector_fs_folders: vec![shinkai_folder_fs],
+                                network_folders: vec![],
+                            };
+                            let job_creation = JobCreationInfo {
+                                scope: job_scope,
+                                is_hidden: Some(false),
+                            };
+
+                            let mut job_manager_locked = job_manager.lock().await;
+                            let job_id = match job_manager_locked
+                                .process_job_creation(job_creation, profile, &agent.id.clone())
+                                .await
+                            {
+                                Ok(job_id) => job_id,
+                                Err(err) => {
+                                    return Err(NodeError {
+                                        message: format!("Failed to create job: {}", err),
+                                    })
+                                }
+                            };
+
+                            let subidentity_manager = identity_manager.lock().await;
+                            let sender = subidentity_manager.search_identity(&profile.full_name).await.unwrap();
+                            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?.to_string();
+                            let sender_standard = match sender {
+                                Identity::Standard(std_identity) => std_identity,
+                                _ => {
+                                    return Err(NodeError {
+                                        message: "Sender is not a StandardIdentity".to_string(),
+                                    })
+                                }
+                            };
+                            db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
+                            db.update_smart_inbox_name(
+                                &inbox_name.to_string(),
+                                "Welcome to Shinkai! Brief onboarding here.",
+                            )?;
+
+                            {
+                                // Add Two Message from "Agent"
+                                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                    job_id.to_string(),
+                                    WELCOME_MESSAGE.to_string(),
+                                    "".to_string(),
+                                    identity_secret_key_clone,
+                                    profile.node_name.clone(),
+                                    profile.node_name.clone(),
+                                )
+                                .unwrap();
+
+                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                                    .await?;
+                            }
+                        }
+                        Ok(())
+                    }
                     Err(err) => {
                         error!("Failed to add subidentity: {}", err);
                         Err(NodeError {
@@ -519,6 +606,8 @@ impl Node {
     pub async fn internal_add_ollama_models(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        identity_secret_key: SigningKey,
         input_models: Vec<String>,
         shinkai_name: ShinkaiName,
     ) -> Result<(), String> {
@@ -575,9 +664,16 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in agents {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            Self::internal_add_agent(db.clone(), identity_manager.clone(), agent, &profile_name)
-                .await
-                .map_err(|e| format!("Failed to add agent: {}", e))?;
+            Self::internal_add_agent(
+                db.clone(),
+                identity_manager.clone(),
+                job_manager.clone(),
+                identity_secret_key.clone(),
+                agent,
+                &profile_name,
+            )
+            .await
+            .map_err(|e| format!("Failed to add agent: {}", e))?;
         }
 
         Ok(())

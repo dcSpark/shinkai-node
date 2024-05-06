@@ -144,7 +144,10 @@ impl IdentityManager {
                 ShinkaiLogLevel::Error,
                 format!("Agent not found: {}", updated_agent.full_identity_name).as_str(),
             );
-            Err(anyhow::anyhow!("Agent with ID '{}' not found.", updated_agent.full_identity_name))
+            Err(anyhow::anyhow!(
+                "Agent with ID '{}' not found.",
+                updated_agent.full_identity_name
+            ))
         }
     }
 
@@ -154,10 +157,11 @@ impl IdentityManager {
             ShinkaiLogLevel::Info,
             format!("remove_agent_subidentity > agent_id: {}", agent_id).as_str(),
         );
+        eprintln!("all agents: {:?}", self.local_identities);
 
         let initial_count = self.local_identities.len();
         self.local_identities.retain(|identity| match identity {
-            Identity::Agent(agent) => agent.full_identity_name.to_string() != agent_id,
+            Identity::Agent(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != agent_id,
             _ => true,
         });
 

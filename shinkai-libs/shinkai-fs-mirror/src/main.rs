@@ -139,9 +139,14 @@ async fn main() {
     let upload_timeout = matches
         .value_of("upload_timeout")
         .map(|s| s.parse::<u64>().expect("Failed to parse upload timeout"))
-        .map(Duration::from_secs);
+        .map(Duration::from_secs)
+        .or_else(|| {
+            env::var("UPLOAD_TIMEOUT")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(Duration::from_secs)
+        });
 
-    // Example of creating a FilesystemSynchronizer
     let mut shinkai_manager = ShinkaiManagerForSync::initialize_from_encrypted_file_path(
         Path::new(&encrypted_file_path),
         passphrase.as_deref().unwrap_or(""),
@@ -159,7 +164,7 @@ async fn main() {
         db_path,
         sync_interval,
         should_mirror_deletes,
-        upload_timeout
+        upload_timeout,
     )
     .await
     .expect("Failed to create FilesystemSynchronizer");
