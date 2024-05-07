@@ -55,6 +55,7 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 
 #[test]
 fn job_branchs_retries_tests() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -63,7 +64,7 @@ fn job_branchs_retries_tests() {
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
             let node1_agent = env.node1_agent.clone();
-            let node1_encryption_pk = env.node1_encryption_pk.clone();
+            let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
@@ -116,7 +117,7 @@ fn job_branchs_retries_tests() {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                            "content": "\n# Answer\nHello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],
@@ -147,7 +148,7 @@ fn job_branchs_retries_tests() {
                 api_agent_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -174,7 +175,7 @@ fn job_branchs_retries_tests() {
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -187,7 +188,7 @@ fn job_branchs_retries_tests() {
                 let _ = api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -216,7 +217,7 @@ fn job_branchs_retries_tests() {
                 let _ = api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -279,7 +280,7 @@ fn job_branchs_retries_tests() {
                 let _ = api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -377,7 +378,7 @@ fn job_branchs_retries_tests() {
                         .collect::<Vec<_>>(); // Collects all contents across all Vec<Vec<ShinkaiMessage>>
 
                     // Updated validation logic to check for specific content
-                    let expected_contents = vec![
+                    let expected_contents = [
                         "hello are u there? (1)",
                         "Hello there, how may I assist you today?",
                         "hello are u there? (5)",
