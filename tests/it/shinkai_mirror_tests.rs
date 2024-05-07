@@ -203,6 +203,7 @@ fn mirror_sync_tests() {
             0,
             node1_commands_receiver,
             node1_db_path,
+            "".to_string(),
             true,
             vec![],
             None,
