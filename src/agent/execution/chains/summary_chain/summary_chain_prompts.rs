@@ -41,13 +41,13 @@ impl JobPromptGenerator {
         // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics and/or chapters in the content with 1-2 sentences describing each . Follow this json (holding a single markdown string) when responding, and include nothing else but the output markdown answer inside of minified json: ";
+        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics and/or chapters in the content with 1-2 sentences describing each. Follow this markdown format when responding, and include nothing else but answer inside the # Answer section: ";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        let markdown_message = r#"```\n{ "answer": " ## {{Content Title}}\n\n{{Introductory paragraph}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}"}\n```"#;
+        let markdown_message = r#"# Answer\n ## {{Content Title}}\n\n{{Introductory paragraph}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}"}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
-        let task_message = "Do not respond with absolutely anything else, except with the output json holding a single markdown string, which fulfills the users summary request: \n```json";
+        let task_message = "Do not respond with absolutely anything else, except with markdown format using the specified template, which fulfills the users summary request: \n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt

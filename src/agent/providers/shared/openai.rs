@@ -145,12 +145,12 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Res
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&filtered_chat_completion_messages);
     // Calculate the remaining output tokens available
-    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(&model, used_tokens);
+    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
     // Converts the ChatCompletionMessages to OpenAIApiMessages
     let messages = OpenAIApiMessage::from_chat_completion_messages(filtered_chat_completion_messages)?;
 
-    let messages_json = serde_json::to_value(&messages)?;
+    let messages_json = serde_json::to_value(messages)?;
     Ok(PromptResult {
         value: PromptResultEnum::Value(messages_json),
         remaining_tokens: remaining_output_tokens,

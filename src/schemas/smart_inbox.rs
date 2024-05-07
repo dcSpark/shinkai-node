@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use shinkai_message_primitives::{schemas::{agents::serialized_agent::{AgentLLMInterface, SerializedAgent}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::job_scope::JobScope};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -24,6 +25,6 @@ pub struct SmartInbox {
     pub custom_name: String,
     pub last_message: Option<ShinkaiMessage>,
     pub is_finished: bool,
-    pub job_scope: Option<JobScope>,
+    pub job_scope: Option<Value>,
     pub agent: Option<AgentSubset>,
 }

@@ -1202,7 +1202,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1241,7 +1241,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1256,7 +1256,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }

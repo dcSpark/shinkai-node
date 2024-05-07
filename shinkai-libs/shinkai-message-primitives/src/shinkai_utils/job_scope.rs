@@ -89,6 +89,11 @@ impl JobScope {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
     }
+
+    /// Serializes the JobScope to a JSON value.
+    pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(self)
+    }
 }
 
 impl fmt::Debug for JobScope {

@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_node"
-version = "0.7.0"
+version = "0.7.2"
 edition = "2018"
 
 [features]
