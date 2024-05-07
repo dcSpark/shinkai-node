@@ -80,12 +80,6 @@ impl LLMProvider for ShinkaiBackend {
                     // "max_tokens": result.remaining_tokens, // TODO: Check if this is necessary
                 });
 
-                // Openai doesn't support json_object response format for vision models. wut?
-                // Add json_object only for PREMIUM_TEXT_INFERENCE
-                if self.model_type() == "PREMIUM_TEXT_INFERENCE" {
-                    payload["response_format"] = json!({ "type": "json_object" });
-                }
-
                 let mut payload_log = payload.clone();
                 truncate_image_url_in_payload(&mut payload_log);
                 shinkai_log(
