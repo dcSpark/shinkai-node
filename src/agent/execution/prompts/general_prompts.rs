@@ -50,7 +50,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
+        prompt.add_content(user_message.to_string(), SubPromptType::User, 100);
 
         prompt
     }

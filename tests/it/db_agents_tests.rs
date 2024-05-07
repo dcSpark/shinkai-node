@@ -239,23 +239,23 @@ mod tests {
             .with_header("content-type", "application/json")
             .with_body(
                 r#"{
-        "id": "chatcmpl-123",
-        "object": "chat.completion",
-        "created": 1677652288,
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": " a bunch of other text before { \"answer\": \"\\n\\nHello there, how may I assist you today?\" } and more text after to see if it fails getting the json object"
-            },
-            "finish_reason": "stop"
-        }],
-        "usage": {
-            "prompt_tokens": 9,
-            "completion_tokens": 12,
-            "total_tokens": 21 
-        }
-    }"#,
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": " a bunch of other text before # Answer\nHello there, how may I assist you today?"
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 9,
+                        "completion_tokens": 12,
+                        "total_tokens": 21 
+                    }
+                }"#,
             )
             .create();
 
@@ -282,8 +282,8 @@ mod tests {
             .await;
         match response {
             Ok(res) => assert_eq!(
-                res["answer"].as_str().unwrap(),
-                "\n\nHello there, how may I assist you today?".to_string()
+                res["Answer"].as_str().unwrap(),
+                "Hello there, how may I assist you today?".to_string()
             ),
             Err(e) => panic!("Error when calling API: {}", e),
         }
