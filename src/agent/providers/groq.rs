@@ -1,7 +1,7 @@
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
-use super::ollama::parse_markdown_to_json;
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
+use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use reqwest::Client;

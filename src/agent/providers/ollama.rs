@@ -1,12 +1,11 @@
-use crate::agent::job_manager::JobManager;
 use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMProvider;
 use async_trait::async_trait;
 use futures::StreamExt;
-use regex::Regex;
 use reqwest::Client;
 use serde_json;
 use serde_json::json;
@@ -26,40 +25,6 @@ fn truncate_image_content_in_payload(payload: &mut JsonValue) {
             }
         }
     }
-}
-
-pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
-    // Find the index of the first '#' and slice the string from there
-    let start_index = markdown.find('#').unwrap_or(0);
-    let trimmed_markdown = &markdown[start_index..];
-
-    let mut sections = serde_json::Map::new();
-    let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
-    let mut current_section = None;
-    let mut content = String::new();
-
-    for line in trimmed_markdown.lines() {
-        if let Some(caps) = re.captures(line) {
-            if let Some(section) = current_section {
-                sections.insert(section, JsonValue::String(content.trim().to_string()));
-                content.clear();
-            }
-            current_section = Some(caps[1].to_string());
-        } else if current_section.is_some() {
-            content.push_str(line);
-            content.push('\n');
-        } else {
-            current_section = Some("".to_string());
-            content.push_str(line);
-            content.push('\n');
-        }
-    }
-
-    if let Some(section) = current_section {
-        sections.insert(section, JsonValue::String(content.trim().to_string()));
-    }
-
-    Ok(JsonValue::Object(sections))
 }
 
 #[async_trait]

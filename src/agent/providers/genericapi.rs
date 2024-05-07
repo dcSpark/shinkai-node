@@ -1,8 +1,8 @@
 use crate::agent::job_manager::JobManager;
+use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
-use super::ollama::parse_markdown_to_json;
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -98,7 +98,7 @@ impl LLMProvider for GenericAPI {
                             .choices
                             .first()
                             .map(|choice| choice.text.clone())
-                            .unwrap_or_else(|| String::new());
+                            .unwrap_or_else(String::new);
 
                         match parse_markdown_to_json(&response_string) {
                             Ok(json) => {
