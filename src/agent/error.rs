@@ -66,6 +66,7 @@ pub enum AgentError {
     FailedSerdeParsingJSONString(String, serde_json::Error),
     FailedSerdeParsingXMLString(String, minidom::Error),
     ShinkaiMessageBuilderError(String),
+    TokenLimit(String)
 }
 
 impl fmt::Display for AgentError {
@@ -138,6 +139,7 @@ impl fmt::Display for AgentError {
             AgentError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
             AgentError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
             AgentError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
+            AgentError::TokenLimit(s) => write!(f, "{}", s),
      
         }
     }
@@ -201,6 +203,7 @@ impl AgentError {
             AgentError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
             AgentError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
             AgentError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
+            AgentError::TokenLimit(_) => "TokenLimit",
         };
 
         let error_message = format!("{}", self);

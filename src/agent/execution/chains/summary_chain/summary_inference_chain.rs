@@ -183,6 +183,7 @@ impl JobManager {
             resource_sub_prompts,
             resource_source,
         );
+        eprintln!("generate_detailed_summary_for_resource> Prompt: {:?}", prompt);
 
         // Extract the JSON from the inference response Result and proceed forward
         let response = JobManager::inference_agent_json(agent.clone(), prompt.clone()).await?;

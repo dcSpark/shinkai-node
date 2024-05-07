@@ -1,4 +1,5 @@
 use crate::agent::job_manager::JobManager;
+use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
@@ -38,6 +39,7 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
+                eprintln!("max_output_tokens: {:?}", max_output_tokens);
                 let payload = json!({
                     "model": self.model_type,
                     "max_tokens": max_output_tokens,
@@ -49,8 +51,10 @@ impl LLMProvider for GenericAPI {
                     "repetition_penalty": 1,
                     "stream_tokens": false,
                     "stop": [
+                        "<|eot_id|>",
                         "[/INST]",
-                        "</s>"
+                        "</s>",
+                        "Sys:"
                     ],
                     "negative_prompt": "",
                     "safety_model": "",
@@ -94,9 +98,26 @@ impl LLMProvider for GenericAPI {
                             .choices
                             .first()
                             .map(|choice| choice.text.clone())
-                            .unwrap_or_else(|| String::new());
+                            .unwrap_or_else(String::new);
 
-                        Self::extract_largest_json_object(&response_string)
+                        match parse_markdown_to_json(&response_string) {
+                            Ok(json) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Debug,
+                                    format!("Parsed JSON from Markdown: {:?}", json).as_str(),
+                                );
+                                Ok(json)
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
+                                );
+                                Err(e)
+                            }
+                        }
                     }
                     Err(e) => {
                         shinkai_log(

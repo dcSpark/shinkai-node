@@ -485,7 +485,7 @@ fn create_openai_mock_1(server: &mut mockito::Server) -> Mock {
                     "role": "user"
                 },
                 {
-                    "content": "Respond using the following EBNF and absolutely nothing else: '{' 'answer' ':' string '}'  ```json",
+                    "content": "Respond using the following markdown formatting and absolutely nothing else: # Answer",
                     "role": "system"
                 }
             ],

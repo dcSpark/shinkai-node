@@ -280,7 +280,7 @@ impl JobManager {
                 arr.iter()
                     .map(|v| match v {
                         JsonValue::String(s) => format!("- {}", s),
-                        _ => format!("- {}", v.to_string()),
+                        _ => format!("- {}", v),
                     })
                     .collect::<Vec<String>>()
                     .join("\n"),
