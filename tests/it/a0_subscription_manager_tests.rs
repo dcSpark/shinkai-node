@@ -81,11 +81,13 @@ fn generate_message_with_payload<T: ToString>(
 }
 
 // Function to recursively check if the actual response contains the expected structure
-fn check_structure(actual: &serde_json::Value, expected: &serde_json::Value) -> bool {
-    if let (Some(actual_folders), Some(expected_folders)) = (actual["child_folders"].as_array(), expected["child_folders"].as_array()) {
+fn check_structure(actual: &Value, expected: &Value) -> bool {
+    if let (Some(mut actual_folders), Some(mut expected_folders)) = (actual["child_folders"].as_array().cloned(), expected["child_folders"].as_array().cloned()) {
         if actual_folders.len() != expected_folders.len() {
             return false;
         }
+        sort_folders(&mut actual_folders);
+        sort_folders(&mut expected_folders);
         for (actual_folder, expected_folder) in actual_folders.iter().zip(expected_folders.iter()) {
             if !check_folder(actual_folder, expected_folder) {
                 return false;
@@ -97,7 +99,8 @@ fn check_structure(actual: &serde_json::Value, expected: &serde_json::Value) -> 
     true
 }
 
-fn check_folder(actual_folder: &serde_json::Value, expected_folder: &serde_json::Value) -> bool {
+
+fn check_folder(actual_folder: &Value, expected_folder: &Value) -> bool {
     let actual_name = actual_folder["name"].as_str().unwrap_or("Unknown Folder");
     let expected_name = expected_folder["name"].as_str().unwrap_or("Unknown Folder");
     if actual_name != expected_name {
@@ -110,38 +113,57 @@ fn check_folder(actual_folder: &serde_json::Value, expected_folder: &serde_json:
         return false;
     }
 
-    let empty_vec = vec![];
-    let actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&empty_vec);
-    let expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&empty_vec);
+    let mut actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
+    let mut expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
     if actual_subfolders.len() != expected_subfolders.len() {
         return false;
     }
+    sort_folders(&mut actual_subfolders);
+    sort_folders(&mut expected_subfolders);
     for (actual_subfolder, expected_subfolder) in actual_subfolders.iter().zip(expected_subfolders.iter()) {
         if !check_folder(actual_subfolder, expected_subfolder) {
             return false;
         }
     }
 
-    let actual_items = actual_folder["child_items"].as_array().unwrap_or(&empty_vec);
-    let expected_items = expected_folder["child_items"].as_array().unwrap_or(&empty_vec);
+    let mut actual_items = actual_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
+    let mut expected_items = expected_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
     if actual_items.len() != expected_items.len() {
         return false;
     }
+    sort_items(&mut actual_items);
+    sort_items(&mut expected_items);
     for (actual_item, expected_item) in actual_items.iter().zip(expected_items.iter()) {
-        let actual_item_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
-        let expected_item_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
-        if actual_item_name != expected_item_name {
-            return false;
-        }
-
-        let actual_item_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
-        let expected_item_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
-        if actual_item_path != expected_item_path {
+        if !check_item(actual_item, expected_item) {
             return false;
         }
     }
 
     true
+}
+
+fn check_item(actual_item: &Value, expected_item: &Value) -> bool {
+    let actual_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
+    let expected_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
+    if actual_name != expected_name {
+        return false;
+    }
+
+    let actual_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
+    let expected_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
+    if actual_path != expected_path {
+        return false;
+    }
+
+    true
+}
+
+fn sort_folders(folders: &mut Vec<Value>) {
+    folders.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+}
+
+fn sort_items(items: &mut Vec<Value>) {
+    items.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
 }
 
 async fn fetch_last_messages(
@@ -1404,7 +1426,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Actual structure: {:?}", actual_resp_json);
+                        eprintln!("Expected structure: {}", expected_structure.to_string());
+                        eprintln!("Actual structure: {}", actual_resp_json.to_string());
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1560,7 +1583,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Actual structure: {:?}", actual_resp_json);
+                        eprintln!("Expected structure: {}", expected_structure.to_string());
+                        eprintln!("Actual structure: {}", actual_resp_json.to_string())
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -1706,7 +1730,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        // eprintln!("Actual structure: {:?}", actual_resp_json);
+                        eprintln!("Expected structure: {}", expected_structure.to_string());
+                        eprintln!("Actual structure: {}", actual_resp_json.to_string())
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
