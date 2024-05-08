@@ -859,7 +859,7 @@ fn subscription_manager_test() {
                 create_folder(
                     &node1_commands_sender,
                     "/",
-                    "shared_test_folder",
+                    "shared test folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -920,7 +920,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     file_path,
                     0,
                 )
@@ -959,7 +959,7 @@ fn subscription_manager_test() {
                 // Create /shared_test_folder/crypto
                 create_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     "crypto",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -978,7 +978,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shared_test_folder/crypto",
+                    "/shared test folder/crypto",
                     file_path,
                     0,
                 )
@@ -1006,7 +1006,7 @@ fn subscription_manager_test() {
                 eprintln!("Make /shared_test_folder shareable");
                 make_folder_shareable(
                     &node1_commands_sender,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -1044,6 +1044,7 @@ fn subscription_manager_test() {
                     node1_profile_name,
                 )
                 .await;
+            panic!("crash");
             }
             //
             // Second Part of the Test
@@ -1154,23 +1155,23 @@ fn subscription_manager_test() {
                     "state": "ResponseAvailable",
                     "response_last_updated": "2024-03-24T00:47:22.292347Z",
                     "response": {
-                        "/shared_test_folder": {
-                            "path": "/shared_test_folder",
+                        "/shared test folder": {
+                            "path": "/shared test folder",
                             "permission": "Public",
                             "profile": "main",
                             "tree": {
                                 "name": "/",
-                                "path": "/shared_test_folder",
+                                "path": "/shared test folder",
                                 "last_modified": "2024-03-24T00:47:20.713156+00:00",
                                 "children": {
                                     "crypto": {
                                         "name": "crypto",
-                                        "path": "/shared_test_folder/crypto",
+                                        "path": "/shared test folder/crypto",
                                         "last_modified": "2024-03-24T00:47:18.657987+00:00",
                                         "children": {
                                             "shinkai_intro": {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared_test_folder/crypto/shinkai_intro",
+                                                "path": "/shared test folder/crypto/shinkai_intro",
                                                 "last_modified": "2024-02-26T23:06:00.019065981+00:00",
                                                 "children": {}
                                             }
@@ -1178,7 +1179,7 @@ fn subscription_manager_test() {
                                     },
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
-                                        "path": "/shared_test_folder/shinkai_intro",
+                                        "path": "/shared test folder/shinkai_intro",
                                         "last_modified": "2024-02-26T23:06:00.019065981+00:00",
                                         "children": {}
                                     }
@@ -1219,7 +1220,7 @@ fn subscription_manager_test() {
                 let requirements = SubscriptionPayment::Free;
 
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
-                    "/shared_test_folder".to_string(),
+                    "/shared test folder".to_string(),
                     requirements,
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),

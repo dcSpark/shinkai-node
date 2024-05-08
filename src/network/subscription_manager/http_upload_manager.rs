@@ -233,56 +233,52 @@ impl HttpSubscriptionUploadManager {
                     for file in &files {
                         if !file.is_folder && file.path.ends_with(".checksum") {
                             let base_file = file.path.split(".checksum").next().unwrap_or("").to_string();
-                            let hash_part = base_file.split('.').nth_back(1).unwrap_or("");
-                            if hash_part.len() == 8 {
-                                // Using the last 8 characters of the hash
-                                checksum_map.insert(base_file, file.path.clone());
-                            }
+                            checksum_map.insert(base_file, file.path.clone());
                         }
                     }
 
                     let mut subscription_files = subscription_file_map.entry(subscription_id.clone()).or_default();
 
-                    // Check if all files are in sync
-                    for file in files {
-                        if file.is_folder || file.path.ends_with(".checksum") {
-                            continue;
-                        }
+                    // // Check if all files are in sync
+                    // for file in files {
+                    //     if file.is_folder || file.path.ends_with(".checksum") {
+                    //         continue;
+                    //     }
 
-                        let file_path = file.path.clone();
-                        let file_status = subscription_files
-                            .entry(file_path.clone())
-                            .or_insert(FileStatus::Waiting(file_path.clone()));
+                    //     let file_path = file.path.clone();
+                    //     let file_status = subscription_files
+                    //         .entry(file_path.clone())
+                    //         .or_insert(FileStatus::Waiting(file_path.clone()));
 
-                        // Check if the checksum matches
-                        let checksum_matches = if let Some(checksum_path) = checksum_map.get(&file_path) {
-                            // Extract the last 8 characters of the hash from the checksum filename
-                            let expected_hash = checksum_path.split('.').nth_back(1).unwrap_or("").to_string();
-                            let current_hash = calculate_hash(&file_path).await; // Assuming a function `calculate_hash` exists
-                            current_hash.ends_with(&expected_hash)
-                        } else {
-                            false // No checksum file means we can't verify it, so assume it doesn't match
-                        };
+                    //     // Check if the checksum matches
+                    //     let checksum_matches = if let Some(checksum_path) = checksum_map.get(&file_path) {
+                    //         // Extract the last 8 characters of the hash from the checksum filename
+                    //         let expected_hash = checksum_path.split('.').nth_back(1).unwrap_or("").to_string();
+                    //         let current_hash = calculate_hash(&file_path).await; // Assuming a function `calculate_hash` exists
+                    //         current_hash.ends_with(&expected_hash)
+                    //     } else {
+                    //         false // No checksum file means we can't verify it, so assume it doesn't match
+                    //     };
 
-                        if !checksum_matches {
-                            match file_status {
-                                FileStatus::Sync(_) => {
-                                    // File is out of sync due to checksum mismatch
-                                    subscription_files
-                                        .insert(file_path.clone(), FileStatus::Uploading(file_path.clone()));
-                                }
-                                FileStatus::Uploading(_) => {
-                                    // File is currently being uploaded
-                                    continue;
-                                }
-                                FileStatus::Waiting(_) => {
-                                    // File is not in sync, add it to the upload queue
-                                    subscription_files
-                                        .insert(file_path.clone(), FileStatus::Uploading(file_path.clone()));
-                                }
-                            }
-                        }
-                    }
+                    //     if !checksum_matches {
+                    //         match file_status {
+                    //             FileStatus::Sync(_) => {
+                    //                 // File is out of sync due to checksum mismatch
+                    //                 subscription_files
+                    //                     .insert(file_path.clone(), FileStatus::Uploading(file_path.clone()));
+                    //             }
+                    //             FileStatus::Uploading(_) => {
+                    //                 // File is currently being uploaded
+                    //                 continue;
+                    //             }
+                    //             FileStatus::Waiting(_) => {
+                    //                 // File is not in sync, add it to the upload queue
+                    //                 subscription_files
+                    //                     .insert(file_path.clone(), FileStatus::Uploading(file_path.clone()));
+                    //             }
+                    //         }
+                    //     }
+                    // }
                 }
 
                 // Note: maybe we could treat every send as its own future and then join them all in group batches

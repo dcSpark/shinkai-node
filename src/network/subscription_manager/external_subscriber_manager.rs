@@ -812,6 +812,7 @@ impl ExternalSubscriberManager {
         };
 
         for profile in profiles {
+            eprintln!(">> (update_shared_folders) profile: {:?}", profile);
             let result = self
                 .available_shared_folders(
                     self.node_name.clone(),
@@ -821,6 +822,7 @@ impl ExternalSubscriberManager {
                     "/".to_string(),
                 )
                 .await;
+            eprintln!(">> (update_shared_folders) result: {:?}", result);
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -870,6 +872,11 @@ impl ExternalSubscriberManager {
             ShinkaiName::from_node_and_profile_names(requester_node.node_name, requester_profile)?;
         let full_streamer_profile_subidentity =
             ShinkaiName::from_node_and_profile_names(streamer_node.node_name, streamer_profile.clone())?;
+
+        // DEBUG
+        let debug = self.shared_folders_trees.clone();
+        eprintln!("shared_folders_trees: {:?}", debug);
+        // END DEBUG
 
         // Only clean up keys for profile if path is "/"
         // we do this just to remove folders that may had been unshared
@@ -928,6 +935,7 @@ impl ExternalSubscriberManager {
                 let results = vector_fs
                     .find_paths_with_read_permissions_as_vec(&perms_reader, vec![ReadPermission::Public])
                     .await?;
+                eprintln!(">> (available_shared_folders) results: {:?}", results);
 
                 // Use the new function to filter results to only include top-level folders
                 filtered_results = FSEntryTreeGenerator::filter_to_top_level_folders(results);
@@ -952,7 +960,9 @@ impl ExternalSubscriberManager {
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
-                ).await {
+                )
+                .await
+                {
                     Ok(tree) => tree,
                     Err(_) => continue,
                 };
@@ -1082,6 +1092,7 @@ impl ExternalSubscriberManager {
 
             let vr_path =
                 VRPath::from_string(&path).map_err(|e| SubscriberManagerError::InvalidRequest(e.to_string()))?;
+            eprintln!(">> (create_shareable_folder) vr_path: {:?}", vr_path);
             let writer = vector_fs
                 .new_writer(
                     requester_shinkai_identity.clone(),
@@ -1094,6 +1105,10 @@ impl ExternalSubscriberManager {
             let permissions_vector = vector_fs
                 .get_path_permission_for_paths(requester_shinkai_identity.clone(), vec![vr_path.clone()])
                 .await?;
+            eprintln!(
+                ">> (create_shareable_folder) permissions_vector: {:?}",
+                permissions_vector
+            );
 
             if permissions_vector.is_empty() {
                 return Err(SubscriberManagerError::InvalidRequest(
@@ -1102,11 +1117,16 @@ impl ExternalSubscriberManager {
             }
 
             let (_, current_permissions) = permissions_vector.into_iter().next().unwrap();
+            eprintln!(
+                ">> (create_shareable_folder) current_permissions: {:?}",
+                current_permissions
+            );
 
             // Set the read permissions to Public while reusing the write permissions
             let result = vector_fs
                 .update_permissions_recursively(&writer, ReadPermission::Public, current_permissions.write_permission)
                 .await;
+            eprint!(">> (create_shareable_folder) result: {:?}", result);
             shinkai_log(
                 ShinkaiLogOption::ExtSubscriptions,
                 ShinkaiLogLevel::Debug,
@@ -1135,19 +1155,7 @@ impl ExternalSubscriberManager {
         }
 
         // Trigger a refresh of the shareable folders cache
-        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
-            SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
-        )?;
-
-        let _ = self
-            .available_shared_folders(
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                "/".to_string(),
-            )
-            .await;
+        let _ = self.update_shared_folders().await;
 
         Ok(true)
     }

@@ -703,6 +703,7 @@ impl VectorFS {
 
         // Fetches the actual available paths in the FS. // TODO: Remove this and make sure perms are actually accurate.
         let ret_nodes = fs_internals.fs_core_resource.retrieve_nodes_exhaustive_unordered(None);
+        eprintln!("Retrieved nodes: {:?}", ret_nodes);
         let mut all_internals_paths = HashMap::new();
         ret_nodes.iter().for_each(|p| {
             all_internals_paths.insert(p.retrieval_path.clone(), true);
@@ -713,10 +714,13 @@ impl VectorFS {
             .find_paths_with_read_permissions_as_hashmap(reader.path.clone(), read_permissions_to_find)
             .await?;
 
+        eprintln!("Hashmap result: {:?}", hashmap_result);
+        eprintln!("All internals paths: {:?}", all_internals_paths);
         let final_result = hashmap_result
             .into_iter()
-            .filter(|(path, _)| all_internals_paths.contains_key(&path))
+            .filter(|(path, _)| all_internals_paths.contains_key(path))
             .collect();
+        eprintln!("Final result: {:?}", final_result);
 
         Ok(final_result)
     }
