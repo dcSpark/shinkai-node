@@ -1165,44 +1165,20 @@ impl VectorFS {
         }
     }
 
-    // /// Updates the description of the Vector Resource in the FSItem at the writer's path.
-    // pub async fn update_item_resource_description(
-    //     &self,
-    //     writer: &VFSWriter,
-    //     description: String,
-    // ) -> Result<FSItem, VectorFSError> {
-    //     let write_batch = writer.new_write_batch()?;
-    //     let (write_batch, new_item) = self
-    //         .wb_update_item_resource_description(writer, description, write_batch)
-    //         .await?;
-    //     self.db.write_pb(write_batch)?;
-    //     Ok(new_item)
-    // }
+    /// Updates the description of the Vector Resource in the FSItem at the writer's path.
+    pub async fn update_item_resource_description(
+        &self,
+        writer: &VFSWriter,
+        description: String,
+    ) -> Result<FSItem, VectorFSError> {
+        // Fetch the VR and SFM from the DB
+        let reader = writer.new_reader_copied_data(writer.path.clone(), self).await?;
+        let mut vector_resource = self.retrieve_vector_resource(&reader).await?;
+        vector_resource.as_trait_object_mut().set_description(Some(description));
 
-    // /// Updates the description of the Vector Resource in the FSItem at the writer's path.
-    // pub async fn wb_update_item_resource_description(
-    //     &self,
-    //     writer: &VFSWriter,
-    //     description: String,
-    //     mut write_batch: ProfileBoundWriteBatch,
-    // ) -> Result<(ProfileBoundWriteBatch, FSItem), VectorFSError> {
-    //     // Ensure path is valid before proceeding
-    //     self.validate_path_points_to_item(writer.path.clone(), &writer.profile)
-    //         .await?;
-
-    //     // Fetch the VR and SFM from the DB
-    //     let reader = writer.new_reader_copied_data(writer.path.clone(), self).await?;
-    //     let mut vector_resource = self.retrieve_vector_resource(&reader).await?;
-    //     vector_resource.as_trait_object_mut().set_description(Some(description));
-
-    //     // Now save the vR
-
-    //     Self::save_vector_resource_in_folder(&self, writer, resource, source_file_map)
-    //     let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
-    //     self.db.wb_save_profile_fs_internals(&internals, &mut write_batch)?;
-    //     self.db.write_pb(write_batch)?;
-
-    // }
+        // Now save the VR
+        Self::save_vector_resource(&self, writer, vector_resource, None).await
+    }
 
     /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.
     async fn _add_vr_header_to_core_resource(
