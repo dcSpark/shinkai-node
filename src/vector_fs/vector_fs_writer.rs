@@ -4,6 +4,7 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
@@ -19,6 +20,7 @@ use std::collections::HashMap;
 /// A struct that represents having rights to write to the VectorFS under a profile/at a specific path.
 /// If a VFSWriter struct is constructed, that means the `requester_name` has passed
 /// permissions validation and is thus allowed to write to `path`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VFSWriter {
     pub requester_name: ShinkaiName,
     pub path: VRPath,
@@ -981,6 +983,7 @@ impl VectorFS {
                 return Err(VectorFSError::CannotOverwriteFolder(node_path.clone()));
             }
             // If an existing FSItem is saved at the node path
+            let mut existing_vr_ref = None;
             if let Ok(_) = self
                 .validate_path_points_to_item(node_path.clone(), &writer.profile)
                 .await
@@ -991,10 +994,13 @@ impl VectorFS {
                 {
                     node_metadata = ret_node.node.metadata.clone();
                     node_at_path_already_exists = true;
+                    if let Ok(vr_header) = ret_node.node.get_vr_header_content() {
+                        existing_vr_ref = Some(vr_header.reference_string());
+                    }
                 }
             }
             // Check if an existing VR is saved in the FSDB with the same reference string. If so, re-generate id of the current resource.
-            if let Ok(_) = self
+            if let Ok(r) = self
                 .db
                 .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
             {
