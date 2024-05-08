@@ -11,14 +11,16 @@ pub struct FileDestinationCredentials {
     pub access_key_id: String,
     pub secret_access_key: String,
     pub endpoint_uri: String,
+    pub bucket: String,
 }
 
 impl FileDestinationCredentials {
-    pub fn new(access_key_id: String, secret_access_key: String, endpoint_uri: String) -> Self {
+    pub fn new(access_key_id: String, secret_access_key: String, endpoint_uri: String, bucket: String) -> Self {
         FileDestinationCredentials {
             access_key_id,
             secret_access_key,
             endpoint_uri,
+            bucket: bucket,
         }
     }
 }
@@ -27,9 +29,9 @@ impl FileDestinationCredentials {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptionId {
     unique_id: String,
-    include_folders: Option<Vec<VRPath>>,
-    exclude_folders: Option<Vec<VRPath>>,
-    http_upload_destination: Option<FileDestinationCredentials>,
+    pub include_folders: Option<Vec<VRPath>>,
+    pub exclude_folders: Option<Vec<VRPath>>,
+    pub http_upload_destination: Option<FileDestinationCredentials>,
 }
 
 impl SubscriptionId {
