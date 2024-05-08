@@ -15,6 +15,8 @@
 // - IPFS
 // - Arcweave
 
+use std::env;
+
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::EncodingType;
@@ -24,9 +26,22 @@ use serde::{Deserialize, Serialize};
 
 use async_recursion::async_recursion;
 use aws_types::region::Region;
-use serde_json::Value;
+use serde_json::{json, Error as JsonError, Value};
+use shinkai_message_primitives::schemas::shinkai_subscription::FileDestinationCredentials;
 use thiserror::Error;
 use urlencoding::decode;
+
+#[derive(Error, Debug)]
+pub enum FileDestinationError {
+    #[error("JSON parsing error: {0}")]
+    JsonError(#[from] JsonError),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Unknown type field")]
+    UnknownTypeField,
+}
 
 #[derive(Error, Debug)]
 pub enum FileTransferError {
@@ -42,11 +57,152 @@ pub type FileDestinationBucket = String;
 
 #[derive(Clone, Debug)]
 pub enum FileDestination {
-    S3(S3Client, FileDestinationBucket),
-    R2(S3Client, FileDestinationBucket),
+    S3(S3Client, FileDestinationBucket, FileDestinationCredentials),
+    R2(S3Client, FileDestinationBucket, FileDestinationCredentials),
     Http { url: String, auth_headers: Value },
 }
 
+impl FileDestination {
+    pub fn to_json(&self) -> Value {
+        match self {
+            FileDestination::S3(_, bucket, credentials) => {
+                json!({
+                    "type": "S3",
+                    "bucket": bucket,
+                    "credentials": {
+                        "access_key_id": credentials.access_key_id,
+                        "secret_access_key": credentials.secret_access_key,
+                        "endpoint_uri": credentials.endpoint_uri
+                    }
+                })
+            }
+            FileDestination::R2(_, bucket, credentials) => {
+                json!({
+                    "type": "R2",
+                    "bucket": bucket,
+                    "credentials": {
+                        "access_key_id": credentials.access_key_id,
+                        "secret_access_key": credentials.secret_access_key,
+                        "endpoint_uri": credentials.endpoint_uri
+                    }
+                })
+            }
+            FileDestination::Http { url, auth_headers } => {
+                json!({
+                    "type": "Http",
+                    "url": url,
+                    "auth_headers": auth_headers
+                })
+            }
+        }
+    }
+
+    pub async fn from_json(value: &Value) -> Result<Self, FileDestinationError> {
+        let type_field = value
+            .get("type")
+            .ok_or(FileDestinationError::InvalidInput("Missing type field".to_string()))?
+            .as_str()
+            .ok_or(FileDestinationError::InvalidInput(
+                "Type field should be a string".to_string(),
+            ))?;
+
+        match type_field {
+            "S3" | "R2" => {
+                let bucket = value
+                    .get("bucket")
+                    .ok_or(FileDestinationError::InvalidInput("Missing bucket field".to_string()))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "Bucket field should be a string".to_string(),
+                    ))?
+                    .to_string();
+                let credentials = value
+                    .get("credentials")
+                    .ok_or(FileDestinationError::InvalidInput("Missing credentials".to_string()))?;
+                let access_key_id = credentials
+                    .get("access_key_id")
+                    .ok_or(FileDestinationError::InvalidInput("Missing access_key_id".to_string()))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "access_key_id should be a string".to_string(),
+                    ))?
+                    .to_string();
+                let secret_access_key = credentials
+                    .get("secret_access_key")
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "Missing secret_access_key".to_string(),
+                    ))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "secret_access_key should be a string".to_string(),
+                    ))?
+                    .to_string();
+                let endpoint_uri = credentials
+                    .get("endpoint_uri")
+                    .ok_or(FileDestinationError::InvalidInput("Missing endpoint_uri".to_string()))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "endpoint_uri should be a string".to_string(),
+                    ))?
+                    .to_string();
+
+                // Set environment variables for AWS credentials
+                env::set_var("AWS_ACCESS_KEY_ID", &access_key_id);
+                env::set_var("AWS_SECRET_ACCESS_KEY", &secret_access_key);
+
+                // Setup the S3Client using environment configuration
+                let config = aws_config::load_from_env().await;
+
+                let s3_config = config
+                    .into_builder()
+                    .endpoint_url(&endpoint_uri)
+                    .region(Region::new("us-east-1")) // Placeholder region
+                    .build();
+
+                let client = S3Client::new(&s3_config);
+
+                match type_field {
+                    "S3" => Ok(FileDestination::S3(
+                        client,
+                        bucket,
+                        FileDestinationCredentials {
+                            access_key_id,
+                            secret_access_key,
+                            endpoint_uri,
+                        },
+                    )),
+                    "R2" => Ok(FileDestination::R2(
+                        client,
+                        bucket,
+                        FileDestinationCredentials {
+                            access_key_id,
+                            secret_access_key,
+                            endpoint_uri,
+                        },
+                    )),
+                    _ => Err(FileDestinationError::UnknownTypeField),
+                }
+            }
+            "Http" => {
+                let url = value
+                    .get("url")
+                    .ok_or(FileDestinationError::InvalidInput("Missing url field".to_string()))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "Url field should be a string".to_string(),
+                    ))?
+                    .to_string();
+                let auth_headers = value
+                    .get("auth_headers")
+                    .ok_or(FileDestinationError::InvalidInput("Missing auth_headers".to_string()))?
+                    .clone();
+
+                Ok(FileDestination::Http { url, auth_headers })
+            }
+            _ => Err(FileDestinationError::UnknownTypeField),
+        }
+    }
+}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileDestinationPath {
     pub path: String,
@@ -60,7 +216,7 @@ pub async fn upload_file(
     destination: FileDestination,
 ) -> Result<(), FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
             let key = format!("{}/{}", path, filename);
             client
                 .put_object()
@@ -99,7 +255,7 @@ pub async fn download_file(
     destination: FileDestination,
 ) -> Result<Vec<u8>, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
             let key = format!("{}/{}", path, filename);
             let result = client.get_object().bucket(&bucket).key(&key).send().await;
 
@@ -149,7 +305,7 @@ pub async fn list_folder_contents(
     folder_path: &str,
 ) -> Result<Vec<FileDestinationPath>, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
             let mut folder_contents = Vec::new();
             let mut continuation_token: Option<String> = None;
 
@@ -238,7 +394,7 @@ pub async fn generate_temporary_shareable_link(
     destination: &FileDestination,
 ) -> Result<String, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket) => {
+        FileDestination::S3(client, bucket, _) => {
             let key = format!("{}/{}", path, filename);
             let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
                 .expires_in(std::time::Duration::from_secs(3600))
@@ -256,7 +412,7 @@ pub async fn generate_temporary_shareable_link(
 
             Ok(presigned_req.uri().to_string())
         }
-        FileDestination::R2(client, bucket) => {
+        FileDestination::R2(client, bucket, _) => {
             // Similar to S3, assuming R2 supports the same presigned URL generation
             let key = format!("{}/{}", path, filename);
             let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
@@ -287,7 +443,7 @@ pub async fn generate_temporary_shareable_link(
 
 pub async fn delete_file_or_folder(destination: &FileDestination, path: &str) -> Result<(), FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket) | FileDestination::R2(client, bucket) => {
+        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
             let result = client.delete_object().bucket(bucket).key(path).send().await;
 
             result.map_err(|sdk_error| FileTransferError::Other(format!("S3/R2 delete error: {:?}", sdk_error)))?;
@@ -354,13 +510,9 @@ mod tests {
         let file_contents = b"Hello, R2!"; // Dummy file contents
         let file_path = "test_path_a/test_path_b";
 
-        // Set environment variables for AWS credentials
-        // TODO: Remove this and also reset Cloudflare's token!!!
-        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
-        std::env::set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
-        );
+        // Read AWS credentials from environment variables
+        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
@@ -374,8 +526,9 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
+        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string());
+        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
 
         // Call the upload function
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -398,12 +551,9 @@ mod tests {
         let file_contents = b"Hello, R2!"; // Dummy file contents
         let file_path = "test_path_a/test_path_b";
 
-        // Set environment variables for AWS credentials
-        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
-        std::env::set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
-        );
+        // Read AWS credentials from environment variables
+        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
@@ -417,8 +567,9 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
+        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string());
+        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
 
         // Upload the file
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -450,12 +601,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_folder_contents_r2() -> Result<(), Box<dyn std::error::Error>> {
-        // Set environment variables for AWS credentials
-        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
-        std::env::set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
-        );
+        // Read AWS credentials from environment variables
+        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
@@ -469,8 +617,9 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
+        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string());
+        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
 
         // Folder path to list contents
         let folder_path = "";
@@ -498,12 +647,9 @@ mod tests {
         let file_contents = b"Hello, R2!"; // Dummy file contents
         let file_path = "test_path_a/test_path_b";
 
-        // Set environment variables for AWS credentials
-        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
-        std::env::set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
-        );
+        // Read AWS credentials from environment variables
+        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
@@ -517,8 +663,9 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
+        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string());
+        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
 
         // Upload the file
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -533,12 +680,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_upload_multiple_files_and_delete_all() -> Result<(), Box<dyn std::error::Error>> {
-        // Set environment variables for AWS credentials
-        std::env::set_var("AWS_ACCESS_KEY_ID", "462e168d6b11100c5fe01c39410f3c5f");
-        std::env::set_var(
-            "AWS_SECRET_ACCESS_KEY",
-            "e0e4e19c3b9ad5e51018a255aa08ca098c9e095e737f9d5193d9c88f9492c845",
-        );
+        // Read AWS credentials from environment variables
+        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
@@ -552,8 +696,9 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
+        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string());
+        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
 
         // Define main folder and subfolder names
         let main_folder_name = "delete_test_folder";
@@ -595,36 +740,20 @@ mod tests {
         );
 
         // List contents before deletion
-        // eprintln!("Calling folder contents");
-        // let list_result = list_folder_contents(&destination, main_folder_name).await;
-        // eprintln!("Folder contents before deletion: {:?}", list_result);
+        eprintln!("Calling folder contents");
+        let list_result = list_folder_contents(&destination, main_folder_name).await.unwrap();
+        eprintln!("\n\nFolder contents before deletion: {:?}", list_result);
 
         // Delete all files in the main folder
-        for (file_name, _) in &files {
-            let delete_result = delete_file_or_folder(&destination, &format!("{}/{}", main_folder_name, file_name)).await;
+        for file_path in list_result {
+            let delete_result = delete_file_or_folder(&destination, &file_path.path).await;
             assert!(
                 delete_result.is_ok(),
                 "Delete failed for {}: {:?}",
-                file_name,
+                file_path.path,
                 delete_result
             );
         }
-
-        // Delete the subfolder and its contents
-        let delete_folder_result = delete_all_in_folder(&destination, &format!("{}/{}", main_folder_name, subfolder_name)).await;
-        assert!(
-            delete_folder_result.is_ok(),
-            "Delete failed for subfolder: {:?}",
-            delete_folder_result
-        );
-
-        // Finally, delete the main folder itself
-        let delete_main_folder_result = delete_file_or_folder(&destination, main_folder_name).await;
-        assert!(
-            delete_main_folder_result.is_ok(),
-            "Delete failed for main folder: {:?}",
-            delete_main_folder_result
-        );
 
         // List contents after deletion to ensure all files and folders are deleted
         let final_list_result = list_folder_contents(&destination, "delete_test_folder").await.unwrap();
@@ -634,6 +763,14 @@ mod tests {
             final_list_result.is_empty(),
             "Folder contents should be empty after deletion, but found: {:?}",
             final_list_result
+        );
+
+        // // Finally, delete the main folder itself
+        let delete_main_folder_result = delete_file_or_folder(&destination, main_folder_name).await;
+        assert!(
+            delete_main_folder_result.is_ok(),
+            "Delete failed for main folder: {:?}",
+            delete_main_folder_result
         );
 
         Ok(())

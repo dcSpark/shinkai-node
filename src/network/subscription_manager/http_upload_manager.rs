@@ -89,7 +89,6 @@ impl HttpSubscriptionUploadManager {
     }
 
     // Note: subscription should already have the profile and the shared folder
-
     pub fn add_subscription(&self, subscription_id: SubscriptionId, file_destination: FileDestination) {
         self.subscription_config
             .insert(subscription_id.clone(), file_destination);
