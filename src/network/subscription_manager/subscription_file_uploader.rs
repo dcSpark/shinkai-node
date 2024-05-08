@@ -17,7 +17,9 @@
 
 use std::env;
 
+use aws_config::credential_process;
 use aws_config::meta::region::RegionProviderChain;
+use aws_config::profile::credentials;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::EncodingType;
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
@@ -53,37 +55,35 @@ pub enum FileTransferError {
     Other(String),
 }
 
-pub type FileDestinationBucket = String;
-
 #[derive(Clone, Debug)]
 pub enum FileDestination {
-    S3(S3Client, FileDestinationBucket, FileDestinationCredentials),
-    R2(S3Client, FileDestinationBucket, FileDestinationCredentials),
+    S3(S3Client, FileDestinationCredentials),
+    R2(S3Client, FileDestinationCredentials),
     Http { url: String, auth_headers: Value },
 }
 
 impl FileDestination {
     pub fn to_json(&self) -> Value {
         match self {
-            FileDestination::S3(_, bucket, credentials) => {
+            FileDestination::S3(_, credentials) => {
                 json!({
                     "type": "S3",
-                    "bucket": bucket,
                     "credentials": {
                         "access_key_id": credentials.access_key_id,
                         "secret_access_key": credentials.secret_access_key,
-                        "endpoint_uri": credentials.endpoint_uri
+                        "endpoint_uri": credentials.endpoint_uri,
+                        "bucket": credentials.bucket
                     }
                 })
             }
-            FileDestination::R2(_, bucket, credentials) => {
+            FileDestination::R2(_, credentials) => {
                 json!({
                     "type": "R2",
-                    "bucket": bucket,
                     "credentials": {
                         "access_key_id": credentials.access_key_id,
                         "secret_access_key": credentials.secret_access_key,
-                        "endpoint_uri": credentials.endpoint_uri
+                        "endpoint_uri": credentials.endpoint_uri,
+                        "bucket": credentials.bucket
                     }
                 })
             }
@@ -97,6 +97,25 @@ impl FileDestination {
         }
     }
 
+    pub async fn from_credentials(credentials: FileDestinationCredentials) -> Result<Self, FileDestinationError> {
+        // Set environment variables for AWS credentials
+        env::set_var("AWS_ACCESS_KEY_ID", &credentials.access_key_id);
+        env::set_var("AWS_SECRET_ACCESS_KEY", &credentials.secret_access_key);
+
+        // Setup the S3Client using environment configuration
+        let config = aws_config::load_from_env().await;
+
+        let s3_config = config
+            .into_builder()
+            .endpoint_url(&credentials.endpoint_uri)
+            .region(Region::new("us-east-1")) // Placeholder region
+            .build();
+
+        let client = S3Client::new(&s3_config);
+
+        Ok(FileDestination::S3(client, credentials))
+    }
+
     pub async fn from_json(value: &Value) -> Result<Self, FileDestinationError> {
         let type_field = value
             .get("type")
@@ -108,14 +127,6 @@ impl FileDestination {
 
         match type_field {
             "S3" | "R2" => {
-                let bucket = value
-                    .get("bucket")
-                    .ok_or(FileDestinationError::InvalidInput("Missing bucket field".to_string()))?
-                    .as_str()
-                    .ok_or(FileDestinationError::InvalidInput(
-                        "Bucket field should be a string".to_string(),
-                    ))?
-                    .to_string();
                 let credentials = value
                     .get("credentials")
                     .ok_or(FileDestinationError::InvalidInput("Missing credentials".to_string()))?;
@@ -145,6 +156,14 @@ impl FileDestination {
                         "endpoint_uri should be a string".to_string(),
                     ))?
                     .to_string();
+                let bucket = credentials
+                    .get("bucket")
+                    .ok_or(FileDestinationError::InvalidInput("Missing bucket".to_string()))?
+                    .as_str()
+                    .ok_or(FileDestinationError::InvalidInput(
+                        "bucket should be a string".to_string(),
+                    ))?
+                    .to_string();
 
                 // Set environment variables for AWS credentials
                 env::set_var("AWS_ACCESS_KEY_ID", &access_key_id);
@@ -164,20 +183,20 @@ impl FileDestination {
                 match type_field {
                     "S3" => Ok(FileDestination::S3(
                         client,
-                        bucket,
                         FileDestinationCredentials {
                             access_key_id,
                             secret_access_key,
                             endpoint_uri,
+                            bucket,
                         },
                     )),
                     "R2" => Ok(FileDestination::R2(
                         client,
-                        bucket,
                         FileDestinationCredentials {
                             access_key_id,
                             secret_access_key,
                             endpoint_uri,
+                            bucket,
                         },
                     )),
                     _ => Err(FileDestinationError::UnknownTypeField),
@@ -216,11 +235,11 @@ pub async fn upload_file(
     destination: FileDestination,
 ) -> Result<(), FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
+        FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let key = format!("{}/{}", path, filename);
             client
                 .put_object()
-                .bucket(&bucket)
+                .bucket(&credentials.bucket)
                 .key(&key)
                 .body(data.into())
                 .content_type("application/octet-stream")
@@ -255,9 +274,9 @@ pub async fn download_file(
     destination: FileDestination,
 ) -> Result<Vec<u8>, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
+        FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let key = format!("{}/{}", path, filename);
-            let result = client.get_object().bucket(&bucket).key(&key).send().await;
+            let result = client.get_object().bucket(&credentials.bucket).key(&key).send().await;
 
             match result {
                 Ok(output) => {
@@ -305,14 +324,14 @@ pub async fn list_folder_contents(
     folder_path: &str,
 ) -> Result<Vec<FileDestinationPath>, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
+        FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let mut folder_contents = Vec::new();
             let mut continuation_token: Option<String> = None;
 
             loop {
                 let mut request_builder = client
                     .list_objects_v2()
-                    .bucket(bucket)
+                    .bucket(credentials.bucket.clone())
                     .prefix(folder_path)
                     .delimiter("/")
                     .encoding_type(EncodingType::Url);
@@ -387,6 +406,27 @@ pub async fn list_folder_contents(
     }
 }
 
+/// Generates temporary shareable links for all files in a specified folder.
+#[async_recursion]
+pub async fn generate_temporary_shareable_links_for_folder(
+    folder_path: &str,
+    destination: &FileDestination,
+) -> Result<Vec<(String, String)>, FileTransferError> {
+    let contents = list_folder_contents(destination, folder_path).await?;
+    let mut links = Vec::new();
+
+    for item in contents {
+        if !item.is_folder {
+            match generate_temporary_shareable_link(folder_path, &item.path, destination).await {
+                Ok(link) => links.push((item.path, link)),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    
+    Ok(links)
+}
+
 // Function to generate a temporary shareable link for a file for 1 hour
 pub async fn generate_temporary_shareable_link(
     path: &str,
@@ -394,7 +434,7 @@ pub async fn generate_temporary_shareable_link(
     destination: &FileDestination,
 ) -> Result<String, FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket, _) => {
+        FileDestination::S3(client, credentials) => {
             let key = format!("{}/{}", path, filename);
             let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
                 .expires_in(std::time::Duration::from_secs(3600))
@@ -403,7 +443,7 @@ pub async fn generate_temporary_shareable_link(
 
             let presigned_req = client
                 .get_object()
-                .bucket(bucket)
+                .bucket(credentials.bucket.clone())
                 .key(&key)
                 .response_content_type("application/octet-stream")
                 .presigned(presigning_config)
@@ -412,7 +452,7 @@ pub async fn generate_temporary_shareable_link(
 
             Ok(presigned_req.uri().to_string())
         }
-        FileDestination::R2(client, bucket, _) => {
+        FileDestination::R2(client, credentials) => {
             // Similar to S3, assuming R2 supports the same presigned URL generation
             let key = format!("{}/{}", path, filename);
             let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
@@ -422,7 +462,7 @@ pub async fn generate_temporary_shareable_link(
 
             let presigned_req = client
                 .get_object()
-                .bucket(bucket)
+                .bucket(credentials.bucket.clone())
                 .key(&key)
                 .response_content_type("application/octet-stream")
                 .presigned(presigning_config)
@@ -443,8 +483,8 @@ pub async fn generate_temporary_shareable_link(
 
 pub async fn delete_file_or_folder(destination: &FileDestination, path: &str) -> Result<(), FileTransferError> {
     match destination {
-        FileDestination::S3(client, bucket, _) | FileDestination::R2(client, bucket, _) => {
-            let result = client.delete_object().bucket(bucket).key(path).send().await;
+        FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
+            let result = client.delete_object().bucket(credentials.bucket.clone()).key(path).send().await;
 
             result.map_err(|sdk_error| FileTransferError::Other(format!("S3/R2 delete error: {:?}", sdk_error)))?;
         }
@@ -526,9 +566,14 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
+        let credentials = FileDestinationCredentials::new(
+            access_key_id,
+            secret_access_key,
+            cloudflare_kv_uri.to_string(),
+            bucket_name.to_string(),
+        );
+        let destination = FileDestination::from_credentials(credentials).await?;
 
         // Call the upload function
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -567,9 +612,14 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
+        let credentials = FileDestinationCredentials::new(
+            access_key_id,
+            secret_access_key,
+            cloudflare_kv_uri.to_string(),
+            bucket_name.to_string(),
+        );
+        let destination = FileDestination::from_credentials(credentials).await?;
 
         // Upload the file
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -617,9 +667,14 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
+        let credentials = FileDestinationCredentials::new(
+            access_key_id,
+            secret_access_key,
+            cloudflare_kv_uri.to_string(),
+            bucket_name.to_string(),
+        );
+        let destination = FileDestination::from_credentials(credentials).await?;
 
         // Folder path to list contents
         let folder_path = "";
@@ -663,9 +718,14 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
+        let credentials = FileDestinationCredentials::new(
+            access_key_id,
+            secret_access_key,
+            cloudflare_kv_uri.to_string(),
+            bucket_name.to_string(),
+        );
+        let destination = FileDestination::from_credentials(credentials).await?;
 
         // Upload the file
         let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
@@ -696,9 +756,14 @@ mod tests {
         let client = S3Client::new(&s3_config);
 
         // Setup the destination
-        let credentials = FileDestinationCredentials::new(access_key_id, secret_access_key, cloudflare_kv_uri.to_string());
         let bucket_name = "shinkai-streamer";
-        let destination = FileDestination::R2(client, bucket_name.to_string(), credentials);
+        let credentials = FileDestinationCredentials::new(
+            access_key_id,
+            secret_access_key,
+            cloudflare_kv_uri.to_string(),
+            bucket_name.to_string(),
+        );
+        let destination = FileDestination::from_credentials(credentials).await?;
 
         // Define main folder and subfolder names
         let main_folder_name = "delete_test_folder";
