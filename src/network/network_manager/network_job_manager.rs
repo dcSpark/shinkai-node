@@ -89,6 +89,7 @@ pub struct NetworkJobManager {
 }
 
 impl NetworkJobManager {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -160,12 +161,10 @@ impl NetworkJobManager {
         )
         .await;
 
-        let network_job_manager = Self {
+        Self {
             network_job_queue_manager,
             network_job_processing_task: Some(job_queue_handler),
-        };
-
-        network_job_manager
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
