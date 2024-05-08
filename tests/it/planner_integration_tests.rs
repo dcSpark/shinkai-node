@@ -490,7 +490,6 @@ fn create_openai_mock_1(server: &mut mockito::Server) -> Mock {
                 }
             ],
             "model": "gpt-4-1106-preview",
-            "response_format": {"type": "json_object"},
             "temperature": 0.7
         }"#,
         r#"{
@@ -543,7 +542,6 @@ fn create_openai_mock_2(server: &mut mockito::Server) -> Mock {
                 }
             ],
             "model": "gpt-4-1106-preview",
-            "response_format": {"type": "json_object"},
             "temperature": 0.7
         }"#,
         r#"{
@@ -597,7 +595,6 @@ fn create_openai_mock_3(server: &mut mockito::Server) -> Mock {
                 }
             ],
             "model": "gpt-4-1106-preview",
-            "response_format": {"type": "json_object"},
             "temperature": 0.7
         }"#,
         r#"{
