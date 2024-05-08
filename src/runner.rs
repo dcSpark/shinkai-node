@@ -207,8 +207,8 @@ pub async fn initialize_node() -> Result<
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
     if !node_env.no_secrets_file {
-        std::fs::create_dir_all(Path::new(&secrets_file_path).parent().unwrap()).expect("Failed to create .secret dir");
-        std::fs::write(secrets_file_path, secret_content).expect("Unable to write to .secret file");
+        std::fs::create_dir_all(Path::new(&secrets_file_path.clone()).parent().unwrap()).expect("Failed to create .secret dir");
+        std::fs::write(secrets_file_path.clone(), secret_content).expect("Unable to write to .secret file");
     }
 
     // Now that all core init data acquired, start running the node itself
@@ -221,6 +221,7 @@ pub async fn initialize_node() -> Result<
         node_env.ping_interval,
         node_commands_receiver,
         main_db_path.clone(),
+        secrets_file_path.clone(),
         node_env.first_device_needs_registration_code,
         initial_agents,
         node_env.js_toolkit_executor_remote.clone(),

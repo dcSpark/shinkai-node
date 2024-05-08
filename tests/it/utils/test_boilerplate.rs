@@ -78,6 +78,7 @@ where
             0,
             node1_commands_receiver.clone(),
             node1_db_path,
+            "".to_string(),
             false,
             vec![],
             None,
