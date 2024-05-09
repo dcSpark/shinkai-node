@@ -2,6 +2,7 @@ use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use lazy_static::lazy_static;
 use shinkai_vector_resources::embeddings::Embedding;
+use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 
 // TODO: Have the node generate embeddings and save rust tools into the tool router
@@ -68,8 +69,7 @@ impl RustTool {
         tool_embedding: Embedding,
     ) -> Self {
         Self {
-            // Use VRPath::clean_string() to replace spaces with underscores
-            name: name.replace(" ", "_"),
+            name: VRPath::clean_string(&name),
             description,
             input_args,
             output_args,
