@@ -1056,7 +1056,10 @@ async fn local_txt_metadata_parsing_test() {
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("likes"));
     assert!(!results[0].node.get_text_content().unwrap().contains("pg_nums"));
     assert!(results[0].node.metadata.as_ref().unwrap().contains_key("pg_nums"));
-    assert_ne!(results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(), "br0K3n");
+    assert_ne!(
+        results[0].node.metadata.as_ref().unwrap().get("datetime").unwrap(),
+        "br0K3n"
+    );
 
     // Perform another vector search
     let query_string2 = "What is the parsed datetime?".to_string();
@@ -1111,6 +1114,113 @@ async fn local_csv_metadata_parsing_test() {
 
     assert!(results2[0].score > 0.4);
     assert!(results2[0].node.get_text_content().unwrap().contains("Qantas"));
-    assert!(!results2[0].node.get_text_content().unwrap().contains("!{{{carry_pets:true}}}!"));
-    assert_eq!(results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(), "true");
+    assert!(!results2[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("!{{{carry_pets:true}}}!"));
+    assert_eq!(
+        results2[0].node.metadata.as_ref().unwrap().get("carry_pets").unwrap(),
+        "true"
+    );
+}
+
+#[tokio::test]
+async fn local_md_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "parsed_channels.md";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, false, false);
+
+    // Perform vector search
+    let query_string = "What is happening on OpenSea?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.7);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("KoL Token has successfully launched"));
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().len(), 9);
+    assert_eq!(results[0].node.metadata.as_ref().unwrap().get("recasts").unwrap(), "0");
+    assert_eq!(
+        results[0].node.metadata.as_ref().unwrap().get("hash").unwrap(),
+        "0x43b9a4bc24246855e3d5f4459a7a3d79e50505e6"
+    );
+
+    // Get Farcaster Posts
+    let query_string = "Get Farcaster Posts".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results.iter().all(|node| node.score > 0.7));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("Pepe Runner 2049")));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("i never remember")));
+    assert!(results
+        .iter()
+        .any(|node| node.node.get_text_content().unwrap().contains("wowow.shibuya.xyz")));
+
+    // Shinkai Vector Resources
+    let query_string = "Explain Shinkai Vector Resources".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.7);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("A powerful native Rust"));
+}
+
+#[tokio::test]
+async fn local_html_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "sample.html";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Compare Traditional Method and AI-based solutions".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.8);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("Traditional Methods"));
 }

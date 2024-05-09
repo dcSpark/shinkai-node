@@ -1,19 +1,15 @@
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
-#[cfg(feature = "native-http")]
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 
 use lazy_static::lazy_static;
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 use reqwest::blocking::Client;
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 use reqwest::Client as AsyncClient;
 use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "native-http")]
-use std::io::prelude::*;
 
 use std::time::Duration;
 
@@ -76,14 +72,14 @@ pub trait EmbeddingGenerator: Sync + Send {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 pub struct RemoteEmbeddingGenerator {
     pub model_type: EmbeddingModelType,
     pub api_url: String,
     pub api_key: Option<String>,
 }
 
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 #[async_trait]
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Clones self and wraps it in a Box
@@ -91,7 +87,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         Box::new(self.clone())
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate Embeddings for an input list of strings by using the external API.
     /// This method batch generates whenever possible to increase speed.
     /// Note this method is blocking.
@@ -128,7 +124,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external API.
     /// Note this method is blocking.
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
@@ -149,7 +145,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external API.
     /// This method batch generates whenever possible to increase speed.
     async fn generate_embeddings(
@@ -187,7 +183,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external API.
     async fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         let input_strings = vec![input_string.to_string()];
@@ -218,7 +214,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     }
 }
 
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 impl RemoteEmbeddingGenerator {
     /// Create a RemoteEmbeddingGenerator
     pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<String>) -> RemoteEmbeddingGenerator {
@@ -260,7 +256,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
     /// pub async fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
     pub async fn generate_embedding_ollama(
@@ -360,7 +356,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external Ollama API.
     fn generate_embedding_ollama_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         // Prepare the request body
@@ -410,7 +406,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
     pub async fn generate_embedding_tei(
         &self,
@@ -522,7 +518,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generates embeddings using a Hugging Face Text Embeddings Inference server
     fn generate_embedding_tei_blocking(
         &self,
@@ -615,7 +611,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     pub async fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         // Prepare the request body
@@ -667,7 +663,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     fn generate_embedding_open_ai_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
         // Prepare the request body

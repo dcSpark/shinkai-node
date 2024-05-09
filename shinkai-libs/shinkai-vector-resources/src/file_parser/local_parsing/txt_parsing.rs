@@ -10,7 +10,7 @@ use crate::resource_errors::VRError;
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
     pub fn process_txt_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        let txt_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedJSONParsing)?;
+        let txt_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedTXTParsing)?;
         let sentences = LocalFileParser::process_into_sentences(txt_string);
         let text_groups = LocalFileParser::process_into_text_groups(sentences, max_node_text_size);
         // for sentence in &sentences {

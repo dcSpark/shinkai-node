@@ -3,7 +3,7 @@ use super::file_parser_types::TextGroup;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
-#[cfg(feature = "native-http")]
+#[cfg(feature = "desktop-only")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
 use regex::Regex;
@@ -27,16 +27,9 @@ impl ShinkaiFileParser {
                 texts.push(sub_group.format_text_for_embedding(max_node_text_size));
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
-                indices.push((sub_path, texts.len() - 1));
-            }
-            for sub_group in &text_group.sub_groups {
-                Self::collect_texts_and_indices(
-                    &sub_group.sub_groups,
-                    texts,
-                    indices,
-                    max_node_text_size,
-                    current_path.clone(),
-                );
+                indices.push((sub_path.clone(), texts.len() - 1));
+
+                Self::collect_texts_and_indices(&sub_group.sub_groups, texts, indices, max_node_text_size, sub_path);
             }
         }
     }
@@ -58,7 +51,7 @@ impl ShinkaiFileParser {
         }
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
@@ -132,7 +125,7 @@ impl ShinkaiFileParser {
         Ok(text_groups)
     }
 
-    #[cfg(feature = "native-http")]
+    #[cfg(feature = "desktop-only")]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
     pub fn generate_text_group_embeddings_blocking(
