@@ -999,12 +999,15 @@ impl VectorFS {
                     }
                 }
             }
+
             // Check if an existing VR is saved in the FSDB with the same reference string. If so, re-generate id of the current resource.
-            if let Ok(r) = self
-                .db
-                .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
-            {
-                resource.as_trait_object_mut().generate_and_update_resource_id();
+            if existing_vr_ref != Some(resource.as_trait_object().reference_string()) {
+                if let Ok(r) = self
+                    .db
+                    .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
+                {
+                    resource.as_trait_object_mut().generate_and_update_resource_id();
+                }
             }
 
             // Now all validation checks/setup have passed, move forward with saving header/resource/source file
