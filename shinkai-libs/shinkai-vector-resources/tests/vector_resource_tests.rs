@@ -1,7 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::file_parser::local_parsing::LocalFileParser;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -1193,4 +1192,35 @@ async fn local_md_parsing_test() {
         .get_text_content()
         .unwrap()
         .contains("A powerful native Rust"));
+}
+
+#[tokio::test]
+async fn local_html_parsing_test() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let source_file_name = "sample.html";
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
+    let resource = ShinkaiFileParser::process_file_into_resource(
+        buffer,
+        &generator,
+        source_file_name.to_string(),
+        None,
+        &vec![],
+        generator.model_type().max_input_token_count() as u64,
+        DistributionInfo::new_empty(),
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    // Perform vector search
+    let query_string = "Compare Traditional Method and AI-based solutions".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.8);
+    assert!(results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("Traditional Methods"));
 }

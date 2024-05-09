@@ -188,7 +188,12 @@ impl LocalFileParser {
 
     // Creates a new text group and nests it under the last group at the given depth.
     // It splits text groups into chunks if needed and parses metadata in the text.
-    fn push_text_group_by_depth(text_groups: &mut Vec<TextGroup>, depth: usize, text: String, max_node_text_size: u64) {
+    pub fn push_text_group_by_depth(
+        text_groups: &mut Vec<TextGroup>,
+        depth: usize,
+        text: String,
+        max_node_text_size: u64,
+    ) {
         if !text.is_empty() {
             let mut created_text_groups = Vec::new();
             let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
