@@ -288,4 +288,26 @@ impl ShinkaiFileParser {
             }
         }
     }
+
+    pub fn parse_and_split_into_text_groups(text: String, max_node_text_size: u64) -> Vec<TextGroup> {
+        let mut text_groups = Vec::new();
+        let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
+
+        if parsed_text.len() as u64 > max_node_text_size {
+            let chunks = if parsed_any_metadata {
+                ShinkaiFileParser::split_into_chunks_with_metadata(&text, max_node_text_size as usize)
+            } else {
+                ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize)
+            };
+
+            for chunk in chunks {
+                let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
+                text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
+            }
+        } else {
+            text_groups.push(TextGroup::new(parsed_text, metadata, vec![], None));
+        }
+
+        text_groups
+    }
 }
