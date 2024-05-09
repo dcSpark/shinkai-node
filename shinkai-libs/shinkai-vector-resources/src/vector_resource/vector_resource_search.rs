@@ -665,11 +665,12 @@ pub trait VectorResourceSearch: VectorResourceCore {
                         if let Some(current_score) = new_hierarchical_scores.pop() {
                             let hierarchical_count = new_hierarchical_scores.len();
                             let hierarchical_sum = new_hierarchical_scores.iter().sum::<f32>();
-                            let hierarchical_weight = 0.2;
                             if hierarchical_count > 0 && hierarchical_sum > 0.0 {
+                                let hierarchical_weight = 0.2;
+                                let current_score_weight = 1.0 - hierarchical_weight;
                                 let hierarchical_score =
                                     (hierarchical_sum / hierarchical_count as f32) * hierarchical_weight;
-                                score = current_score + hierarchical_score;
+                                score = (current_score * current_score_weight) + hierarchical_score;
                             }
                         }
                         break;
