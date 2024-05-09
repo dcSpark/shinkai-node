@@ -39,6 +39,7 @@ fn setup() {
 
 #[test]
 fn node_agent_registration() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     // WIP: need to find a way to test the agent registration
     setup();
@@ -82,7 +83,7 @@ fn node_agent_registration() {
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                    "content": "\n# Answer\n Hello there, how may I assist you today?"
                 },
                 "finish_reason": "stop"
             }],
@@ -143,6 +144,7 @@ fn node_agent_registration() {
             0,
             node1_commands_receiver,
             node1_db_path,
+            "".to_string(),
             true,
             vec![agent],
             None,

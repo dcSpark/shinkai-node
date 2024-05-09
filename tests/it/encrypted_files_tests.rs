@@ -29,6 +29,7 @@ use mockito::Server;
 
 #[test]
 fn sandwich_messages_with_files_test() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -92,7 +93,7 @@ fn sandwich_messages_with_files_test() {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                            "content": "\n# Answer\nHello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],

@@ -64,11 +64,9 @@ impl JobScope {
         // Each VRKai and VectorFSItem counts as 1
         count += self.local_vrkai.len() + self.vector_fs_items.len();
 
-        // Each VRPack and folder (both VectorFS and Network) counts as 5
-        count += (self.local_vrpack.len() + self.vector_fs_folders.len() + self.network_folders.len()) * 5;
-
-        // Check if the total count is >= 5
-        count >= 5
+        // Each VRPack and folder (both VectorFS and Network) counts as a multiple.
+        count += (self.local_vrpack.len() + self.vector_fs_folders.len() + self.network_folders.len()) * 3;
+        count >= 4
     }
 
     pub fn to_bytes(&self) -> serde_json::Result<Vec<u8>> {
@@ -88,6 +86,11 @@ impl JobScope {
     pub fn to_json_str(&self) -> serde_json::Result<String> {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
+    }
+
+    /// Serializes the JobScope to a JSON value.
+    pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
+        serde_json::to_value(self)
     }
 }
 

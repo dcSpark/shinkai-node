@@ -86,7 +86,7 @@ impl SubPrompt {
                     format!("An EBNF option to respond with: {} ", ebnf)
                 } else {
                     format!(
-                        "Then respond using the following EBNF and absolutely nothing else: {} ",
+                        "Then respond using the following markdown formatting and absolutely nothing else: {} ",
                         ebnf
                     )
                 }
@@ -139,7 +139,7 @@ impl SubPrompt {
             return 0;
         }
 
-        let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&[completion_message.clone()]);
+        let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()]);
         new_message_tokens
     }
 
@@ -358,7 +358,7 @@ impl Prompt {
         let mut removed_subprompts = vec![];
 
         let mut current_token_count = self.generate_chat_completion_messages().1;
-        while current_token_count > max_prompt_tokens {
+        while current_token_count + 200 > max_prompt_tokens {
             match self.remove_lowest_priority_sub_prompt() {
                 Some(removed_sub_prompt) => {
                     current_token_count -= removed_sub_prompt.count_tokens_as_completion_message();
@@ -397,7 +397,7 @@ impl Prompt {
             format!("An EBNF option to respond with: {} ", ebnf)
         } else {
             format!(
-                "Then respond using the following EBNF and absolutely nothing else: {} ",
+                "Then respond using the following markdown formatting and absolutely nothing else: {} ",
                 ebnf
             )
         }
@@ -424,6 +424,7 @@ impl Prompt {
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
             let new_message = sub_prompt.into_chat_completion_request_message();
+            // Nico: fix
             current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
             tiktoken_messages.push(new_message);
         }
@@ -458,7 +459,7 @@ impl Prompt {
 
         let mut messages: Vec<String> = Vec::new();
         // Process all sub-prompts in their original order
-        for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
+        for (i, sub_prompt) in prompt_copy.sub_prompts.iter().enumerate() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
@@ -473,12 +474,11 @@ impl Prompt {
                     messages.push(new_message);
                 }
                 SubPrompt::EBNF(_, content, _, _) => {
-                    let new_message = format!("```{}```\n", content.clone());
+                    let new_message = format!("{}\n", content.clone());
                     messages.push(new_message);
                 }
             }
         }
-
         let output = messages.join(" ");
         // eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)

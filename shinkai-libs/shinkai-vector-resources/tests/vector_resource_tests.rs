@@ -1143,6 +1143,10 @@ async fn local_md_parsing_test() {
     .await
     .unwrap();
 
+    resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, false, false);
+
     // Perform vector search
     let query_string = "What is happening on OpenSea?".to_string();
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();

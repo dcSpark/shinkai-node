@@ -16,6 +16,11 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_resource(resource)?;
 
+        eprintln!(
+            "!!!!!!!!!!!!!!!!! resource description: {:?}",
+            resource.as_trait_object().description()
+        );
+
         // Insert into the "VectorResources" column family
         batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
@@ -24,10 +29,7 @@ impl VectorFSDB {
 
     /// Prepares the `BaseVectorResource` for saving into the FSDB in the resources topic as a JSON
     /// string. Note this is only to be used internally.
-    fn _prepare_resource(
-        &self,
-        resource: &BaseVectorResource,
-    ) -> Result<(Vec<u8>, &str), VectorFSError> {
+    fn _prepare_resource(&self, resource: &BaseVectorResource) -> Result<(Vec<u8>, &str), VectorFSError> {
         let json = resource.to_json()?;
         let bytes = json.as_bytes().to_vec();
         // Retrieve the handle for the "VectorResources" column family

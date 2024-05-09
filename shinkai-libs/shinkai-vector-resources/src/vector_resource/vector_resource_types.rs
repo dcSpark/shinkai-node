@@ -214,30 +214,46 @@ impl RetrievedNode {
 
     /// Parses node position in the content using metadata/retrieved node data.
     pub fn format_position_string(&self) -> String {
-        match &self.node.metadata {
-            Some(metadata) => {
-                if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
-                    if !page_numbers.is_empty() {
-                        return format!("Pgs: {}", page_numbers);
-                    }
-                }
-                // If from a Document Vector Resource, then we can create a relative position based on parents
-                // as all node ids in Docs are integers.
-                if self.resource_header.resource_base_type == VRBaseType::Document {
-                    let section_string = self
-                        .retrieval_path
-                        .path_ids
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<String>>()
-                        .join(".");
-                    format!("Section: {}", section_string)
-                } else {
-                    String::new()
+        if let Some(metadata) = &self.node.metadata {
+            if let Some(page_numbers) = metadata.get(&ShinkaiFileParser::page_numbers_metadata_key()) {
+                if !page_numbers.is_empty() {
+                    return format!("Pgs: {}", page_numbers);
                 }
             }
-            None => String::new(),
         }
+
+        // Cut up the retrieval path into shortened strings
+        let section_strings = self
+            .retrieval_path
+            .path_ids
+            .iter()
+            .map(|id| {
+                let mut shortened_id = id.to_string();
+                if shortened_id.len() > 20 {
+                    let mut char_iter = shortened_id.chars();
+                    shortened_id = char_iter.by_ref().take(20).collect::<String>();
+                    // shortened_id.push_str("...");
+                }
+                shortened_id
+            })
+            .collect::<Vec<String>>();
+
+        // Create a relative position based on parents node ids
+        let final_section_string = if section_strings.len() > 3 {
+            format!(
+                ".../{}",
+                section_strings
+                    .iter()
+                    .skip(section_strings.len() - 3)
+                    .map(|s| s.as_str())
+                    .collect::<Vec<&str>>()
+                    .join("/")
+            )
+        } else {
+            section_strings.join("/")
+        };
+
+        format!("Section: {}", final_section_string)
     }
 
     /// Sets the proximity_group_id in the node's metadata.

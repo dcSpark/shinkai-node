@@ -1202,7 +1202,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1241,7 +1241,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1256,7 +1256,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2627,6 +2627,7 @@ impl Node {
     }
 
     pub async fn api_change_nodes_name(
+        secret_file_path: &str,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2707,7 +2708,7 @@ impl Node {
         }
 
         // Write to .secret file
-        match update_global_identity_name(new_node_name.get_node_name_string().as_str()) {
+        match update_global_identity_name(secret_file_path, new_node_name.get_node_name_string().as_str()) {
             Ok(_) => {
                 eprintln!("Node name changed successfully. Restarting server...");
                 let _ = res.send(Ok(())).await;

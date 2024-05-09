@@ -415,6 +415,8 @@ pub struct Node {
     pub encryption_public_key: EncryptionPublicKey,
     // The address this node is listening on.
     pub listen_address: SocketAddr,
+    // Secrets file path
+    pub secrets_file_path: String,
     // A map of known peer nodes.
     pub peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     // The interval at which this node pings all known peers.
@@ -463,6 +465,7 @@ impl Node {
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         main_db_path: String,
+        secrets_file_path: String,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -598,6 +601,7 @@ impl Node {
             encryption_public_key,
             peers: CHashMap::new(),
             listen_address,
+            secrets_file_path,
             ping_interval_secs,
             commands,
             identity_manager: identity_manager.clone(),
@@ -1411,8 +1415,10 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let encryption_public_key_clone = self.encryption_public_key;
                                             let identity_public_key_clone = self.identity_public_key;
+                                            let secret_file_path = self.secrets_file_path.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_change_nodes_name(
+                                                    secret_file_path.as_str(),
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
