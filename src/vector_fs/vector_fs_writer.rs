@@ -1183,7 +1183,7 @@ impl VectorFS {
         vector_resource.as_trait_object_mut().set_description(Some(description));
 
         // Now save the VR
-        Self::save_vector_resource(&self, writer, vector_resource, None).await
+        Self::save_vector_resource(self, writer, vector_resource, None).await
     }
 
     /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.

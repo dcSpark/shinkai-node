@@ -235,6 +235,7 @@ impl VectorFSDB {
         for op in operations.clone() {
             match op {
                 TransactionOperation::Write(cf_name, key, value) => {
+                    eprintln!("Writing to CF: {:?}, Key: {:?}, Value Length: {}", cf_name, key, value.len());
                     let cf_handle = self.db.cf_handle(&cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
                     txn.put_cf(cf_handle, key.as_bytes(), &value)
                         .map_err(VectorFSError::from)?;
@@ -258,6 +259,7 @@ impl VectorFSDB {
     /// Profile-bound saves the WriteBatch to the database
     pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), VectorFSError> {
         let operations: Vec<TransactionOperation> = pb_batch.operations;
+        eprintln!(">> Operations: {:?}", operations.len());
 
         // Now, use the commit_operations method to commit these operations as a single transaction
         self.commit_operations(operations)

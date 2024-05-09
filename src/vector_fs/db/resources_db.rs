@@ -74,6 +74,7 @@ impl VectorFSDB {
     pub fn get_resource(&self, key: &str, profile: &ShinkaiName) -> Result<BaseVectorResource, VectorFSError> {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf_pb(FSTopic::VectorResources, key, profile)?;
+        eprintln!("get_resource key: {}", key);
         let json_str = std::str::from_utf8(&bytes)?;
         Ok(BaseVectorResource::from_json(json_str)?)
     }
