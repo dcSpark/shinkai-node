@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, EmbeddingModelTypeString, OllamaTextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::shinkai_time::{ShinkaiTime};
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::{DistributionInfo, SourceReference, VRSourceReference};
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
 
