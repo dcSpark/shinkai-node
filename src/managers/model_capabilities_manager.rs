@@ -380,7 +380,10 @@ impl ModelCapabilitiesManager {
                     return 256_000;
                 } else if ollama.model_type.starts_with("llama3") {
                     return 8_000;
+                } else if ollama.model_type.starts_with("llava-llama3") {
+                    return 8_000;
                 }
+                
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
                 match re.captures(&ollama.model_type) {

@@ -438,7 +438,7 @@ impl Prompt {
         max_prompt_tokens: Option<usize>,
     ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
-        let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
+        let limit = max_prompt_tokens.unwrap_or(2700_usize);
 
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
@@ -453,13 +453,13 @@ impl Prompt {
     // Generates generic api messages as a single string.
     pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
-        let limit = max_input_tokens.unwrap_or(4000 as usize);
+        let limit = max_input_tokens.unwrap_or(4000_usize);
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit);
 
         let mut messages: Vec<String> = Vec::new();
         // Process all sub-prompts in their original order
-        for (i, sub_prompt) in prompt_copy.sub_prompts.iter().enumerate() {
+        for sub_prompt in prompt_copy.sub_prompts.iter() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset

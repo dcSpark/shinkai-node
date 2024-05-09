@@ -23,7 +23,7 @@ pub fn llama_prepare_messages(
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
-    let mut messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
+    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
 
     let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
 
@@ -39,7 +39,7 @@ pub fn llava_prepare_messages(
     prompt: Prompt,
     total_tokens: usize,
 ) -> Result<PromptResult, AgentError> {
-    let mut messages_string = prompt.generate_genericapi_messages(None)?;
+    let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
 
     if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
         if let SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, priority) = sub_prompt {

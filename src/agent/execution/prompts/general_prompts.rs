@@ -63,11 +63,7 @@ impl JobPromptGenerator {
         SubPromptType::System,
         100
     );
-        prompt.add_ebnf(
-            String::from(r#"# Search"#),
-            SubPromptType::System,
-            100,
-        );
+        prompt.add_ebnf(String::from(r#"# Search"#), SubPromptType::System, 100);
 
         prompt
     }
@@ -154,7 +150,7 @@ impl JobPromptGenerator {
     pub fn image_to_text_analysis(description: String, image: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -171,13 +167,11 @@ impl JobPromptGenerator {
             100,
         );
 
-        // TODO(Nico): Add later when Vision allows for json formatting
-        // prompt.add_content(
-        //         format!(
-        //             "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-        //         ),
-        //         SubPromptType::User,
-        //         100);
+        prompt.add_content(
+            "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Start your response with # Answer".to_string(),
+            SubPromptType::System,
+            98
+        );
 
         prompt
     }
