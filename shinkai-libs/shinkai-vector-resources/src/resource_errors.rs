@@ -1,9 +1,8 @@
-use crate::vector_resource::{VRPath};
+use crate::vector_resource::VRPath;
 
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
-
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {
@@ -15,6 +14,8 @@ pub enum VRError {
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
+    FailedMDParsing,
+    FailedTXTParsing,
     InvalidVRBaseType,
     RegexError(regex::Error),
     RequestFailed(String),
@@ -56,6 +57,8 @@ impl fmt::Display for VRError {
             VRError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             VRError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
+            VRError::FailedMDParsing => write!(f, "Failed MD parsing."),
+            VRError::FailedTXTParsing => write!(f, "Failed TXT parsing."),
             VRError::NoEmbeddingProvided => write!(f, "No embedding provided."),
             VRError::InvalidVRBaseType => {
                 write!(f, "The resource type does not match any of the VRBaseTypes.")
