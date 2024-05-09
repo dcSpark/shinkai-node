@@ -68,6 +68,7 @@ impl RustTool {
         tool_embedding: Embedding,
     ) -> Self {
         Self {
+            // Use VRPath::clean_string() to replace spaces with underscores
             name: name.replace(" ", "_"),
             description,
             input_args,

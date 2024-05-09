@@ -962,7 +962,7 @@ impl VRPath {
     /// Adds an id to the end of the VRPath's path_ids. Automatically cleans the id String
     /// to remove unsupported characters that would break the path.
     pub fn push(&mut self, id: String) {
-        self.path_ids.push(id);
+        self.path_ids.push(VRPath::clean_string(&id));
     }
 
     /// Removes an element from the end of the path_ids
