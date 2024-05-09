@@ -72,8 +72,6 @@ impl LLMProvider for Groq {
                     "max_tokens": result.remaining_tokens,
                 });
 
-                // payload["response_format"] = json!({ "type": "json_object" });
-
                 let mut payload_log = payload.clone();
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
