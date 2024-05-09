@@ -76,7 +76,7 @@ pub struct ExternalSubscriberManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
-    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (profile, shared_folder)
+    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
     pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
     /// and the `usize` is the last sync version of the folder. The version is a counter that increments
@@ -491,6 +491,7 @@ impl ExternalSubscriberManager {
                             continue; // Skip to the next iteration
                         }
                     };
+                    
                     // Attempt to create a new reader and continue to the next iteration if it fails
                     let reader = match vector_fs_inst
                         .new_reader(subscriber.clone(), path.clone(), streamer.clone())
@@ -501,6 +502,7 @@ impl ExternalSubscriberManager {
                             continue; // Skip to the next iteration
                         }
                     };
+
                     // Attempt to retrieve vrkai and continue to the next iteration if it fails
                     let vrkai = match vector_fs_inst.retrieve_vrkai(&reader).await {
                         Ok(vrkai) => vrkai,
@@ -515,6 +517,7 @@ impl ExternalSubscriberManager {
                     };
                     let parent_path = path.parent_path();
                     let is_last_element = index == diff_paths.len() - 1;
+
                     // Attempt to insert vrkai into vr_pack and log error if it fails
                     if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
                         continue; // Skip to the next iteration

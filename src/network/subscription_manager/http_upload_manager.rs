@@ -25,17 +25,20 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use blake3::Hasher;
 use dashmap::DashMap;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_subscription::SubscriptionId},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_vector_resources::vector_resource::VRPath;
 use tokio::sync::Mutex;
 
 use crate::{db::ShinkaiDB, vector_fs::vector_fs::VectorFS};
 
 use super::{
     external_subscriber_manager::SharedFolderInfo,
+    fs_entry_tree::FSEntryTree,
     subscription_file_uploader::{
         delete_all_in_folder, list_folder_contents, FileDestination, FileDestinationError, FileTransferError,
     },
@@ -81,7 +84,7 @@ pub struct HttpSubscriptionUploadManager {
     pub subscription_status: DashMap<SubscriptionId, SubscriptionStatus>,
     pub subscription_config: DashMap<SubscriptionId, FileDestination>,
     pub upload_queue: Arc<Mutex<VecDeque<FileUpload>>>,
-    pub shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (profile, shared_folder)
+    pub shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
     pub subscription_processing_task: tokio::task::JoinHandle<()>,
 }
 
@@ -108,6 +111,7 @@ impl HttpSubscriptionUploadManager {
             subscription_file_map.clone(),
             subscription_status.clone(),
             subscription_config.clone(),
+            shared_folders_trees_ref.clone(),
             subscription_http_upload_concurrency,
         )
         .await;
@@ -126,6 +130,13 @@ impl HttpSubscriptionUploadManager {
         }
     }
 
+    /// Calculate the BLAKE3 hash of a file.
+    fn calculate_hash(data: &[u8]) -> String {
+        let mut hasher = Hasher::new();
+        hasher.update(data);
+        hasher.finalize().to_hex().to_string()
+    }
+
     // TODO: add classic task manager
     // it reads from the db all the subscriptions
     // filters out everything that's not http
@@ -135,12 +146,13 @@ impl HttpSubscriptionUploadManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_subscription_http_checks(
         db: Weak<ShinkaiDB>,
-        _vector_fs: Weak<VectorFS>,
+        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         subscription_file_map: DashMap<SubscriptionId, HashMap<FileMapPath, FileStatus>>,
         subscription_status: DashMap<SubscriptionId, SubscriptionStatus>,
         subscription_config: DashMap<SubscriptionId, FileDestination>,
-        subscription_http_upload_concurrency: usize, // simultaneous uploads
+        shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
+        subscription_http_upload_concurrency: usize,                      // simultaneous uploads
     ) -> tokio::task::JoinHandle<()> {
         let interval_minutes = env::var("SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES")
             .unwrap_or("5".to_string()) // Default to 5 minutes if not set
@@ -189,6 +201,18 @@ impl HttpSubscriptionUploadManager {
                 // check current folder and files
 
                 for subscription_id in subscriptions_ids_to_process {
+                    let streamer = match subscription_id.extract_streamer_node_with_profile() {
+                        Ok(streamer) => streamer,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::ExtSubscriptions,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to extract streamer node with profile: {:?}", e),
+                            );
+                            continue; // Skip this iteration on error
+                        }
+                    };
+
                     let destination = match subscription_config.get(&subscription_id) {
                         Some(destination) => destination.clone(),
                         None => {
@@ -213,17 +237,64 @@ impl HttpSubscriptionUploadManager {
                         }
                     };
 
-                    let files = match list_folder_contents(&destination, shared_folder.as_str()).await {
-                        Ok(files) => files,
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::ExtSubscriptions,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to list folder contents: {:?}", e),
-                            );
-                            continue;
-                        }
-                    };
+                    // Construct the key using profile name and shared folder path
+                    let key = format!(
+                        "{}:::{}",
+                        streamer.profile_name.clone().unwrap_or_default(),
+                        shared_folder
+                    );
+
+                    // Get all paths from the tree that we should have synced
+                    let mut subscription_expected_files = shared_folders_trees_ref
+                        .get(&key)
+                        .map(|shared_folder_info| shared_folder_info.tree.collect_all_paths())
+                        .unwrap_or_default();
+
+                    if subscription_expected_files.is_empty() {
+                        shinkai_log(
+                            ShinkaiLogOption::SubscriptionHTTPUploader,
+                            ShinkaiLogLevel::Error,
+                            "No files found in the shared folder tree",
+                        );
+                        continue; // Skip this iteration if no files are found
+                    }
+
+                    // Get the files that are currently synced if cache is empty then call the server
+                    let mut subscription_files = subscription_file_map
+                        .entry(subscription_id.clone())
+                        .or_default()
+                        .clone();
+                    let mut sync_file_paths: Vec<String> = subscription_files
+                        .iter()
+                        .filter_map(|(key, value)| {
+                            if let FileStatus::Sync(_) = value {
+                                Some(key.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    if sync_file_paths.is_empty() {
+                        // Only required if subscription_files is empty (we just started). Otherwise use the local cache that should keep a 1 to 1 with the server
+                        let files = match list_folder_contents(&destination, shared_folder.as_str()).await {
+                            Ok(files) => files
+                                .into_iter()
+                                .filter(|file| !file.is_folder)
+                                .map(|file| file.path)
+                                .collect::<Vec<String>>(),
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::ExtSubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to list folder contents: {:?}", e),
+                                );
+                                continue;
+                            }
+                        };
+                        sync_file_paths = files;
+                    }
+
                     // TODO: we need to also grab the files' hash. A file can be uploaded but maybe it changed locally so its hash will be different
                     // TODO: the files are going to be .vrkai and the checksum are going to be .vrkai.checksum
                     // We only stored the last 8 of the hash in the name so it looks like: NAME.vrkai or NAME.LAST_8_OF_HASH.checksum
@@ -241,8 +312,6 @@ impl HttpSubscriptionUploadManager {
                         }
                     }
 
-                    let mut subscription_files = subscription_file_map.entry(subscription_id.clone()).or_default();
-
                     // Check if all files are in sync
                     for file in files {
                         if file.is_folder || file.path.ends_with(".checksum") {
@@ -250,16 +319,52 @@ impl HttpSubscriptionUploadManager {
                         }
 
                         let file_path = file.path.clone();
-                        let file_status = subscription_files
-                            .entry(file_path.clone())
-                            .or_insert(FileStatus::Waiting(file_path.clone()));
+                        let vector_fs_strong = match vector_fs.upgrade() {
+                            Some(fs) => fs,
+                            None => {
+                                shinkai_log(
+                                    ShinkaiLogOption::ExtSubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    "VectorFS instance is not available",
+                                );
+                                continue; // Skip the current iteration or handle the error as needed
+                            }
+                        };
+                        let vr_path = VRPath::from_string(&file_path).unwrap();
+                        let reader: crate::vector_fs::vector_fs_reader::VFSReader = vector_fs_strong
+                            .new_reader(streamer.clone(), vr_path, streamer.clone())
+                            .await
+                            .unwrap();
+                        let resource = vector_fs_strong.retrieve_vector_resource(&reader).await.unwrap();
+                        let current_hash = match resource.as_trait_object().get_merkle_root() {
+                            Ok(hash) => hash,
+                            Err(_) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::ExtSubscriptions,
+                                    ShinkaiLogLevel::Error,
+                                    "Failed to get the merkle root hash",
+                                );
+                                "".to_string() // Return an empty string to indicate failure
+                            }
+                        };
 
                         // Check if the checksum matches
                         let checksum_matches = if let Some(checksum_path) = checksum_map.get(&file_path) {
                             // Extract the last 8 characters of the hash from the checksum filename
                             let expected_hash = checksum_path.split('.').nth_back(1).unwrap_or("").to_string();
-                            let current_hash = calculate_hash(&file_path).await; // Assuming a function `calculate_hash` exists
-                            current_hash.ends_with(&expected_hash)
+
+                            // Extract the last 8 characters of the current hash
+                            let current_hash_last_8 = current_hash
+                                .chars()
+                                .rev()
+                                .take(8)
+                                .collect::<String>()
+                                .chars()
+                                .rev()
+                                .collect::<String>();
+
+                            // Compare the last 8 characters of the expected hash with the last 8 characters of the current hash
+                            expected_hash == current_hash_last_8
                         } else {
                             false // No checksum file means we can't verify it, so assume it doesn't match
                         };
@@ -426,6 +531,7 @@ pub enum HttpUploadError {
     DatabaseError,
     NetworkError,
     SubscriptionDoesntHaveHTTPCreds,
+    IOError(std::io::Error),
 }
 
 impl std::error::Error for HttpUploadError {}
@@ -438,6 +544,7 @@ impl fmt::Display for HttpUploadError {
             HttpUploadError::DatabaseError => write!(f, "Database operation failed"),
             HttpUploadError::NetworkError => write!(f, "Network operation failed"),
             HttpUploadError::SubscriptionDoesntHaveHTTPCreds => write!(f, "Subscription doesn't have HTTP credentials"),
+            HttpUploadError::IOError(ref err) => write!(f, "I/O error: {}", err),
         }
     }
 }
@@ -465,5 +572,11 @@ impl From<FileDestinationError> for HttpUploadError {
             FileDestinationError::InvalidInput(_) => HttpUploadError::FileSystemError, // Invalid input might be due to incorrect file data.
             FileDestinationError::UnknownTypeField => HttpUploadError::FileSystemError, // Unknown type field might be due to incorrect configuration or data.
         }
+    }
+}
+
+impl From<std::io::Error> for HttpUploadError {
+    fn from(err: std::io::Error) -> Self {
+        HttpUploadError::IOError(err)
     }
 }
