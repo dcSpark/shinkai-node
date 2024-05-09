@@ -238,22 +238,39 @@ impl RetrievedNode {
             })
             .collect::<Vec<String>>();
 
-        // Create a relative position based on parents node ids
-        let final_section_string = if section_strings.len() > 3 {
-            format!(
-                ".../{}",
-                section_strings
-                    .iter()
-                    .skip(section_strings.len() - 3)
-                    .map(|s| s.as_str())
-                    .collect::<Vec<&str>>()
-                    .join("/")
-            )
+        if let VRBaseType::Document = self.resource_header.resource_base_type {
+            // Create a relative position based on parents node ids
+            let final_section_string = if section_strings.len() > 5 {
+                format!(
+                    ".../{}",
+                    section_strings
+                        .iter()
+                        .skip(section_strings.len() - 5)
+                        .map(|s| s.as_str())
+                        .collect::<Vec<&str>>()
+                        .join(".")
+                )
+            } else {
+                section_strings.join(".")
+            };
+            format!("Section: {}", final_section_string)
         } else {
-            section_strings.join("/")
-        };
-
-        format!("Section: {}", final_section_string)
+            // Create a relative position based on parents node ids
+            let final_section_string = if section_strings.len() > 3 {
+                format!(
+                    ".../{}",
+                    section_strings
+                        .iter()
+                        .skip(section_strings.len() - 3)
+                        .map(|s| s.as_str())
+                        .collect::<Vec<&str>>()
+                        .join("/")
+                )
+            } else {
+                section_strings.join("/")
+            };
+            format!("Section: {}", final_section_string)
+        }
     }
 
     /// Sets the proximity_group_id in the node's metadata.
