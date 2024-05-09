@@ -839,6 +839,35 @@ async fn test_vector_fs_operations() {
     assert!(new_location_check, "The item should now exist in the new location.");
 
     //
+    // Update VR description test
+    //
+    let writer = dest_writer.clone();
+    let reader = dest_writer
+        .new_reader_copied_data(dest_writer.path.clone(), &mut vector_fs)
+        .await
+        .unwrap();
+
+    let mut retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+    let old_description = retrieved_vr.as_trait_object().description();
+
+    let new_description = "New description".to_string();
+    vector_fs
+        .update_item_resource_description(&writer, new_description.to_string())
+        .await
+        .unwrap();
+
+    let mut updated_retrieved_vr = vector_fs.retrieve_vector_resource(&reader).await.unwrap();
+
+    assert_ne!(old_description, updated_retrieved_vr.as_trait_object().description());
+    assert_eq!(
+        new_description,
+        updated_retrieved_vr
+            .as_trait_object()
+            .description()
+            .unwrap()
+            .to_string()
+    );
+
     // VRPack creation & unpacking into VecFS tests
     //
 

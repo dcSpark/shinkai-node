@@ -213,12 +213,7 @@ impl VectorFSDB {
     }
 
     /// Deletes the key (profile-bound) from the provided column family.
-    pub fn delete_cf_pb(
-        &self,
-        cf: &str,
-        key: &str,
-        profile: &ShinkaiName,
-    ) -> Result<(), VectorFSError> {
+    pub fn delete_cf_pb(&self, cf: &str, key: &str, profile: &ShinkaiName) -> Result<(), VectorFSError> {
         let new_key = Self::generate_profile_bound_key(key, profile)?;
         self.delete_cf(cf, new_key)
     }

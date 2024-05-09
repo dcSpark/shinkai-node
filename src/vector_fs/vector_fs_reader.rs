@@ -160,6 +160,7 @@ impl VectorFS {
     /// at this path, an error will be returned.
     pub async fn retrieve_vector_resource(&self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
+        eprintln!("!!!!!!!!!!!!!!!!! fs_item: {:?}", fs_item);
         self.db.get_resource_by_fs_item(&fs_item, &reader.profile)
     }
 

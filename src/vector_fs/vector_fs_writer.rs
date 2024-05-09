@@ -4,6 +4,7 @@ use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reade
 use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
@@ -19,6 +20,7 @@ use std::collections::HashMap;
 /// A struct that represents having rights to write to the VectorFS under a profile/at a specific path.
 /// If a VFSWriter struct is constructed, that means the `requester_name` has passed
 /// permissions validation and is thus allowed to write to `path`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VFSWriter {
     pub requester_name: ShinkaiName,
     pub path: VRPath,
@@ -918,11 +920,35 @@ impl VectorFS {
         Ok(())
     }
 
+    /// Saves a VRKai into an FSItem at the exact path specified in writer (ie. `.../{parent_folder}/resource_name`)
+    /// If a FSItem already exists underneath the writer's path, then updates(overwrites) it.
+    /// Does not support saving into VecFS root.
+    pub async fn save_vrkai(&self, writer: &VFSWriter, vrkai: VRKai) -> Result<FSItem, VectorFSError> {
+        let parent_folder_path = writer.path.pop_cloned();
+        let new_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self).await?;
+        self.save_vrkai_in_folder(&new_writer, vrkai).await
+    }
+
     /// Saves a VRKai into an FSItem, underneath the FSFolder at the writer's path.
     /// If a FSItem with the same name (as the VR) already exists underneath the current path, then updates(overwrites) it.
     /// Does not support saving into VecFS root.
     pub async fn save_vrkai_in_folder(&self, writer: &VFSWriter, vrkai: VRKai) -> Result<FSItem, VectorFSError> {
         self.save_vector_resource_in_folder(writer, vrkai.resource, vrkai.sfm)
+            .await
+    }
+
+    /// Saves a Vector Resource and optional SourceFile into an FSItem at the exact path specified in writer (ie. `.../{parent_folder}/resource_name`)
+    /// If a FSItem already exists underneath the writer's path, then updates(overwrites) it.
+    /// Does not support saving into VecFS root.
+    pub async fn save_vector_resource(
+        &self,
+        writer: &VFSWriter,
+        resource: BaseVectorResource,
+        source_file_map: Option<SourceFileMap>,
+    ) -> Result<FSItem, VectorFSError> {
+        let parent_folder_path = writer.path.pop_cloned();
+        let new_writer = writer.new_writer_copied_data(parent_folder_path.clone(), self).await?;
+        self.save_vector_resource_in_folder(&new_writer, resource, source_file_map)
             .await
     }
 
@@ -957,6 +983,7 @@ impl VectorFS {
                 return Err(VectorFSError::CannotOverwriteFolder(node_path.clone()));
             }
             // If an existing FSItem is saved at the node path
+            let mut existing_vr_ref = None;
             if let Ok(_) = self
                 .validate_path_points_to_item(node_path.clone(), &writer.profile)
                 .await
@@ -967,14 +994,20 @@ impl VectorFS {
                 {
                     node_metadata = ret_node.node.metadata.clone();
                     node_at_path_already_exists = true;
+                    if let Ok(vr_header) = ret_node.node.get_vr_header_content() {
+                        existing_vr_ref = Some(vr_header.reference_string());
+                    }
                 }
             }
+
             // Check if an existing VR is saved in the FSDB with the same reference string. If so, re-generate id of the current resource.
-            if let Ok(_) = self
-                .db
-                .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
-            {
-                resource.as_trait_object_mut().generate_and_update_resource_id();
+            if existing_vr_ref != Some(resource.as_trait_object().reference_string()) {
+                if let Ok(r) = self
+                    .db
+                    .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
+                {
+                    resource.as_trait_object_mut().generate_and_update_resource_id();
+                }
             }
 
             // Now all validation checks/setup have passed, move forward with saving header/resource/source file
@@ -1139,6 +1172,21 @@ impl VectorFS {
         } else {
             Err(VectorFSError::NoEntryAtPath(writer.path.clone()))
         }
+    }
+
+    /// Updates the description of the Vector Resource in the FSItem at the writer's path.
+    pub async fn update_item_resource_description(
+        &self,
+        writer: &VFSWriter,
+        description: String,
+    ) -> Result<FSItem, VectorFSError> {
+        // Fetch the VR and SFM from the DB
+        let reader = writer.new_reader_copied_data(writer.path.clone(), self).await?;
+        let mut vector_resource = self.retrieve_vector_resource(&reader).await?;
+        vector_resource.as_trait_object_mut().set_description(Some(description));
+
+        // Now save the VR
+        Self::save_vector_resource(self, writer, vector_resource, None).await
     }
 
     /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.
