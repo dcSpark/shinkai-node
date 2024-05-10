@@ -132,16 +132,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-name = "ansi_term"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d52a9bb7ec0cf484c551830a7ce27bd20d67eac647e1befb56b0be4ee39a55d2"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -190,8 +180,6 @@ dependencies = [
 ]
 
 [[package]]
-=======
->>>>>>> 05d3181f (checkpointing)
 name = "anyhow"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1327,7 +1315,7 @@ dependencies = [
  "anstream",
  "anstyle",
  "clap_lex 0.6.0",
- "strsim 0.10.0",
+ "strsim",
  "terminal_size",
 ]
 
@@ -1806,7 +1794,7 @@ dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
- "strsim 0.10.0",
+ "strsim",
  "syn 1.0.109",
 ]
 
@@ -6188,7 +6176,7 @@ dependencies = [
  "base64 0.22.0",
  "chrono",
  "chrono-tz",
- "clap",
+ "clap 3.2.25",
  "dotenv",
  "ed25519-dalek",
  "hex",
@@ -6253,7 +6241,7 @@ dependencies = [
  "chashmap",
  "chrono",
  "chrono-tz",
- "clap",
+ "clap 3.2.25",
  "console-subscriber",
  "cron-parser",
  "csv",
@@ -8006,6 +7994,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 
 [[package]]
+name = "xmlparser"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
+
+[[package]]
 name = "yaml-rust"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8013,12 +8007,6 @@ checksum = "56c1936c4cc7a1c9ab21a1ebb602eb942ba868cbd44a99cb7cdc5892335e1c85"
 dependencies = [
  "linked-hash-map",
 ]
-
-[[package]]
-name = "xmlparser"
-version = "0.13.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "yansi"

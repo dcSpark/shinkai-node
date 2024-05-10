@@ -5,15 +5,14 @@ use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedAgent,
+    AgentLLMInterface, Ollama, SerializedAgent,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIConvertFilesAndSaveToFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
     APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-    APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, JobMessage, MessageSchemaType,
+    APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -23,14 +22,9 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use shinkai_vector_resources::resource_errors::VRError;
-use std::env;
 use std::path::Path;
-use std::time::Duration;
-use std::time::Instant;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -38,7 +32,8 @@ use super::utils;
 use super::utils::node_test_api::{api_agent_registration, api_initial_registration_with_no_code_for_device};
 use mockito::Server;
 
-fn generate_message_with_payload<T: ToString>(
+#[allow(clippy::too_many_arguments)]
+pub fn generate_message_with_payload<T: ToString>(
     payload: T,
     schema: MessageSchemaType,
     my_encryption_secret_key: EncryptionStaticKey,
