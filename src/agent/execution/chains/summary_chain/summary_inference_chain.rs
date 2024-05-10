@@ -32,7 +32,7 @@ use super::chain_detection_embeddings::{
 
 pub struct SummaryInferenceChain {}
 
-impl InferenceChain for SummaryInferenceChain {}
+// impl InferenceChain for SummaryInferenceChain {}
 
 impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.

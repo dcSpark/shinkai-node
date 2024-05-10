@@ -2,6 +2,7 @@ use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::{error::AgentError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
+use async_recursion::async_recursion;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -13,25 +14,36 @@ use std::{collections::HashMap, sync::Arc};
 /// the inference chain router to work with them all easily.
 #[async_trait]
 pub trait InferenceChain {
-    // fn new(context: InferenceChainContext) -> Self;
-    // async fn start_chain() -> Result<String, AgentError>;
+    fn chain_context(&mut self) -> &mut InferenceChainContext;
+    async fn start_chain(&mut self) -> Result<String, AgentError>;
+
+    /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,
+    /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
+    async fn recurse_chain(&mut self, backup_result: String) -> Result<String, AgentError> {
+        let context = self.chain_context();
+        if context.iteration_count >= context.max_iterations {
+            return Ok(backup_result);
+        }
+        context.iteration_count += 1;
+        self.start_chain().await
+    }
 }
 
 /// Struct that represents the generalized context available to all chains as input. Note not all chains require
 /// using all fields in this struct, but they are available nonetheless.
 pub struct InferenceChainContext {
-    db: Arc<ShinkaiDB>,
-    vector_fs: Arc<VectorFS>,
-    full_job: Job,
-    user_message: ParsedUserMessage,
-    agent: SerializedAgent,
-    execution_context: HashMap<String, String>,
-    generator: RemoteEmbeddingGenerator,
-    user_profile: ShinkaiName,
-    max_iterations: u64,
-    iteration_count: u64,
-    max_tokens_in_prompt: usize,
-    score_results: HashMap<String, ScoreResult>,
+    pub db: Arc<ShinkaiDB>,
+    pub vector_fs: Arc<VectorFS>,
+    pub full_job: Job,
+    pub user_message: ParsedUserMessage,
+    pub agent: SerializedAgent,
+    pub execution_context: HashMap<String, String>,
+    pub generator: RemoteEmbeddingGenerator,
+    pub user_profile: ShinkaiName,
+    pub max_iterations: u64,
+    pub iteration_count: u64,
+    pub max_tokens_in_prompt: usize,
+    pub score_results: HashMap<String, ScoreResult>,
 }
 
 impl InferenceChainContext {

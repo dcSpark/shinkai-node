@@ -1,5 +1,5 @@
 use crate::agent::error::AgentError;
-use crate::agent::execution::chains::inference_chain_trait::InferenceChain;
+use crate::agent::execution::chains::inference_chain_trait::{InferenceChain, InferenceChainContext};
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
@@ -16,14 +16,51 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
+use tonic::async_trait;
 
 use tracing::instrument;
 
-pub struct QAInferenceChain {}
+pub struct QAInferenceChain {
+    pub context: InferenceChainContext,
+    pub search_text: Option<String>,
+    pub summary_text: Option<String>,
+}
 
-impl InferenceChain for QAInferenceChain {}
+#[async_trait]
+impl InferenceChain for QAInferenceChain {
+    fn chain_context(&mut self) -> &mut InferenceChainContext {
+        &mut self.context
+    }
+
+    async fn start_chain(&mut self) -> Result<String, AgentError> {
+        QAInferenceChain::start_qa_inference_chain(
+            self.context.db.clone(),
+            self.context.vector_fs.clone(),
+            self.context.full_job.clone(),
+            self.context.user_message.original_user_message_string.to_string(),
+            self.context.agent.clone(),
+            self.context.execution_context.clone(),
+            self.context.generator.clone(),
+            self.context.user_profile.clone(),
+            self.search_text.clone(),
+            self.summary_text.clone(),
+            0,
+            self.context.max_iterations,
+            self.context.max_tokens_in_prompt,
+        )
+        .await
+    }
+}
 
 impl QAInferenceChain {
+    pub fn new(context: InferenceChainContext) -> Self {
+        Self {
+            context,
+            search_text: None,
+            summary_text: None,
+        }
+    }
+
     /// An inference chain for question-answer user messages which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
