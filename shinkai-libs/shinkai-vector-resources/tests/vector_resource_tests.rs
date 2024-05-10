@@ -1243,6 +1243,10 @@ async fn local_docx_parsing_test() {
     .await
     .unwrap();
 
+    resource
+        .as_trait_object()
+        .print_all_nodes_exhaustive(None, false, false);
+
     // Perform vector search
     let query_string = "How can a spike be used?".to_string();
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
@@ -1253,5 +1257,5 @@ async fn local_docx_parsing_test() {
         .node
         .get_text_content()
         .unwrap()
-        .contains("in a number of ways"));
+        .contains("to familiarize the team"));
 }

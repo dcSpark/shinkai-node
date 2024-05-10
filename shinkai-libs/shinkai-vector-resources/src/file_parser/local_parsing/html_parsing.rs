@@ -1,7 +1,10 @@
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 
-use crate::{file_parser::file_parser_types::TextGroup, resource_errors::VRError};
+use crate::{
+    file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup},
+    resource_errors::VRError,
+};
 
 use super::LocalFileParser;
 
@@ -112,7 +115,7 @@ impl LocalFileParser {
 
                             // Push current text and start a new text group on section elements
                             if el_name == "article" || el_name == "section" || el_name == "table" || el_name == "hr" {
-                                LocalFileParser::push_text_group_by_depth(
+                                ShinkaiFileParser::push_text_group_by_depth(
                                     text_groups,
                                     heading_parents.len(),
                                     node_text.trim().to_owned(),
@@ -123,7 +126,7 @@ impl LocalFileParser {
 
                             // Header elements
                             if LocalFileParser::HTML_HEADERS.contains(&el_name.as_str()) {
-                                LocalFileParser::push_text_group_by_depth(
+                                ShinkaiFileParser::push_text_group_by_depth(
                                     text_groups,
                                     heading_parents.len(),
                                     node_text.trim().to_owned(),
@@ -221,7 +224,7 @@ impl LocalFileParser {
                                             0
                                         };
 
-                                        LocalFileParser::push_text_group_by_depth(
+                                        ShinkaiFileParser::push_text_group_by_depth(
                                             text_groups,
                                             heading_depth,
                                             inner_text.trim().to_owned(),
@@ -276,7 +279,7 @@ impl LocalFileParser {
                                     }
                                     // Push table data to a text group
                                     "table" => {
-                                        LocalFileParser::push_text_group_by_depth(
+                                        ShinkaiFileParser::push_text_group_by_depth(
                                             text_groups,
                                             heading_parents.len(),
                                             inner_text.trim().to_owned(),
@@ -331,7 +334,7 @@ impl LocalFileParser {
             HTMLNodeContext::default(),
         );
 
-        LocalFileParser::push_text_group_by_depth(
+        ShinkaiFileParser::push_text_group_by_depth(
             &mut text_groups,
             heading_parents.len(),
             result_text.trim().to_owned(),

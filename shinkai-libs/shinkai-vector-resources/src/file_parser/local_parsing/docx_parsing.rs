@@ -1,7 +1,8 @@
 use std::io::Cursor;
 
 use docx_rust::{
-    document::{BodyContent, TableCellContent, TableRowContent},
+    document::{BodyContent, ParagraphContent, TableCellContent, TableRowContent},
+    formatting::JustificationVal,
     DocxFile,
 };
 
@@ -18,14 +19,106 @@ impl LocalFileParser {
         let docx = docx.parse().map_err(|_| VRError::FailedCSVParsing)?;
 
         let mut text_groups = Vec::new();
+        let mut current_text = "".to_string();
+        let mut heading_depth: usize = 0;
 
         docx.document.body.content.iter().for_each(|node| match node {
             BodyContent::Paragraph(paragraph) => {
                 let text = paragraph.text();
-                if !text.is_empty() {
-                    let paragraph_groups =
-                        ShinkaiFileParser::parse_and_split_into_text_groups(text, max_node_text_size);
-                    text_groups.extend(paragraph_groups);
+                if text.is_empty() {
+                    return;
+                }
+
+                let style = if let Some(property) = paragraph.property.as_ref() {
+                    let style_value = if let Some(style_id) = property.style_id.as_ref() {
+                        style_id.value.to_string()
+                    } else {
+                        "".to_string()
+                    };
+
+                    let is_centered = if let Some(justification) = property.justification.as_ref() {
+                        matches!(justification.value, JustificationVal::Center)
+                    } else {
+                        false
+                    };
+
+                    let is_bold = if paragraph.content.iter().any(|content| match content {
+                        ParagraphContent::Run(run) => run.property.as_ref().map_or(false, |p| p.bold.is_some()),
+                        _ => false,
+                    }) {
+                        true
+                    } else {
+                        property.r_pr.as_ref().map_or(false, |p| p.bold.is_some())
+                    };
+
+                    let has_size = if paragraph.content.iter().any(|content| match content {
+                        ParagraphContent::Run(run) => run.property.as_ref().map_or(false, |p| p.size.is_some()),
+                        _ => false,
+                    }) {
+                        true
+                    } else {
+                        property.r_pr.as_ref().map_or(false, |p| p.size.is_some())
+                    };
+
+                    if style_value == "Title" || style_value.starts_with("Heading") {
+                        style_value
+                    } else {
+                        let likely_heading = is_bold && has_size;
+                        let likely_title = likely_heading && is_centered;
+
+                        if likely_title {
+                            "Title".to_string()
+                        } else if likely_heading {
+                            "Heading".to_string()
+                        } else {
+                            "".to_string()
+                        }
+                    }
+                } else {
+                    "".to_string()
+                };
+
+                if style == "Title" || style.starts_with("Heading") {
+                    ShinkaiFileParser::push_text_group_by_depth(
+                        &mut text_groups,
+                        heading_depth,
+                        current_text.clone(),
+                        max_node_text_size,
+                    );
+                    current_text = "".to_string();
+
+                    if style == "Title" {
+                        heading_depth = 0;
+                    } else if style.starts_with("Heading") {
+                        heading_depth = if heading_depth == 0 { 0 } else { 1 };
+                    }
+
+                    ShinkaiFileParser::push_text_group_by_depth(
+                        &mut text_groups,
+                        heading_depth,
+                        text,
+                        max_node_text_size,
+                    );
+                    heading_depth += 1;
+                    return;
+                }
+
+                let is_list_item = if let Some(property) = paragraph.property.as_ref() {
+                    property.numbering.is_some()
+                } else {
+                    false
+                };
+
+                if is_list_item {
+                    current_text.push_str(format!("\n- {}", text).as_str());
+                } else {
+                    ShinkaiFileParser::push_text_group_by_depth(
+                        &mut text_groups,
+                        heading_depth,
+                        current_text.clone(),
+                        max_node_text_size,
+                    );
+                    current_text = text;
                 }
             }
             BodyContent::Table(table) => {
@@ -48,14 +141,26 @@ impl LocalFileParser {
                     row_text.push(cell_text.join("; "));
                 });
 
+                ShinkaiFileParser::push_text_group_by_depth(
+                    &mut text_groups,
+                    heading_depth,
+                    current_text.clone(),
+                    max_node_text_size,
+                );
+                current_text = "".to_string();
+
                 let table_text = row_text.join("\n");
-                text_groups.extend(ShinkaiFileParser::parse_and_split_into_text_groups(
+                ShinkaiFileParser::push_text_group_by_depth(
+                    &mut text_groups,
+                    heading_depth,
                     table_text,
                     max_node_text_size,
-                ));
+                );
             }
             _ => {}
         });
+
+        ShinkaiFileParser::push_text_group_by_depth(&mut text_groups, heading_depth, current_text, max_node_text_size);
 
         Ok(text_groups)
     }
