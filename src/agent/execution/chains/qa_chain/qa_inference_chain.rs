@@ -9,7 +9,6 @@ use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
-
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -19,9 +18,9 @@ use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tonic::async_trait;
-
 use tracing::instrument;
 
+#[derive(Debug, Clone)]
 pub struct QAInferenceChain {
     pub context: InferenceChainContext,
     pub search_text: Option<String>,

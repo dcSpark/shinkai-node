@@ -36,6 +36,7 @@ pub trait InferenceChain: Send + Sync {
 
 /// Struct that represents the generalized context available to all chains as input. Note not all chains require
 /// using all fields in this struct, but they are available nonetheless.
+#[derive(Debug, Clone)]
 pub struct InferenceChainContext {
     pub db: Arc<ShinkaiDB>,
     pub vector_fs: Arc<VectorFS>,
@@ -112,6 +113,7 @@ impl InferenceChainResult {
 }
 
 // The result from scoring an inference chain (checking if its the right chain to route to)
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScoreResult {
     pub score: f32,
     pub passed_scoring: bool,
@@ -119,5 +121,9 @@ pub struct ScoreResult {
 impl ScoreResult {
     pub fn new(score: f32, passed_scoring: bool) -> Self {
         Self { score, passed_scoring }
+    }
+
+    pub fn new_empty() -> Self {
+        Self::new(0.0, false)
     }
 }

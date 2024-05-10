@@ -150,37 +150,26 @@ impl ModelCapabilitiesManager {
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
-            AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("llama-2") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("mistral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("mixtral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("deepseek") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("meditron") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("starling-lm") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("orca2") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("yi") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("yarn-mistral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("llama3") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("llava") {
+            AgentLLMInterface::Ollama(ollama) => match ollama.model_type.as_str() {
+                model_type if model_type.starts_with("llama-2") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("mistral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("mixtral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("deepseek") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("meditron") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("starling-lm") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("orca2") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("yi") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("yarn-mistral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("llava") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                } else if ollama.model_type.starts_with("bakllava") {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                } else if ollama.model_type.starts_with("yarn-llama2") {
-                    vec![ModelCapability::TextInference]
-                } else {
-                    vec![]
                 }
-            }
+                model_type if model_type.starts_with("bakllava") => {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+                model_type if model_type.starts_with("yarn-llama2") => vec![ModelCapability::TextInference],
+                _ => vec![],
+            },
             AgentLLMInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
             }
@@ -373,21 +362,17 @@ impl ModelCapabilitiesManager {
                 }
             }
             AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
-                    return 32_000;
-                } else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
-                    return 16_000;
-                    //  32_000
-                } else if ollama.model_type.starts_with("mixtral:8x22b") {
-                    return 65_000;
-                } else if ollama.model_type.starts_with("llama3-gradient") {
-                    eprintln!("llama3-gradient detected");
-                    return 256_000;
-                } else if ollama.model_type.starts_with("llama3") {
-                    return 8_000;
-                } else if ollama.model_type.starts_with("llava-llama3") {
-                    return 8_000;
-                }
+                return match ollama.model_type.as_str() {
+                    model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
+                    model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
+                    model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
+                    model_type if model_type.starts_with("llama3-gradient") => {
+                        eprintln!("llama3-gradient detected");
+                        return 256_000;
+                    }
+                    model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
+                    _ => 4096, // Default token count if no specific model type matches
+                };
 
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();

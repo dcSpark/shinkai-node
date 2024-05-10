@@ -1,4 +1,4 @@
-use super::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult};
+use super::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult, ScoreResult};
 use super::qa_chain::qa_inference_chain::QAInferenceChain;
 use super::summary_chain::summary_inference_chain::SummaryInferenceChain;
 use crate::agent::error::AgentError;
@@ -21,11 +21,11 @@ use tracing::instrument;
 /// The chosen chain result by the inference chain router
 pub struct InferenceChainDecision {
     pub chain_id: String,
-    pub score_results: ((bool, f32), (bool, f32), (bool, f32)),
+    pub score_results: HashMap<String, ScoreResult>,
 }
 
 impl InferenceChainDecision {
-    pub fn new(chain_id: String, score_results: ((bool, f32), (bool, f32), (bool, f32))) -> Self {
+    pub fn new(chain_id: String, score_results: HashMap<String, ScoreResult>) -> Self {
         Self {
             chain_id,
             score_results,
@@ -35,7 +35,7 @@ impl InferenceChainDecision {
     pub fn new_no_results(chain_id: String) -> Self {
         Self {
             chain_id,
-            score_results: ((false, 0.0), (false, 0.0), (false, 0.0)),
+            score_results: HashMap::new(),
         }
     }
 }
