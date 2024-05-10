@@ -58,11 +58,11 @@ impl JobPromptGenerator {
             }
         }
 
-        prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
+        prompt.add_content("The user has asked: ".to_string(), SubPromptType::System, 100);
         prompt.add_content(format!("{}.\n", user_message), SubPromptType::User, 100);
 
         prompt.add_content(
-            format!("If you have enough information to directly answer the user's question:"),
+        "If you have enough information to directly answer the user's question:".to_string(),
             SubPromptType::System,
             100,
         );
@@ -81,7 +81,7 @@ impl JobPromptGenerator {
             }
             prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System, 99);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System, 99);
+            prompt.add_content("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:".to_string(), SubPromptType::System, 99);
         }
 
         prompt.add_ebnf(
@@ -148,7 +148,7 @@ impl JobPromptGenerator {
             }
         }
 
-        let pre_task_text = format!("The user has asked: ");
+        let pre_task_text = "The user has asked: ".to_string();
         prompt.add_content(pre_task_text, SubPromptType::System, 99);
         prompt.add_content(user_message, SubPromptType::User, 100);
 
@@ -159,7 +159,7 @@ impl JobPromptGenerator {
         };
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed. Start your response with # Answer.", this_clause),
+            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format the answer so that is easily readable with newlines after each 2 sentences and bullet point lists as needed. Start your response with # Answer.", this_clause),
             SubPromptType::System,
             98
         );
