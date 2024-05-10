@@ -28,6 +28,10 @@ pub struct QAInferenceChain {
 
 #[async_trait]
 impl InferenceChain for QAInferenceChain {
+    fn chain_id() -> String {
+        "qa_inference_chain".to_string()
+    }
+
     fn chain_context(&mut self) -> &mut InferenceChainContext {
         &mut self.context
     }

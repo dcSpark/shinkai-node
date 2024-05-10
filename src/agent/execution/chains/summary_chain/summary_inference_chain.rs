@@ -1,6 +1,10 @@
+use super::chain_detection_embeddings::{
+    top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
+    top_score_summarize_this_embeddings,
+};
 use crate::agent::error::AgentError;
 use crate::agent::execution::chains::inference_chain_router::InferenceChainDecision;
-use crate::agent::execution::chains::inference_chain_trait::InferenceChain;
+use crate::agent::execution::chains::inference_chain_trait::{InferenceChain, InferenceChainContext};
 use crate::agent::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
@@ -23,16 +27,49 @@ use shinkai_vector_resources::model_type::{
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
+use tonic::async_trait;
 use tracing::instrument;
 
-use super::chain_detection_embeddings::{
-    top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
-    top_score_summarize_this_embeddings,
-};
+/// Inference Chain used for summarizing
+pub struct SummaryInferenceChain {
+    pub context: InferenceChainContext,
+    /// TODO: replace these custom score results with the generic one in the context
+    pub score_results: ((bool, f32), (bool, f32), (bool, f32)),
+}
 
-pub struct SummaryInferenceChain {}
+impl SummaryInferenceChain {
+    pub fn new(context: InferenceChainContext, score_results: ((bool, f32), (bool, f32), (bool, f32))) -> Self {
+        Self { context, score_results }
+    }
+}
 
-// impl InferenceChain for SummaryInferenceChain {}
+#[async_trait]
+impl InferenceChain for SummaryInferenceChain {
+    fn chain_id() -> String {
+        "summary_inference_chain".to_string()
+    }
+
+    fn chain_context(&mut self) -> &mut InferenceChainContext {
+        &mut self.context
+    }
+
+    async fn start_chain(&mut self) -> Result<String, AgentError> {
+        SummaryInferenceChain::start_summary_inference_chain(
+            self.context.db.clone(),
+            self.context.vector_fs.clone(),
+            self.context.full_job.clone(),
+            self.context.user_message.clone(),
+            self.context.agent.clone(),
+            self.context.execution_context.clone(),
+            self.context.generator.clone(),
+            self.context.user_profile.clone(),
+            self.context.max_iterations,
+            self.context.max_tokens_in_prompt,
+            self.score_results,
+        )
+        .await
+    }
+}
 
 impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.
@@ -357,11 +394,10 @@ impl SummaryInferenceChain {
         //     .await
         //     .unwrap_or((false, 0.0));
 
-        Some(InferenceChainDecision::SummaryChain((
-            this_check_result,
-            these_check_result,
-            message_history_check_result,
-        )))
+        Some(InferenceChainDecision::new(
+            Self::chain_id(),
+            (this_check_result, these_check_result, message_history_check_result),
+        ))
     }
 }
 

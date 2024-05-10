@@ -181,34 +181,30 @@ impl JobManager {
         user_profile: Option<ShinkaiName>,
     ) -> Result<(CronCreationChainResponse, HashMap<String, String>), AgentError> {
         // TODO: this part is very similar to the above function so it is easier to merge them.
-        let chosen_chain = InferenceChainDecision::CronCreationChain;
+        let chosen_chain = InferenceChainDecision::new_no_results("cron_creation_chain".to_string());
         let mut inference_response_content = CronCreationChainResponse::default();
         let mut new_execution_context = HashMap::new();
 
-        match chosen_chain {
-            InferenceChainDecision::CronCreationChain => {
-                if let Some(agent) = agent_found {
-                    inference_response_content = JobManager::start_cron_creation_chain(
-                        db,
-                        full_job,
-                        job_message.content.clone(),
-                        agent,
-                        prev_execution_context,
-                        user_profile,
-                        cron_task_request.cron_description,
-                        cron_task_request.task_description,
-                        cron_task_request.object_description,
-                        0,
-                        6, // TODO: Make this configurable
-                        None,
-                    )
-                    .await?;
-                } else {
-                    return Err(AgentError::AgentNotFound);
-                }
+        if chosen_chain.chain_id == "cron_creation_chain".to_string() {
+            if let Some(agent) = agent_found {
+                inference_response_content = JobManager::start_cron_creation_chain(
+                    db,
+                    full_job,
+                    job_message.content.clone(),
+                    agent,
+                    prev_execution_context,
+                    user_profile,
+                    cron_task_request.cron_description,
+                    cron_task_request.task_description,
+                    cron_task_request.object_description,
+                    0,
+                    6, // TODO: Make this configurable
+                    None,
+                )
+                .await?;
+            } else {
+                return Err(AgentError::AgentNotFound);
             }
-            // Add other chains here
-            _ => {}
         }
         Ok((inference_response_content, new_execution_context))
     }
@@ -229,51 +225,45 @@ impl JobManager {
         let mut new_execution_context = HashMap::new();
 
         // Note: Faking it until you merge it
-        match chosen_chain {
-            InferenceChainDecision::CronExecutionChainMainTask => {
-                if let Some(agent) = agent_found {
-                    let response = JobManager::start_cron_execution_chain_for_main_task(
-                        db,
-                        full_job,
-                        agent,
-                        prev_execution_context,
-                        user_profile,
-                        task_description,
-                        web_content,
-                        links,
-                        0,
-                        6, // TODO: Make this configurable
-                        None,
-                    )
-                    .await?;
-                    inference_response_content = response.summary;
-                } else {
-                    return Err(AgentError::AgentNotFound);
-                }
+        if chosen_chain.chain_id == "cron_execution_chain".to_string() {
+            if let Some(agent) = agent_found.clone() {
+                let response = JobManager::start_cron_execution_chain_for_main_task(
+                    db,
+                    full_job,
+                    agent,
+                    prev_execution_context,
+                    user_profile,
+                    task_description,
+                    web_content,
+                    links,
+                    0,
+                    6, // TODO: Make this configurable
+                    None,
+                )
+                .await?;
+                inference_response_content = response.summary;
+            } else {
+                return Err(AgentError::AgentNotFound);
             }
-            InferenceChainDecision::CronExecutionChainSubtask => {
-                if let Some(agent) = agent_found {
-                    inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
-                        db,
-                        full_job,
-                        agent,
-                        prev_execution_context,
-                        user_profile,
-                        task_description,
-                        web_content,
-                        0,
-                        6, // TODO: Make this configurable
-                    )
-                    .await?;
+        } else if chosen_chain.chain_id == "cron_execution_chain_subtask".to_string() {
+            if let Some(agent) = agent_found {
+                inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
+                    db,
+                    full_job,
+                    agent,
+                    prev_execution_context,
+                    user_profile,
+                    task_description,
+                    web_content,
+                    0,
+                    6, // TODO: Make this configurable
+                )
+                .await?;
 
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone());
-                } else {
-                    return Err(AgentError::AgentNotFound);
-                }
+                new_execution_context.insert("previous_step_response".to_string(), inference_response_content.clone());
+            } else {
+                return Err(AgentError::AgentNotFound);
             }
-            // Add other chains here
-            _ => {}
         }
         Ok((inference_response_content, new_execution_context))
     }

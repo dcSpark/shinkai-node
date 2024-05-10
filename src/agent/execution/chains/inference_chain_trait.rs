@@ -13,8 +13,13 @@ use std::{collections::HashMap, sync::Arc};
 /// Trait that abstracts top level functionality between the inference chains. This allows
 /// the inference chain router to work with them all easily.
 #[async_trait]
-pub trait InferenceChain {
+pub trait InferenceChain: Send + Sync {
+    /// Returns a hardcoded String that uniquely identifies the chain
+    fn chain_id() -> String;
+    /// Returns the context for the inference chain
     fn chain_context(&mut self) -> &mut InferenceChainContext;
+
+    /// Starts the inference chain
     async fn start_chain(&mut self) -> Result<String, AgentError>;
 
     /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,

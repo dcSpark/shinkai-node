@@ -1,3 +1,4 @@
+use super::inference_chain_trait::InferenceChain;
 use super::qa_chain::qa_inference_chain::QAInferenceChain;
 use super::summary_chain::summary_inference_chain::SummaryInferenceChain;
 use crate::agent::error::AgentError;
@@ -17,15 +18,26 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
 
-/// The output result of the inference chain router
-pub enum InferenceChainDecision {
-    QAChain,
-    SummaryChain(((bool, f32), (bool, f32), (bool, f32))),
-    ToolExecutionChain,
-    CodingChain,
-    CronCreationChain,
-    CronExecutionChainMainTask,
-    CronExecutionChainSubtask,
+/// The chosen chain result by the inference chain router
+pub struct InferenceChainDecision {
+    pub chain_id: String,
+    pub score_results: ((bool, f32), (bool, f32), (bool, f32)),
+}
+
+impl InferenceChainDecision {
+    pub fn new(chain_id: String, score_results: ((bool, f32), (bool, f32), (bool, f32))) -> Self {
+        Self {
+            chain_id,
+            score_results,
+        }
+    }
+
+    pub fn new_no_results(chain_id: String) -> Self {
+        Self {
+            chain_id,
+            score_results: ((false, 0.0), (false, 0.0), (false, 0.0)),
+        }
+    }
 }
 
 impl JobManager {
@@ -59,49 +71,44 @@ impl JobManager {
             &full_job.step_history,
         )
         .await;
-        match chosen_chain {
-            InferenceChainDecision::SummaryChain(score_results) => {
-                inference_response_content = SummaryInferenceChain::start_summary_inference_chain(
-                    db,
-                    vector_fs,
-                    full_job,
-                    parsed_user_message,
-                    agent,
-                    prev_execution_context,
-                    generator,
-                    user_profile,
-                    3,
-                    max_tokens_in_prompt,
-                    score_results,
-                )
-                .await?
-            }
-            InferenceChainDecision::QAChain => {
-                let qa_iteration_count = if full_job.scope.contains_significant_content() {
-                    3
-                } else {
-                    2
-                };
-                inference_response_content = QAInferenceChain::start_qa_inference_chain(
-                    db,
-                    vector_fs,
-                    full_job,
-                    parsed_user_message.get_output_string(),
-                    agent,
-                    prev_execution_context,
-                    generator,
-                    user_profile,
-                    None,
-                    None,
-                    1,
-                    qa_iteration_count,
-                    max_tokens_in_prompt as usize,
-                )
-                .await?;
-            }
-            // Add other chains here
-            _ => {}
-        };
+        if chosen_chain.chain_id.to_string() == SummaryInferenceChain::chain_id() {
+            inference_response_content = SummaryInferenceChain::start_summary_inference_chain(
+                db,
+                vector_fs,
+                full_job,
+                parsed_user_message,
+                agent,
+                prev_execution_context,
+                generator,
+                user_profile,
+                3,
+                max_tokens_in_prompt,
+                chosen_chain.score_results,
+            )
+            .await?
+        } else if chosen_chain.chain_id.to_string() == QAInferenceChain::chain_id() {
+            let qa_iteration_count = if full_job.scope.contains_significant_content() {
+                3
+            } else {
+                2
+            };
+            inference_response_content = QAInferenceChain::start_qa_inference_chain(
+                db,
+                vector_fs,
+                full_job,
+                parsed_user_message.get_output_string(),
+                agent,
+                prev_execution_context,
+                generator,
+                user_profile,
+                None,
+                None,
+                1,
+                qa_iteration_count,
+                max_tokens_in_prompt as usize,
+            )
+            .await?;
+        }
 
         Ok((inference_response_content, new_execution_context))
     }
@@ -125,7 +132,7 @@ async fn choose_inference_chain(
     {
         summary_chain_decision
     } else {
-        InferenceChainDecision::QAChain
+        InferenceChainDecision::new_no_results(QAInferenceChain::chain_id())
     }
 }
 
