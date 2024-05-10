@@ -298,7 +298,7 @@ impl JobManager {
             }
         };
 
-        let response_json = JobManager::inference_agent_json(agent.clone(), filled_prompt).await?;
+        let response_json = JobManager::inference_agent_markdown(agent.clone(), filled_prompt).await?;
         let mut cleaned_answer = String::new();
 
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")

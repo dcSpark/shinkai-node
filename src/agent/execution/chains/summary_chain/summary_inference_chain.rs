@@ -261,7 +261,7 @@ impl SummaryInferenceChain {
         eprintln!("generate_detailed_summary_for_resource> Prompt: {:?}", prompt);
 
         // Extract the JSON from the inference response Result and proceed forward
-        let response = JobManager::inference_agent_json(agent.clone(), prompt.clone()).await?;
+        let response = JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await?;
         let answer = &JobManager::advanced_extract_key_from_inference_response(
             agent.clone(),
             response.clone(),

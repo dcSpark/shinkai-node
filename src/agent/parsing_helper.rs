@@ -1,4 +1,5 @@
 use super::error::AgentError;
+use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::chains::tool_execution_chain;
 use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
@@ -30,7 +31,7 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_agent_json(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error
@@ -190,8 +191,8 @@ impl ParsingHelper {
 
     /// Cleaning method for the LLM response JSON object, after its been parsed from the markdown string.
     /// Tries to get rid of weird visual edgecases LLMs tend to leave in the actual content
-    pub fn clean_markdown_response_object_post_parse(parsed_markdown: JsonValue) -> JsonValue {
-        let mut cleaned_json = parsed_markdown;
+    pub fn clean_markdown_inference_response(response: LLMInferenceResponse) -> LLMInferenceResponse {
+        let mut cleaned_json = response.json;
         if let JsonValue::Object(ref mut obj) = cleaned_json {
             for (key, value) in obj.iter_mut() {
                 if let JsonValue::String(ref mut str_value) = value {
@@ -199,7 +200,7 @@ impl ParsingHelper {
                 }
             }
         }
-        cleaned_json
+        LLMInferenceResponse::new(response.original_response_string, cleaned_json)
     }
 
     /// Cleans the value string from a parsed markdown response from common LLM issues.

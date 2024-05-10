@@ -1,4 +1,7 @@
-use super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::{
+    error::AgentError,
+    execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
+};
 use async_trait::async_trait;
 use quickxml_to_serde::{xml_string_to_json, Config, NullValue};
 use reqwest::Client;
@@ -24,7 +27,7 @@ pub trait LLMProvider {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<JsonValue, AgentError>;
+    ) -> Result<LLMInferenceResponse, AgentError>;
 
     /// Given an input string, parses the first XML object that it finds.
     fn extract_first_xml_object_into_json_value(s: &str) -> Result<JsonValue, AgentError> {

@@ -127,3 +127,18 @@ impl ScoreResult {
         Self::new(0.0, false)
     }
 }
+/// A struct that holds the response from inference an LLM.
+#[derive(Debug, Clone)]
+pub struct LLMInferenceResponse {
+    pub original_response_string: String,
+    pub json: JsonValue,
+}
+
+impl LLMInferenceResponse {
+    pub fn new(original_response_string: String, json: JsonValue) -> Self {
+        Self {
+            original_response_string,
+            json,
+        }
+    }
+}

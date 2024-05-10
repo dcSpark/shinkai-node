@@ -1,6 +1,6 @@
 use crate::agent::error::AgentError;
 use crate::agent::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainResult, LLMInferenceResponse,
 };
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -143,7 +143,7 @@ impl QAInferenceChain {
         };
 
         // Inference the agent's LLM with the prompt
-        let response = JobManager::inference_agent_json(agent.clone(), filled_prompt.clone()).await;
+        let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
         if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
@@ -234,7 +234,7 @@ impl QAInferenceChain {
         if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
             let retry_prompt =
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
-            let response = JobManager::inference_agent_json(agent.clone(), retry_prompt).await;
+            let response = JobManager::inference_agent_markdown(agent.clone(), retry_prompt).await;
             if let Ok(response_json) = response {
                 match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
                     Ok(search_str) => {
@@ -270,7 +270,7 @@ impl QAInferenceChain {
 
 #[allow(clippy::too_many_arguments)]
 async fn no_json_object_retry_logic(
-    response: Result<JsonValue, AgentError>,
+    response: Result<LLMInferenceResponse, AgentError>,
     db: Arc<ShinkaiDB>,
     vector_fs: Arc<VectorFS>,
     full_job: Job,

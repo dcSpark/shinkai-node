@@ -1,3 +1,4 @@
+use super::chains::inference_chain_trait::LLMInferenceResponse;
 use super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
@@ -24,14 +25,14 @@ impl JobManager {
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response(
         agent: SerializedAgent,
-        response_json: JsonValue,
+        response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
         retry_attempts: u64,
     ) -> Result<HashMap<String, String>, AgentError> {
         let (value, _) = JobManager::advanced_extract_multi_keys_from_inference_response_with_json(
             agent.clone(),
-            response_json.clone(),
+            response.clone(),
             filled_prompt.clone(),
             potential_keys_hashmap.clone(),
             retry_attempts.clone(),
@@ -44,31 +45,31 @@ impl JobManager {
     /// Attempts to extract multiple keys from the inference response, including retry inferencing/upper + lower if necessary.
     /// Potential keys hashmap should have the expected string as the key, and the values be the list of potential alternates to try if expected fails.
     /// Returns a Hashmap using the same expected keys as the potential keys hashmap, but the values are the String found (the first matching of each).
-    /// Also returns the response JSON (which will be new if at least one inference retry was done).
+    /// Also returns the response result (which will be new if at least one inference retry was done).
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response_with_json(
         agent: SerializedAgent,
-        response_json: JsonValue,
+        response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
         retry_attempts: u64,
-    ) -> Result<(HashMap<String, String>, JsonValue), AgentError> {
+    ) -> Result<(HashMap<String, String>, LLMInferenceResponse), AgentError> {
         let mut result_map = HashMap::new();
-        let mut response_json = response_json;
+        let mut new_response = response.clone();
 
         for (key, potential_keys) in potential_keys_hashmap {
-            let (value, json) = JobManager::advanced_extract_key_from_inference_response_with_json(
+            let (value, res) = JobManager::advanced_extract_key_from_inference_response_with_json(
                 agent.clone(),
-                response_json.clone(),
+                response.clone(),
                 filled_prompt.clone(),
                 potential_keys.iter().map(|k| k.to_string()).collect(),
                 retry_attempts.clone(),
             )
             .await?;
             result_map.insert(key.to_string(), value);
-            response_json = json;
+            new_response = res;
         }
-        return Ok((result_map, response_json));
+        return Ok((result_map, new_response));
     }
 
     /// Attempts to extract a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
@@ -76,14 +77,14 @@ impl JobManager {
     /// Returns the String found at the first matching key.
     pub async fn advanced_extract_key_from_inference_response(
         agent: SerializedAgent,
-        response_json: JsonValue,
+        response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
         retry_attempts: u64,
     ) -> Result<String, AgentError> {
         let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_json(
             agent.clone(),
-            response_json.clone(),
+            response.clone(),
             filled_prompt.clone(),
             potential_keys.clone(),
             retry_attempts.clone(),
@@ -98,11 +99,11 @@ impl JobManager {
     /// Returns a tuple of the String found at the first matching key + the (potentially new) response JSON (new if retry was done).
     pub async fn advanced_extract_key_from_inference_response_with_json(
         agent: SerializedAgent,
-        response_json: JsonValue,
+        response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
         retry_attempts: u64,
-    ) -> Result<(String, JsonValue), AgentError> {
+    ) -> Result<(String, LLMInferenceResponse), AgentError> {
         if potential_keys.is_empty() {
             return Err(AgentError::InferenceJSONResponseMissingField(
                 "No keys supplied to attempt to extract".to_string(),
@@ -110,27 +111,25 @@ impl JobManager {
         }
 
         for key in &potential_keys {
-            if let Ok(value) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), key) {
-                return Ok((value, response_json));
+            if let Ok(value) = JobManager::direct_extract_key_inference_json_response(response.clone(), key) {
+                return Ok((value, response));
             }
         }
 
-        let mut current_response_json = response_json;
+        let mut current_response = response.original_response_string;
         for _ in 0..retry_attempts {
             for key in &potential_keys {
-                let new_response_json = internal_json_not_found_retry(
+                let new_response = internal_json_not_found_retry(
                     agent.clone(),
-                    current_response_json.to_string(),
+                    current_response.to_string(),
                     filled_prompt.clone(),
                     Some(key.to_string()),
                 )
                 .await?;
-                if let Ok(value) =
-                    JobManager::direct_extract_key_inference_json_response(new_response_json.clone(), key)
-                {
-                    return Ok((value, new_response_json.clone()));
+                if let Ok(value) = JobManager::direct_extract_key_inference_json_response(new_response.clone(), key) {
+                    return Ok((value, new_response.clone()));
                 }
-                current_response_json = new_response_json;
+                current_response = new_response.original_response_string;
             }
         }
 
@@ -140,9 +139,10 @@ impl JobManager {
     /// Attempts to extract a String using the provided key in the JSON response.
     /// Also tries variants of the provided key using capitalization/casing.
     pub fn direct_extract_key_inference_json_response(
-        response_json: JsonValue,
+        response: LLMInferenceResponse,
         key: &str,
     ) -> Result<String, AgentError> {
+        let response_json = response.json;
         let keys_to_try = [
             key.to_string(),
             key[..1].to_uppercase() + &key[1..],
@@ -166,14 +166,17 @@ impl JobManager {
         Err(AgentError::InferenceJSONResponseMissingField(key.to_string()))
     }
 
-    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
-    /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent_json(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
+    /// Inferences the Agent's LLM with the given markdown prompt. Automatically validates the response is
+    /// a valid markdown, and processes it into a json.
+    pub async fn inference_agent_markdown(
+        agent: SerializedAgent,
+        filled_prompt: Prompt,
+    ) -> Result<LLMInferenceResponse, AgentError> {
         let agent_cloned = agent.clone();
         let prompt_cloned = filled_prompt.clone();
         let task_response = tokio::spawn(async move {
             let agent = Agent::from_serialized_agent(agent_cloned);
-            agent.inference_json(prompt_cloned).await
+            agent.inference_markdown(prompt_cloned).await
         })
         .await;
 
@@ -181,28 +184,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            format!("inference_agent_json> response: {:?}", response).as_str(),
-        );
-
-        response
-    }
-
-    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response contains
-    /// valid XML, which is returned as a JsonValue. If it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent_xml(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
-        let agent_cloned = agent.clone();
-        let prompt_cloned = filled_prompt.clone();
-        let task_response = tokio::spawn(async move {
-            let agent = Agent::from_serialized_agent(agent_cloned);
-            agent.inference_xml(prompt_cloned).await
-        })
-        .await;
-
-        let response = task_response?;
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            format!("inference_agent_xml> response: {:?}", response).as_str(),
+            format!("inference_agent_markdown> response: {:?}", response).as_str(),
         );
 
         response
@@ -212,25 +194,19 @@ impl JobManager {
     /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
     #[instrument]
     async fn _extract_json_value_from_inference_result(
-        response: Result<JsonValue, AgentError>,
+        response: Result<LLMInferenceResponse, AgentError>,
         agent: SerializedAgent,
         filled_prompt: Prompt,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<LLMInferenceResponse, AgentError> {
         match response {
-            Ok(json) => Ok(json),
+            Ok(res) => Ok(res),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,
                     "FailedExtractingJSONObjectFromResponse",
                 );
-                // First try to remove line breaks and re-parse
-                let cleaned_text = text.to_string();
-                if let Ok(json) = serde_json::from_str::<JsonValue>(&cleaned_text) {
-                    return Ok(json);
-                }
 
-                //
                 match internal_json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
@@ -357,7 +333,7 @@ async fn internal_json_not_found_retry(
     invalid_json_answer: String,
     original_prompt: Prompt,
     json_key_to_correct: Option<String>,
-) -> Result<JsonValue, AgentError> {
+) -> Result<LLMInferenceResponse, AgentError> {
     let response = tokio::spawn(async move {
         let agent = Agent::from_serialized_agent(agent);
         let prompt = JobPromptGenerator::basic_json_retry_response_prompt(
@@ -365,7 +341,7 @@ async fn internal_json_not_found_retry(
             original_prompt,
             json_key_to_correct,
         );
-        agent.inference_json(prompt).await
+        agent.inference_markdown(prompt).await
     })
     .await;
     let response = match response {

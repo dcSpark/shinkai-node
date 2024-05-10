@@ -1,6 +1,7 @@
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
+use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
@@ -20,7 +21,7 @@ impl LLMProvider for Groq {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<LLMInferenceResponse, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/chat/completions");
@@ -138,7 +139,7 @@ impl LLMProvider for Groq {
                                     ShinkaiLogLevel::Debug,
                                     format!("Parsed JSON from Markdown: {:?}", json).as_str(),
                                 );
-                                Ok(json)
+                                Ok(LLMInferenceResponse::new(response_string, json))
                             }
                             Err(e) => {
                                 shinkai_log(
