@@ -1,4 +1,5 @@
 use super::execution::prompts::prompts::{Prompt, SubPromptType};
+use super::parsing_helper::ParsingHelper;
 use super::providers::LLMProvider;
 use super::{error::AgentError, job_manager::JobManager};
 use reqwest::Client;
@@ -77,6 +78,8 @@ impl Agent {
     pub async fn inference_json(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
         let mut response = self.internal_inference_matching_model(prompt.clone()).await;
         let mut attempts = 0;
+
+        println!("!!!!!!!!!!LLM Response: {:?}", response);
 
         let mut new_prompt = prompt.clone();
         while let Err(err) = &response {
@@ -172,7 +175,7 @@ impl Agent {
     }
 
     async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
-        match &self.model {
+        let response = match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
                 openai
                     .call_api(
@@ -230,7 +233,8 @@ impl Agent {
             AgentLLMInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
-        }
+        }?;
+        Ok(ParsingHelper::clean_markdown_response_object_post_parse(response))
     }
 }
 

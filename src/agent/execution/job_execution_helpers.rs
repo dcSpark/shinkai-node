@@ -225,7 +225,7 @@ impl JobManager {
                     "FailedExtractingJSONObjectFromResponse",
                 );
                 // First try to remove line breaks and re-parse
-                let cleaned_text = ParsingHelper::clean_json_response_via_regex(&text);
+                let cleaned_text = text.to_string();
                 if let Ok(json) = serde_json::from_str::<JsonValue>(&cleaned_text) {
                     return Ok(json);
                 }

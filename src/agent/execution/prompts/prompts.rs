@@ -5,7 +5,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::ChatCompletionRequestMessage;
 
@@ -202,6 +202,18 @@ impl Prompt {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let sub_prompt = SubPrompt::Content(prompt_type, content, capped_priority_value as u8);
         self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds RetrievedNode content into the prompt if it is a Text-holding node. Otherwise skips.
+    pub fn add_ret_node_content(
+        &mut self,
+        retrieved_node: RetrievedNode,
+        prompt_type: SubPromptType,
+        priority_value: u8,
+    ) {
+        if let Some(content) = retrieved_node.format_for_prompt(3500) {
+            self.add_content(content, prompt_type, priority_value);
+        }
     }
 
     /// Adds a sub-prompt that holds an Asset.

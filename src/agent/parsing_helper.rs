@@ -1,16 +1,16 @@
 use super::error::AgentError;
 use super::execution::chains::tool_execution_chain;
 use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
+use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
-
 use regex::Regex;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
 use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
@@ -55,7 +55,7 @@ impl ParsingHelper {
         }
 
         if let Some(answer) = extracted_answer {
-            let desc = ParsingHelper::ending_stripper(&answer);
+            let desc = answer.to_string();
             Ok(desc)
         } else {
             eprintln!(
@@ -67,7 +67,6 @@ impl ParsingHelper {
                 max_node_text_size as usize,
                 max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );
-            let desc = ParsingHelper::ending_stripper(&desc);
             Ok(desc)
         }
     }
@@ -189,85 +188,56 @@ impl ParsingHelper {
         ShinkaiFileParser::generate_data_hash(content)
     }
 
-    /// Cleans the JSON response string using regex, including replacing `\_` with `_` and removing unnecessary line breaks.
-    pub fn clean_json_response_via_regex(json_string: &str) -> String {
-        // First, replace `\_` with `_` to avoid parsing issues.
-        let mut cleaned_string = json_string.replace("\\_", "_");
-
-        // Patterns for removing unnecessary line breaks and spaces around JSON structural characters.
-        let patterns = vec![
-            (r#"\n\s*\{"#, "{"),
-            (r#"\{\s*\n"#, "{"),
-            (r#"\n\s*\}"#, "}"),
-            (r#"\}\s*\n"#, "}"),
-            (r#"\n\s*\""#, "\""),
-            (r#"\"\s*\n"#, "\""),
-            (r#"\n\s*,"#, ","),
-            (r#",\s*\n"#, ","),
-            (r#"•"#, "*"),
-        ];
-
-        for (pattern, replacement) in patterns {
-            let re = Regex::new(pattern).unwrap();
-            cleaned_string = re.replace_all(&cleaned_string, replacement).to_string();
-        }
-
-        cleaned_string
-    }
-
-    /// Attempts to clean up the answer response from the LLM for basic inferencing where the response is primarily English text
-    pub fn basic_inference_text_answer_cleanup(string: &str) -> String {
-        let flattened = ParsingHelper::flatten_to_content_if_json(&string);
-        let stripped_string = ParsingHelper::ending_stripper(&flattened);
-        stripped_string
-    }
-
-    /// Given an input string, if the whole string parses into a JSON Value, then
-    /// reads through every key, and concatenates all of their values into a single output string.
-    /// If not parsable into JSON Value, then return original string as a copy.
-    /// To be used when inferencing with dumb LLMs.
-    pub fn flatten_to_content_if_json(string: &str) -> String {
-        match serde_json::from_str::<serde_json::Value>(string) {
-            Ok(serde_json::Value::Object(obj)) => obj
-                .values()
-                .map(|v| v.as_str().unwrap_or_default().to_string())
-                .collect::<Vec<String>>()
-                .join(". "),
-            _ => string.to_owned(),
-        }
-    }
-
-    /// Removes last sentence from a string if it contains any of the unwanted phrases.
-    /// This is used because the LLM sometimes answers properly, but then adds useless last sentence such as
-    /// "However, specific details are not provided in the content." at the end.
-    pub fn ending_stripper(string: &str) -> String {
-        let mut sentences: Vec<&str> = string.split('.').collect();
-
-        let unwanted_phrases = [
-            "however,",
-            "unfortunately",
-            "additional research",
-            "further research",
-            "may be required",
-            "i do not",
-            "further information",
-            "specific details",
-            "provided content",
-            "more information",
-            "not available",
-        ];
-
-        while let Some(last_sentence) = sentences.pop() {
-            if last_sentence.trim().is_empty() {
-                continue;
+    /// Cleaning method for the LLM response JSON object, after its been parsed from the markdown string.
+    /// Tries to get rid of weird visual edgecases LLMs tend to leave in the actual content
+    pub fn clean_markdown_response_object_post_parse(parsed_markdown: JsonValue) -> JsonValue {
+        let mut cleaned_json = parsed_markdown;
+        if let JsonValue::Object(ref mut obj) = cleaned_json {
+            for (key, value) in obj.iter_mut() {
+                if let JsonValue::String(ref mut str_value) = value {
+                    *value = JsonValue::String(ParsingHelper::clean_markdown_result_string(str_value));
+                }
             }
-            let sentence = last_sentence.trim_start().to_lowercase();
-            if !unwanted_phrases.iter().any(|&phrase| sentence.contains(phrase)) {
-                sentences.push(last_sentence);
-            }
-            break;
         }
+        cleaned_json
+    }
 
-        sentences.join(".")
+    /// Cleans the value string from a parsed markdown response from common LLM issues.
+    fn clean_markdown_result_string(string: &str) -> String {
+        let parsed_message = ParsedUserMessage::new(string.to_string());
+
+        // If there is a codeblock and it has no/disallowed content, then remove it
+        if parsed_message.num_of_code_blocks() > 0 {
+            let mut elements = vec![];
+            for element in parsed_message.elements {
+                if let JobTaskElement::CodeBlock(code_block) = &element {
+                    if code_block.content_len() < 10 || code_block.content.contains("SYS") {
+                        continue;
+                    } else {
+                        elements.push(element);
+                    }
+                } else {
+                    elements.push(element);
+                }
+            }
+            ParsedUserMessage::new_from_elements(elements).get_output_string()
+        }
+        // If there's no code blocks, then we can attempt to trim the string
+        else {
+            let sys_tags_regex = Regex::new(r"<</?SYS>>").unwrap();
+            let mut cleaned_string = sys_tags_regex.replace_all(string, "").to_string();
+            let mut done = false;
+            while !done {
+                done = true; // Assume no more trimming is needed, prove otherwise below.
+                let trim_cases = ["```", "``` ", "```\n", "``` \n", "```md", "```md ", "```md\n"];
+                for case in trim_cases.iter() {
+                    if cleaned_string.ends_with(case) {
+                        cleaned_string = cleaned_string.strip_suffix(case).unwrap_or(&cleaned_string).to_string();
+                        done = false; // Found a case, so continue trimming.
+                    }
+                }
+            }
+            cleaned_string
+        }
     }
 }

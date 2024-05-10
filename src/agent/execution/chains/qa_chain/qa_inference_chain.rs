@@ -176,15 +176,13 @@ impl QAInferenceChain {
 
         // If it has an answer, the chain is finished and so just return the answer response as a cleaned String
         if let Ok(answer_str) = answer {
-            let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(&answer_str);
-            return Ok(cleaned_answer);
+            return Ok(answer_str);
         }
         // If it errored and past max iterations, try to use the summary from the previous iteration, or return error
         else if let Err(_) = answer {
             if iteration_count > max_iterations {
                 if let Some(summary_str) = &summary_text {
-                    let cleaned_answer = ParsingHelper::basic_inference_text_answer_cleanup(summary_str);
-                    return Ok(cleaned_answer);
+                    return Ok(summary_str.to_string());
                 } else {
                     return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
                 }
@@ -338,10 +336,8 @@ async fn no_json_object_retry_logic(
                 }
             }
 
-            // Return the cleaned summary
-            let cleaned_answer =
-                ParsingHelper::flatten_to_content_if_json(&ParsingHelper::ending_stripper(summary_answer.as_str()));
-            return Ok(cleaned_answer);
+            // Return the summary
+            return Ok(summary_answer);
         }
     }
     Err(AgentError::InferenceFailed)

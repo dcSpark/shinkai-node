@@ -185,20 +185,14 @@ impl RetrievedNode {
         let position_string = self.format_position_string();
         let datetime_string = self.get_datetime_default_string();
 
-        let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
-
-        if base_length > max_characters {
-            return None;
+        // If the text is too long, cut it
+        let mut data_string = self.node.get_text_content().ok()?.to_string();
+        if data_string.len() > max_characters {
+            let amount_over = data_string.len() - max_characters;
+            let amount_to_add = source_string.len() + position_string.len() + datetime_string.len() + amount_over;
+            let amount_to_cut = amount_over + amount_to_add + 25;
+            data_string = data_string.chars().take(amount_to_cut).collect::<String>();
         }
-
-        let data_string = self.node.get_text_content().ok()?.to_string();
-        let data_length = max_characters - base_length;
-
-        let data_string = if data_string.len() > data_length {
-            data_string[..data_length].to_string()
-        } else {
-            data_string
-        };
 
         let formatted_string = if position_string.len() > 0 {
             format!(

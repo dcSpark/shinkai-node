@@ -16,11 +16,6 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         let (bytes, cf) = self._prepare_resource(resource)?;
 
-        eprintln!(
-            "!!!!!!!!!!!!!!!!! resource description: {:?}",
-            resource.as_trait_object().description()
-        );
-
         // Insert into the "VectorResources" column family
         batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
