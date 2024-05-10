@@ -1,6 +1,11 @@
 use crate::{
     agent::{
-        error::AgentError, execution::prompts::prompts::Prompt, providers::shared::{openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}},
+        error::AgentError,
+        execution::prompts::prompts::Prompt,
+        providers::shared::{
+            openai::openai_prepare_messages,
+            shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
+        },
     },
     db::ShinkaiDB,
 };
@@ -383,7 +388,7 @@ impl ModelCapabilitiesManager {
                 } else if ollama.model_type.starts_with("llava-llama3") {
                     return 8_000;
                 }
-                
+
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
                 match re.captures(&ollama.model_type) {

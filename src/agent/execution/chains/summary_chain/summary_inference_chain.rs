@@ -29,7 +29,9 @@ use super::chain_detection_embeddings::{
     top_score_summarize_this_embeddings,
 };
 
-impl JobManager {
+pub struct SummaryInferenceChain {}
+
+impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]

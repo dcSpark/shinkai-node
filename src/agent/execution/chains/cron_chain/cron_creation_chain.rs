@@ -1,4 +1,3 @@
-
 use crate::agent::error::AgentError;
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -19,7 +18,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-
 
 /*
     We need:

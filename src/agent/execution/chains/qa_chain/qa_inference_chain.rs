@@ -18,7 +18,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use tracing::instrument;
 
-impl JobManager {
+pub struct QAInferenceChain {}
+
+impl QAInferenceChain {
     /// An inference chain for question-answer user messages which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
@@ -202,7 +204,7 @@ impl JobManager {
         }
 
         // Recurse with the new search/summary text and increment iteration_count
-        JobManager::start_qa_inference_chain(
+        QAInferenceChain::start_qa_inference_chain(
             db,
             vector_fs,
             full_job,
@@ -241,7 +243,7 @@ async fn no_json_object_retry_logic(
     if let Err(e) = &response {
         // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
         if iteration_count < max_iterations {
-            return JobManager::start_qa_inference_chain(
+            return QAInferenceChain::start_qa_inference_chain(
                 db,
                 vector_fs,
                 full_job,

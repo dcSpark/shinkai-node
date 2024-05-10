@@ -16,7 +16,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use tracing::instrument;
 
-use super::cron_creation_chain::CronCreationChainResponse;
+use super::cron_chain::cron_creation_chain::CronCreationChainResponse;
+use super::qa_chain::qa_inference_chain::QAInferenceChain;
+use super::summary_chain::summary_inference_chain::SummaryInferenceChain;
 
 /// The output result of the inference chain router
 pub enum InferenceChainDecision {
@@ -62,7 +64,7 @@ impl JobManager {
         .await;
         match chosen_chain {
             InferenceChainDecision::SummaryChain(score_results) => {
-                inference_response_content = JobManager::start_summary_inference_chain(
+                inference_response_content = SummaryInferenceChain::start_summary_inference_chain(
                     db,
                     vector_fs,
                     full_job,
@@ -83,7 +85,7 @@ impl JobManager {
                 } else {
                     2
                 };
-                inference_response_content = JobManager::start_qa_inference_chain(
+                inference_response_content = QAInferenceChain::start_qa_inference_chain(
                     db,
                     vector_fs,
                     full_job,
@@ -227,7 +229,7 @@ async fn choose_inference_chain(
     step_history: &Vec<JobStepResult>,
 ) -> InferenceChainDecision {
     eprintln!("Choosing inference chain");
-    if let Some(summary_chain_decision) = JobManager::validate_user_message_requests_summary(
+    if let Some(summary_chain_decision) = SummaryInferenceChain::validate_user_message_requests_summary(
         parsed_user_message,
         generator.clone(),
         job_scope,
