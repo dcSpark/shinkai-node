@@ -205,7 +205,8 @@ impl ParsingHelper {
 
     /// Cleans the value string from a parsed markdown response from common LLM issues.
     fn clean_markdown_result_string(string: &str) -> String {
-        let parsed_message = ParsedUserMessage::new(string.to_string());
+        let link_image_cleaned = ParsingHelper::clean_markdown_urls_images(string);
+        let parsed_message = ParsedUserMessage::new(link_image_cleaned.to_string());
 
         // If there is a codeblock and it has no/disallowed content, then remove it
         if parsed_message.num_of_code_blocks() > 0 {
@@ -240,5 +241,18 @@ impl ParsingHelper {
             }
             cleaned_string
         }
+    }
+
+    /// Cleans URLs and images from markdown strings.
+    /// Removes markdown images entirely. Removes link syntax leaving only the link text.
+    fn clean_markdown_urls_images(string: &str) -> String {
+        let re_image = Regex::new(r"!\[[^\]]*\]\([^\)]*\)").unwrap(); // Matches markdown image syntax
+        let cleaned_string = re_image.replace_all(string, ""); // Remove all images
+
+        // Updated regex to handle nested parentheses in URLs
+        let re_link = Regex::new(r"\[([^\]]+)\]\((?:[^()]|\([^)]*\))+\)").unwrap(); // Matches markdown link syntax
+        let cleaned_string = re_link.replace_all(&cleaned_string, "$1"); // Replace link with link text
+
+        cleaned_string.to_string()
     }
 }

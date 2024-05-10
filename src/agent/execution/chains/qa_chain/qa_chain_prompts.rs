@@ -51,7 +51,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            r#"```md\n# Answer\n{answer markdown text here}\n```\n"#.to_string(),
+            r#"```md\n# Answer\n{{answer}}\n```\n"#.to_string(),
             SubPromptType::System,
             100,
         );
