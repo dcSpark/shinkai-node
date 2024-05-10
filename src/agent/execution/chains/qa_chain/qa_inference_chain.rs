@@ -1,5 +1,7 @@
 use crate::agent::error::AgentError;
-use crate::agent::execution::chains::inference_chain_trait::{InferenceChain, InferenceChainContext};
+use crate::agent::execution::chains::inference_chain_trait::{
+    InferenceChain, InferenceChainContext, InferenceChainResult,
+};
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
@@ -36,8 +38,8 @@ impl InferenceChain for QAInferenceChain {
         &mut self.context
     }
 
-    async fn start_chain(&mut self) -> Result<String, AgentError> {
-        QAInferenceChain::start_qa_inference_chain(
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
+        let response = QAInferenceChain::start_qa_inference_chain(
             self.context.db.clone(),
             self.context.vector_fs.clone(),
             self.context.full_job.clone(),
@@ -52,7 +54,9 @@ impl InferenceChain for QAInferenceChain {
             self.context.max_iterations,
             self.context.max_tokens_in_prompt,
         )
-        .await
+        .await?;
+        let job_execution_context = self.context.execution_context.clone();
+        Ok(InferenceChainResult::new(response, job_execution_context))
     }
 }
 

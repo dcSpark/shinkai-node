@@ -20,17 +20,17 @@ pub trait InferenceChain: Send + Sync {
     fn chain_context(&mut self) -> &mut InferenceChainContext;
 
     /// Starts the inference chain
-    async fn start_chain(&mut self) -> Result<String, AgentError>;
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError>;
 
     /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,
     /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
-    async fn recurse_chain(&mut self, backup_result: String) -> Result<String, AgentError> {
+    async fn recurse_chain(&mut self, backup_result: InferenceChainResult) -> Result<InferenceChainResult, AgentError> {
         let context = self.chain_context();
         if context.iteration_count >= context.max_iterations {
             return Ok(backup_result);
         }
         context.iteration_count += 1;
-        self.start_chain().await
+        self.run_chain().await
     }
 }
 
@@ -42,6 +42,7 @@ pub struct InferenceChainContext {
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
     pub agent: SerializedAgent,
+    /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
     pub user_profile: ShinkaiName,
@@ -62,7 +63,6 @@ impl InferenceChainContext {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
-        iteration_count: u64,
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
     ) -> Self {
@@ -76,10 +76,38 @@ impl InferenceChainContext {
             generator,
             user_profile,
             max_iterations,
-            iteration_count,
+            iteration_count: 1,
             max_tokens_in_prompt,
             score_results,
         }
+    }
+
+    /// Updates the maximum number of iterations allowed for this chain
+    pub fn update_max_iterations(&mut self, new_max_iterations: u64) {
+        self.max_iterations = new_max_iterations;
+    }
+}
+
+/// Struct that represents the result of an inference chain.
+pub struct InferenceChainResult {
+    pub response: String,
+    pub new_job_execution_context: HashMap<String, String>,
+}
+
+impl InferenceChainResult {
+    pub fn new(response: String, new_job_execution_context: HashMap<String, String>) -> Self {
+        Self {
+            response,
+            new_job_execution_context,
+        }
+    }
+
+    pub fn new_empty_execution_context(response: String) -> Self {
+        Self::new(response, HashMap::new())
+    }
+
+    pub fn new_empty() -> Self {
+        Self::new_empty_execution_context(String::new())
     }
 }
 

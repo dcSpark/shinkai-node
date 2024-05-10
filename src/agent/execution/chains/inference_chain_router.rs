@@ -1,4 +1,4 @@
-use super::inference_chain_trait::InferenceChain;
+use super::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult};
 use super::qa_chain::qa_inference_chain::QAInferenceChain;
 use super::summary_chain::summary_inference_chain::SummaryInferenceChain;
 use crate::agent::error::AgentError;
@@ -55,13 +55,13 @@ impl JobManager {
         prev_execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
-    ) -> Result<(String, HashMap<String, String>), AgentError> {
+    ) -> Result<InferenceChainResult, AgentError> {
         // Initializations
-        let mut inference_response_content = String::new();
-        let mut new_execution_context = HashMap::new();
+        let mut inference_result = InferenceChainResult::new_empty();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
+        let job_scope_contains_significant_content = full_job.scope.contains_significant_content();
 
         // Choose the inference chain based on the user message
         let chosen_chain = choose_inference_chain(
@@ -71,46 +71,36 @@ impl JobManager {
             &full_job.step_history,
         )
         .await;
+        // Create the inference chain context
+        let mut chain_context = InferenceChainContext::new(
+            db,
+            vector_fs,
+            full_job,
+            parsed_user_message,
+            agent,
+            prev_execution_context,
+            generator,
+            user_profile,
+            2,
+            max_tokens_in_prompt,
+            HashMap::new(),
+        );
+
+        // If the Summary chain was chosen
         if chosen_chain.chain_id.to_string() == SummaryInferenceChain::chain_id() {
-            inference_response_content = SummaryInferenceChain::start_summary_inference_chain(
-                db,
-                vector_fs,
-                full_job,
-                parsed_user_message,
-                agent,
-                prev_execution_context,
-                generator,
-                user_profile,
-                3,
-                max_tokens_in_prompt,
-                chosen_chain.score_results,
-            )
-            .await?
-        } else if chosen_chain.chain_id.to_string() == QAInferenceChain::chain_id() {
-            let qa_iteration_count = if full_job.scope.contains_significant_content() {
-                3
-            } else {
-                2
-            };
-            inference_response_content = QAInferenceChain::start_qa_inference_chain(
-                db,
-                vector_fs,
-                full_job,
-                parsed_user_message.get_output_string(),
-                agent,
-                prev_execution_context,
-                generator,
-                user_profile,
-                None,
-                None,
-                1,
-                qa_iteration_count,
-                max_tokens_in_prompt as usize,
-            )
-            .await?;
+            let mut summary_chain = SummaryInferenceChain::new(chain_context, chosen_chain.score_results);
+            inference_result = summary_chain.run_chain().await?;
+        }
+        // If the QA chain was chosen
+        else if chosen_chain.chain_id.to_string() == QAInferenceChain::chain_id() {
+            let qa_iteration_count = if job_scope_contains_significant_content { 3 } else { 2 };
+            chain_context.update_max_iterations(qa_iteration_count);
+
+            let mut qa_chain = QAInferenceChain::new(chain_context);
+            inference_result = qa_chain.run_chain().await?;
         }
 
-        Ok((inference_response_content, new_execution_context))
+        Ok(inference_result)
     }
 }
 
