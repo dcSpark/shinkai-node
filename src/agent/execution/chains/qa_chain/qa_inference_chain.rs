@@ -1,4 +1,5 @@
 use crate::agent::error::AgentError;
+use crate::agent::execution::chains::inference_chain_trait::InferenceChain;
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
@@ -19,6 +20,8 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
 
 pub struct QAInferenceChain {}
+
+impl InferenceChain for QAInferenceChain {}
 
 impl QAInferenceChain {
     /// An inference chain for question-answer user messages which vector searches the Vector Resources

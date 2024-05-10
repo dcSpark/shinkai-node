@@ -1,10 +1,20 @@
-use crate::{
-    agent::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
-    db::ShinkaiDB,
+use crate::agent::error::AgentError;
+use crate::agent::execution::{
+    chains::inference_chain_router::InferenceChainDecision, prompts::prompts::JobPromptGenerator,
 };
+use crate::agent::job::{Job, JobStepResult};
+use crate::agent::job_manager::JobManager;
+use crate::cron_tasks::web_scrapper::CronTaskRequest;
+use crate::db::ShinkaiDB;
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
+use tracing::instrument;
+
+use super::cron_creation_chain::CronCreationChainResponse;
 
 #[derive(Debug, Clone, Default)]
 pub struct CronExecutionChainResponse {
@@ -155,5 +165,116 @@ impl JobManager {
         } else {
             return Err(AgentError::InferenceFailed);
         }
+    }
+
+    // TODO: Delete this
+    // TODO: Merge this with the above function. We are not doing that right now bc we need to decide how to select Chains.
+    // Could it be based on the first message of the Job?
+    #[instrument(skip(db))]
+    pub async fn alt_inference_chain_router(
+        db: Arc<ShinkaiDB>,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        job_message: JobMessage,
+        cron_task_request: CronTaskRequest,
+        prev_execution_context: HashMap<String, String>,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<(CronCreationChainResponse, HashMap<String, String>), AgentError> {
+        // TODO: this part is very similar to the above function so it is easier to merge them.
+        let chosen_chain = InferenceChainDecision::CronCreationChain;
+        let mut inference_response_content = CronCreationChainResponse::default();
+        let mut new_execution_context = HashMap::new();
+
+        match chosen_chain {
+            InferenceChainDecision::CronCreationChain => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = JobManager::start_cron_creation_chain(
+                        db,
+                        full_job,
+                        job_message.content.clone(),
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        cron_task_request.cron_description,
+                        cron_task_request.task_description,
+                        cron_task_request.object_description,
+                        0,
+                        6, // TODO: Make this configurable
+                        None,
+                    )
+                    .await?;
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            // Add other chains here
+            _ => {}
+        }
+        Ok((inference_response_content, new_execution_context))
+    }
+
+    #[instrument(skip(db, chosen_chain))]
+    pub async fn cron_inference_chain_router_summary(
+        db: Arc<ShinkaiDB>,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        task_description: String,
+        web_content: String,
+        links: Vec<String>,
+        prev_execution_context: HashMap<String, String>,
+        user_profile: Option<ShinkaiName>,
+        chosen_chain: InferenceChainDecision,
+    ) -> Result<(String, HashMap<String, String>), AgentError> {
+        let mut inference_response_content: String = String::new();
+        let mut new_execution_context = HashMap::new();
+
+        // Note: Faking it until you merge it
+        match chosen_chain {
+            InferenceChainDecision::CronExecutionChainMainTask => {
+                if let Some(agent) = agent_found {
+                    let response = JobManager::start_cron_execution_chain_for_main_task(
+                        db,
+                        full_job,
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        task_description,
+                        web_content,
+                        links,
+                        0,
+                        6, // TODO: Make this configurable
+                        None,
+                    )
+                    .await?;
+                    inference_response_content = response.summary;
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            InferenceChainDecision::CronExecutionChainSubtask => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
+                        db,
+                        full_job,
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        task_description,
+                        web_content,
+                        0,
+                        6, // TODO: Make this configurable
+                    )
+                    .await?;
+
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone());
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            // Add other chains here
+            _ => {}
+        }
+        Ok((inference_response_content, new_execution_context))
     }
 }

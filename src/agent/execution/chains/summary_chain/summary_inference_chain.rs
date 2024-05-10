@@ -1,5 +1,6 @@
 use crate::agent::error::AgentError;
 use crate::agent::execution::chains::inference_chain_router::InferenceChainDecision;
+use crate::agent::execution::chains::inference_chain_trait::InferenceChain;
 use crate::agent::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
@@ -30,6 +31,8 @@ use super::chain_detection_embeddings::{
 };
 
 pub struct SummaryInferenceChain {}
+
+impl InferenceChain for SummaryInferenceChain {}
 
 impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.

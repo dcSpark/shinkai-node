@@ -22,9 +22,7 @@ use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
-
 use chrono::{DateTime, Utc};
-
 use std::any::Any;
 
 #[async_trait]

@@ -1,5 +1,4 @@
-use crate::agent::execution::chains::chain_embeddings_scoring::top_score_embeddings;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use crate::agent::execution::chains::inference_chain_router::top_score_embeddings;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -11,7 +10,7 @@ pub async fn top_score_summarize_these_embeddings(
     user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = summarize_these_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding))
 }
 
 /// Scores job task embedding against "summarize this" embeddings and returns the highest score.
@@ -20,7 +19,7 @@ pub async fn top_score_summarize_this_embeddings(
     user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = summarize_this_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding))
 }
 
 /// Scores job task embedding against other summary embeddings and returns the highest score.
@@ -29,7 +28,7 @@ pub async fn top_score_summarize_other_embeddings(
     user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = summarize_other_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding))
 }
 
 /// Scores job task embedding against message history summary embeddings and returns the highest score.
@@ -38,7 +37,7 @@ pub async fn top_score_message_history_summary_embeddings(
     user_message_embedding: &Embedding,
 ) -> Result<f32, VRError> {
     let embeddings = message_history_summary_embeddings(generator).await?;
-    Ok(top_score_embeddings(embeddings, user_message_embedding).await)
+    Ok(top_score_embeddings(embeddings, user_message_embedding))
 }
 
 /// Returns summary embeddings related to requests for summarizing multiple documents or files
