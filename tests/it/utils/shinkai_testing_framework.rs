@@ -1,13 +1,17 @@
 use std::path::Path;
 
 use super::vecfs_test_utils::{
-    create_folder, make_folder_shareable, make_folder_shareable_http_free, remove_folder, remove_item, retrieve_file_info, show_available_shared_items, upload_file
+    create_folder, make_folder_shareable, make_folder_shareable_http_free, remove_folder, remove_item,
+    retrieve_file_info, show_available_shared_items, upload_file,
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
-use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::FileDestinationCredentials, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}};
-use shinkai_node::network::{node::NodeCommand, node_api::APIError};
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message_schemas::FileDestinationCredentials,
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+};
+use shinkai_node::network::{node::NodeCommand, node_api::APIError, subscription_manager::subscription_file_uploader::{upload_file_http, FileDestination}};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 /// Struct to simplify testing by encapsulating common test components.
@@ -94,7 +98,7 @@ impl ShinkaiTestingFramework {
             self.node_encryption_pk,
             &self.node_identity_name,
             &self.node_profile_name,
-            None
+            None,
         )
         .await;
     }
@@ -109,7 +113,7 @@ impl ShinkaiTestingFramework {
             self.node_encryption_pk,
             &self.node_identity_name,
             &self.node_profile_name,
-            Some(credentials)
+            Some(credentials),
         )
         .await;
     }
@@ -129,6 +133,21 @@ impl ShinkaiTestingFramework {
             0, // Example symmetric key index, adjust as needed
         )
         .await;
+    }
+
+    /// Updates a file to an HTTP destination.
+    pub async fn update_file_to_http(
+        &self,
+        destination: FileDestination,
+        file_contents: Vec<u8>,
+        file_path: &str,
+        file_name: &str,
+    ) {
+        let upload_result = upload_file_http(file_contents, file_path, file_name, destination.clone()).await;
+        match upload_result {
+            Ok(_) => println!("File successfully updated at HTTP destination."),
+            Err(e) => eprintln!("Failed to update file at HTTP destination: {:?}", e),
+        }
     }
 
     /// Retrieves file information.

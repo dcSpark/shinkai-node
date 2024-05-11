@@ -278,8 +278,15 @@ impl JobRecipient {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FileDestinationSourceType {
+    S3,
+    R2,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct FileDestinationCredentials {
+    pub source: FileDestinationSourceType,
     pub access_key_id: String,
     pub secret_access_key: String,
     pub endpoint_uri: String,
@@ -287,8 +294,20 @@ pub struct FileDestinationCredentials {
 }
 
 impl FileDestinationCredentials {
-    pub fn new(access_key_id: String, secret_access_key: String, endpoint_uri: String, bucket: String) -> Self {
+    pub fn new(
+        source: String,
+        access_key_id: String,
+        secret_access_key: String,
+        endpoint_uri: String,
+        bucket: String,
+    ) -> Self {
+        let source_type = match source.as_str() {
+            "S3" => FileDestinationSourceType::S3,
+            "R2" => FileDestinationSourceType::R2,
+            _ => panic!("Unsupported source type"),
+        };
         FileDestinationCredentials {
+            source: source_type,
             access_key_id,
             secret_access_key,
             endpoint_uri,

@@ -303,6 +303,7 @@ pub async fn fetch_last_messages(
     Ok(res_receiver.recv().await.unwrap())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn make_folder_shareable(
     commands_sender: &Sender<NodeCommand>,
     folder_path: &str,
@@ -350,6 +351,7 @@ pub async fn make_folder_shareable(
     eprintln!("Make folder shareable resp: {:?}", resp);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn make_folder_shareable_http_free(
     commands_sender: &Sender<NodeCommand>,
     folder_path: &str,

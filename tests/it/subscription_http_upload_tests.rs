@@ -2,10 +2,13 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    FileDestinationCredentials, FileDestinationSourceType,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::subscription_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use shinkai_node::network::subscription_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
 use tokio::fs::File;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -44,11 +47,13 @@ fn subscription_http_upload() {
 
             // file_dest_credentials
             let file_dest_credentials = FileDestinationCredentials {
+                source: FileDestinationSourceType::R2,
                 access_key_id,
                 secret_access_key,
                 endpoint_uri: aws_url,
                 bucket: "shinkai-streamer".to_string(),
             };
+            eprintln!("file_dest_credentials: {:?}", file_dest_credentials);
 
             // Shinkai Testing Framework
             let testing_framework = ShinkaiTestingFramework::new(
@@ -78,29 +83,102 @@ fn subscription_http_upload() {
             }
             {
                 // Create folder /shared_test_folder
-                testing_framework.create_folder("/", "shared_test_folder").await;
+                testing_framework.create_folder("/", "shinkai_sharing").await;
                 testing_framework
-                    .upload_file("/shared_test_folder", "files/shinkai_intro.pdf")
+                    .upload_file("/shinkai_sharing", "files/shinkai_intro.pdf")
                     .await;
                 testing_framework
-                    .upload_file("/shared_test_folder", "files/zeko_mini.pdf")
+                    .upload_file("/shinkai_sharing", "files/zeko_mini.pdf")
                     .await;
 
                 testing_framework
-                    .make_folder_shareable_free_whttp("/shared_test_folder", file_dest_credentials)
+                    .make_folder_shareable_free_whttp("/shinkai_sharing", file_dest_credentials)
                     .await;
                 testing_framework.show_available_shared_items().await;
             }
             {
                 let shared_folders_trees_ref = node1_ext_subscription_manager.lock().await.shared_folders_trees.clone();
 
-                let subscription_uploader = HttpSubscriptionUploadManager::new(
+                let _subscription_uploader = HttpSubscriptionUploadManager::new(
                     node1_db_weak.clone(),
                     node1_vecfs_weak.clone(),
                     ShinkaiName::new(node1_name.clone()).unwrap(),
                     shared_folders_trees_ref.clone(),
                 )
                 .await;
+
+                {
+                    // Setting up initial conditions
+                    // Retrieve upload credentials from the database
+                    let db_strong = node1_db_weak.upgrade().unwrap();
+                    let path = "/shinkai_sharing";
+                    let profile = "main";
+                    let credentials = db_strong.get_upload_credentials(path, profile).unwrap();
+                    eprintln!("credentials: {:?}", credentials);
+
+                    let destination = FileDestination::from_credentials(credentials).await.unwrap();
+
+                    // clean up the testing folder
+                    let _ = delete_all_in_folder(&destination.clone(), "/shinkai_sharing").await;
+
+                    // add two random files (should get deleted)
+                    // add a file that has the wrong hash (it should be re-uploaded)
+                    let dummy_data1 = vec![1, 2, 3, 4, 5];
+                    let dummy_data2 = vec![6, 7, 8, 9, 10];
+                    let dummy_file_name1 = "dummy_file1";
+                    let dummy_file_name2 = "dummy_file2";
+                    let outdated_shinkai_file = "shinkai_intro";
+
+                    // Upload dummy files to the folder /shinkai_sharing
+                    testing_framework
+                        .update_file_to_http(
+                            destination.clone(),
+                            dummy_data1.clone(),
+                            "/shinkai_sharing",
+                            dummy_file_name1,
+                        )
+                        .await;
+                    testing_framework
+                        .update_file_to_http(
+                            destination.clone(),
+                            dummy_data2.clone(),
+                            "/shinkai_sharing",
+                            dummy_file_name2,
+                        )
+                        .await;
+                    testing_framework
+                        .update_file_to_http(
+                            destination.clone(),
+                            dummy_data2.clone(),
+                            "/shinkai_sharing",
+                            outdated_shinkai_file,
+                        )
+                        .await;
+
+                    let checksum_file_name1 = "dummy_file1.4aaabb39.checksum";
+                    let checksum_file_name2 = "dummy_file2.2bbbbb39.checksum";
+                    let checksum_outdated_shinkai = "shinkai_intro.aaaaaaaa.checksum";
+
+                    testing_framework
+                        .update_file_to_http(
+                            destination.clone(),
+                            dummy_data1.clone(),
+                            "/shinkai_sharing",
+                            checksum_file_name1,
+                        )
+                        .await;
+                    testing_framework
+                        .update_file_to_http(
+                            destination.clone(),
+                            dummy_data1,
+                            "/shinkai_sharing",
+                            checksum_outdated_shinkai,
+                        )
+                        .await;
+                    testing_framework
+                        .update_file_to_http(destination, dummy_data2, "/shinkai_sharing", checksum_file_name2)
+                        .await;
+                }
 
                 let subscriptions_whttp_support =
                     HttpSubscriptionUploadManager::fetch_subscriptions_with_http_support(&node1_db_weak.clone()).await;
@@ -118,8 +196,9 @@ fn subscription_http_upload() {
                     subscription_status,
                     subscription_config,
                     shared_folders_trees_ref.clone(),
-                    1
-                ).await;
+                    1,
+                )
+                .await;
             }
             node1_abort_handler.abort();
         })

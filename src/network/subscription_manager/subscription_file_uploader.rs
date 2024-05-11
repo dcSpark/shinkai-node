@@ -20,6 +20,7 @@ use std::env;
 use aws_config::credential_process;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::profile::credentials;
+use aws_config::timeout::TimeoutConfig;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::EncodingType;
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
@@ -29,7 +30,9 @@ use serde::{Deserialize, Serialize};
 use async_recursion::async_recursion;
 use aws_types::region::Region;
 use serde_json::{json, Error as JsonError, Value};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    FileDestinationCredentials, FileDestinationSourceType,
+};
 use thiserror::Error;
 use urlencoding::decode;
 
@@ -43,6 +46,9 @@ pub enum FileDestinationError {
 
     #[error("Unknown type field")]
     UnknownTypeField,
+
+    #[error("File system error: {0}")]
+    FileSystemError(String),
 }
 
 #[derive(Error, Debug)]
@@ -67,7 +73,7 @@ impl FileDestination {
         match self {
             FileDestination::S3(_, credentials) => {
                 json!({
-                    "type": "S3",
+                    "source": "S3",
                     "credentials": {
                         "access_key_id": credentials.access_key_id,
                         "secret_access_key": credentials.secret_access_key,
@@ -78,7 +84,7 @@ impl FileDestination {
             }
             FileDestination::R2(_, credentials) => {
                 json!({
-                    "type": "R2",
+                    "source": "R2",
                     "credentials": {
                         "access_key_id": credentials.access_key_id,
                         "secret_access_key": credentials.secret_access_key,
@@ -89,7 +95,7 @@ impl FileDestination {
             }
             FileDestination::Http { url, auth_headers } => {
                 json!({
-                    "type": "Http",
+                    "source": "Http",
                     "url": url,
                     "auth_headers": auth_headers
                 })
@@ -98,22 +104,47 @@ impl FileDestination {
     }
 
     pub async fn from_credentials(credentials: FileDestinationCredentials) -> Result<Self, FileDestinationError> {
+        eprintln!("Credentials: {:?}", credentials);
         // Set environment variables for AWS credentials
         env::set_var("AWS_ACCESS_KEY_ID", &credentials.access_key_id);
-        env::set_var("AWS_SECRET_ACCESS_KEY", &credentials.secret_access_key);
+        eprintln!("AWS_ACCESS: {:?}", &credentials.access_key_id);
 
+        env::set_var("AWS_SECRET_ACCESS_KEY", &credentials.secret_access_key);
+        eprintln!("AWS_SECRET: {:?}", &credentials.secret_access_key);
+
+        // Set the AWS region
+        env::set_var("AWS_REGION", "us-east-1");
+
+        // Set the endpoint URL if needed
+        env::set_var("AWS_ENDPOINT_URL", &credentials.endpoint_uri);
+
+        // panic!("before before client");
         // Setup the S3Client using environment configuration
         let config = aws_config::load_from_env().await;
 
+        // Configure timeouts using the builder pattern
+        let timeout_config = TimeoutConfig::builder()
+            .connect_timeout(std::time::Duration::from_secs(30)) // Set connect timeout to 30 seconds
+            .build();
+
+        // panic!("before client");
+
         let s3_config = config
             .into_builder()
+            .timeout_config(timeout_config)
             .endpoint_url(&credentials.endpoint_uri)
-            .region(Region::new("us-east-1")) // Placeholder region
+            .region(Region::new("us-east-1")) // TODO: expand credentials to include region
             .build();
 
         let client = S3Client::new(&s3_config);
 
-        Ok(FileDestination::S3(client, credentials))
+        // panic!("client loaded");
+
+        match credentials.source {
+            FileDestinationSourceType::S3 => Ok(FileDestination::S3(client, credentials)),
+            FileDestinationSourceType::R2 => Ok(FileDestination::R2(client, credentials)),
+            _ => Err(FileDestinationError::UnknownTypeField),
+        }
     }
 
     pub async fn from_json(value: &Value) -> Result<Self, FileDestinationError> {
@@ -184,6 +215,7 @@ impl FileDestination {
                     "S3" => Ok(FileDestination::S3(
                         client,
                         FileDestinationCredentials {
+                            source: FileDestinationSourceType::S3,
                             access_key_id,
                             secret_access_key,
                             endpoint_uri,
@@ -193,6 +225,7 @@ impl FileDestination {
                     "R2" => Ok(FileDestination::R2(
                         client,
                         FileDestinationCredentials {
+                            source: FileDestinationSourceType::R2,
                             access_key_id,
                             secret_access_key,
                             endpoint_uri,
@@ -228,15 +261,17 @@ pub struct FileDestinationPath {
     pub is_folder: bool,
 }
 
-pub async fn upload_file(
+pub async fn upload_file_http(
     data: Vec<u8>,
     path: &str,
     filename: &str,
     destination: FileDestination,
 ) -> Result<(), FileTransferError> {
+    let path = path.strip_prefix('/').unwrap_or(path);
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let key = format!("{}/{}", path, filename);
+            eprintln!("Uploading file to S3/R2: {:?}", key);
             client
                 .put_object()
                 .bucket(&credentials.bucket)
@@ -268,11 +303,12 @@ pub async fn upload_file(
     Ok(())
 }
 
-pub async fn download_file(
+pub async fn download_file_http(
     path: &str,
     filename: &str,
     destination: FileDestination,
 ) -> Result<Vec<u8>, FileTransferError> {
+    let path = path.strip_prefix('/').unwrap_or(path);
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let key = format!("{}/{}", path, filename);
@@ -323,6 +359,8 @@ pub async fn list_folder_contents(
     destination: &FileDestination,
     folder_path: &str,
 ) -> Result<Vec<FileDestinationPath>, FileTransferError> {
+    let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
+    eprintln!(">> Listing folder contents: {:?}", folder_path);
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let mut folder_contents = Vec::new();
@@ -412,6 +450,7 @@ pub async fn generate_temporary_shareable_links_for_folder(
     folder_path: &str,
     destination: &FileDestination,
 ) -> Result<Vec<(String, String)>, FileTransferError> {
+    let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
     let contents = list_folder_contents(destination, folder_path).await?;
     let mut links = Vec::new();
 
@@ -423,7 +462,7 @@ pub async fn generate_temporary_shareable_links_for_folder(
             }
         }
     }
-    
+
     Ok(links)
 }
 
@@ -433,6 +472,7 @@ pub async fn generate_temporary_shareable_link(
     filename: &str,
     destination: &FileDestination,
 ) -> Result<String, FileTransferError> {
+    let path = path.strip_prefix('/').unwrap_or(path);
     match destination {
         FileDestination::S3(client, credentials) => {
             let key = format!("{}/{}", path, filename);
@@ -482,9 +522,15 @@ pub async fn generate_temporary_shareable_link(
 }
 
 pub async fn delete_file_or_folder(destination: &FileDestination, path: &str) -> Result<(), FileTransferError> {
+    let path = path.strip_prefix('/').unwrap_or(path);
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
-            let result = client.delete_object().bucket(credentials.bucket.clone()).key(path).send().await;
+            let result = client
+                .delete_object()
+                .bucket(credentials.bucket.clone())
+                .key(path)
+                .send()
+                .await;
 
             result.map_err(|sdk_error| FileTransferError::Other(format!("S3/R2 delete error: {:?}", sdk_error)))?;
         }
@@ -518,21 +564,21 @@ pub async fn delete_file_or_folder(destination: &FileDestination, path: &str) ->
 /// Deletes all files and folders recursively within a specified folder.
 #[async_recursion]
 pub async fn delete_all_in_folder(destination: &FileDestination, folder_path: &str) -> Result<(), FileTransferError> {
+    eprintln!("Deleting all in folder: {:?}", folder_path);
+    let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
     let contents = list_folder_contents(destination, folder_path).await?;
     // Start by deleting all files in the current folder
     for item in &contents {
         if !item.is_folder {
-            let full_path = format!("{}/{}", folder_path, item.path);
-            delete_file_or_folder(destination, &full_path).await?;
+            delete_file_or_folder(destination, &item.path).await?;
         }
     }
     // Then delete subfolders recursively
     for item in contents {
         if item.is_folder {
-            let full_path = format!("{}/{}", folder_path, item.path);
-            delete_all_in_folder(destination, &full_path).await?;
+            delete_all_in_folder(destination, &item.path).await?;
             // After deleting all contents in the subfolder, delete the subfolder itself
-            delete_file_or_folder(destination, &full_path).await?;
+            delete_file_or_folder(destination, &item.path).await?;
         }
     }
     Ok(())
@@ -546,9 +592,9 @@ mod tests {
     #[tokio::test]
     async fn test_upload_to_r2() -> Result<(), Box<dyn std::error::Error>> {
         // Generate a unique file name
-        let file_name = format!("test_file_{}.txt", Uuid::new_v4());
+        let file_name = format!("test_file_{}", Uuid::new_v4());
         let file_contents = b"Hello, R2!"; // Dummy file contents
-        let file_path = "test_path_a/test_path_b";
+        let file_path = "shinkai_sharing";
 
         // Read AWS credentials from environment variables
         let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
@@ -560,6 +606,7 @@ mod tests {
         // Setup the destination
         let bucket_name = "shinkai-streamer";
         let credentials = FileDestinationCredentials::new(
+            "R2".to_string(),
             access_key_id,
             secret_access_key,
             cloudflare_kv_uri.to_string(),
@@ -568,14 +615,14 @@ mod tests {
         let destination = FileDestination::from_credentials(credentials).await?;
 
         // Call the upload function
-        let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
+        let upload_result = upload_file_http(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
         eprintln!("{:?}", upload_result);
 
         // Assert that the upload was successful
         assert!(upload_result.is_ok());
 
         // Optionally, you can check if the file exists at the URL (requires additional GET request logic)
-        let download_result = download_file(file_path, &file_name, destination).await;
+        let download_result = download_file_http(file_path, &file_name, destination).await;
         assert!(download_result.is_ok());
 
         Ok(())
@@ -598,6 +645,7 @@ mod tests {
         // Setup the destination
         let bucket_name = "shinkai-streamer";
         let credentials = FileDestinationCredentials::new(
+            "R2".to_string(),
             access_key_id,
             secret_access_key,
             cloudflare_kv_uri.to_string(),
@@ -606,7 +654,7 @@ mod tests {
         let destination = FileDestination::from_credentials(credentials).await?;
 
         // Upload the file
-        let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
+        let upload_result = upload_file_http(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
         assert!(upload_result.is_ok(), "Upload failed: {:?}", upload_result);
 
         // Generate a temporary shareable link
@@ -645,6 +693,7 @@ mod tests {
         // Setup the destination
         let bucket_name = "shinkai-streamer";
         let credentials = FileDestinationCredentials::new(
+            "R2".to_string(),
             access_key_id,
             secret_access_key,
             cloudflare_kv_uri.to_string(),
@@ -653,7 +702,7 @@ mod tests {
         let destination = FileDestination::from_credentials(credentials).await?;
 
         // Folder path to list contents
-        let folder_path = "";
+        let folder_path = "/test_folder";
 
         // Call the list_folder_contents function
         let list_result = list_folder_contents(&destination, folder_path).await;
@@ -688,6 +737,7 @@ mod tests {
         // Setup the destination
         let bucket_name = "shinkai-streamer";
         let credentials = FileDestinationCredentials::new(
+            "R2".to_string(),
             access_key_id,
             secret_access_key,
             cloudflare_kv_uri.to_string(),
@@ -696,7 +746,7 @@ mod tests {
         let destination = FileDestination::from_credentials(credentials).await?;
 
         // Upload the file
-        let upload_result = upload_file(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
+        let upload_result = upload_file_http(file_contents.to_vec(), file_path, &file_name, destination.clone()).await;
         assert!(upload_result.is_ok(), "Upload failed: {:?}", upload_result);
 
         // Delete the file
@@ -718,6 +768,7 @@ mod tests {
         // Setup the destination
         let bucket_name = "shinkai-streamer";
         let credentials = FileDestinationCredentials::new(
+            "R2".to_string(),
             access_key_id,
             secret_access_key,
             cloudflare_kv_uri.to_string(),
@@ -738,7 +789,7 @@ mod tests {
 
         // Upload files to the main folder
         for (file_name, content) in &files {
-            let upload_result = upload_file(content.to_vec(), main_folder_name, file_name, destination.clone()).await;
+            let upload_result = upload_file_http(content.to_vec(), main_folder_name, file_name, destination.clone()).await;
             assert!(
                 upload_result.is_ok(),
                 "Upload failed for {}: {:?}",
@@ -751,7 +802,7 @@ mod tests {
         // Create a subfolder and upload a file into it
         let folder_file_name = "folder_file.txt";
         let folder_file_content = b"Hello, R2 in subfolder!";
-        let upload_result = upload_file(
+        let upload_result = upload_file_http(
             folder_file_content.to_vec(),
             &format!("{}/{}", main_folder_name, subfolder_name),
             folder_file_name,
