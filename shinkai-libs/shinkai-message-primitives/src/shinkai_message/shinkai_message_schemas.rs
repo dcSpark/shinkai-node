@@ -278,6 +278,25 @@ impl JobRecipient {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct FileDestinationCredentials {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub endpoint_uri: String,
+    pub bucket: String,
+}
+
+impl FileDestinationCredentials {
+    pub fn new(access_key_id: String, secret_access_key: String, endpoint_uri: String, bucket: String) -> Self {
+        FileDestinationCredentials {
+            access_key_id,
+            secret_access_key,
+            endpoint_uri,
+            bucket,
+        }
+    }
+}
+
 /// Represents the response for a subscription request, providing details
 /// about the subscription status and any errors encountered.
 /// Note(Nico): I know things will be much simpler if we added SubscriptionId here
@@ -445,6 +464,7 @@ pub struct APIUnsubscribeToSharedFolder {
 pub struct APICreateShareableFolder {
     pub path: String,
     pub subscription_req: FolderSubscription,
+    pub credentials: Option<FileDestinationCredentials>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -6,32 +6,12 @@ use serde::{Deserialize, Serialize};
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
 use shinkai_vector_resources::vector_resource::VRPath;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct FileDestinationCredentials {
-    pub access_key_id: String,
-    pub secret_access_key: String,
-    pub endpoint_uri: String,
-    pub bucket: String,
-}
-
-impl FileDestinationCredentials {
-    pub fn new(access_key_id: String, secret_access_key: String, endpoint_uri: String, bucket: String) -> Self {
-        FileDestinationCredentials {
-            access_key_id,
-            secret_access_key,
-            endpoint_uri,
-            bucket: bucket,
-        }
-    }
-}
-
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptionId {
     unique_id: String,
     pub include_folders: Option<Vec<VRPath>>,
     pub exclude_folders: Option<Vec<VRPath>>,
-    pub http_upload_destination: Option<FileDestinationCredentials>,
 }
 
 impl SubscriptionId {
@@ -59,7 +39,6 @@ impl SubscriptionId {
             unique_id,
             include_folders: None,
             exclude_folders: None,
-            http_upload_destination: None,
         }
     }
 
@@ -68,7 +47,6 @@ impl SubscriptionId {
             unique_id,
             include_folders: None,
             exclude_folders: None,
-            http_upload_destination: None,
         }
     }
 
@@ -168,11 +146,6 @@ impl SubscriptionId {
     // Method to update exclude_folders
     pub fn update_exclude_folders(&mut self, folders: Vec<VRPath>) {
         self.exclude_folders = Some(folders);
-    }
-
-    // Method to update http_upload_destination
-    pub fn update_http_upload_destination(&mut self, destination: FileDestinationCredentials) {  // Updated parameter type
-        self.http_upload_destination = Some(destination);
     }
 }
 

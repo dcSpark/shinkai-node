@@ -4,7 +4,7 @@ version = "0.7.3"
 edition = "2018"
 
 [features]
-default = ["telemetry"]
+default = []
 stream = ["reqwest/stream"]
 telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry", "tonic"]
 console = ["console-subscriber"]
@@ -69,6 +69,7 @@ lru = "0.7.0"
 console-subscriber = { version = "0.1", optional = true }
 quickxml_to_serde = "0.6.0"
 minidom = "0.12"
+rust_decimal = "1.17.0"
 aws-types = "1.2.0"
 aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
 

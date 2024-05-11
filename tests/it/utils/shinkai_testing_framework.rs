@@ -6,7 +6,7 @@ use super::vecfs_test_utils::{
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
-use shinkai_message_primitives::shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key};
+use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::FileDestinationCredentials, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}};
 use shinkai_node::network::{node::NodeCommand, node_api::APIError};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -94,12 +94,13 @@ impl ShinkaiTestingFramework {
             self.node_encryption_pk,
             &self.node_identity_name,
             &self.node_profile_name,
+            None
         )
         .await;
     }
 
     /// Makes a folder shareable free (+http).
-    pub async fn make_folder_shareable_free_whttp(&self, folder_path: &str) {
+    pub async fn make_folder_shareable_free_whttp(&self, folder_path: &str, credentials: FileDestinationCredentials) {
         make_folder_shareable_http_free(
             &self.node_commands_sender,
             folder_path,
@@ -108,6 +109,7 @@ impl ShinkaiTestingFramework {
             self.node_encryption_pk,
             &self.node_identity_name,
             &self.node_profile_name,
+            Some(credentials)
         )
         .await;
     }

@@ -4,14 +4,14 @@ use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use chrono::{DateTime, TimeZone, Utc};
 use ed25519_dalek::SigningKey;
+use rust_decimal::Decimal;
 use serde_json::Value;
 
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
-    APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, MessageSchemaType,
+    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -311,17 +311,19 @@ pub async fn make_folder_shareable(
     encryption_pk: EncryptionPublicKey,
     identity_name: &str,
     profile_name: &str,
+    credentials: Option<FileDestinationCredentials>,
 ) {
     let payload = APICreateShareableFolder {
         path: folder_path.to_string(),
         subscription_req: FolderSubscription {
             minimum_token_delegation: Some(100),
             minimum_time_delegated_hours: Some(100),
-            monthly_payment: Some(PaymentOption::USD(10.0)),
+            monthly_payment: Some(PaymentOption::USD(Decimal::new(1000, 2))), // Represents 10.00
             is_free: false,
             has_web_alternative: Some(true),
             folder_description: "This is a test folder".to_string(),
         },
+        credentials,
     };
 
     let msg = generate_message_with_payload(
@@ -356,6 +358,7 @@ pub async fn make_folder_shareable_http_free(
     encryption_pk: EncryptionPublicKey,
     identity_name: &str,
     profile_name: &str,
+    credentials: Option<FileDestinationCredentials>
 ) {
     let payload = APICreateShareableFolder {
         path: folder_path.to_string(),
@@ -367,6 +370,7 @@ pub async fn make_folder_shareable_http_free(
             has_web_alternative: Some(true),
             folder_description: "This is a test folder".to_string(),
         },
+        credentials,
     };
 
     let msg = generate_message_with_payload(

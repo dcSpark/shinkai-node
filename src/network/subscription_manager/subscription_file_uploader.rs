@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use async_recursion::async_recursion;
 use aws_types::region::Region;
 use serde_json::{json, Error as JsonError, Value};
-use shinkai_message_primitives::schemas::shinkai_subscription::FileDestinationCredentials;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use thiserror::Error;
 use urlencoding::decode;
 
@@ -556,14 +556,6 @@ mod tests {
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
-        let config = aws_config::load_from_env().await;
-        let s3_config = config
-            .into_builder()
-            .endpoint_url(cloudflare_kv_uri)
-            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
-            .build();
-
-        let client = S3Client::new(&s3_config);
 
         // Setup the destination
         let bucket_name = "shinkai-streamer";
@@ -602,14 +594,6 @@ mod tests {
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
-        let config = aws_config::load_from_env().await;
-        let s3_config = config
-            .into_builder()
-            .endpoint_url(cloudflare_kv_uri)
-            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
-            .build();
-
-        let client = S3Client::new(&s3_config);
 
         // Setup the destination
         let bucket_name = "shinkai-streamer";
@@ -657,14 +641,6 @@ mod tests {
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
-        let config = aws_config::load_from_env().await;
-        let s3_config = config
-            .into_builder()
-            .endpoint_url(cloudflare_kv_uri)
-            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
-            .build();
-
-        let client = S3Client::new(&s3_config);
 
         // Setup the destination
         let bucket_name = "shinkai-streamer";
@@ -708,14 +684,6 @@ mod tests {
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
-        let config = aws_config::load_from_env().await;
-        let s3_config = config
-            .into_builder()
-            .endpoint_url(cloudflare_kv_uri)
-            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
-            .build();
-
-        let client = S3Client::new(&s3_config);
 
         // Setup the destination
         let bucket_name = "shinkai-streamer";
@@ -746,14 +714,6 @@ mod tests {
 
         // Setup the S3Client for R2 using environment configuration
         let cloudflare_kv_uri = "https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com";
-        let config = aws_config::load_from_env().await;
-        let s3_config = config
-            .into_builder()
-            .endpoint_url(cloudflare_kv_uri)
-            .region(Region::new("us-east-1")) // Cloudflare R2 uses 'us-east-1' as a placeholder
-            .build();
-
-        let client = S3Client::new(&s3_config);
 
         // Setup the destination
         let bucket_name = "shinkai-streamer";

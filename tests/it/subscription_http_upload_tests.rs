@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::subscription_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use tokio::fs::File;
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -34,6 +36,19 @@ fn subscription_http_upload() {
             // Downgrade node1_db and node1_vecfs from Arc to Weak
             let node1_db_weak = Arc::downgrade(&env.node1_db);
             let node1_vecfs_weak = Arc::downgrade(&env.node1_vecfs);
+
+            // Read AWS credentials from environment variables
+            let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not set");
+            let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not set");
+            let aws_url = std::env::var("AWS_URL").expect("AWS_URL not set");
+
+            // file_dest_credentials
+            let file_dest_credentials = FileDestinationCredentials {
+                access_key_id,
+                secret_access_key,
+                endpoint_uri: aws_url,
+                bucket: "shinkai-streamer".to_string(),
+            };
 
             // Shinkai Testing Framework
             let testing_framework = ShinkaiTestingFramework::new(
@@ -70,7 +85,10 @@ fn subscription_http_upload() {
                 testing_framework
                     .upload_file("/shared_test_folder", "files/zeko_mini.pdf")
                     .await;
-                testing_framework.make_folder_shareable_free_whttp("/shared_test_folder").await;
+
+                testing_framework
+                    .make_folder_shareable_free_whttp("/shared_test_folder", file_dest_credentials)
+                    .await;
                 testing_framework.show_available_shared_items().await;
             }
             {
@@ -87,6 +105,21 @@ fn subscription_http_upload() {
                 let subscriptions_whttp_support =
                     HttpSubscriptionUploadManager::fetch_subscriptions_with_http_support(&node1_db_weak.clone()).await;
                 eprintln!("subscriptions_whttp_support: {:?}", subscriptions_whttp_support);
+
+                let subscription_file_map = DashMap::new();
+                let subscription_status = DashMap::new();
+                let subscription_config = DashMap::new();
+
+                let _ = HttpSubscriptionUploadManager::subscription_http_check_loop(
+                    node1_db_weak.clone(),
+                    node1_vecfs_weak.clone(),
+                    ShinkaiName::new(node1_name.clone()).unwrap(),
+                    subscription_file_map, // TODO: change to the one read from above
+                    subscription_status,
+                    subscription_config,
+                    shared_folders_trees_ref.clone(),
+                    1
+                ).await;
             }
             node1_abort_handler.abort();
         })

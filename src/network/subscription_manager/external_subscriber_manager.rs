@@ -19,6 +19,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -491,7 +492,7 @@ impl ExternalSubscriberManager {
                             continue; // Skip to the next iteration
                         }
                     };
-                    
+
                     // Attempt to create a new reader and continue to the next iteration if it fails
                     let reader = match vector_fs_inst
                         .new_reader(subscriber.clone(), path.clone(), streamer.clone())
@@ -955,7 +956,9 @@ impl ExternalSubscriberManager {
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
-                ).await {
+                )
+                .await
+                {
                     Ok(tree) => tree,
                     Err(_) => continue,
                 };
@@ -1065,6 +1068,7 @@ impl ExternalSubscriberManager {
         path: String,
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
+        upload_credentials: Option<FileDestinationCredentials>,
     ) -> Result<bool, SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1075,6 +1079,12 @@ impl ExternalSubscriberManager {
             )
             .as_str(),
         );
+        // Check for web alternative requirement and upload credentials
+        if subscription_requirement.has_web_alternative.unwrap_or(false) && upload_credentials.is_none() {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "Upload credentials must be provided when a web alternative is available.".to_string(),
+            ));
+        }
         {
             let vector_fs = self
                 .vector_fs
@@ -1134,6 +1144,13 @@ impl ExternalSubscriberManager {
             ))?;
 
             db.set_folder_requirements(&path, subscription_requirement)
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+            // Set upload credentials if provided
+            let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+                SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+            )?;
+            db.set_upload_credentials(&path, &requester_profile, upload_credentials.unwrap())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
@@ -1207,6 +1224,16 @@ impl ExternalSubscriberManager {
             ))?;
             db.remove_folder_requirements(&path)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+            // Remove upload credentials if the folder had a web alternative
+            let folder_subscription = db.get_folder_requirements(&path)?;
+            if folder_subscription.has_web_alternative.unwrap_or(false) {
+                let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+                    SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+                )?;
+                db.remove_upload_credentials(&path, &requester_profile)
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+            }
         }
 
         let _ = self.update_shared_folders().await;
@@ -1604,6 +1631,7 @@ impl ExternalSubscriberManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal::Decimal;
     use serde_json::from_str;
     use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 
@@ -1627,7 +1655,7 @@ mod tests {
                 Some(PaymentOption::USD(amount)) => Some(amount),
                 _ => None,
             },
-            Some(10.0)
+            Some(Decimal::new(10, 2)) // Represents $10.00
         );
         assert!(!subscription_requirement.is_free);
         assert_eq!(

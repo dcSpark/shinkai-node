@@ -1,4 +1,5 @@
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 
 impl ShinkaiDB {
@@ -95,5 +96,45 @@ impl ShinkaiDB {
         }
 
         Ok(results)
+    }
+
+    pub fn set_upload_credentials(
+        &self,
+        path: &str,
+        profile: &str,
+        credentials: FileDestinationCredentials,
+    ) -> Result<(), ShinkaiDBError> {
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let prefix = format!("folder_subscriptions_upload_credentials_prefix_{}_{}", path, profile);
+        let cred_bytes = bincode::serialize(&credentials)
+            .map_err(|_| ShinkaiDBError::SomeError("Failed to serialize upload credentials".to_string()))?;
+        self.db.put_cf(cf_node, prefix.as_bytes(), cred_bytes)?;
+        Ok(())
+    }
+
+    pub fn get_upload_credentials(
+        &self,
+        path: &str,
+        profile: &str,
+    ) -> Result<FileDestinationCredentials, ShinkaiDBError> {
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let prefix = format!("folder_subscriptions_upload_credentials_prefix_{}_{}", path, profile);
+        let cred_bytes = self
+            .db
+            .get_cf(cf_node, prefix.as_bytes())
+            .map_err(|_| ShinkaiDBError::SomeError("Failed to retrieve upload credentials".to_string()))?
+            .ok_or(ShinkaiDBError::SomeError("No upload credentials found".to_string()))?;
+        let credentials = bincode::deserialize(&cred_bytes)
+            .map_err(|_| ShinkaiDBError::SomeError("Failed to deserialize upload credentials".to_string()))?;
+        Ok(credentials)
+    }
+
+    pub fn remove_upload_credentials(&self, path: &str, profile: &str) -> Result<(), ShinkaiDBError> {
+        let cf_node = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
+        let prefix = format!("folder_subscriptions_upload_credentials_prefix_{}_{}", path, profile);
+        self.db
+            .delete_cf(cf_node, prefix.as_bytes())
+            .map_err(|_| ShinkaiDBError::SomeError("Failed to remove upload credentials".to_string()))?;
+        Ok(())
     }
 }

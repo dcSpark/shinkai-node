@@ -24,6 +24,7 @@ hex = "=0.4.3"
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
+rust_decimal = "1.17.0"
 
 [dependencies.tracing]
 version = "0.1.40"

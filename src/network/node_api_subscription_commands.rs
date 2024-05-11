@@ -465,7 +465,7 @@ impl Node {
 
         let mut subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
-            .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req)
+            .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req, input_payload.credentials) // TODO: None should have the potential credentials
             .await;
 
         match result {

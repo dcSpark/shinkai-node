@@ -417,6 +417,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
+                    None,
                 )
                 .await;
                 {
