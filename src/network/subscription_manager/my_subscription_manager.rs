@@ -36,7 +36,7 @@ use tokio::sync::Mutex;
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_entry_tree::FSEntryTree;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 const NUM_THREADS: usize = 2;
 const LRU_CAPACITY: usize = 100;
@@ -155,7 +155,7 @@ impl MySubscriptionsManager {
                     .response_last_updated
                     .map(|last_updated| current_time.signed_duration_since(last_updated))
                     // If response_last_updated is None, consider the duration since last update to be maximum to force a refresh
-                    .unwrap_or_else(|| chrono::Duration::max_value());
+                    .unwrap_or_else(chrono::Duration::max_value);
                 // Determine if the folder is up-to-date
                 let is_up_to_date =
                     duration_since_last_update < chrono::Duration::minutes(REFRESH_THRESHOLD_MINUTES as i64);

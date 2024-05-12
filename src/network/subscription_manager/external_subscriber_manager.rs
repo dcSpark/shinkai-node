@@ -35,6 +35,7 @@ use std::sync::Weak;
 use tokio::sync::{Mutex, Semaphore};
 
 use super::fs_entry_tree::FSEntryTree;
+use super::http_manager::http_upload_manager::{FolderSubscriptionWithPath, HttpSubscriptionUploadManager};
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -87,6 +88,7 @@ pub struct ExternalSubscriberManager {
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
+    pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
 }
 
 impl ExternalSubscriberManager {
@@ -171,6 +173,14 @@ impl ExternalSubscriberManager {
         )
         .await;
 
+        let http_subscription_upload_manager = HttpSubscriptionUploadManager::new(
+            db.clone(),
+            vector_fs.clone(),
+            node_name.clone(),
+            shared_folders_trees.clone(),
+        )
+        .await;
+
         let mut manager = ExternalSubscriberManager {
             db,
             vector_fs,
@@ -185,6 +195,7 @@ impl ExternalSubscriberManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            http_subscription_upload_manager,
         };
 
         let result = manager.update_shared_folders().await;
@@ -1143,15 +1154,27 @@ impl ExternalSubscriberManager {
                 "Database instance is not available".to_string(),
             ))?;
 
-            db.set_folder_requirements(&path, subscription_requirement)
+            db.set_folder_requirements(&path, subscription_requirement.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
             // Set upload credentials if provided
             let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
                 SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
             )?;
-            db.set_upload_credentials(&path, &requester_profile, upload_credentials.unwrap())
-                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+            if upload_credentials.is_some() {
+                db.set_upload_credentials(&path, &requester_profile, upload_credentials.unwrap())
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+                let folder_subscription_with_path = FolderSubscriptionWithPath {
+                    path: path.clone(),
+                    folder_subscription: subscription_requirement,
+                };
+                self.http_subscription_upload_manager
+                    .update_subscription_status_to_not_started(&folder_subscription_with_path);
+
+                    // self.http_subscription_upload_manager
+            }
         }
 
         // Trigger a refresh of the shareable folders cache

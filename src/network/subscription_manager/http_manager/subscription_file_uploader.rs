@@ -104,13 +104,9 @@ impl FileDestination {
     }
 
     pub async fn from_credentials(credentials: FileDestinationCredentials) -> Result<Self, FileDestinationError> {
-        eprintln!("Credentials: {:?}", credentials);
         // Set environment variables for AWS credentials
         env::set_var("AWS_ACCESS_KEY_ID", &credentials.access_key_id);
-        eprintln!("AWS_ACCESS: {:?}", &credentials.access_key_id);
-
         env::set_var("AWS_SECRET_ACCESS_KEY", &credentials.secret_access_key);
-        eprintln!("AWS_SECRET: {:?}", &credentials.secret_access_key);
 
         // Set the AWS region
         env::set_var("AWS_REGION", "us-east-1");
@@ -271,7 +267,6 @@ pub async fn upload_file_http(
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let key = format!("{}/{}", path, filename);
-            eprintln!("Uploading file to S3/R2: {:?}", key);
             client
                 .put_object()
                 .bucket(&credentials.bucket)
@@ -360,7 +355,6 @@ pub async fn list_folder_contents(
     folder_path: &str,
 ) -> Result<Vec<FileDestinationPath>, FileTransferError> {
     let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
-    eprintln!(">> Listing folder contents: {:?}", folder_path);
     match destination {
         FileDestination::S3(client, credentials) | FileDestination::R2(client, credentials) => {
             let mut folder_contents = Vec::new();
@@ -423,7 +417,6 @@ pub async fn list_folder_contents(
                     break;
                 }
             }
-            eprintln!("Folder contents: {:?}", folder_contents);
 
             // Recursively list contents of subdirectories
             let mut all_contents = Vec::new();
@@ -564,7 +557,6 @@ pub async fn delete_file_or_folder(destination: &FileDestination, path: &str) ->
 /// Deletes all files and folders recursively within a specified folder.
 #[async_recursion]
 pub async fn delete_all_in_folder(destination: &FileDestination, folder_path: &str) -> Result<(), FileTransferError> {
-    eprintln!("Deleting all in folder: {:?}", folder_path);
     let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
     let contents = list_folder_contents(destination, folder_path).await?;
     // Start by deleting all files in the current folder

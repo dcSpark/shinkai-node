@@ -7,9 +7,8 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::subscription_manager::http_upload_manager::HttpSubscriptionUploadManager;
-use shinkai_node::network::subscription_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
-use tokio::fs::File;
+use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -53,7 +52,6 @@ fn subscription_http_upload() {
                 endpoint_uri: aws_url,
                 bucket: "shinkai-streamer".to_string(),
             };
-            eprintln!("file_dest_credentials: {:?}", file_dest_credentials);
 
             // Shinkai Testing Framework
             let testing_framework = ShinkaiTestingFramework::new(
@@ -114,15 +112,15 @@ fn subscription_http_upload() {
                     let path = "/shinkai_sharing";
                     let profile = "main";
                     let credentials = db_strong.get_upload_credentials(path, profile).unwrap();
-                    eprintln!("credentials: {:?}", credentials);
 
                     let destination = FileDestination::from_credentials(credentials).await.unwrap();
 
                     // clean up the testing folder
                     let _ = delete_all_in_folder(&destination.clone(), "/shinkai_sharing").await;
 
-                    // add two random files (should get deleted)
-                    // add a file that has the wrong hash (it should be re-uploaded)
+                    // Adds:
+                    // two random files (should get deleted)
+                    // a file that has the wrong hash (it should be re-uploaded)
                     let dummy_data1 = vec![1, 2, 3, 4, 5];
                     let dummy_data2 = vec![6, 7, 8, 9, 10];
                     let dummy_file_name1 = "dummy_file1";
@@ -182,11 +180,24 @@ fn subscription_http_upload() {
 
                 let subscriptions_whttp_support =
                     HttpSubscriptionUploadManager::fetch_subscriptions_with_http_support(&node1_db_weak.clone()).await;
-                eprintln!("subscriptions_whttp_support: {:?}", subscriptions_whttp_support);
 
+                assert_eq!(
+                    subscriptions_whttp_support.len(),
+                    1,
+                    "Expected one subscription with HTTP support"
+                );
+                let subscription = &subscriptions_whttp_support[0];
+                assert_eq!(subscription.path, "/shinkai_sharing", "Path does not match");
+                assert!(subscription.folder_subscription.is_free, "Subscription should be free");
+                assert_eq!(
+                    subscription.folder_subscription.has_web_alternative,
+                    Some(true),
+                    "Should have a web alternative"
+                );
+
+                // TODO: do I need to remove these and connect them to the subscription manager?
                 let subscription_file_map = DashMap::new();
                 let subscription_status = DashMap::new();
-                let subscription_config = DashMap::new();
 
                 let _ = HttpSubscriptionUploadManager::subscription_http_check_loop(
                     node1_db_weak.clone(),
@@ -194,7 +205,6 @@ fn subscription_http_upload() {
                     ShinkaiName::new(node1_name.clone()).unwrap(),
                     subscription_file_map, // TODO: change to the one read from above
                     subscription_status,
-                    subscription_config,
                     shared_folders_trees_ref.clone(),
                     1,
                 )
