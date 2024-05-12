@@ -1,6 +1,6 @@
 use blake3::Hasher;
 use aes_gcm::Aes256Gcm;
-use aes_gcm::aead::{generic_array::GenericArray};
+use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::KeyInit;
 
 use rand::RngCore;
@@ -51,4 +51,11 @@ pub fn hex_string_to_aes_nonce(hex_string: &str) -> Result<[u8; 12], hex::FromHe
     let mut nonce = [0u8; 12];
     nonce.copy_from_slice(&bytes);
     Ok(nonce)
+}
+
+pub fn calculate_blake3_hash(input: &str) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(input.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(result.as_bytes())
 }

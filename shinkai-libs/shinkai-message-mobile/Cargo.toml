@@ -1,0 +1,19 @@
+[package]
+name = "shinkai_message_mobile"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "shinkai_message_mobile"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+serde_json = "1.0.105"
+
+[build-dependencies]
+cbindgen = "0.20.0"
+
+[dependencies.serde]
+version = "1.0.188"
+features = ["derive"]
