@@ -1,5 +1,15 @@
 [target.aarch64-apple-ios]
 linker = "clang"
+rustflags = [
+    "-C", "link-arg=-target", "-C", "link-arg=arm64-apple-ios",
+    "-C", "link-arg=-miphoneos-version-min=16.0",
+]
+
+[target.aarch64-apple-ios-sim]
+linker = "clang"
+rustflags = [
+    "-C", "link-arg=-target", "-C", "link-arg=arm64-apple-ios16.0-simulator",
+]
 
 [target.x86_64-apple-ios]
 linker = "clang"

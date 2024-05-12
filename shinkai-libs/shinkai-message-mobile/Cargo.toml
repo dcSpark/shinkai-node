@@ -17,3 +17,6 @@ cbindgen = "0.20.0"
 [dependencies.serde]
 version = "1.0.188"
 features = ["derive"]
+
+[profile.release]
+lto = true
