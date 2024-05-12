@@ -80,11 +80,30 @@ pub struct HttpSubscriptionUploadManager {
     pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     pub is_syncing: bool,
-    pub subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>, // TODO: needs to connect (source)
+    pub subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
     pub subscription_status: DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
     pub shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
     pub subscription_processing_task: tokio::task::JoinHandle<()>,
     pub semaphore: Arc<Semaphore>, // Semaphore to control concurrent execution
+    pub subscription_http_upload_concurrency: usize,
+}
+
+impl Clone for HttpSubscriptionUploadManager {
+    fn clone(&self) -> Self {
+        HttpSubscriptionUploadManager {
+            db: self.db.clone(),
+            vector_fs: self.vector_fs.clone(),
+            node_name: self.node_name.clone(),
+            is_syncing: self.is_syncing,
+            subscription_file_map: self.subscription_file_map.clone(),
+            subscription_status: self.subscription_status.clone(),
+            shared_folders_trees_ref: self.shared_folders_trees_ref.clone(),
+            // We cannot clone a JoinHandle, so we provide a new no-op task or a default placeholder
+            subscription_processing_task: tokio::task::spawn(async {}),
+            semaphore: self.semaphore.clone(),
+            subscription_http_upload_concurrency: self.subscription_http_upload_concurrency,
+        }
+    }
 }
 
 impl HttpSubscriptionUploadManager {
@@ -125,6 +144,7 @@ impl HttpSubscriptionUploadManager {
             shared_folders_trees_ref,
             subscription_processing_task,
             semaphore,
+            subscription_http_upload_concurrency,
         }
     }
 
@@ -177,6 +197,20 @@ impl HttpSubscriptionUploadManager {
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
             }
         })
+    }
+
+    pub async fn trigger_controlled_subscription_http_check(manager: &HttpSubscriptionUploadManager) {
+        let _result = Self::controlled_subscription_http_check_loop(
+            manager.db.clone(),
+            manager.vector_fs.clone(),
+            manager.node_name.clone(),
+            manager.subscription_file_map.clone(),
+            manager.subscription_status.clone(),
+            manager.shared_folders_trees_ref.clone(),
+            manager.subscription_http_upload_concurrency,
+            manager.semaphore.clone(),
+        )
+        .await;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -467,6 +501,8 @@ impl HttpSubscriptionUploadManager {
             })
             .collect();
 
+        drop(subscription_files);
+
         // Retrieve upload credentials from the database
         let db_strong = match db.upgrade() {
             Some(db) => db,
@@ -483,6 +519,7 @@ impl HttpSubscriptionUploadManager {
 
         let destination = FileDestination::from_credentials(credentials).await?;
 
+        let was_sync_files_paths_empty = sync_file_paths.is_empty();
         if sync_file_paths.is_empty() {
             // Only required if subscription_files is empty (we just started). Otherwise use the local cache that should keep a 1 to 1 with the server
             let files = match list_folder_contents(&destination, &shared_folder_subs.path.clone()).await {
@@ -505,6 +542,33 @@ impl HttpSubscriptionUploadManager {
 
         // Create a hashmap to map each file to its checksum file if it exists
         let checksum_map: HashMap<String, String> = Self::extract_checksum_map(&sync_file_paths);
+
+        // Update the subscription_file_map with the new files from the server
+        if was_sync_files_paths_empty {
+            for file_path in &sync_file_paths {
+                let checksum = checksum_map.get(file_path).cloned().unwrap_or_default();
+                subscription_file_map
+                    .entry(folder_subs_with_path.clone())
+                    .and_modify(|e| {
+                        e.insert(file_path.clone(), FileStatus::Sync(checksum.clone()));
+                    })
+                    .or_insert_with(|| {
+                        let mut map = HashMap::new();
+                        map.insert(file_path.clone(), FileStatus::Sync(checksum.clone()));
+                        map
+                    });
+            }
+
+            // Print out the content of subscription_file_map
+            for entry in subscription_file_map.iter() {
+                let key = entry.key();
+                let value = entry.value();
+                println!("Folder Subscription: {:?}", key);
+                for (file_path, status) in value.iter() {
+                    println!("  {} - {:?}", file_path, status);
+                }
+            }
+        }
 
         // We check file by file if it's in sync with the local storage or if anything needs to be deleted "extra"
         // Then we check if there are local files missing in the cloud provider
@@ -565,9 +629,22 @@ impl HttpSubscriptionUploadManager {
             }
         }
 
+        {
+            // before removing stuf
+            // Print out the content of subscription_file_map
+            for entry in subscription_file_map.iter() {
+                let key = entry.key();
+                let value = entry.value();
+                println!("\n\n Before removing stuff - Folder Subscription: {:?}", key);
+                for (file_path, status) in value.iter() {
+                    println!("  {} - {:?}", file_path, status);
+                }
+            }
+        }
         // Delete all the files that no longer exist locally
         // We also remove their checksum files
         for item_to_delete in items_to_delete {
+            eprintln!("Deleting file: {:?}", item_to_delete);
             let delete_result = delete_file_or_folder(&destination, &item_to_delete).await;
             if let Err(e) = delete_result {
                 return Err(HttpUploadError::from(e));
@@ -576,9 +653,37 @@ impl HttpSubscriptionUploadManager {
             // Check if there is a checksum file associated with the file and delete it
             if let Some(checksum) = checksum_map.get(&item_to_delete) {
                 let checksum_file_path = format!("{}.{}.checksum", item_to_delete, checksum);
+                eprintln!("Deleting checksum file: {:?}", checksum_file_path);
                 let delete_checksum_result = delete_file_or_folder(&destination, &checksum_file_path).await;
                 if let Err(e) = delete_checksum_result {
                     return Err(HttpUploadError::from(e));
+                }
+
+                // Remove the checksum file entry from the subscription_file_map
+                if let Some(mut file_statuses) = subscription_file_map.get_mut(&folder_subs_with_path) {
+                    eprintln!("Before removing checksum file: {:?}", file_statuses);
+                    file_statuses.remove(&checksum_file_path);
+                    eprintln!("After removing checksum file: {:?}", file_statuses);
+                }
+            }
+
+            // Remove the file entry from the subscription_file_map
+            if let Some(mut file_statuses) = subscription_file_map.get_mut(&folder_subs_with_path) {
+                eprintln!("Before removing file: {:?}", file_statuses);
+                file_statuses.remove(&item_to_delete);
+                eprintln!("After removing file: {:?}", file_statuses);
+            }
+        }
+
+        {
+            // after removing stuf
+            // Print out the content of subscription_file_map
+            for entry in subscription_file_map.iter() {
+                let key = entry.key();
+                let value = entry.value();
+                println!("\n\n After removing stuff - Folder Subscription: {:?}", key);
+                for (file_path, status) in value.iter() {
+                    println!("  {} - {:?}", file_path, status);
                 }
             }
         }
@@ -625,6 +730,8 @@ impl HttpSubscriptionUploadManager {
                 let parent_path = path.parent_path().to_string();
                 let destination_clone = destination.clone();
                 let sema_clone = semaphore.clone();
+                let subscription_file_map = subscription_file_map.clone();
+                let folder_subs_with_path = folder_subs_with_path.clone();
 
                 let task = tokio::spawn(async move {
                     let _permit = sema_clone.acquire().await.expect("Failed to acquire semaphore permit");
@@ -648,10 +755,48 @@ impl HttpSubscriptionUploadManager {
                         return Err(HttpUploadError::from(e));
                     }
 
+                    {
+                        // Print out the content of subscription_file_map
+                        for entry in subscription_file_map.iter() {
+                            let key = entry.key();
+                            let value = entry.value();
+                            println!("\n\n In iter - Folder Subscription: {:?}", key);
+                            for (file_path, status) in value.iter() {
+                                println!("  {} - {:?}", file_path, status);
+                            }
+                        }
+                    }
+
+                    // Update the subscription_file_map with the file and its checksum
+                    subscription_file_map
+                        .entry(folder_subs_with_path.clone())
+                        .and_modify(|e| {
+                            e.insert(missing_in_cloud_file_path.clone(), FileStatus::Sync(checksum.clone()));
+                            e.insert(checksum_file_name.clone(), FileStatus::Sync(checksum.clone()));
+                        })
+                        .or_insert_with(|| {
+                            let mut map = HashMap::new();
+                            map.insert(missing_in_cloud_file_path.clone(), FileStatus::Sync(checksum.clone()));
+                            map.insert(checksum_file_name.clone(), FileStatus::Sync(checksum.clone()));
+                            map
+                        });
+
                     Ok::<(), HttpUploadError>(())
                 });
 
                 tasks.push(task);
+            }
+
+            {
+                // Print out the content of subscription_file_map
+                for entry in subscription_file_map.iter() {
+                    let key = entry.key();
+                    let value = entry.value();
+                    println!("After everything - Folder Subscription: {:?}", key);
+                    for (file_path, status) in value.iter() {
+                        println!("  {} - {:?}", file_path, status);
+                    }
+                }
             }
 
             // Wait for all tasks to complete
@@ -844,7 +989,7 @@ mod tests {
             "shinkai_sharing/dummy_file1".to_string(),
             "shinkai_sharing/dummy_file2.2bbbbb39.checksum".to_string(),
             "shinkai_sharing/dummy_file2".to_string(),
-            "shinkai_sharing/shinkai_intro.aaaaaaaa.checksum".to_string(),
+            "shinkai_sharing/shinkai_intro.aaaaaaaa.checksu4".to_string(),
             "shinkai_sharing/shinkai_intro".to_string(),
         ];
         let checksum_map = HttpSubscriptionUploadManager::extract_checksum_map(&sync_file_paths);

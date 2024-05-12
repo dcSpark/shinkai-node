@@ -8,7 +8,9 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
-use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{delete_all_in_folder, FileDestination};
+use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
+    delete_all_in_folder, FileDestination,
+};
 use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -97,7 +99,7 @@ fn subscription_http_upload() {
             {
                 let shared_folders_trees_ref = node1_ext_subscription_manager.lock().await.shared_folders_trees.clone();
 
-                let _subscription_uploader = HttpSubscriptionUploadManager::new(
+                let subscription_uploader = HttpSubscriptionUploadManager::new(
                     node1_db_weak.clone(),
                     node1_vecfs_weak.clone(),
                     ShinkaiName::new(node1_name.clone()).unwrap(),
@@ -195,16 +197,12 @@ fn subscription_http_upload() {
                     "Should have a web alternative"
                 );
 
-                // TODO: do I need to remove these and connect them to the subscription manager?
-                let subscription_file_map = DashMap::new();
-                let subscription_status = DashMap::new();
-
                 let _ = HttpSubscriptionUploadManager::subscription_http_check_loop(
                     node1_db_weak.clone(),
                     node1_vecfs_weak.clone(),
                     ShinkaiName::new(node1_name.clone()).unwrap(),
-                    subscription_file_map, // TODO: change to the one read from above
-                    subscription_status,
+                    subscription_uploader.subscription_file_map.clone(),
+                    subscription_uploader.subscription_status.clone(),
                     shared_folders_trees_ref.clone(),
                     1,
                 )

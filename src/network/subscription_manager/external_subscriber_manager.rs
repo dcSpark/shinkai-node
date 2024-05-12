@@ -1163,7 +1163,7 @@ impl ExternalSubscriberManager {
             )?;
 
             if upload_credentials.is_some() {
-                db.set_upload_credentials(&path, &requester_profile, upload_credentials.unwrap())
+                db.set_upload_credentials(&path, &requester_profile, upload_credentials.clone().unwrap())
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
                 let folder_subscription_with_path = FolderSubscriptionWithPath {
@@ -1172,8 +1172,6 @@ impl ExternalSubscriberManager {
                 };
                 self.http_subscription_upload_manager
                     .update_subscription_status_to_not_started(&folder_subscription_with_path);
-
-                    // self.http_subscription_upload_manager
             }
         }
 
