@@ -32,10 +32,11 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
+use std::time::SystemTime;
 use tokio::sync::{Mutex, Semaphore};
 
 use super::fs_entry_tree::FSEntryTree;
-use super::http_manager::http_upload_manager::{FolderSubscriptionWithPath, HttpSubscriptionUploadManager};
+use super::http_manager::http_upload_manager::{FileLink, FolderSubscriptionWithPath, HttpSubscriptionUploadManager};
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -1632,6 +1633,15 @@ impl ExternalSubscriberManager {
         }
 
         Ok(())
+    }
+
+    /// Get cached subscription files links (already filtered if there is anything expired)
+    pub fn get_cached_subscription_files_links(
+        &self,
+        folder_subs_with_path: &FolderSubscriptionWithPath,
+    ) -> Vec<FileLink> {
+        let file_links = self.http_subscription_upload_manager.get_cached_subscription_files_links(folder_subs_with_path);
+        file_links
     }
 
     pub async fn test_process_subscription_updates(&self) {

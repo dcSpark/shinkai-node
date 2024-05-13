@@ -6,7 +6,8 @@ use super::{
     node_api::APIError,
     node_error::NodeError,
     subscription_manager::{
-        external_subscriber_manager::ExternalSubscriberManager, my_subscription_manager::MySubscriptionsManager,
+        external_subscriber_manager::ExternalSubscriberManager,
+        http_manager::http_upload_manager::FolderSubscriptionWithPath, my_subscription_manager::MySubscriptionsManager,
     },
     Node,
 };
@@ -465,7 +466,12 @@ impl Node {
 
         let mut subscription_manager = ext_subscription_manager.lock().await;
         let result = subscription_manager
-            .create_shareable_folder(input_payload.path, requester_name, input_payload.subscription_req, input_payload.credentials) // TODO: None should have the potential credentials
+            .create_shareable_folder(
+                input_payload.path,
+                requester_name,
+                input_payload.subscription_req,
+                input_payload.credentials,
+            ) // TODO: None should have the potential credentials
             .await;
 
         match result {
@@ -646,18 +652,58 @@ impl Node {
         subscription_id: String,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
-        // Check that the subscription_id is valid and exists
-        // Return cached value if it exists
-        // The cached value should be obtained through ext_subscription_manager -> http_upload_manager
-        // Format:
-        // [{
-            // "path": "/something",
-            // "link": "http://localhost:8080/something"
-            // "expiry": "2021-12-31T23:59:59Z"
-            // "checksum_last8": "blake3_1234567890abcdef"
-            // "checksum": "blake3_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        // }]
-        // Done
+        // Validate the format of subscription_id to be "PROFILE:::PATH"
+        let parts: Vec<&str> = subscription_id.split(":::").collect();
+        if parts.len() != 2 {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: "Invalid subscription_id format. Expected format 'PROFILE:::PATH'.".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let _profile = parts[0].to_string();
+        let path = parts[1].to_string();
+
+        let folder_subscription = match db.get_folder_requirements(&path) {
+            Ok(result) => result,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to retrieve folder requirements: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let folder_subs_with_path = FolderSubscriptionWithPath {
+            path: path.clone(),
+            folder_subscription,
+        };
+
+        let subscription_manager = ext_subscription_manager.lock().await;
+        let file_links = subscription_manager
+            .http_subscription_upload_manager
+            .get_cached_subscription_files_links(&folder_subs_with_path);
+
+        match serde_json::to_value(&file_links) {
+            Ok(json_value) => {
+                let _ = res.send(Ok(json_value)).await.map_err(|_| ());
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to serialize response: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
         Ok(())
     }
 }

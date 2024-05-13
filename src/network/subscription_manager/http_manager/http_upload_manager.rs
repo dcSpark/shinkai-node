@@ -14,13 +14,12 @@
 // // delete all the links on unshare
 
 use std::{
-    collections::HashMap,
-    env,
-    sync::{Arc, Weak},
-    time::{Duration, SystemTime},
+    collections::HashMap, env, fmt, sync::{Arc, Weak}, time::{Duration, SystemTime}
 };
 
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use serde::{de::{self, Visitor}, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_subscription_req::FolderSubscription},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -54,12 +53,47 @@ pub enum SubscriptionStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FileLink {
     pub link: String,
     pub last_8_hash: String,
-    pub hash: String,
+    #[serde(serialize_with = "serialize_system_time")]
+    #[serde(deserialize_with = "deserialize_system_time")]
     pub expiration: SystemTime,
+}
+
+fn serialize_system_time<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let datetime: DateTime<Utc> = time.clone().into();
+    serializer.serialize_str(&datetime.to_rfc3339())
+}
+
+fn deserialize_system_time<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct SystemTimeVisitor;
+
+    impl<'de> Visitor<'de> for SystemTimeVisitor {
+        type Value = SystemTime;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string formatted as ISO8601")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<SystemTime, E>
+        where
+            E: de::Error,
+        {
+            DateTime::parse_from_rfc3339(value)
+                .map_err(de::Error::custom)
+                .map(|dt| dt.with_timezone(&Utc).into())
+        }
+    }
+
+    deserializer.deserialize_str(SystemTimeVisitor)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,7 +117,7 @@ impl Hash for FolderSubscriptionWithPath {
 }
 
 #[allow(dead_code)]
-type FileMapPath = String;
+pub type FileMapPath = String;
 
 #[allow(dead_code)]
 const UPLOAD_CONCURRENCY: usize = 2;
@@ -897,7 +931,6 @@ impl HttpSubscriptionUploadManager {
                             let new_file_link = FileLink {
                                 link: new_link,
                                 last_8_hash: current_hash.clone(), // Store the current hash
-                                hash: current_hash.clone(),        // Store the full hash
                                 expiration: SystemTime::now() + Duration::from_secs(expiration_secs),
                             };
                             // Update or insert the new link
@@ -1044,15 +1077,15 @@ impl HttpSubscriptionUploadManager {
     pub fn get_cached_subscription_files_links(
         &self,
         folder_subs_with_path: &FolderSubscriptionWithPath,
-        file_links: &Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
-    ) -> Vec<String> {
-        let links = file_links
+    ) -> Vec<FileLink> {
+        let links = self
+            .file_links
             .get(folder_subs_with_path)
             .map(|files| {
                 files
                     .iter()
                     .filter(|(_, link)| link.expiration > SystemTime::now()) // Filter links that are still valid
-                    .map(|(file_path, _)| file_path.clone())
+                    .map(|(_, link)| link.clone()) // Collect FileLink objects
                     .collect()
             })
             .unwrap_or_default();
@@ -1105,5 +1138,20 @@ mod tests {
         .collect::<HashMap<String, String>>();
 
         assert_eq!(checksum_map, expected_map);
+    }
+
+    #[test]
+    fn test_iso8601_serialization() {
+        let file_link = FileLink {
+            link: "http://example.com".to_string(),
+            last_8_hash: "12345678".to_string(),
+            expiration: SystemTime::now(),
+        };
+
+        let serialized = serde_json::to_string(&file_link).unwrap();
+        println!("Serialized FileLink: {}", serialized);
+
+        let deserialized: FileLink = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(file_link, deserialized);
     }
 }
