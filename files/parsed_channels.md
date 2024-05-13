@@ -64,7 +64,7 @@ A Vector Resource is made up of a hierarchy of nodes, where each node can either
 
 ## Importing Into Your Project
 
-To disable [desktop-only](https://www.shinkai.com/) & support ![wasm](wasm.png), simply import <b>as such<b>:
+To disable [desktop-only](https://www.shinkai.com/) & support ![wasm](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/WebAssembly_Logo.svg/1200px-WebAssembly_Logo.svg.png), simply import <b>as such<b>:
 
 ```
 shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }

@@ -1,6 +1,7 @@
 use blake3::Hasher;
 use chrono::{TimeZone, Utc};
 use regex::{Captures, Regex};
+use reqwest::Url;
 use std::collections::HashMap;
 
 use super::file_parser::ShinkaiFileParser;
@@ -10,6 +11,7 @@ use crate::vector_resource::SourceFileType;
 impl ShinkaiFileParser {
     pub const PURE_METADATA_REGEX: &'static str = r"!\{\{\{([^:}]+):((?:[^}]*\}{0,2}[^}]+))\}\}\}!";
     pub const METADATA_REGEX: &'static str = r"\{\{\{([^:}]+):((?:[^}]*\}{0,2}[^}]+))\}\}\}";
+    pub const MD_URL_REGEX: &'static str = r"(.?)\[(.*?)\]\((.*?)\)";
 
     /// Key of page numbers metadata
     pub fn page_numbers_metadata_key() -> String {
@@ -289,11 +291,72 @@ impl ShinkaiFileParser {
         }
     }
 
+    pub fn parse_and_extract_md_metadata(input_text: &str) -> (String, HashMap<String, String>) {
+        let mut metadata = HashMap::new();
+        let md_url_re = Regex::new(Self::MD_URL_REGEX).unwrap();
+
+        let parsed_result = md_url_re.replace_all(input_text, |caps: &Captures| {
+            let prefix = match caps.get(1) {
+                Some(prefix) => prefix.as_str(),
+                None => return caps.get(0).unwrap().as_str().to_string(),
+            };
+
+            let text = match caps.get(2) {
+                Some(text) => text.as_str(),
+                None => return caps.get(0).unwrap().as_str().to_string(),
+            };
+
+            let url = match caps.get(3) {
+                Some(url) => url.as_str(),
+                None => return caps.get(0).unwrap().as_str().to_string(),
+            };
+
+            let mut shortened_url = Url::parse(url)
+                .ok()
+                .map(|u| {
+                    let mut scheme = u.scheme().to_string();
+                    let host = u.host_str().unwrap_or("").to_string();
+
+                    if !scheme.is_empty() {
+                        scheme = format!("{}://", scheme);
+                    }
+
+                    format!("{}{}", scheme, host)
+                })
+                .unwrap_or("".to_string());
+
+            if shortened_url.is_empty() {
+                shortened_url = url.chars().take(100).collect();
+            }
+
+            match prefix {
+                "!" => {
+                    let image_urls_entry = metadata.entry("image-urls".to_string()).or_insert(Vec::<String>::new());
+                    image_urls_entry.push(format!("![{}]({})", text, url));
+                    format!("![{}]({})", text, shortened_url)
+                }
+                _ => {
+                    let link_urls_entry = metadata.entry("link-urls".to_string()).or_insert(Vec::<String>::new());
+                    link_urls_entry.push(format!("[{}]({})", text, url));
+                    format!("{}[{}]({})", prefix, text, shortened_url)
+                }
+            }
+        });
+
+        let serialized_metadata = metadata
+            .into_iter()
+            .map(|(key, values)| (key, serde_json::to_string(&values).unwrap_or_default()))
+            .collect::<HashMap<String, String>>();
+
+        (parsed_result.to_string(), serialized_metadata)
+    }
+
     pub fn parse_and_split_into_text_groups(text: String, max_node_text_size: u64) -> Vec<TextGroup> {
         let mut text_groups = Vec::new();
         let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
+        let (parsed_md_text, md_metadata) = ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_text);
 
-        if parsed_text.len() as u64 > max_node_text_size {
+        if parsed_md_text.len() as u64 > max_node_text_size {
             let chunks = if parsed_any_metadata {
                 ShinkaiFileParser::split_into_chunks_with_metadata(&text, max_node_text_size as usize)
             } else {
@@ -302,10 +365,13 @@ impl ShinkaiFileParser {
 
             for chunk in chunks {
                 let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-                text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
+                let (parsed_md_chunk, md_metadata) = ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_chunk);
+                let metadata = metadata.into_iter().chain(md_metadata).collect();
+                text_groups.push(TextGroup::new(parsed_md_chunk, metadata, vec![], None));
             }
         } else {
-            text_groups.push(TextGroup::new(parsed_text, metadata, vec![], None));
+            let metadata = metadata.into_iter().chain(md_metadata).collect();
+            text_groups.push(TextGroup::new(parsed_md_text, metadata, vec![], None));
         }
 
         text_groups

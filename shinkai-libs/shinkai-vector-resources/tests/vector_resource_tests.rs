@@ -1192,6 +1192,29 @@ async fn local_md_parsing_test() {
         .get_text_content()
         .unwrap()
         .contains("A powerful native Rust"));
+
+    // Test URL metadata parsing
+    let query_string = "How to import into project?".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert_eq!(
+        results[0].node.metadata.as_ref().unwrap().get("link-urls").unwrap(),
+        &serde_json::to_string(&vec!["[desktop-only](https://www.shinkai.com/)"]).unwrap()
+    );
+    assert!(results[0]
+        .node
+        .metadata
+        .as_ref()
+        .unwrap()
+        .get("image-urls")
+        .unwrap()
+        .contains("WebAssembly_Logo.svg"));
+    assert!(!results[0]
+        .node
+        .get_text_content()
+        .unwrap()
+        .contains("WebAssembly_Logo.svg"));
 }
 
 #[tokio::test]
@@ -1223,6 +1246,29 @@ async fn local_html_parsing_test() {
         .get_text_content()
         .unwrap()
         .contains("Traditional Methods"));
+
+    // Test URL metadata parsing
+    let query_string = "Show AI Video generator".to_string();
+    let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
+    let results = resource.as_trait_object().vector_search(query_embedding, 3);
+
+    assert!(results[0].score > 0.7);
+    assert!(results[0]
+        .node
+        .metadata
+        .as_ref()
+        .unwrap()
+        .get("image-urls")
+        .unwrap()
+        .contains("Video Processing"));
+    assert!(results[0]
+        .node
+        .metadata
+        .as_ref()
+        .unwrap()
+        .get("link-urls")
+        .unwrap()
+        .contains("AI Video"));
 }
 
 #[tokio::test]
