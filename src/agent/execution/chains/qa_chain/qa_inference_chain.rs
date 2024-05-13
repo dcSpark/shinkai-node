@@ -172,7 +172,7 @@ impl QAInferenceChain {
 
         // Extract the JSON from the inference response Result and proceed forward
         let response_json = response?;
-        let answer = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer");
+        let answer = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer");
 
         // If it has an answer, the chain is finished and so just return the answer response as a cleaned String
         if let Ok(answer_str) = answer {
@@ -191,43 +191,45 @@ impl QAInferenceChain {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (new_search_text, summary) = match &JobManager::advanced_extract_key_from_inference_response_with_json(
-            agent.clone(),
-            response_json.clone(),
-            filled_prompt.clone(),
-            vec!["summary".to_string(), "answer".to_string(), "text".to_string()],
-            3,
-        )
-        .await
-        {
-            Ok((summary_str, new_resp_json)) => {
-                let new_search_text = match &JobManager::advanced_extract_key_from_inference_response_with_json(
-                    agent.clone(),
-                    new_resp_json.clone(),
-                    filled_prompt.clone(),
-                    vec!["search".to_string(), "lookup".to_string()],
-                    2,
-                )
-                .await
-                {
-                    Ok((search_text, _)) => Some(search_text.to_string()),
-                    Err(_) => None,
-                };
-                // Just use summary string as search text if LLM didn't provide one to decease # of inferences
-                (
-                    new_search_text.unwrap_or(summary_str.to_string()),
-                    summary_str.to_string(),
-                )
-            }
-            Err(_) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed qa inference chain: Missing Field {}", "summary"),
-                );
-                return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
-            }
-        };
+        let (new_search_text, summary) =
+            match &JobManager::advanced_extract_key_from_inference_response_with_new_response(
+                agent.clone(),
+                response_json.clone(),
+                filled_prompt.clone(),
+                vec!["summary".to_string(), "answer".to_string(), "text".to_string()],
+                3,
+            )
+            .await
+            {
+                Ok((summary_str, new_resp_json)) => {
+                    let new_search_text =
+                        match &JobManager::advanced_extract_key_from_inference_response_with_new_response(
+                            agent.clone(),
+                            new_resp_json.clone(),
+                            filled_prompt.clone(),
+                            vec!["search".to_string(), "lookup".to_string()],
+                            2,
+                        )
+                        .await
+                        {
+                            Ok((search_text, _)) => Some(search_text.to_string()),
+                            Err(_) => None,
+                        };
+                    // Just use summary string as search text if LLM didn't provide one to decease # of inferences
+                    (
+                        new_search_text.unwrap_or(summary_str.to_string()),
+                        summary_str.to_string(),
+                    )
+                }
+                Err(_) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed qa inference chain: Missing Field {}", "summary"),
+                    );
+                    return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
+                }
+            };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
         let mut new_search_text = new_search_text.clone();
@@ -236,7 +238,7 @@ impl QAInferenceChain {
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
             let response = JobManager::inference_agent_markdown(agent.clone(), retry_prompt).await;
             if let Ok(response_json) = response {
-                match JobManager::direct_extract_key_inference_json_response(response_json, "search") {
+                match JobManager::direct_extract_key_inference_response(response_json, "search") {
                     Ok(search_str) => {
                         new_search_text = search_str;
                     }

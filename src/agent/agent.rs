@@ -89,21 +89,31 @@ impl Agent {
             let priority = attempts;
 
             // If serde failed parsing the json string, then use advanced retrying
-            if let AgentError::FailedSerdeParsingJSONString(response_json, serde_error) = err {
+            if let AgentError::FailedSerdeParsingJSONString(response_markdown, serde_error) = err {
                 new_prompt.add_content(
                     "Here is your markdown answer:".to_string(),
                     SubPromptType::Assistant,
                     priority,
                 );
-                new_prompt.add_content(format!("```{}```", response_json), SubPromptType::Assistant, priority);
                 new_prompt.add_content(
-                    "No, that is not valid markdown with the specified template. This is the error reported for the above markdown string:".to_string(),
+                    format!("```{}```", response_markdown),
+                    SubPromptType::Assistant,
+                    priority,
+                );
+                new_prompt.add_content(
+                    "No, that is not valid markdown with the specified template.".to_string(),
                     SubPromptType::User,
                     priority,
                 );
-                new_prompt.add_content(format!("```{}```", serde_error), SubPromptType::User, priority);
+                // This doesn't make sense now to feed a serde error for an incorrect markdown string
+                // new_prompt.add_content(
+                //     "No, that is not valid markdown with the specified template. This is the error reported when tring to parse the above markdown string:".to_string(),
+                //     SubPromptType::User,
+                //     priority,
+                // );
+                // new_prompt.add_content(format!("```{}```", serde_error), SubPromptType::User, priority);
                 new_prompt.add_content(
-                    "You are an advanced assistant who can fix any invalid markdown without its proper template. Always escape quotes properly inside of strings!".to_string(),
+                    "You are an advanced assistant who can fix any invalid markdown without needing to see its proper template. Respond by fixing the markdown. Remember to always escape quotes properly inside of strings:\n\n ```md\n".to_string(),
                     SubPromptType::User,
                     priority,
                 );

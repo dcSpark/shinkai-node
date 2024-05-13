@@ -49,8 +49,7 @@ impl JobManager {
         let web_prompt = JobPromptGenerator::cron_subtask(task_description.clone(), web_content.clone());
         let response_json = JobManager::inference_agent_markdown(agent.clone(), web_prompt).await?;
 
-        if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
-        {
+        if let Ok(answer_str) = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer") {
             Ok(answer_str)
         } else {
             Err(AgentError::InferenceFailed)
@@ -112,8 +111,7 @@ impl JobManager {
 
         let response_json = JobManager::inference_agent_markdown(agent.clone(), filled_prompt).await?;
 
-        if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
-        {
+        if let Ok(answer_str) = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer") {
             let mut new_state = state.unwrap_or_else(|| CronExecutionState {
                 stage: "apply_to_website_prompt".to_string(),
                 summary: Some(answer_str.clone()),

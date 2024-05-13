@@ -68,24 +68,16 @@ impl JobPromptGenerator {
         prompt
     }
 
-    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse, according to one of the EBNFs from the original prompt, and an optional json_key_to_correct.
-    pub fn basic_json_retry_response_prompt(
-        invalid_json_answer: String,
+    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a markdown that has the proper key
+    pub fn basic_fix_markdown_to_include_proper_key(
+        invalid_markdown: String,
         original_prompt: Prompt,
-        json_key_to_correct: Option<String>,
+        key_to_correct: String,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Iterate through the original prompt and only keep the EBNF subprompts
-        for sub_prompt in original_prompt.sub_prompts {
-            if let SubPrompt::EBNF(prompt_type, ebnf, _, _) = sub_prompt {
-                prompt.add_retry_ebnf(ebnf, prompt_type, 99);
-            }
-        }
-
         prompt.add_content(
-            format!("Here is the answer to your request: `{}`", invalid_json_answer),
+            format!("Here is the answer to your request: `{}`", invalid_markdown),
             SubPromptType::System,
             100,
         );
@@ -93,21 +85,14 @@ impl JobPromptGenerator {
         // Final content to be added with the specific instructions
         let mut final_content =
             r#"No, I need it to be properly formatted as a markdown with the correct section names. "#.to_string();
-
-        if let Some(key) = json_key_to_correct {
-            final_content += &format!(
-                "Make sure to not forget to include the `{}` section as specified in the markdown response",
-                key
-            );
-        } else {
-            final_content += &format!(
-                "Look at the markdown sections provided earlier and respond exactly the same but formatted using the best matching one",
-            );
-        }
+        final_content += &format!(
+            "Make sure to not forget to include the `{}` section in the markdown.",
+            key_to_correct
+        );
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: "#,
+                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n```md\n"#,
                 final_content
             ),
             SubPromptType::User,
@@ -131,12 +116,14 @@ impl JobPromptGenerator {
             prompt.add_content(format!("{}", node), SubPromptType::User, 98);
         }
         prompt.add_content(
-            format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
+            String::from(
+                "Summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum. Respond using the follow markdown template and nothing else:",
+            ),
             SubPromptType::User,
-            100
+            100,
         );
         prompt.add_ebnf(
-            String::from(r#"'{' 'summary' ':' string '}'"#),
+            String::from(r#"```md\n# Summary\n{{summary}}\n```\n\n ```md"#),
             SubPromptType::System,
             100,
         );
@@ -298,7 +285,7 @@ Respond using the following EBNF and absolutely nothing else:
 
     Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.
 
-    If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
+  Respond using the follow markdown template and nothing else:   If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
 
     "{" ("prepared" ":" true) "}"
     

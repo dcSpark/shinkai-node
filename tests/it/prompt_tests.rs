@@ -141,7 +141,7 @@ mod tests {
                 Ok(value) => {
                     eprintln!("Partial result: {:?}", value);
                     let extraction_key = "answer";
-                    let json_result = JobManager::direct_extract_key_inference_json_response(value, extraction_key);
+                    let json_result = JobManager::direct_extract_key_inference_response(value, extraction_key);
                     assert!(json_result.is_ok());
                 }
                 Err(e) => panic!("API call failed: {:?}", e),

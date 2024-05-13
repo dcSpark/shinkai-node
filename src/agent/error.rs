@@ -103,7 +103,7 @@ impl fmt::Display for AgentError {
             AgentError::ContentParseFailed => write!(f, "Failed to parse content"),
             AgentError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
             AgentError::InferenceJSONResponseMissingField(s) => {
-                write!(f, "JSON Response from LLM does not include needed field: {}", s)
+                write!(f, "Response from LLM does not include needed key/field: {}", s)
             }
             AgentError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
             AgentError::VectorResource(err) => write!(f, "VectorResource error: {}", err),

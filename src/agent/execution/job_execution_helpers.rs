@@ -58,7 +58,7 @@ impl JobManager {
         let mut new_response = response.clone();
 
         for (key, potential_keys) in potential_keys_hashmap {
-            let (value, res) = JobManager::advanced_extract_key_from_inference_response_with_json(
+            let (value, res) = JobManager::advanced_extract_key_from_inference_response_with_new_response(
                 agent.clone(),
                 response.clone(),
                 filled_prompt.clone(),
@@ -82,7 +82,7 @@ impl JobManager {
         potential_keys: Vec<String>,
         retry_attempts: u64,
     ) -> Result<String, AgentError> {
-        let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_json(
+        let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_new_response(
             agent.clone(),
             response.clone(),
             filled_prompt.clone(),
@@ -96,8 +96,8 @@ impl JobManager {
 
     /// Attempts to extract a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
     /// Also tries variants of each potential key using capitalization/casing.
-    /// Returns a tuple of the String found at the first matching key + the (potentially new) response JSON (new if retry was done).
-    pub async fn advanced_extract_key_from_inference_response_with_json(
+    /// Returns a tuple of the String found at the first matching key + the (potentially new) response markdown parsed to JSON (new if retry was done).
+    pub async fn advanced_extract_key_from_inference_response_with_new_response(
         agent: SerializedAgent,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
@@ -111,7 +111,7 @@ impl JobManager {
         }
 
         for key in &potential_keys {
-            if let Ok(value) = JobManager::direct_extract_key_inference_json_response(response.clone(), key) {
+            if let Ok(value) = JobManager::direct_extract_key_inference_response(response.clone(), key) {
                 return Ok((value, response));
             }
         }
@@ -119,14 +119,14 @@ impl JobManager {
         let mut current_response = response.original_response_string;
         for _ in 0..retry_attempts {
             for key in &potential_keys {
-                let new_response = internal_json_not_found_retry(
+                let new_response = internal_fix_markdown_to_include_proper_key(
                     agent.clone(),
                     current_response.to_string(),
                     filled_prompt.clone(),
-                    Some(key.to_string()),
+                    key.to_string(),
                 )
                 .await?;
-                if let Ok(value) = JobManager::direct_extract_key_inference_json_response(new_response.clone(), key) {
+                if let Ok(value) = JobManager::direct_extract_key_inference_response(new_response.clone(), key) {
                     return Ok((value, new_response.clone()));
                 }
                 current_response = new_response.original_response_string;
@@ -138,7 +138,7 @@ impl JobManager {
 
     /// Attempts to extract a String using the provided key in the JSON response.
     /// Also tries variants of the provided key using capitalization/casing.
-    pub fn direct_extract_key_inference_json_response(
+    pub fn direct_extract_key_inference_response(
         response: LLMInferenceResponse,
         key: &str,
     ) -> Result<String, AgentError> {
@@ -188,32 +188,6 @@ impl JobManager {
         );
 
         response
-    }
-
-    /// Internal method that attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
-    /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
-    #[instrument]
-    async fn _extract_json_value_from_inference_result(
-        response: Result<LLMInferenceResponse, AgentError>,
-        agent: SerializedAgent,
-        filled_prompt: Prompt,
-    ) -> Result<LLMInferenceResponse, AgentError> {
-        match response {
-            Ok(res) => Ok(res),
-            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    "FailedExtractingJSONObjectFromResponse",
-                );
-
-                match internal_json_not_found_retry(agent.clone(), text.clone(), filled_prompt, None).await {
-                    Ok(json) => Ok(json),
-                    Err(e) => Err(e),
-                }
-            }
-            Err(e) => Err(e),
-        }
     }
 
     /// Fetches boilerplate/relevant data required for a job to process a step
@@ -326,20 +300,19 @@ fn to_dash_case(s: &str) -> String {
         .collect()
 }
 
-/// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-/// that we can parse. json_key_to_correct allows providing a specific key that the LLM should make sure to correct.
-async fn internal_json_not_found_retry(
+/// Inferences the LLM again asking it to take its previous answer and make sure it responds with markdown and include the required key.
+async fn internal_fix_markdown_to_include_proper_key(
     agent: SerializedAgent,
-    invalid_json_answer: String,
+    invalid_markdown: String,
     original_prompt: Prompt,
-    json_key_to_correct: Option<String>,
+    key_to_correct: String,
 ) -> Result<LLMInferenceResponse, AgentError> {
     let response = tokio::spawn(async move {
         let agent = Agent::from_serialized_agent(agent);
-        let prompt = JobPromptGenerator::basic_json_retry_response_prompt(
-            invalid_json_answer,
+        let prompt = JobPromptGenerator::basic_fix_markdown_to_include_proper_key(
+            invalid_markdown,
             original_prompt,
-            json_key_to_correct,
+            key_to_correct,
         );
         agent.inference_markdown(prompt).await
     })
