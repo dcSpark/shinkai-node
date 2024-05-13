@@ -14,12 +14,18 @@
 // // delete all the links on unshare
 
 use std::{
-    collections::HashMap, env, fmt, sync::{Arc, Weak}, time::{Duration, SystemTime}
+    collections::HashMap,
+    env, fmt,
+    sync::{Arc, Weak},
+    time::{Duration, SystemTime},
 };
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use serde::{de::{self, Visitor}, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_subscription_req::FolderSubscription},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -53,7 +59,7 @@ pub enum SubscriptionStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileLink {
     pub link: String,
     pub last_8_hash: String,

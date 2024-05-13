@@ -20,11 +20,11 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
+use std::env;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
-use std::{env, mem};
 use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 4;
@@ -38,7 +38,6 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
-    // The Node's VectorFS
     pub vector_fs: Weak<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
@@ -116,7 +115,7 @@ impl JobManager {
         )
         .await;
 
-        let job_manager = Self {
+        Self {
             db: db.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             node_profile_name,
@@ -128,11 +127,10 @@ impl JobManager {
             vector_fs,
             embedding_generator,
             unstructured_api,
-        };
-
-        job_manager
+        }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<ShinkaiDB>,
@@ -251,15 +249,12 @@ impl JobManager {
                                     }
                                 };
 
-                                match result {
-                                    Ok(_) => {
-                                        shinkai_log(
-                                            ShinkaiLogOption::JobExecution,
-                                            ShinkaiLogLevel::Debug,
-                                            "Job processed successfully",
-                                        );
-                                    } // handle success case
-                                    Err(_) => {} // handle error case
+                                if let Ok(_) = result {
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Debug,
+                                        "Job processed successfully",
+                                    );
                                 }
                             }
                             Ok(None) => {}
@@ -273,7 +268,7 @@ impl JobManager {
                     handles.push(handle);
                 }
 
-                let handles_to_join = mem::replace(&mut handles, Vec::new());
+                let handles_to_join = std::mem::take(&mut handles);
                 futures::future::join_all(handles_to_join).await;
                 handles.clear();
 
@@ -398,9 +393,7 @@ impl JobManager {
 
                     job_id_to_return.map_err(|_| AgentError::AgentNotFound)
                 }
-                Err(err) => {
-                    Err(AgentError::ShinkaiDB(err))
-                }
+                Err(err) => Err(AgentError::ShinkaiDB(err)),
             }
         }
     }
