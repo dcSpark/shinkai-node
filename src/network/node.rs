@@ -1,7 +1,8 @@
 use super::network_manager::network_job_manager::{
     NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai, VRPackPlusChanges,
 };
-use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
+use super::node_api::{APIError, SendResponseBodyData};
+use super::node_api_handlers::APIUseRegistrationCodeSuccessResponse;
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
@@ -374,6 +375,10 @@ pub enum NodeCommand {
     APIGetMySubscribers {
         msg: ShinkaiMessage,
         res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    },
+    APIGetHttpFreeSubscriptionLinks {
+        subscription_profile_path: String,
+        res: Sender<Result<Value, APIError>>,
     },
     RetrieveVRKai {
         msg: ShinkaiMessage,
@@ -1906,6 +1911,25 @@ impl Node {
                                                     encryption_secret_key_clone,
                                                     ext_subscription_manager_clone,
                                                     msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIGetHttpFreeSubscriptionLinks { subscription_id: ShinkaiMessage, res: Sender<Result<Value, APIError>>, },
+                                        NodeCommand::APIGetHttpFreeSubscriptionLinks { subscription_profile_path, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_http_free_subscription_links(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    ext_subscription_manager_clone,
+                                                    subscription_profile_path,
                                                     res,
                                                 ).await;
                                             });

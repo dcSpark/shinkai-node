@@ -442,6 +442,7 @@ pub async fn list_folder_contents(
 pub async fn generate_temporary_shareable_links_for_folder(
     folder_path: &str,
     destination: &FileDestination,
+    expiration_secs: u64,
 ) -> Result<Vec<(String, String)>, FileTransferError> {
     let folder_path = folder_path.strip_prefix('/').unwrap_or(folder_path);
     let contents = list_folder_contents(destination, folder_path).await?;
@@ -449,7 +450,8 @@ pub async fn generate_temporary_shareable_links_for_folder(
 
     for item in contents {
         if !item.is_folder {
-            match generate_temporary_shareable_link(folder_path, &item.path, destination).await {
+            let full_path = format!("{}/{}", folder_path, item.path);
+            match generate_temporary_shareable_link(&full_path, destination, expiration_secs).await {
                 Ok(link) => links.push((item.path, link)),
                 Err(e) => return Err(e),
             }
@@ -462,22 +464,22 @@ pub async fn generate_temporary_shareable_links_for_folder(
 // Function to generate a temporary shareable link for a file for 1 hour
 pub async fn generate_temporary_shareable_link(
     path: &str,
-    filename: &str,
     destination: &FileDestination,
+    expiration_secs: u64,
 ) -> Result<String, FileTransferError> {
-    let path = path.strip_prefix('/').unwrap_or(path);
+    let path = path.strip_prefix('/').unwrap_or(path); // Read the expiration duration from an environment variable or default to 5 days (432000 seconds)
+
     match destination {
         FileDestination::S3(client, credentials) => {
-            let key = format!("{}/{}", path, filename);
-            let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
-                .expires_in(std::time::Duration::from_secs(3600))
+            let presigning_config = PresigningConfig::builder()
+                .expires_in(std::time::Duration::from_secs(expiration_secs))
                 .build()
                 .map_err(|e| FileTransferError::Other(format!("Presigning config error: {:?}", e)))?;
 
             let presigned_req = client
                 .get_object()
                 .bucket(credentials.bucket.clone())
-                .key(&key)
+                .key(path)
                 .response_content_type("application/octet-stream")
                 .presigned(presigning_config)
                 .await
@@ -487,16 +489,15 @@ pub async fn generate_temporary_shareable_link(
         }
         FileDestination::R2(client, credentials) => {
             // Similar to S3, assuming R2 supports the same presigned URL generation
-            let key = format!("{}/{}", path, filename);
-            let presigning_config = PresigningConfig::builder() // Remove 'crate::presigning::'
-                .expires_in(std::time::Duration::from_secs(3600))
+            let presigning_config = PresigningConfig::builder()
+                .expires_in(std::time::Duration::from_secs(expiration_secs))
                 .build()
                 .map_err(|e| FileTransferError::Other(format!("Presigning config error: {:?}", e)))?;
 
             let presigned_req = client
                 .get_object()
                 .bucket(credentials.bucket.clone())
-                .key(&key)
+                .key(path)
                 .response_content_type("application/octet-stream")
                 .presigned(presigning_config)
                 .await
@@ -650,9 +651,15 @@ mod tests {
         assert!(upload_result.is_ok(), "Upload failed: {:?}", upload_result);
 
         // Generate a temporary shareable link
-        let link_result = generate_temporary_shareable_link(file_path, &file_name, &destination).await;
+        let start_time = std::time::Instant::now();
+        let expiration = 432000;
+        let full_path = format!("{}/{}", file_path, file_name);
+        let link_result = generate_temporary_shareable_link(&full_path, &destination, expiration).await;
+        let duration = start_time.elapsed();
+        eprintln!("Link generation time: {:?}", duration);
         assert!(link_result.is_ok(), "Failed to generate link: {:?}", link_result);
         let link = link_result.unwrap();
+        eprintln!("Generated link: {}", link);
 
         // Download the file using the generated link (simulating HTTP GET request)
         let client = reqwest::Client::new();
@@ -781,7 +788,8 @@ mod tests {
 
         // Upload files to the main folder
         for (file_name, content) in &files {
-            let upload_result = upload_file_http(content.to_vec(), main_folder_name, file_name, destination.clone()).await;
+            let upload_result =
+                upload_file_http(content.to_vec(), main_folder_name, file_name, destination.clone()).await;
             assert!(
                 upload_result.is_ok(),
                 "Upload failed for {}: {:?}",

@@ -1,9 +1,5 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
-    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData},
-    node_error::NodeError,
-    node_shareable_logic::validate_message_main_logic,
-    Node,
+    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
 };
 use crate::{
     agent::job_manager::JobManager,

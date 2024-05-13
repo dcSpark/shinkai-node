@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     FileDestinationCredentials, FileDestinationSourceType,
@@ -204,6 +203,7 @@ fn subscription_http_upload() {
                     subscription_uploader.subscription_file_map.clone(),
                     subscription_uploader.subscription_status.clone(),
                     shared_folders_trees_ref.clone(),
+                    subscription_uploader.file_links.clone(),
                     1,
                 )
                 .await;
@@ -215,11 +215,11 @@ fn subscription_http_upload() {
                         "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
                     ),
                     (
-                        "zeko_mini.6c58bb39.checksum",
+                        "/shinkai_sharing/zeko_mini.6c58bb39.checksum",
                         "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
                     ),
                     (
-                        "shinkai_intro.3584dc22.checksum",
+                        "/shinkai_sharing/shinkai_intro.3584dc22.checksum",
                         "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
                     ),
                     (
@@ -233,7 +233,7 @@ fn subscription_http_upload() {
                     for entry in subscription_uploader.subscription_file_map.iter() {
                         let key = entry.key();
                         let value = entry.value();
-                        println!("After everything - Folder Subscription: {:?}", key);
+                        println!("\n\n(In Test) After everything - Folder Subscription: {:?}", key);
                         for (file_path, status) in value.iter() {
                             println!("  {} - {:?}", file_path, status);
 
@@ -249,6 +249,21 @@ fn subscription_http_upload() {
                             } else {
                                 panic!("File path {} not found in expected files", file_path);
                             }
+                        }
+                    }
+                }
+                // Print out the content of file_links
+                {
+                    let file_links = subscription_uploader.file_links;
+                    eprintln!("file_links address: {:p}", &file_links);
+                    println!("\n\n File Links Debug:");
+                    for entry in file_links.iter() {
+                        let folder_subscription = entry.key();
+                        eprintln!("Folder Subscription: {:?}", folder_subscription);
+                        let links_map = entry.value();
+                        println!("links map: {:?}", folder_subscription);
+                        for (file_path, link) in links_map.iter() {
+                            println!("  {} - {} - {}", file_path, link.last_8_hash, link.link);
                         }
                     }
                 }

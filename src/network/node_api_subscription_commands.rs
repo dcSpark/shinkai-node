@@ -636,4 +636,28 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn api_get_http_free_subscription_links(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        subscription_id: String,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Check that the subscription_id is valid and exists
+        // Return cached value if it exists
+        // The cached value should be obtained through ext_subscription_manager -> http_upload_manager
+        // Format:
+        // [{
+            // "path": "/something",
+            // "link": "http://localhost:8080/something"
+            // "expiry": "2021-12-31T23:59:59Z"
+            // "checksum_last8": "blake3_1234567890abcdef"
+            // "checksum": "blake3_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        // }]
+        // Done
+        Ok(())
+    }
 }

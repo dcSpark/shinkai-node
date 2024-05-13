@@ -17,6 +17,7 @@ use std::{
     collections::HashMap,
     env,
     sync::{Arc, Weak},
+    time::{Duration, SystemTime},
 };
 
 use dashmap::DashMap;
@@ -39,14 +40,26 @@ use crate::{
 
 use super::{
     http_upload_error::HttpUploadError,
-    subscription_file_uploader::{delete_file_or_folder, list_folder_contents, upload_file_http, FileDestination},
+    subscription_file_uploader::{
+        delete_file_or_folder, generate_temporary_shareable_link, list_folder_contents, upload_file_http,
+        FileDestination,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SubscriptionStatus {
     NotStarted,
     Syncing,
+    WaitingForLinks,
     Ready,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileLink {
+    pub link: String,
+    pub last_8_hash: String,
+    pub hash: String,
+    pub expiration: SystemTime,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,9 +93,10 @@ pub struct HttpSubscriptionUploadManager {
     pub vector_fs: Weak<VectorFS>,
     pub node_name: ShinkaiName,
     pub is_syncing: bool,
-    pub subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
-    pub subscription_status: DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
+    pub subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+    pub subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>, // TODO: extend to support profiles
     pub shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
+    pub file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
     pub subscription_processing_task: tokio::task::JoinHandle<()>,
     pub semaphore: Arc<Semaphore>, // Semaphore to control concurrent execution
     pub subscription_http_upload_concurrency: usize,
@@ -98,6 +112,7 @@ impl Clone for HttpSubscriptionUploadManager {
             subscription_file_map: self.subscription_file_map.clone(),
             subscription_status: self.subscription_status.clone(),
             shared_folders_trees_ref: self.shared_folders_trees_ref.clone(),
+            file_links: self.file_links.clone(),
             // We cannot clone a JoinHandle, so we provide a new no-op task or a default placeholder
             subscription_processing_task: tokio::task::spawn(async {}),
             semaphore: self.semaphore.clone(),
@@ -113,8 +128,10 @@ impl HttpSubscriptionUploadManager {
         node_name: ShinkaiName,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
     ) -> Self {
-        let subscription_file_map = DashMap::new();
-        let subscription_status = DashMap::new();
+        let subscription_file_map = Arc::new(DashMap::new());
+        let subscription_status = Arc::new(DashMap::new());
+        let file_links = Arc::new(DashMap::new());
+        eprintln!("init file_links address: {:p}", &file_links);
         let semaphore = Arc::new(Semaphore::new(1)); // so we can force updates without race conditions
 
         let subscription_http_upload_concurrency = env::var("SUBSCRIPTION_HTTP_UPLOAD_CONCURRENCY")
@@ -129,6 +146,7 @@ impl HttpSubscriptionUploadManager {
             subscription_file_map.clone(),
             subscription_status.clone(),
             shared_folders_trees_ref.clone(),
+            file_links.clone(),
             subscription_http_upload_concurrency,
             semaphore.clone(),
         )
@@ -142,6 +160,7 @@ impl HttpSubscriptionUploadManager {
             subscription_file_map,
             subscription_status,
             shared_folders_trees_ref,
+            file_links,
             subscription_processing_task,
             semaphore,
             subscription_http_upload_concurrency,
@@ -153,10 +172,11 @@ impl HttpSubscriptionUploadManager {
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
-        subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
-        subscription_status: DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
+        subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+        subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
-        subscription_http_upload_concurrency: usize,                      // simultaneous uploads
+        file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
+        subscription_http_upload_concurrency: usize, // simultaneous uploads
         semaphore: Arc<Semaphore>,
     ) -> tokio::task::JoinHandle<()> {
         let interval_minutes = env::var("SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES")
@@ -177,6 +197,7 @@ impl HttpSubscriptionUploadManager {
             subscription_file_map,
             subscription_status,
             shared_folders_trees_ref,
+            file_links,
             subscription_http_upload_concurrency,
             semaphore,
         )
@@ -199,6 +220,7 @@ impl HttpSubscriptionUploadManager {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn trigger_controlled_subscription_http_check(manager: &HttpSubscriptionUploadManager) {
         let _result = Self::controlled_subscription_http_check_loop(
             manager.db.clone(),
@@ -207,6 +229,7 @@ impl HttpSubscriptionUploadManager {
             manager.subscription_file_map.clone(),
             manager.subscription_status.clone(),
             manager.shared_folders_trees_ref.clone(),
+            manager.file_links.clone(),
             manager.subscription_http_upload_concurrency,
             manager.semaphore.clone(),
         )
@@ -218,9 +241,10 @@ impl HttpSubscriptionUploadManager {
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
-        subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
-        subscription_status: DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
+        subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+        subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
+        file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
         subscription_http_upload_concurrency: usize, // simultaneous uploads
         semaphore: Arc<Semaphore>,
     ) -> Result<(), HttpUploadError> {
@@ -233,6 +257,7 @@ impl HttpSubscriptionUploadManager {
             subscription_file_map,
             subscription_status,
             shared_folders_trees_ref,
+            file_links,
             subscription_http_upload_concurrency,
         )
         .await
@@ -243,10 +268,11 @@ impl HttpSubscriptionUploadManager {
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
-        subscription_file_map: DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
-        subscription_status: DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
+        subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+        subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
         shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
-        subscription_http_upload_concurrency: usize,                      // simultaneous uploads
+        file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
+        subscription_http_upload_concurrency: usize, // simultaneous uploads
     ) -> Result<(), HttpUploadError> {
         match Self::get_profiles_and_shared_folders_with_empty_tree(db.clone(), vector_fs.clone(), node_name.clone())
             .await
@@ -258,11 +284,12 @@ impl HttpSubscriptionUploadManager {
                             shared_folder_info,
                             node_name.clone(),
                             profile.clone(),
-                            &subscription_file_map,
-                            &subscription_status,
+                            subscription_file_map.clone(),
+                            subscription_status.clone(),
                             &db,
                             &vector_fs,
-                            &shared_folders_trees_ref,
+                            shared_folders_trees_ref.clone(),
+                            file_links.clone(),
                             subscription_http_upload_concurrency,
                         )
                         .await;
@@ -454,11 +481,12 @@ impl HttpSubscriptionUploadManager {
         shared_folder_subs: SharedFolderInfo,
         node_name: ShinkaiName,
         profile: String,
-        subscription_file_map: &DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>,
-        subscription_status: &DashMap<FolderSubscriptionWithPath, SubscriptionStatus>,
+        subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+        subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
         db: &Weak<ShinkaiDB>,
         vector_fs: &Weak<VectorFS>,
-        shared_folders_trees_ref: &Arc<DashMap<String, SharedFolderInfo>>,
+        shared_folders_trees_ref: Arc<DashMap<String, SharedFolderInfo>>,
+        file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
         subscription_http_upload_concurrency: usize, // simultaneous uploads
     ) -> Result<(), HttpUploadError> {
         let key = format!("{}:::{}", profile.clone(), shared_folder_subs.path.clone());
@@ -734,15 +762,15 @@ impl HttpSubscriptionUploadManager {
             for result in results {
                 match result {
                     Ok(Ok(task_result)) => {
-                        subscription_file_map.alter(&folder_subs_with_path.clone(), |key, mut existing_entry| {
+                        let path = VRPath::from_string(&task_result.missing_in_cloud_file_path)?;
+                        let parent_path = path.parent_path().to_string();
+                        let full_checksum_path = format!("{}/{}", parent_path, task_result.checksum_file_name);
+                        subscription_file_map.alter(&folder_subs_with_path.clone(), |_key, mut existing_entry| {
                             existing_entry.insert(
                                 task_result.missing_in_cloud_file_path.clone(),
                                 FileStatus::Sync(task_result.checksum.clone()),
                             );
-                            existing_entry.insert(
-                                task_result.checksum_file_name.clone(),
-                                FileStatus::Sync(task_result.checksum.clone()),
-                            );
+                            existing_entry.insert(full_checksum_path, FileStatus::Sync(task_result.checksum.clone()));
                             existing_entry
                         });
                     }
@@ -783,9 +811,129 @@ impl HttpSubscriptionUploadManager {
             }
 
             // Update subscription status to Syncing
-            subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::Ready);
+            subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::WaitingForLinks);
+
+            // Generate temporary shareable links for the files
+            match Self::update_file_links(
+                file_links,
+                subscription_file_map,
+                subscription_status,
+                &destination,
+                folder_subs_with_path.clone(),
+            )
+            .await
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::ExtSubscriptions,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to update file links: {:?}", e),
+                    );
+                    return Err(e);
+                }
+            }
+
             Ok(())
         }
+    }
+
+    /// Generates a temporary shareable link for a file.
+    pub async fn update_file_links(
+        file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
+        subscription_file_map: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileStatus>>>,
+        subscription_status: Arc<DashMap<FolderSubscriptionWithPath, SubscriptionStatus>>,
+        destination: &FileDestination,
+        folder_subs_with_path: FolderSubscriptionWithPath,
+    ) -> Result<(), HttpUploadError> {
+        // Read the expiration duration from an environment variable or default to 5 days (432000 seconds)
+        let expiration_secs = std::env::var("LINK_EXPIRATION_SECONDS")
+            .unwrap_or_else(|_| "432000".to_string())
+            .parse::<u64>()
+            .unwrap_or(432000);
+
+        // Define a safe gap duration from an environment variable or default to 5 hours (18000 seconds)
+        let safe_gap_secs = std::env::var("LINK_SAFE_GAP_SECONDS")
+            .unwrap_or_else(|_| "18000".to_string())
+            .parse::<u64>()
+            .unwrap_or(18000);
+
+        eprintln!("file_links address: {:p}", file_links);
+
+        // Access the specific subscription's files
+        if let Some(files_status) = subscription_file_map.get(&folder_subs_with_path) {
+            for (file_path, file_status) in files_status.iter() {
+                eprintln!("update_file_links>> File Path: {:?}", file_path);
+                // we assume that the file status is Sync
+                let current_hash = if let FileStatus::Sync(hash) = file_status {
+                    hash
+                } else {
+                    continue; // Skip if not in Sync status
+                };
+                eprintln!("Current Hash: {:?}", current_hash);
+
+                let needs_update = match file_links.get(&folder_subs_with_path) {
+                    Some(links) => {
+                        match links.get(file_path) {
+                            Some(link) => {
+                                eprintln!("Old Link: {:?}", link.link);
+                                // Check if the link is outdated or the hash has changed
+                                link.expiration < SystemTime::now() + Duration::from_secs(safe_gap_secs)
+                                    || link.last_8_hash != *current_hash
+                            }
+                            None => true, // No link exists
+                        }
+                    }
+                    None => true, // No entry exists for this subscription
+                };
+
+                eprintln!("Needs Update: {:?}", needs_update);
+                if needs_update {
+                    // Generate a new link
+                    let link_result = generate_temporary_shareable_link(file_path, destination, expiration_secs).await;
+                    eprintln!("Link Result: {:?}", link_result);
+                    match link_result {
+                        Ok(new_link) => {
+                            let new_file_link = FileLink {
+                                link: new_link,
+                                last_8_hash: current_hash.clone(), // Store the current hash
+                                hash: current_hash.clone(),        // Store the full hash
+                                expiration: SystemTime::now() + Duration::from_secs(expiration_secs),
+                            };
+                            // Update or insert the new link
+                            file_links
+                                .entry(folder_subs_with_path.clone())
+                                .and_modify(|e| {
+                                    e.insert(file_path.clone(), new_file_link.clone());
+                                })
+                                .or_insert_with(|| {
+                                    let mut map = HashMap::new();
+                                    map.insert(file_path.clone(), new_file_link);
+                                    map
+                                });
+
+                            println!("File Links After Individual Update:");
+                            for entry in file_links.iter() {
+                                let folder_subscription = entry.key();
+                                let links_map = entry.value();
+                                println!("Folder Subscription: {:?}", folder_subscription);
+                                for (file_path, link) in links_map.iter() {
+                                    println!("  {} - {} - {}", file_path, link.last_8_hash, link.link);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            return Err(e.into());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update subscription status to Syncing
+        subscription_status.insert(folder_subs_with_path.clone(), SubscriptionStatus::Ready);
+
+        Ok(())
     }
 
     async fn retrieve_base_vr(
@@ -890,29 +1038,27 @@ impl HttpSubscriptionUploadManager {
     //     Ok(())
     // }
 
-    // fn read_all_files_subscription(&self, subscription_id: SubscriptionId) -> Vec<String> {
-    //     let vector_fs = self.vector_fs.upgrade().unwrap();
-    //     let files = vector_fs.get_files();
-    //     files
-    // }
-
     // make them last for a day (we could make this configurable)
 
-    // pub fn get_cached_subscription_files_links(&self, subscription_id: SubscriptionId) -> Vec<String> {
-    //     let links = self
-    //         .subscription_file_map
-    //         .get(&subscription_id)
-    //         .map(|files| {
-    //             files
-    //                 .iter()
-    //                 .filter(|(_, status)| matches!(**status, FileStatus::Sync(_))) // Use matches! to check for the Sync variant
-    //                 .map(|(file_path, _)| file_path.clone())
-    //                 .collect()
-    //         })
-    //         .unwrap_or_default();
+    /// Retrieves cached subscription file links that are in sync.
+    pub fn get_cached_subscription_files_links(
+        &self,
+        folder_subs_with_path: &FolderSubscriptionWithPath,
+        file_links: &Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
+    ) -> Vec<String> {
+        let links = file_links
+            .get(folder_subs_with_path)
+            .map(|files| {
+                files
+                    .iter()
+                    .filter(|(_, link)| link.expiration > SystemTime::now()) // Filter links that are still valid
+                    .map(|(file_path, _)| file_path.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
 
-    //     links
-    // }
+        links
+    }
 
     fn extract_checksum_map(sync_file_paths: &[String]) -> HashMap<String, String> {
         let mut checksum_map = HashMap::new();
