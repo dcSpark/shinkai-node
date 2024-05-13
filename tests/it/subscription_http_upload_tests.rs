@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     FileDestinationCredentials, FileDestinationSourceType,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::HttpSubscriptionUploadManager;
+use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::{
+    FileStatus, HttpSubscriptionUploadManager,
+};
 use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
     delete_all_in_folder, FileDestination,
 };
 use utils::test_boilerplate::run_test_one_node_network;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
 use super::utils::node_test_api::api_initial_registration_with_no_code_for_device;
@@ -207,6 +207,51 @@ fn subscription_http_upload() {
                     1,
                 )
                 .await;
+
+                // Check that subscription_file_map (cache) was updated correctly
+                let expected_files = [
+                    (
+                        "/shinkai_sharing/shinkai_intro",
+                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                    ),
+                    (
+                        "zeko_mini.6c58bb39.checksum",
+                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                    ),
+                    (
+                        "shinkai_intro.3584dc22.checksum",
+                        "08c642c08596031582f6885111f7aba413036f02361b12e7dae05dea3584dc22",
+                    ),
+                    (
+                        "/shinkai_sharing/zeko_mini",
+                        "368c4f9442031b7f4d790c03aabb9c910b6bf99356966f67e1ae94246c58bb39",
+                    ),
+                ];
+
+                // Print out the content of subscription_file_map and assert the values
+                {
+                    for entry in subscription_uploader.subscription_file_map.iter() {
+                        let key = entry.key();
+                        let value = entry.value();
+                        println!("After everything - Folder Subscription: {:?}", key);
+                        for (file_path, status) in value.iter() {
+                            println!("  {} - {:?}", file_path, status);
+
+                            // Find the expected hash for the current file path
+                            if let Some((_, expected_hash)) = expected_files.iter().find(|(path, _)| path == file_path)
+                            {
+                                match status {
+                                    FileStatus::Sync(actual_hash) => {
+                                        assert_eq!(actual_hash, expected_hash, "Hash mismatch for file: {}", file_path);
+                                    }
+                                    _ => panic!("Expected Sync status for file: {}", file_path),
+                                }
+                            } else {
+                                panic!("File path {} not found in expected files", file_path);
+                            }
+                        }
+                    }
+                }
             }
             node1_abort_handler.abort();
         })

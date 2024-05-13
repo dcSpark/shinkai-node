@@ -558,16 +558,6 @@ impl HttpSubscriptionUploadManager {
                         map
                     });
             }
-
-            // Print out the content of subscription_file_map
-            for entry in subscription_file_map.iter() {
-                let key = entry.key();
-                let value = entry.value();
-                println!("Folder Subscription: {:?}", key);
-                for (file_path, status) in value.iter() {
-                    println!("  {} - {:?}", file_path, status);
-                }
-            }
         }
 
         // We check file by file if it's in sync with the local storage or if anything needs to be deleted "extra"
@@ -629,22 +619,9 @@ impl HttpSubscriptionUploadManager {
             }
         }
 
-        {
-            // before removing stuf
-            // Print out the content of subscription_file_map
-            for entry in subscription_file_map.iter() {
-                let key = entry.key();
-                let value = entry.value();
-                println!("\n\n Before removing stuff - Folder Subscription: {:?}", key);
-                for (file_path, status) in value.iter() {
-                    println!("  {} - {:?}", file_path, status);
-                }
-            }
-        }
         // Delete all the files that no longer exist locally
         // We also remove their checksum files
         for item_to_delete in items_to_delete {
-            eprintln!("Deleting file: {:?}", item_to_delete);
             let delete_result = delete_file_or_folder(&destination, &item_to_delete).await;
             if let Err(e) = delete_result {
                 return Err(HttpUploadError::from(e));
@@ -653,38 +630,20 @@ impl HttpSubscriptionUploadManager {
             // Check if there is a checksum file associated with the file and delete it
             if let Some(checksum) = checksum_map.get(&item_to_delete) {
                 let checksum_file_path = format!("{}.{}.checksum", item_to_delete, checksum);
-                eprintln!("Deleting checksum file: {:?}", checksum_file_path);
                 let delete_checksum_result = delete_file_or_folder(&destination, &checksum_file_path).await;
                 if let Err(e) = delete_checksum_result {
                     return Err(HttpUploadError::from(e));
                 }
 
-                // Remove the checksum file entry from the subscription_file_map
+                // Log the contents of the subscription_file_map before and after removing the checksum file
                 if let Some(mut file_statuses) = subscription_file_map.get_mut(&folder_subs_with_path) {
-                    eprintln!("Before removing checksum file: {:?}", file_statuses);
                     file_statuses.remove(&checksum_file_path);
-                    eprintln!("After removing checksum file: {:?}", file_statuses);
                 }
             }
 
-            // Remove the file entry from the subscription_file_map
+            // Log the contents of the subscription_file_map before and after removing the file
             if let Some(mut file_statuses) = subscription_file_map.get_mut(&folder_subs_with_path) {
-                eprintln!("Before removing file: {:?}", file_statuses);
                 file_statuses.remove(&item_to_delete);
-                eprintln!("After removing file: {:?}", file_statuses);
-            }
-        }
-
-        {
-            // after removing stuf
-            // Print out the content of subscription_file_map
-            for entry in subscription_file_map.iter() {
-                let key = entry.key();
-                let value = entry.value();
-                println!("\n\n After removing stuff - Folder Subscription: {:?}", key);
-                for (file_path, status) in value.iter() {
-                    println!("  {} - {:?}", file_path, status);
-                }
             }
         }
 
@@ -714,6 +673,13 @@ impl HttpSubscriptionUploadManager {
             // Collect all tasks
             let mut tasks = Vec::new();
 
+            // Define a struct to hold the results needed for updating the map
+            struct TaskResult {
+                missing_in_cloud_file_path: String,
+                checksum_file_name: String,
+                checksum: String,
+            }
+
             // Upload missing files
             for missing_in_cloud_file_path in missing_files {
                 let resource =
@@ -730,8 +696,6 @@ impl HttpSubscriptionUploadManager {
                 let parent_path = path.parent_path().to_string();
                 let destination_clone = destination.clone();
                 let sema_clone = semaphore.clone();
-                let subscription_file_map = subscription_file_map.clone();
-                let folder_subs_with_path = folder_subs_with_path.clone();
 
                 let task = tokio::spawn(async move {
                     let _permit = sema_clone.acquire().await.expect("Failed to acquire semaphore permit");
@@ -755,55 +719,33 @@ impl HttpSubscriptionUploadManager {
                         return Err(HttpUploadError::from(e));
                     }
 
-                    {
-                        // Print out the content of subscription_file_map
-                        for entry in subscription_file_map.iter() {
-                            let key = entry.key();
-                            let value = entry.value();
-                            println!("\n\n In iter - Folder Subscription: {:?}", key);
-                            for (file_path, status) in value.iter() {
-                                println!("  {} - {:?}", file_path, status);
-                            }
-                        }
-                    }
-
-                    // Update the subscription_file_map with the file and its checksum
-                    subscription_file_map
-                        .entry(folder_subs_with_path.clone())
-                        .and_modify(|e| {
-                            e.insert(missing_in_cloud_file_path.clone(), FileStatus::Sync(checksum.clone()));
-                            e.insert(checksum_file_name.clone(), FileStatus::Sync(checksum.clone()));
-                        })
-                        .or_insert_with(|| {
-                            let mut map = HashMap::new();
-                            map.insert(missing_in_cloud_file_path.clone(), FileStatus::Sync(checksum.clone()));
-                            map.insert(checksum_file_name.clone(), FileStatus::Sync(checksum.clone()));
-                            map
-                        });
-
-                    Ok::<(), HttpUploadError>(())
+                    Ok(TaskResult {
+                        missing_in_cloud_file_path,
+                        checksum_file_name,
+                        checksum,
+                    })
                 });
 
                 tasks.push(task);
-            }
-
-            {
-                // Print out the content of subscription_file_map
-                for entry in subscription_file_map.iter() {
-                    let key = entry.key();
-                    let value = entry.value();
-                    println!("After everything - Folder Subscription: {:?}", key);
-                    for (file_path, status) in value.iter() {
-                        println!("  {} - {:?}", file_path, status);
-                    }
-                }
             }
 
             // Wait for all tasks to complete
             let results = futures::future::join_all(tasks).await;
             for result in results {
                 match result {
-                    Ok(Ok(())) => continue, // Success case
+                    Ok(Ok(task_result)) => {
+                        subscription_file_map.alter(&folder_subs_with_path.clone(), |key, mut existing_entry| {
+                            existing_entry.insert(
+                                task_result.missing_in_cloud_file_path.clone(),
+                                FileStatus::Sync(task_result.checksum.clone()),
+                            );
+                            existing_entry.insert(
+                                task_result.checksum_file_name.clone(),
+                                FileStatus::Sync(task_result.checksum.clone()),
+                            );
+                            existing_entry
+                        });
+                    }
                     Ok(Err(e)) => {
                         // Log the HttpUploadError using shinkai_log
                         shinkai_log(
@@ -824,6 +766,18 @@ impl HttpSubscriptionUploadManager {
                             "Task failed with JoinError: {}",
                             e
                         )));
+                    }
+                }
+            }
+
+            {
+                // Print out the content of subscription_file_map
+                for entry in subscription_file_map.iter() {
+                    let key = entry.key();
+                    let value = entry.value();
+                    println!("After everything - Folder Subscription: {:?}", key);
+                    for (file_path, status) in value.iter() {
+                        println!("  {} - {:?}", file_path, status);
                     }
                 }
             }
