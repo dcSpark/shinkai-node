@@ -40,9 +40,9 @@ impl JobPromptGenerator {
     pub fn basic_instant_response_prompt(user_message: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Add up to previous 10 step results from history
+        // Add up to previous step results from history
         if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 10, 98);
+            prompt.add_step_history(step_history, 10, 98, 4000);
         }
 
         prompt.add_content(

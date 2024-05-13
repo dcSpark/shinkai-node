@@ -11,11 +11,13 @@ impl JobPromptGenerator {
         summary_text: Option<String>,
         prev_search_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
+        max_characters_in_prompt: usize,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         let ret_nodes_len = ret_nodes.len();
 
-        let step_history_is_empty = add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len);
+        let step_history_is_empty =
+            add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len, max_characters_in_prompt);
         add_setup_prompt(&mut prompt);
 
         if let Some(summary) = summary_text {
@@ -85,11 +87,13 @@ impl JobPromptGenerator {
         summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
         iteration_count: u64,
+        max_characters_in_prompt: usize,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         let ret_nodes_len = ret_nodes.len();
 
-        let step_history_is_empty = add_step_history_prompt(&mut prompt, job_step_history, ret_nodes.len());
+        let step_history_is_empty =
+            add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len, max_characters_in_prompt);
         add_setup_prompt(&mut prompt);
 
         if let Some(summary) = summary_text {
@@ -166,6 +170,7 @@ pub fn add_step_history_prompt(
     prompt: &mut Prompt,
     job_step_history: Option<Vec<JobStepResult>>,
     ret_nodes_len: usize,
+    max_characters_in_prompt: usize,
 ) -> bool {
     // Add previous step results from history
     let mut step_history_is_empty = true;
@@ -173,9 +178,9 @@ pub fn add_step_history_prompt(
         step_history_is_empty = step_history.is_empty();
         // If no vec search results, return up to 10 as likely to be relevant
         if ret_nodes_len == 0 {
-            prompt.add_step_history(step_history, 10, 96);
+            prompt.add_step_history(step_history, 10, 96, max_characters_in_prompt);
         } else {
-            prompt.add_step_history(step_history, 2, 97);
+            prompt.add_step_history(step_history, 4, 97, max_characters_in_prompt);
         }
     }
     return step_history_is_empty;

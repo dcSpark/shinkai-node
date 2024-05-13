@@ -108,6 +108,23 @@ impl SubPrompt {
         }
     }
 
+    /// Sets the content of the SubPrompt (aka. updates it to the provided string)
+    pub fn set_content(&mut self, new_content: String) {
+        match self {
+            SubPrompt::Content(_, content, _) => *content = new_content,
+            SubPrompt::EBNF(_, ebnf, _, _) => *ebnf = new_content,
+            SubPrompt::Asset(_, _, asset_content, _, _) => *asset_content = new_content,
+        }
+    }
+
+    /// Trims the content inside of the subprompt to the specified length.
+    pub fn trim_content_to_length(&mut self, max_length: usize) {
+        let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
+        if content.len() > max_length {
+            self.set_content(content.chars().take(max_length).collect());
+        }
+    }
+
     /// Converts a subprompt into a ChatCompletionRequestMessage
     pub fn into_chat_completion_request_message(&self) -> ChatCompletionRequestMessage {
         let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
@@ -324,8 +341,15 @@ impl Prompt {
     }
 
     /// Adds previous results from step history into the Prompt, up to max_previous_history amount.
+    /// Of note does extra internal checks on max characters to make sure prompt doesn't get too big (amount returned/content length may be shortened).
     /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64, priority_value: u8) {
+    pub fn add_step_history(
+        &mut self,
+        mut history: Vec<JobStepResult>,
+        max_previous_history: u64,
+        priority_value: u8,
+        max_characters_in_prompt: usize,
+    ) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let mut count = 0;
         let mut sub_prompts_list = Vec::new();
@@ -336,9 +360,27 @@ impl Prompt {
         //     priority_value,
         // ));
 
+        // Update max previous history if the max characters is under specific limits
+        let max_previous_history = if max_characters_in_prompt < 5000 {
+            1
+        } else {
+            max_previous_history
+        };
+
+        // Set a value for maximum step history prompt content based on max characters
+        let max_step_history_prompt_content = if max_characters_in_prompt < 5000 {
+            100
+        } else if max_characters_in_prompt < 33000 {
+            400
+        } else {
+            800
+        };
+
         while let Some(step) = history.pop() {
             if let Some(prompt) = step.get_result_prompt() {
                 for sub_prompt in prompt.sub_prompts {
+                    let mut sub_prompt = sub_prompt.clone();
+                    sub_prompt.trim_content_to_length(max_step_history_prompt_content);
                     sub_prompts_list.push(sub_prompt);
                 }
                 count += 1;

@@ -131,6 +131,7 @@ impl QAInferenceChain {
                 summary_text.clone(),
                 Some(query_text),
                 Some(full_job.step_history.clone()),
+                max_tokens_in_prompt,
             )
         } else {
             JobPromptGenerator::qa_response_prompt_with_vector_search_final(
@@ -139,6 +140,7 @@ impl QAInferenceChain {
                 summary_text.clone(),
                 Some(full_job.step_history.clone()),
                 iteration_count,
+                max_tokens_in_prompt,
             )
         };
 
