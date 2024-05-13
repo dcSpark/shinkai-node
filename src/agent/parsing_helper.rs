@@ -205,7 +205,8 @@ impl ParsingHelper {
 
     /// Cleans the value string from a parsed markdown response from common LLM issues.
     fn clean_markdown_result_string(string: &str) -> String {
-        let link_image_cleaned = ParsingHelper::clean_markdown_urls_images(string);
+        let clean_llm_references = ParsingHelper::clean_llm_content_references(string);
+        let link_image_cleaned = ParsingHelper::clean_markdown_urls_images(&clean_llm_references);
         let parsed_message = ParsedUserMessage::new(link_image_cleaned.to_string());
 
         // If there is a codeblock and it has no/disallowed content, then remove it
@@ -254,5 +255,11 @@ impl ParsingHelper {
         let cleaned_string = re_link.replace_all(&cleaned_string, "$1"); // Replace link with link text
 
         cleaned_string.to_string()
+    }
+
+    /// Cleans content references from the LLM response.
+    fn clean_llm_content_references(string: &str) -> String {
+        let re_references = Regex::new(r"\[\^[0-9]+\]: http.+\n").unwrap();
+        re_references.replace_all(string, "").to_string()
     }
 }
