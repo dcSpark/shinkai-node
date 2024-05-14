@@ -182,6 +182,13 @@ pub fn add_step_history_prompt(
         } else {
             prompt.add_step_history(step_history, 4, 97, max_characters_in_prompt);
         }
+
+        prompt.add_content(
+            "----- End Of Conversation History -----".to_string(),
+            SubPromptType::System,
+            98,
+        );
     }
+
     return step_history_is_empty;
 }
