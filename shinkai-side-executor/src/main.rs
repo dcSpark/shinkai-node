@@ -21,11 +21,11 @@ pub fn main() -> Result<(), PdfiumError> {
     // This pattern is common enough that it is the default constructor for the Pdfium struct,
     // so we could have also simply written:
 
-    let pdfium = Pdfium::default();
+    // let pdfium = Pdfium::default();
 
     // === Static linking ===
-    // RUSTFLAGS="-L /path-to/shinkai-node/shinkai-side-executor/lib" cargo build
-    // let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
+    // PDFIUM_STATIC_LIB_PATH="/path-to/shinkai-node/shinkai-side-executor/lib" cargo build
+    let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
 
     // Next, we create a set of shared settings that we'll apply to each page in the
     // sample file when rendering. Sharing the same rendering configuration is a good way
