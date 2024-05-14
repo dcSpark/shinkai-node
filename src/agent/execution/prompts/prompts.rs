@@ -107,6 +107,14 @@ impl SubPrompt {
             }
         }
     }
+    /// Gets the content of the SubPrompt (aka. updates it to the provided string)
+    pub fn get_content(&self) -> String {
+        match self {
+            SubPrompt::Content(_, content, _) => content.clone(),
+            SubPrompt::EBNF(_, ebnf, _, _) => ebnf.clone(),
+            SubPrompt::Asset(_, _, asset_content, _, _) => asset_content.clone(),
+        }
+    }
 
     /// Sets the content of the SubPrompt (aka. updates it to the provided string)
     pub fn set_content(&mut self, new_content: String) {
@@ -524,6 +532,8 @@ impl Prompt {
                         new_message = format!("Sys: {}\n", content.clone());
                     } else if prompt_type == &SubPromptType::User {
                         new_message = format!("User: {}\n", content.clone());
+                    } else if prompt_type == &SubPromptType::Assistant {
+                        new_message = format!("A: {}\n", content.clone());
                     }
                     messages.push(new_message);
                 }

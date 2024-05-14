@@ -75,25 +75,38 @@ impl JobPromptGenerator {
         key_to_correct: String,
     ) -> Prompt {
         let mut prompt = Prompt::new();
+        /// TODO: Make the markdown subprompts unique like EBNF was
+        let markdown_definitions: Vec<String> = original_prompt
+            .sub_prompts
+            .iter()
+            .filter(|subprompt| {
+                subprompt.get_content().to_lowercase().contains("md")
+                    && subprompt.get_content().to_lowercase().contains(&key_to_correct)
+            })
+            .map(|subprompt| subprompt.get_content())
+            .collect();
 
         prompt.add_content(
             format!("Here is the answer to your request: `{}`", invalid_markdown),
-            SubPromptType::System,
+            SubPromptType::Assistant,
             100,
         );
 
-        // Final content to be added with the specific instructions
-        let mut final_content =
-            r#"No, I need it to be properly formatted as a markdown with the correct section names. "#.to_string();
-        final_content += &format!(
-            "Make sure to not forget to include the `{}` section in the markdown.",
-            key_to_correct
-        );
+        let mut wrong_string =
+            r#"No that is wrong. I need it to be properly formatted as a markdown with the correct section names. "#
+                .to_string();
+
+        if let Some(md_def) = markdown_definitions.iter().next() {
+            wrong_string += &format!(
+                " You must fix the previous answer by outputting markdown that follows this schema: \n{}",
+                md_def
+            );
+        }
+        prompt.add_content(wrong_string, SubPromptType::User, 100);
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n```md\n"#,
-                final_content
+                r#"Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n```md\n"#,
             ),
             SubPromptType::User,
             100,

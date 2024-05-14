@@ -564,6 +564,7 @@ impl ModelCapabilitiesManager {
                 let role_prefix = match message.role.as_str() {
                     "user" => "User: ",
                     "sys" => "Sys: ",
+                    "assistant" => "A: ",
                     _ => "",
                 };
                 let full_message = format!(

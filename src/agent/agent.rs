@@ -100,14 +100,9 @@ impl Agent {
                     SubPromptType::Assistant,
                     priority,
                 );
-                new_prompt.add_content(
-                    "No, that is not valid markdown with the specified template.".to_string(),
-                    SubPromptType::User,
-                    priority,
-                );
 
                 new_prompt.add_content(
-                    "You are an advanced assistant who can fix any invalid markdown without needing to see its proper template. Respond by fixing the markdown. Remember to always escape quotes properly inside of strings:\n\n ```md\n".to_string(),
+                    "No, that is not valid markdown. You are an advanced assistant who can fix any invalid markdown without needing to see its proper template. Respond by fixing the markdown. Remember to always escape quotes properly inside of strings:\n\n ```md\n".to_string(),
                     SubPromptType::User,
                     priority,
                 );
