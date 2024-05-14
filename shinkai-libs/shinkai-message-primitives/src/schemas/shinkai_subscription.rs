@@ -9,7 +9,7 @@ use shinkai_vector_resources::vector_resource::VRPath;
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptionId {
-    unique_id: String,
+    pub unique_id: String,
     pub include_folders: Option<Vec<VRPath>>,
     pub exclude_folders: Option<Vec<VRPath>>,
 }

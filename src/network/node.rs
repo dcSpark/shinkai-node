@@ -1919,15 +1919,11 @@ impl Node {
                                         NodeCommand::APIGetHttpFreeSubscriptionLinks { subscription_profile_path, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let node_name_clone = self.node_name.clone();
-                                            let identity_manager_clone = self.identity_manager.clone();
-                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let ext_subscription_manager_clone = self.ext_subscription_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_get_http_free_subscription_links(
                                                     db_clone,
                                                     node_name_clone,
-                                                    identity_manager_clone,
-                                                    encryption_secret_key_clone,
                                                     ext_subscription_manager_clone,
                                                     subscription_profile_path,
                                                     res,

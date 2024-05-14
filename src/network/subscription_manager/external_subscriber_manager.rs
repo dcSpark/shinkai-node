@@ -32,7 +32,6 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
-use std::time::SystemTime;
 use tokio::sync::{Mutex, Semaphore};
 
 use super::fs_entry_tree::FSEntryTree;
@@ -1636,6 +1635,7 @@ impl ExternalSubscriberManager {
     }
 
     /// Get cached subscription files links (already filtered if there is anything expired)
+    #[allow(dead_code)]
     pub fn get_cached_subscription_files_links(
         &self,
         folder_subs_with_path: &FolderSubscriptionWithPath,

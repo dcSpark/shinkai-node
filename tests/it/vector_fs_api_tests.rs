@@ -4,9 +4,7 @@ use aes_gcm::KeyInit;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, Ollama, SerializedAgent,
-};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -45,7 +43,7 @@ pub fn generate_message_with_payload<T: ToString>(
 ) -> ShinkaiMessage {
     let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(payload.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(schema)
@@ -58,8 +56,7 @@ pub fn generate_message_with_payload<T: ToString>(
         )
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[test]
@@ -72,7 +69,7 @@ fn vector_fs_api_tests() {
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
             let node1_agent = env.node1_agent.clone();
-            let node1_encryption_pk = env.node1_encryption_pk.clone();
+            let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
@@ -153,7 +150,7 @@ fn vector_fs_api_tests() {
                 api_agent_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -165,7 +162,7 @@ fn vector_fs_api_tests() {
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+                let message_content = aes_encryption_key_to_string(symmetrical_sk);
                 let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -247,12 +244,10 @@ fn vector_fs_api_tests() {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
                 let filename = "files/shinkai_intro.vrkai";
-                let file_path = Path::new(filename.clone());
+                let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
-                    .map_err(|_| VRError::FailedPDFParsing)
-                    .unwrap();
+                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
@@ -426,7 +421,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrievePathSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -471,7 +466,7 @@ fn vector_fs_api_tests() {
                         MessageSchemaType::VecFsCreateFolder,
                         node1_profile_encryption_sk.clone(),
                         clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk.clone(),
+                        node1_encryption_pk,
                         node1_identity_name.as_str(),
                         node1_profile_name.as_str(),
                         node1_identity_name.as_str(),
@@ -498,7 +493,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsCopyItem,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -530,7 +525,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsMoveItem, // Assuming you have a corresponding schema type for moving items
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -563,7 +558,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsMoveFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -589,7 +584,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrievePathSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -745,7 +740,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsSearchItems,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -782,7 +777,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsDeleteItem,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -810,7 +805,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsDeleteFolder,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),
@@ -835,7 +830,7 @@ fn vector_fs_api_tests() {
                     MessageSchemaType::VecFsRetrievePathSimplifiedJson,
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     node1_identity_name.as_str(),

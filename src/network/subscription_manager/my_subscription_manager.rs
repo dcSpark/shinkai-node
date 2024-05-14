@@ -35,6 +35,7 @@ use tokio::sync::Mutex;
 
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_entry_tree::FSEntryTree;
+use super::http_manager::http_download_manager::HttpDownloadManager;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -49,6 +50,7 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    pub http_download_manager: HttpDownloadManager,
 
     // Cache for shared folders including the ones that you are not subscribed to
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
@@ -102,6 +104,9 @@ impl MySubscriptionsManager {
 
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
+        // Instantiate HttpDownloadManager
+        let http_download_manager = HttpDownloadManager::new(db.clone(), vector_fs.clone(), node_name.clone()).await;
+
         MySubscriptionsManager {
             db,
             vector_fs,
@@ -112,6 +117,7 @@ impl MySubscriptionsManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            http_download_manager,
         }
     }
 
@@ -131,6 +137,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn insert_shared_folder_sm(
         &mut self,
         name: ShinkaiName,

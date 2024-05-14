@@ -62,6 +62,7 @@ pub enum SubscriptionStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileLink {
     pub link: String,
+    pub path: String,
     pub last_8_hash: String,
     #[serde(serialize_with = "serialize_system_time")]
     #[serde(deserialize_with = "deserialize_system_time")]
@@ -171,7 +172,6 @@ impl HttpSubscriptionUploadManager {
         let subscription_file_map = Arc::new(DashMap::new());
         let subscription_status = Arc::new(DashMap::new());
         let file_links = Arc::new(DashMap::new());
-        eprintln!("init file_links address: {:p}", &file_links);
         let semaphore = Arc::new(Semaphore::new(1)); // so we can force updates without race conditions
 
         let subscription_http_upload_concurrency = env::var("SUBSCRIPTION_HTTP_UPLOAD_CONCURRENCY")
@@ -898,25 +898,20 @@ impl HttpSubscriptionUploadManager {
             .parse::<u64>()
             .unwrap_or(18000);
 
-        eprintln!("file_links address: {:p}", file_links);
-
         // Access the specific subscription's files
         if let Some(files_status) = subscription_file_map.get(&folder_subs_with_path) {
             for (file_path, file_status) in files_status.iter() {
-                eprintln!("update_file_links>> File Path: {:?}", file_path);
                 // we assume that the file status is Sync
                 let current_hash = if let FileStatus::Sync(hash) = file_status {
                     hash
                 } else {
                     continue; // Skip if not in Sync status
                 };
-                eprintln!("Current Hash: {:?}", current_hash);
 
                 let needs_update = match file_links.get(&folder_subs_with_path) {
                     Some(links) => {
                         match links.get(file_path) {
                             Some(link) => {
-                                eprintln!("Old Link: {:?}", link.link);
                                 // Check if the link is outdated or the hash has changed
                                 link.expiration < SystemTime::now() + Duration::from_secs(safe_gap_secs)
                                     || link.last_8_hash != *current_hash
@@ -927,15 +922,16 @@ impl HttpSubscriptionUploadManager {
                     None => true, // No entry exists for this subscription
                 };
 
-                eprintln!("Needs Update: {:?}", needs_update);
                 if needs_update {
                     // Generate a new link
                     let link_result = generate_temporary_shareable_link(file_path, destination, expiration_secs).await;
-                    eprintln!("Link Result: {:?}", link_result);
+                    eprintln!("Link Result: {:p}", &link_result);
+                    // eprintln!("Link Result: {:?}", link_result);
                     match link_result {
                         Ok(new_link) => {
                             let new_file_link = FileLink {
                                 link: new_link,
+                                path: file_path.clone(),
                                 last_8_hash: current_hash.clone(), // Store the current hash
                                 expiration: SystemTime::now() + Duration::from_secs(expiration_secs),
                             };
@@ -951,6 +947,7 @@ impl HttpSubscriptionUploadManager {
                                     map
                                 });
 
+                            // For Debugging
                             println!("File Links After Individual Update:");
                             for entry in file_links.iter() {
                                 let folder_subscription = entry.key();
@@ -1152,6 +1149,7 @@ mod tests {
             link: "http://example.com".to_string(),
             last_8_hash: "12345678".to_string(),
             expiration: SystemTime::now(),
+            path: "shinkai_sharing/dummy_file1".to_string(),
         };
 
         let serialized = serde_json::to_string(&file_link).unwrap();

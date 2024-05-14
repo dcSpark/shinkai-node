@@ -13,7 +13,7 @@ impl ShinkaiDB {
         );
 
         let subscription_bytes = bincode::serialize(&subscription).expect("Failed to serialize payment");
-        self.db.put_cf(cf_node, prefix_all.as_bytes(), &subscription_bytes)?;
+        self.db.put_cf(cf_node, prefix_all.as_bytes(), subscription_bytes)?;
 
         Ok(())
     }
@@ -42,7 +42,7 @@ impl ShinkaiDB {
         let iterator = self.db.prefix_iterator_cf(cf_node, prefix_search_key);
 
         for item in iterator {
-            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let subscription: ShinkaiSubscription =
                 bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
@@ -65,7 +65,7 @@ impl ShinkaiDB {
         let subscription_bytes = bincode::serialize(&new_subscription).expect("Failed to serialize subscription");
 
         // Update the subscription in the database
-        self.db.put_cf(cf_node, prefix_all.as_bytes(), &subscription_bytes)?;
+        self.db.put_cf(cf_node, prefix_all.as_bytes(), subscription_bytes)?;
 
         Ok(())
     }

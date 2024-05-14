@@ -2,6 +2,7 @@ use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
@@ -45,6 +46,7 @@ pub struct TestEnvironment {
     pub node1_vecfs: Arc<VectorFS>,
     pub node1_db: Arc<ShinkaiDB>,
     pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_abort_handler: AbortHandle,
 }
 
@@ -99,6 +101,7 @@ where
         let node1_vecfs = node1_locked.vector_fs.clone();
         let node1_db = node1_locked.db.clone();
         let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
+        let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
         drop(node1_locked);
 
         eprintln!("Starting Node");
@@ -132,6 +135,7 @@ where
             node1_vecfs,
             node1_db,
             node1_ext_subscription_manager,
+            node1_my_subscriptions_manager,
             node1_abort_handler,
         };
 

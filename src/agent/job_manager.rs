@@ -249,7 +249,7 @@ impl JobManager {
                                     }
                                 };
 
-                                if let Ok(_) = result {
+                                if result.is_ok() {
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,
                                         ShinkaiLogLevel::Debug,

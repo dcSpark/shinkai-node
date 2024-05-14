@@ -91,7 +91,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
         // Call the get_all_queues method to get all queue data from the db
-        match db_arc.get_all_queues(&cf_name, prefix.clone()) {
+        match db_arc.get_all_queues(cf_name, prefix.clone()) {
             Ok(db_queues) => {
                 // Initialize the queues field with Mutex-wrapped Vecs from the db data
                 let manager_queues = db_queues
@@ -113,6 +113,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         }
     }
 
+    #[allow(dead_code)]
     async fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         db_arc.get_job_queues(&self.cf_name, key, self.prefix.clone())
@@ -169,7 +170,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         let mut guarded_queue = queue.lock().await;
 
         // Check if there's an element to dequeue, and remove it if so
-        let result = if guarded_queue.get(0).is_some() {
+        let result = if guarded_queue.first().is_some() {
             Some(guarded_queue.remove(0))
         } else {
             None
@@ -228,6 +229,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         Ok(all_elements)
     }
 
+    #[allow(dead_code)]
     pub async fn subscribe(&self, key: &str) -> mpsc::Receiver<T> {
         let (tx, rx) = mpsc::channel(BUFFER_SIZE);
         let mut subscribers = self.subscribers.lock().await;
@@ -267,7 +269,7 @@ mod tests {
 
     fn setup() {
         let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(path);
     }
 
     #[tokio::test]
@@ -359,7 +361,7 @@ mod tests {
         manager.push("my_queue", job2.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        tokio::time::sleep(std::time::Duration::from_millis(500));
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         // Create a new manager and recover the state
         let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)

@@ -159,11 +159,11 @@ impl VectorFS {
                 // Creates default folders and files if create_default_folders is true
                 if create_default_folders {
                     let writer = self.new_writer(profile.clone(), VRPath::root(), profile.clone()).await?;
-                    self.create_new_folder(&writer, "My Files (Private)").await?;
-                    self.create_new_folder(&writer, "My Subscriptions").await?;
-                    self.create_new_folder(&writer, "For Sharing").await?;
+                    self.create_new_folder(&writer, "My_Files_(Private)").await?;
+                    self.create_new_folder(&writer, "My_Subscriptions").await?;
+                    self.create_new_folder(&writer, "For_Sharing").await?;
 
-                    let my_files = VRPath::from_string("/My Files (Private)").unwrap();
+                    let my_files = VRPath::from_string("/My_Files_(Private)").unwrap();
                     let writer = self.new_writer(profile.clone(), my_files.clone(), profile.clone()).await?;
                     self.create_new_folder(&writer, "Shinkai").await?;
 

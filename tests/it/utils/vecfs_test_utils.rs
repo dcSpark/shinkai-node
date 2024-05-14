@@ -1,8 +1,8 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use async_channel::{bounded, Receiver, Sender};
-use chrono::{DateTime, TimeZone, Utc};
+use async_channel::Sender;
+use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -11,7 +11,9 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType
+    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
+    APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials,
+    MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
@@ -19,11 +21,9 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_vector_resources::resource_errors::VRError;
-use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -360,7 +360,7 @@ pub async fn make_folder_shareable_http_free(
     encryption_pk: EncryptionPublicKey,
     identity_name: &str,
     profile_name: &str,
-    credentials: Option<FileDestinationCredentials>
+    credentials: Option<FileDestinationCredentials>,
 ) {
     let payload = APICreateShareableFolder {
         path: folder_path.to_string(),

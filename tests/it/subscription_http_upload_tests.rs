@@ -1,16 +1,26 @@
-use std::sync::Arc;
+use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_subscription::{
+    ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     FileDestinationCredentials, FileDestinationSourceType,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_node::network::subscription_manager::external_subscriber_manager;
+use shinkai_node::network::subscription_manager::http_manager::http_download_manager::{
+    HttpDownloadJob, HttpDownloadManager,
+};
 use shinkai_node::network::subscription_manager::http_manager::http_upload_manager::{
-    FileStatus, HttpSubscriptionUploadManager,
+    FileLink, FileStatus, HttpSubscriptionUploadManager,
 };
 use shinkai_node::network::subscription_manager::http_manager::subscription_file_uploader::{
     delete_all_in_folder, FileDestination,
 };
+use shinkai_node::network::Node;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
@@ -33,6 +43,7 @@ fn subscription_http_upload() {
             // let node1_db = env.node1_db.clone();
             // let node1_vecfs = env.node1_vecfs.clone();
             let node1_ext_subscription_manager = env.node1_ext_subscription_manager.clone();
+            // let node1_my_subscription_manager = env.node1_my_subscriptions_manager.clone();
             let node1_name = env.node1_identity_name.clone();
             let node1_abort_handler = env.node1_abort_handler;
 
@@ -96,15 +107,10 @@ fn subscription_http_upload() {
                 testing_framework.show_available_shared_items().await;
             }
             {
-                let shared_folders_trees_ref = node1_ext_subscription_manager.lock().await.shared_folders_trees.clone();
-
-                let subscription_uploader = HttpSubscriptionUploadManager::new(
-                    node1_db_weak.clone(),
-                    node1_vecfs_weak.clone(),
-                    ShinkaiName::new(node1_name.clone()).unwrap(),
-                    shared_folders_trees_ref.clone(),
-                )
-                .await;
+                let external_subscriber_manager = node1_ext_subscription_manager.lock().await;
+                let subscription_uploader = &external_subscriber_manager.http_subscription_upload_manager.clone();
+                let shared_folders_trees_ref = &external_subscriber_manager.shared_folders_trees.clone();
+                drop(external_subscriber_manager);
 
                 {
                     // Setting up initial conditions
@@ -231,12 +237,11 @@ fn subscription_http_upload() {
                 // Print out the content of subscription_file_map and assert the values
                 {
                     for entry in subscription_uploader.subscription_file_map.iter() {
-                        let key = entry.key();
+                        let _key = entry.key();
                         let value = entry.value();
-                        println!("\n\n(In Test) After everything - Folder Subscription: {:?}", key);
+                        // println!("\n\n(In Test) After everything - Folder Subscription: {:?}", key);
                         for (file_path, status) in value.iter() {
-                            println!("  {} - {:?}", file_path, status);
-
+                            // println!("  {} - {:?}", file_path, status);
                             // Find the expected hash for the current file path
                             if let Some((_, expected_hash)) = expected_files.iter().find(|(path, _)| path == file_path)
                             {
@@ -252,20 +257,151 @@ fn subscription_http_upload() {
                         }
                     }
                 }
-                // Print out the content of file_links
+                // // Print out the content of file_links
+                // {
+                //     let file_links = subscription_uploader.file_links;
+                //     eprintln!("file_links address: {:p}", &file_links);
+                //     println!("\n\n File Links Debug:");
+                //     for entry in file_links.iter() {
+                //         let folder_subscription = entry.key();
+                //         eprintln!("Folder Subscription: {:?}", folder_subscription);
+                //         let links_map = entry.value();
+                //         println!("links map: {:?}", folder_subscription);
+                //         for (file_path, link) in links_map.iter() {
+                //             println!("  {} - {} - {}", file_path, link.last_8_hash, link.link);
+                //         }
+                //     }
+                // }
+
                 {
-                    let file_links = subscription_uploader.file_links;
-                    eprintln!("file_links address: {:p}", &file_links);
-                    println!("\n\n File Links Debug:");
-                    for entry in file_links.iter() {
-                        let folder_subscription = entry.key();
-                        eprintln!("Folder Subscription: {:?}", folder_subscription);
-                        let links_map = entry.value();
-                        println!("links map: {:?}", folder_subscription);
-                        for (file_path, link) in links_map.iter() {
-                            println!("  {} - {} - {}", file_path, link.last_8_hash, link.link);
+                    // Add the subscription to my_subscriptions
+                    let new_subscription = SubscriptionId {
+                        unique_id: "@@node1_test.sepolia-shinkai:::main:::shinkai_sharing:::@@node1_test.sepolia-shinkai:::main"
+                            .to_string(),
+                        include_folders: None,
+                        exclude_folders: None,
+                    };
+
+                    let subscription = ShinkaiSubscription {
+                        subscription_id: new_subscription,
+                        shared_folder: "/shinkai_sharing".to_string(),
+                        streaming_node: ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                        streaming_profile: "main".to_string(),
+                        subscription_description: None,
+                        subscriber_destination_path: None,
+                        subscriber_node: ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                        subscriber_profile: "main".to_string(),
+                        payment: None,
+                        state: ShinkaiSubscriptionStatus::UnsubscribeConfirmed,
+                        date_created: chrono::Utc::now(),
+                        last_modified: chrono::Utc::now(),
+                        last_sync: None,
+                    };
+                    {
+                        let db_strong = node1_db_weak.upgrade().unwrap();
+                        let _ = db_strong.add_my_subscription(subscription.clone());
+                    }
+                    // Instantiate HttpDownloadManager and call process_job_queue
+                    let http_download_manager = HttpDownloadManager::new(
+                        node1_db_weak.clone(),
+                        node1_vecfs_weak.clone(),
+                        ShinkaiName::new(node1_name.clone()).unwrap(),
+                    )
+                    .await;
+
+                    {
+                        // let's call the api to download the files
+                        // Call the API to download the files and then add them to the job queue manager
+                        let db_clone = node1_db_weak.upgrade().unwrap();
+                        let node_name_clone = ShinkaiName::new(node1_name.clone()).unwrap();
+                        let ext_subscription_manager_clone = node1_ext_subscription_manager.clone();
+                        let subscription_profile_path = "main:::/shinkai_sharing".to_string();
+
+                        // Create a channel for sending results
+                        #[allow(clippy::complexity)]
+                        let (sender, receiver): (
+                            Sender<Result<serde_json::Value, shinkai_node::network::node_api::APIError>>,
+                            Receiver<Result<serde_json::Value, shinkai_node::network::node_api::APIError>>,
+                        ) = bounded(1);
+
+                        let _ = Node::api_get_http_free_subscription_links(
+                            db_clone,
+                            node_name_clone,
+                            ext_subscription_manager_clone,
+                            subscription_profile_path,
+                            sender,
+                        )
+                        .await;
+
+                        match receiver.recv().await {
+                            Ok(result) => match result {
+                                Ok(value) => {
+                                    eprintln!("Received response: {:?}", value);
+                                    // Deserialize JSON value to Vec<FileLink>
+                                    let file_links: Vec<FileLink> =
+                                        serde_json::from_value(value).unwrap_or_else(|_| vec![]);
+                                    for file_link in file_links {
+                                        let job = HttpDownloadJob {
+                                            subscription_id: subscription.subscription_id.clone(), // Assuming FileLink has a field subscription_id
+                                            info: file_link.clone(),
+                                            url: file_link.link.clone(),
+                                            date_created: chrono::Utc::now().to_string(),
+                                        };
+                                        // Add job to the download queue
+                                        http_download_manager.add_job_to_download_queue(job).await.unwrap();
+                                    }
+                                }
+                                Err(e) => eprintln!("Error processing request: {:?}", e),
+                            },
+                            Err(e) => eprintln!("Failed to receive response: {:?}", e),
                         }
                     }
+                    eprintln!("\n\nProcessing download queue");
+                    let semaphore = Arc::new(Semaphore::new(1));
+                    let mut continue_processing = false;
+                    let mut handles = Vec::new();
+
+                    loop {
+                        // Process the job queue using the associated function syntax
+                        let new_handles = HttpDownloadManager::process_job_queue(
+                            http_download_manager.job_queue_manager.clone(),
+                            node1_vecfs_weak.clone(),
+                            node1_db_weak.clone(),
+                            1,
+                            semaphore.clone(),
+                            &mut continue_processing,
+                        )
+                        .await;
+
+                        // If new_handles is empty, break the loop
+                        if new_handles.is_empty() {
+                            break;
+                        }
+
+                        handles.extend(new_handles);
+
+                        // Wait for all current jobs to complete
+                        let handles_to_join = std::mem::take(&mut handles);
+                        futures::future::join_all(handles_to_join).await;
+                        handles.clear();
+                        eprintln!("Download queue processed. New Loop");
+                    }
+                    eprintln!("Download queue processed");
+                    let _res = testing_framework.retrieve_and_print_path_simplified("/", true).await;
+
+                    // After processing the download queue, retrieve file information for specific files
+                    let file_info_shinkai_intro = testing_framework
+                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/shinkai_intro", true)
+                        .await;
+                    eprintln!(
+                        "File info for /shinkai_sharing/shinkai_intro: {:?}",
+                        file_info_shinkai_intro
+                    );
+
+                    let file_info_zeko_mini = testing_framework
+                        .retrieve_file_info("/My_Subscriptions/shinkai_sharing/zeko_mini", true)
+                        .await;
+                    eprintln!("File info for /shinkai_sharing/zeko_mini: {:?}", file_info_zeko_mini);
                 }
             }
             node1_abort_handler.abort();

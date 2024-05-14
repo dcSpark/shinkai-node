@@ -645,9 +645,7 @@ impl Node {
 
     pub async fn api_get_http_free_subscription_links(
         db: Arc<ShinkaiDB>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
+        _node_name: ShinkaiName,
         ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         subscription_id: String,
         res: Sender<Result<serde_json::Value, APIError>>,

@@ -1,17 +1,23 @@
 use std::path::Path;
 
 use super::vecfs_test_utils::{
-    create_folder, make_folder_shareable, make_folder_shareable_http_free, remove_folder, remove_item,
-    retrieve_file_info, show_available_shared_items, upload_file,
+    create_folder, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free,
+    print_tree_simple, remove_folder, remove_item, retrieve_file_info, show_available_shared_items, upload_file,
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use shinkai_message_primitives::{
-    shinkai_message::shinkai_message_schemas::FileDestinationCredentials,
+    shinkai_message::shinkai_message_schemas::{
+        APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType,
+    },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_node::network::{node::NodeCommand, node_api::APIError, subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination}};
+use shinkai_node::network::{
+    node::NodeCommand,
+    node_api::APIError,
+    subscription_manager::http_manager::subscription_file_uploader::{upload_file_http, FileDestination},
+};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 /// Struct to simplify testing by encapsulating common test components.
@@ -60,6 +66,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Removes a folder.
+    #[allow(dead_code)]
     pub async fn remove_folder(&self, folder_path: &str) {
         remove_folder(
             &self.node_commands_sender,
@@ -89,6 +96,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Makes a folder shareable.
+    #[allow(dead_code)]
     pub async fn make_folder_shareable(&self, folder_path: &str) {
         make_folder_shareable(
             &self.node_commands_sender,
@@ -151,6 +159,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Retrieves file information.
+    #[allow(dead_code)]
     pub async fn retrieve_file_info(&self, path: &str, is_simple: bool) -> Value {
         retrieve_file_info(
             &self.node_commands_sender,
@@ -166,6 +175,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Removes an item.
+    #[allow(dead_code)]
     pub async fn remove_item(&self, item_path: &str) {
         remove_item(
             &self.node_commands_sender,
@@ -180,6 +190,7 @@ impl ShinkaiTestingFramework {
     }
 
     /// Retrieves the list of subscriptions.
+    #[allow(dead_code)]
     pub async fn my_subscriptions(&self) -> Value {
         let msg = ShinkaiMessageBuilder::my_subscriptions(
             self.profile_encryption_sk.clone(),
@@ -207,11 +218,42 @@ impl ShinkaiTestingFramework {
             .await
             .unwrap();
 
-        let actual_resp_json = res_send_msg_receiver
+        res_send_msg_receiver
             .recv()
             .await
             .unwrap()
-            .expect("Failed to receive response");
-        actual_resp_json
+            .expect("Failed to receive response")
+    }
+
+    /// Retrieves simplified path information and optionally prints it based on `should_print`.
+    pub async fn retrieve_and_print_path_simplified(&self, path: &str, should_print: bool) -> serde_json::Value {
+        let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
+        let msg = generate_message_with_payload(
+            serde_json::to_string(&payload).unwrap(),
+            MessageSchemaType::VecFsRetrievePathSimplifiedJson,
+            self.profile_encryption_sk.clone(),
+            clone_signature_secret_key(&self.profile_identity_sk),
+            self.node_encryption_pk,
+            &self.node_identity_name,
+            &self.node_profile_name,
+            &self.node_identity_name,
+            "",
+        );
+
+        // Prepare the response channel
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+
+        // Send the command
+        self.node_commands_sender
+            .send(NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res: res_sender })
+            .await
+            .unwrap();
+        let response_json = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+
+        if should_print {
+            print_tree_simple(response_json.clone());
+        }
+
+        response_json
     }
 }
