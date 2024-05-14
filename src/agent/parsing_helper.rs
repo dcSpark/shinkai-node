@@ -234,7 +234,7 @@ impl ParsingHelper {
             let mut done = false;
             while !done {
                 done = true; // Assume no more trimming is needed, prove otherwise below.
-                let trim_cases = ["```", "``` ", "```\n", "``` \n", "```md", "```md ", "```md\n"];
+                let trim_cases = ["```", "``` ", "```\n", "``` \n", "```md", "```md ", "```md\n", "md"];
                 for case in trim_cases.iter() {
                     if cleaned_string.ends_with(case) {
                         cleaned_string = cleaned_string.strip_suffix(case).unwrap_or(&cleaned_string).to_string();
