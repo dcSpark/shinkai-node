@@ -40,7 +40,6 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
-                eprintln!("max_output_tokens: {:?}", max_output_tokens);
                 let payload = json!({
                     "model": self.model_type,
                     "max_tokens": max_output_tokens,

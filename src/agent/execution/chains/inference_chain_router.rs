@@ -111,7 +111,6 @@ async fn choose_inference_chain(
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
 ) -> InferenceChainDecision {
-    eprintln!("Choosing inference chain");
     if let Some(summary_chain_decision) = SummaryInferenceChain::validate_user_message_requests_summary(
         parsed_user_message,
         generator.clone(),

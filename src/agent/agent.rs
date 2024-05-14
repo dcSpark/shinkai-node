@@ -105,13 +105,7 @@ impl Agent {
                     SubPromptType::User,
                     priority,
                 );
-                // This doesn't make sense now to feed a serde error for an incorrect markdown string
-                // new_prompt.add_content(
-                //     "No, that is not valid markdown with the specified template. This is the error reported when tring to parse the above markdown string:".to_string(),
-                //     SubPromptType::User,
-                //     priority,
-                // );
-                // new_prompt.add_content(format!("```{}```", serde_error), SubPromptType::User, priority);
+
                 new_prompt.add_content(
                     "You are an advanced assistant who can fix any invalid markdown without needing to see its proper template. Respond by fixing the markdown. Remember to always escape quotes properly inside of strings:\n\n ```md\n".to_string(),
                     SubPromptType::User,
@@ -126,7 +120,7 @@ impl Agent {
         }
 
         let final_response = response?;
-        println!("!!!!!!!!!!LLM Response: {:?}", final_response.original_response_string);
+        // println!("!!!!!!!!!!LLM Response: {:?}", final_response.original_response_string);
         Ok(final_response)
     }
 

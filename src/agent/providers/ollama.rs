@@ -106,7 +106,7 @@ impl LLMProvider for Ollama {
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Failed to parse line: {:?}", e);
+                                // eprintln!("Failed to parse line: {:?}", e);
                                 previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }

@@ -100,7 +100,6 @@ impl LLMProvider for Groq {
                     ShinkaiLogLevel::Debug,
                     format!("Groq Call API Response Text: {:?}", response_text).as_str(),
                 );
-                eprintln!("Groq Call API Response Text: {:?}", response_text);
 
                 match data_resp {
                     Ok(value) => {

@@ -91,10 +91,10 @@ impl OpenAIApiMessage {
                         content: message_content,
                     })
                 } else {
-                    eprintln!(
-                        "Warning: Message with role '{}' has no content. Ignoring.",
-                        message.role
-                    );
+                    // eprintln!(
+                    //     "Warning: Message with role '{}' has no content. Ignoring.",
+                    //     message.role
+                    // );
                     None
                 }
             })
