@@ -208,7 +208,8 @@ impl ParsingHelper {
     fn clean_markdown_result_string(string: &str) -> String {
         let clean_llm_references = ParsingHelper::clean_llm_content_references(string);
         let link_image_cleaned = ParsingHelper::clean_markdown_urls_images(&clean_llm_references);
-        let parsed_message = ParsedUserMessage::new(link_image_cleaned.to_string());
+        let extra_cleaned = link_image_cleaned.replace("\\\\n", "\n");
+        let parsed_message = ParsedUserMessage::new(extra_cleaned.to_string());
 
         // If there is a codeblock and it has no/disallowed content, then remove it
         if parsed_message.num_of_code_blocks() > 0 {
@@ -241,7 +242,7 @@ impl ParsingHelper {
                     }
                 }
             }
-            cleaned_string
+            cleaned_string.replace("< >", "").replace("<>", "")
         }
     }
 

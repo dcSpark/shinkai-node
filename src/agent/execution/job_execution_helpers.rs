@@ -314,6 +314,10 @@ async fn internal_fix_markdown_to_include_proper_key(
             original_prompt,
             key_to_correct,
         );
+        eprintln!(
+            "!?! Attempting to fix markdown. Re-inferencing: {:?}",
+            prompt.sub_prompts
+        );
         agent.inference_markdown(prompt).await
     })
     .await;
