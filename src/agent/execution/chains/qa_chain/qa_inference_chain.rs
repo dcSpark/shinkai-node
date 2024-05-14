@@ -145,16 +145,16 @@ impl QAInferenceChain {
         };
 
         // Inference the agent's LLM with the prompt
-        let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone()).await;
+        let response_res = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
-        if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response {
+        if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response_res {
             return Err(AgentError::LLMProviderInferenceLimitReached(e.to_string()));
-        } else if let Err(AgentError::LLMProviderUnexpectedError(e)) = &response {
+        } else if let Err(AgentError::LLMProviderUnexpectedError(e)) = &response_res {
             return Err(AgentError::LLMProviderUnexpectedError(e.to_string()));
-        } else if response.is_err() {
+        } else if response_res.is_err() {
             return no_json_object_retry_logic(
-                response,
+                response_res,
                 db,
                 vector_fs,
                 full_job,
@@ -173,8 +173,8 @@ impl QAInferenceChain {
         }
 
         // Extract the JSON from the inference response Result and proceed forward
-        let response_json = response?;
-        let answer = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer");
+        let response = response_res?;
+        let answer = JobManager::direct_extract_key_inference_response(response.clone(), "answer");
 
         // If it has an answer, the chain is finished and so just return the answer response as a cleaned String
         if let Ok(answer_str) = answer {
@@ -196,7 +196,7 @@ impl QAInferenceChain {
         let (new_search_text, summary) =
             match &JobManager::advanced_extract_key_from_inference_response_with_new_response(
                 agent.clone(),
-                response_json.clone(),
+                response.clone(),
                 filled_prompt.clone(),
                 vec!["summary".to_string(), "answer".to_string(), "text".to_string()],
                 3,
@@ -227,9 +227,13 @@ impl QAInferenceChain {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Error,
-                        &format!("Failed qa inference chain: Missing Field {}", "summary"),
+                        &format!(
+                            "Failed qa inference chain: Missing Field {}. Responding while whole LLM markdown response",
+                            "summary"
+                        ),
                     );
-                    return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
+                    // return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
+                    return Ok(response.original_response_string);
                 }
             };
 
@@ -239,8 +243,8 @@ impl QAInferenceChain {
             let retry_prompt =
                 JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
             let response = JobManager::inference_agent_markdown(agent.clone(), retry_prompt).await;
-            if let Ok(response_json) = response {
-                match JobManager::direct_extract_key_inference_response(response_json, "search") {
+            if let Ok(response) = response {
+                match JobManager::direct_extract_key_inference_response(response, "search") {
                     Ok(search_str) => {
                         new_search_text = search_str;
                     }
