@@ -296,6 +296,7 @@ fn subscription_http_upload() {
                         date_created: chrono::Utc::now(),
                         last_modified: chrono::Utc::now(),
                         last_sync: None,
+                        http_preferred: None,
                     };
                     {
                         let db_strong = node1_db_weak.upgrade().unwrap();

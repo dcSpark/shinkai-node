@@ -11,7 +11,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::RngCore;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APICreateShareableFolder;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{APICreateShareableFolder, FileDestinationCredentials};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
 };
@@ -212,6 +212,7 @@ impl ShinkaiManagerForSubs {
         &self,
         path: &str,
         subscription_req: FolderSubscription,
+        credentials: Option<FileDestinationCredentials>,
     ) -> Result<(), &'static str> {
         let formatted_path = if path == "/" {
             path.to_string()
@@ -230,6 +231,7 @@ impl ShinkaiManagerForSubs {
         let payload = APICreateShareableFolder {
             path: formatted_path.to_string(),
             subscription_req,
+            credentials,
         };
 
         let shinkai_message = ShinkaiMessageBuilder::subscriptions_create_share_folder(
@@ -269,6 +271,8 @@ impl ShinkaiManagerForSubs {
         streamer_node: String,
         streamer_profile: String,
         subscription_req: SubscriptionPayment,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
     ) -> Result<(), &'static str> {
         let formatted_path = if shared_folder_path == "/" {
             shared_folder_path.to_string()
@@ -287,6 +291,8 @@ impl ShinkaiManagerForSubs {
         let shinkai_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
             formatted_path.to_string(),
             subscription_req,
+            http_preferred,
+            base_folder,
             streamer_node.to_string(),
             streamer_profile.to_string(),
             self.my_encryption_secret_key.clone(),

@@ -368,7 +368,9 @@ impl MySubscriptionsManager {
     }
 
     // TODO: add new fn to create a scheduler for an HTTP API
-    // 
+    // it needs to be able to ping the API and check if the folder has been updated
+    // probably we can expand the api endpoint to return some versioning (timestamp / merkle tree root hash)
+    // here or in download_manager we should be checking every X time
 
     #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(

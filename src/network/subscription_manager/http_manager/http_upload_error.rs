@@ -4,6 +4,7 @@ use super::subscription_file_uploader::{FileDestinationError, FileTransferError}
 
 #[derive(Debug)]
 pub enum HttpUploadError {
+    #[allow(dead_code)]
     SubscriptionNotFound,
     FileSystemError(String),
     ErrorGettingFolderContents,
@@ -13,6 +14,8 @@ pub enum HttpUploadError {
     DatabaseError(String),
     InvalidRequest(String),
     TaskJoinError(String),
+    InvalidSubscriptionRequirement(String),
+    MissingSubscriptionRequirement(String),
 }
 
 impl std::error::Error for HttpUploadError {}
@@ -29,6 +32,8 @@ impl fmt::Display for HttpUploadError {
             HttpUploadError::DatabaseError(ref err) => write!(f, "Database error: {}", err),
             HttpUploadError::InvalidRequest(ref err) => write!(f, "Invalid request: {}", err),
             HttpUploadError::TaskJoinError(ref err) => write!(f, "Task join error: {}", err),
+            HttpUploadError::InvalidSubscriptionRequirement(ref err) => write!(f, "Invalid subscription requirement: {}", err),
+            HttpUploadError::MissingSubscriptionRequirement(ref err) => write!(f, "Missing subscription requirement: {}", err),
         }
     }
 }

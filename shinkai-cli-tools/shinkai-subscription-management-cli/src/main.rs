@@ -1,17 +1,20 @@
 use clap::{App, Arg, SubCommand};
 use dotenv::dotenv;
-use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::{
+    schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
+    shinkai_message::shinkai_message_schemas::FileDestinationCredentials,
+};
 use shinkai_subscription_management_cli::{
     shinkai::shinkai_manager_for_subs::ShinkaiManagerForSubs, subscription_manager::SubscriptionManager,
 };
-use std::{env, path::Path};
+use std::{env, path::Path, process};
 
 #[tokio::main]
 async fn main() {
     dotenv().ok(); // Load .env file if exists
 
     let matches = App::new("Shinkai Subscription Manager CLI")
-        .version("1.0")
+        .version("1.1")
         .author("Nico Arqueros <nico@shinkai.com>")
         .about("Manages subscriptions and other handy stuff for a Shinkai node")
         .arg(
@@ -107,6 +110,62 @@ async fn main() {
                         .help("Is the folder free to access")
                         .takes_value(true)
                         .required(true),
+                )
+                .arg(
+                    Arg::with_name("has_web_alternative")
+                        .long("has-web-alternative")
+                        .value_name("HAS_WEB_ALTERNATIVE")
+                        .help("Indicates if there is a web alternative for accessing the folder")
+                        .takes_value(true)
+                        .required(false),
+                )
+                .arg(
+                    Arg::with_name("source")
+                        .long("source")
+                        .value_name("SOURCE")
+                        .help("Source type for web alternative (e.g., S3, R2)")
+                        .takes_value(true)
+                        .required_if("has_web_alternative", "true"),
+                )
+                .arg(
+                    Arg::with_name("access_key_id")
+                        .long("access-key-id")
+                        .value_name("ACCESS_KEY_ID")
+                        .help("Access key ID for the source")
+                        .takes_value(true)
+                        .required_if("has_web_alternative", "true"),
+                )
+                .arg(
+                    Arg::with_name("secret_access_key")
+                        .long("secret-access-key")
+                        .value_name("SECRET_ACCESS_KEY")
+                        .help("Secret access key for the source")
+                        .takes_value(true)
+                        .required_if("has_web_alternative", "true"),
+                )
+                .arg(
+                    Arg::with_name("endpoint_uri")
+                        .long("endpoint-uri")
+                        .value_name("ENDPOINT_URI")
+                        .help("Endpoint URI for the source")
+                        .takes_value(true)
+                        .required_if("has_web_alternative", "true"),
+                )
+                .arg(
+                    Arg::with_name("bucket")
+                        .long("bucket")
+                        .value_name("BUCKET")
+                        .help("Bucket name for the source")
+                        .takes_value(true)
+                        .required_if("has_web_alternative", "true"),
+                )
+                .arg(
+                    Arg::with_name("folder_description")
+                        .long("folder-description")
+                        .value_name("FOLDER_DESCRIPTION")
+                        .help("Description of the folder being shared")
+                        .takes_value(true)
+                        .required(false), // Not required, can be fetched from ENV or use default
                 ),
         )
         .subcommand(
@@ -130,6 +189,22 @@ async fn main() {
                         .required(true)
                         .index(3),
                 )
+                .arg(
+                    Arg::with_name("http_preferred")
+                        .long("http-preferred")
+                        .value_name("HTTP_PREFERRED")
+                        .help("Prefer HTTP for subscription")
+                        .takes_value(true)
+                        .required(false),
+                )
+                .arg(
+                    Arg::with_name("base_folder")
+                        .long("base-folder")
+                        .value_name("BASE_FOLDER")
+                        .help("Base folder for the subscription")
+                        .takes_value(true)
+                        .required(false),
+                ),
         )
         .subcommand(SubCommand::with_name("my_subscriptions").about("Lists all subscriptions"))
         .subcommand(SubCommand::with_name("my_shared_folders").about("Lists all folders shared by the node"))
@@ -219,29 +294,123 @@ async fn main() {
             .parse::<bool>()
             .expect("Invalid value for is_free");
 
+        let has_web_alternative = matches
+            .value_of("has_web_alternative")
+            .map(|v| v.parse::<bool>().unwrap())
+            .or_else(|| {
+                env::var("HAS_WEB_ALTERNATIVE")
+                    .ok()
+                    .and_then(|v| v.parse::<bool>().ok())
+            });
+
+        let folder_description = matches
+            .value_of("folder_description")
+            .map(String::from)
+            .or_else(|| env::var("FOLDER_DESCRIPTION").ok())
+            .unwrap_or_else(|| "Default folder description".to_string());
+
         let req = FolderSubscription {
             minimum_token_delegation,
             minimum_time_delegated_hours,
             monthly_payment,
             is_free,
-            folder_description: "".to_string(), // Update to cli description
+            has_web_alternative,
+            folder_description,
         };
 
-        match subscription_manager.share_folder(path.to_string(), req).await {
-            Ok(_) => println!("Folder shared successfully"),
-            Err(e) => eprintln!("Error sharing folder: {}", e),
+        let file_credentials = if let Some(true) = has_web_alternative {
+            let source = matches
+                .value_of("source")
+                .map(String::from)
+                .or_else(|| env::var("SOURCE").ok())
+                .unwrap_or_else(|| {
+                    eprintln!("Source is required when web alternative is enabled");
+                    process::exit(1); // Exit the program with an error code
+                });
+        
+            let access_key_id = matches
+                .value_of("access_key_id")
+                .map(String::from)
+                .or_else(|| env::var("ACCESS_KEY_ID").ok())
+                .unwrap_or_else(|| {
+                    eprintln!("Access key ID is required when web alternative is enabled");
+                    process::exit(1); // Exit the program with an error code
+                });
+        
+            let secret_access_key = matches
+                .value_of("secret_access_key")
+                .map(String::from)
+                .or_else(|| env::var("SECRET_ACCESS_KEY").ok())
+                .unwrap_or_else(|| {
+                    eprintln!("Secret access key is required when web alternative is enabled");
+                    process::exit(1); // Exit the program with an error code
+                });
+        
+            let endpoint_uri = matches
+                .value_of("endpoint_uri")
+                .map(String::from)
+                .or_else(|| env::var("ENDPOINT_URI").ok())
+                .unwrap_or_else(|| {
+                    eprintln!("Endpoint URI is required when web alternative is enabled");
+                    process::exit(1); // Exit the program with an error code
+                });
+        
+            let bucket = matches
+                .value_of("bucket")
+                .map(String::from)
+                .or_else(|| env::var("BUCKET").ok())
+                .unwrap_or_else(|| {
+                    eprintln!("Bucket is required when web alternative is enabled");
+                    process::exit(1); // Exit the program with an error code
+                });
+
+            Some(FileDestinationCredentials::new(
+                source,
+                access_key_id,
+                secret_access_key,
+                endpoint_uri,
+                bucket,
+            ))
+        } else {
+            None
+        };
+
+        match file_credentials {
+            Some(credentials) => {
+                match subscription_manager
+                    .share_folder(path.to_string(), req, Some(credentials))
+                    .await
+                {
+                    Ok(_) => println!("Folder shared successfully"),
+                    Err(e) => eprintln!("Error sharing folder: {}", e),
+                }
+            }
+            None => {
+                if has_web_alternative.unwrap_or(false) {
+                    eprintln!("Error: Missing required parameters for web alternative");
+                } else {
+                    match subscription_manager.share_folder(path.to_string(), req, None).await {
+                        Ok(_) => println!("Folder shared successfully"),
+                        Err(e) => eprintln!("Error sharing folder: {}", e),
+                    }
+                }
+            }
         }
     } else if let Some(matches) = matches.subcommand_matches("subscribe_to_folder") {
         let path = matches.value_of("path").unwrap();
         let node_name = matches.value_of("node_name").unwrap();
         let profile_name = matches.value_of("profile_name").unwrap();
-        let subscription_req: SubscriptionPayment = SubscriptionPayment::Free; 
+        let http_preferred = matches.value_of("http_preferred").map(|v| v.parse::<bool>().unwrap());
+        let base_folder = matches.value_of("base_folder").map(String::from);
+        let subscription_req: SubscriptionPayment = SubscriptionPayment::Free;
         match subscription_manager
             .subscribe_to_folder(
                 path.to_string(),
                 node_name.to_string(),
                 profile_name.to_string(),
                 subscription_req,
+                http_preferred,
+                base_folder,
             )
             .await
         {

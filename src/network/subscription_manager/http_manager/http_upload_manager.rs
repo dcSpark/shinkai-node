@@ -514,6 +514,19 @@ impl HttpSubscriptionUploadManager {
         file_links: Arc<DashMap<FolderSubscriptionWithPath, HashMap<FileMapPath, FileLink>>>,
         subscription_http_upload_concurrency: usize, // simultaneous uploads
     ) -> Result<(), HttpUploadError> {
+        // Check if the subscription requirement has_web_alternative set to true
+        if let Some(subscription_requirement) = &shared_folder_subs.subscription_requirement {
+            if subscription_requirement.has_web_alternative != Some(true) {
+                return Err(HttpUploadError::InvalidSubscriptionRequirement(
+                    "Subscription does not have a web alternative".to_string(),
+                ));
+            }
+        } else {
+            return Err(HttpUploadError::MissingSubscriptionRequirement(
+                "Missing subscription requirement".to_string(),
+            ));
+        }
+
         let key = format!("{}:::{}", profile.clone(), shared_folder_subs.path.clone());
         let streamer = ShinkaiName::from_node_and_profile_names(node_name.node_name, profile.clone())?;
 

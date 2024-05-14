@@ -473,7 +473,7 @@ impl Node {
                 requester_name,
                 input_payload.subscription_req,
                 input_payload.credentials,
-            ) // TODO: None should have the potential credentials
+            )
             .await;
 
         match result {

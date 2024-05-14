@@ -627,6 +627,8 @@ fn subscription_manager_test() {
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                     "/shared_test_folder".to_string(),
                     requirements,
+                    None,
+                    None,
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),
                     node2_profile_encryption_sk.clone(),
@@ -1170,6 +1172,8 @@ fn subscription_manager_test() {
                                 "main_profile_node2".to_string(),
                                 ShinkaiSubscriptionStatus::SubscriptionConfirmed,
                                 Some(SubscriptionPayment::Free),
+                                None,
+                                None,
                             )
                         ])
                     ]);
