@@ -174,6 +174,7 @@ pub struct ShinkaiSubscription {
     pub date_created: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
     pub last_sync: Option<DateTime<Utc>>,
+    pub http_preferred: Option<bool>,
 }
 
 impl ShinkaiSubscription {
@@ -185,6 +186,8 @@ impl ShinkaiSubscription {
         subscriber_profile: String,
         state: ShinkaiSubscriptionStatus,
         payment: Option<SubscriptionPayment>,
+        base_folder: Option<String>,
+        subscription_description: Option<String>,
     ) -> Self {
         ShinkaiSubscription {
             subscription_id: SubscriptionId::new(
@@ -197,8 +200,8 @@ impl ShinkaiSubscription {
             shared_folder,
             streaming_node,
             streaming_profile,
-            subscription_description: None, // TODO: update api and models to support this
-            subscriber_destination_path: None, // TODO: update api to support this
+            subscription_description,
+            subscriber_destination_path: base_folder,
             subscriber_node,
             subscriber_profile,
             payment,
@@ -206,7 +209,14 @@ impl ShinkaiSubscription {
             date_created: Utc::now(),
             last_modified: Utc::now(),
             last_sync: None,
+            http_preferred: None,
         }
+    }
+
+    // Method to update the http_preferred field
+    pub fn update_http_preferred(&mut self, preferred: Option<bool>) {
+        self.http_preferred = preferred;
+        self.last_modified = Utc::now();
     }
 
     pub fn with_state(mut self, new_state: ShinkaiSubscriptionStatus) -> Self {

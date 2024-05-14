@@ -367,6 +367,10 @@ impl MySubscriptionsManager {
         }
     }
 
+    // TODO: add new fn to create a scheduler for an HTTP API
+    // 
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
         &self,
         streamer_node_name: ShinkaiName,
@@ -374,6 +378,8 @@ impl MySubscriptionsManager {
         my_profile: String,
         folder_name: String,
         payment: SubscriptionPayment,
+        base_folder: Option<String>,
+        http_preferred: Option<bool>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -429,6 +435,8 @@ impl MySubscriptionsManager {
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                 folder_name.clone(),
                 payment.clone(),
+                http_preferred,
+                None,
                 streamer_node_name.clone().get_node_name_string(),
                 streamer_profile.clone(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
@@ -442,7 +450,7 @@ impl MySubscriptionsManager {
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
             // Update local status
-            let new_subscription = ShinkaiSubscription::new(
+            let mut new_subscription = ShinkaiSubscription::new(
                 folder_name.clone(),
                 streamer_node_name,
                 streamer_profile,
@@ -450,7 +458,11 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 ShinkaiSubscriptionStatus::SubscriptionRequested,
                 Some(payment),
+                base_folder,
+                None,
             );
+
+            new_subscription.update_http_preferred(http_preferred);
 
             if let Some(db_lock) = self.db.upgrade() {
                 db_lock.add_my_subscription(new_subscription)?;

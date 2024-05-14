@@ -1352,6 +1352,8 @@ impl ExternalSubscriberManager {
             requester_profile,
             ShinkaiSubscriptionStatus::SubscriptionConfirmed,
             Some(subscription_requirement),
+            None,
+            None,
         );
 
         db.add_subscriber_subscription(subscription)
@@ -1686,7 +1688,7 @@ mod tests {
                 Some(PaymentOption::USD(amount)) => Some(amount),
                 _ => None,
             },
-            Some(Decimal::new(10, 2)) // Represents $10.00
+            Some(Decimal::new(1000, 2)) // Represents $10.00
         );
         assert!(!subscription_requirement.is_free);
         assert_eq!(

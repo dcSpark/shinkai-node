@@ -408,6 +408,8 @@ impl Node {
                 requester_profile,
                 input_payload.path,
                 input_payload.payment,
+                input_payload.base_folder,
+                input_payload.http_preferred,
             )
             .await;
 

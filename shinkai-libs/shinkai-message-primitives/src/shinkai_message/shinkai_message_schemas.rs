@@ -470,6 +470,8 @@ pub struct APISubscribeToSharedFolder {
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
     pub payment: SubscriptionPayment,
+    pub base_folder: Option<String>,
+    pub http_preferred: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

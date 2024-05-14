@@ -1,18 +1,3 @@
-// // it should be inside external_subscriber_manager
-// // it should have a queue to upload files
-// // it should get notified for every new subscription that needs to handle (share or unshare) maybe that's it from ext_manager
-
-// // In the other end
-// // the user needs to specify that they want the http files
-// // the user asks the node for the subscription and current state of the files (it will indicate which ones are ready to be downloaded and which ones are not)
-// // the user will also need an http_download_manager.rs for this purpose
-// // should the user actually be in charge of checking diff? or should the node do it?
-// // it's pull so the user should be in charge of checking the diff
-// // files are downloading concurrently but also added concurrently to the VR (import of vrkai)
-
-// // we need to save the links somewhere. db then?
-// // delete all the links on unshare
-
 use std::{
     collections::HashMap,
     env, fmt,

@@ -499,6 +499,8 @@ impl ShinkaiMessageBuilder {
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
         requirements: SubscriptionPayment,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
         streamer_node: String,
         streamer_profile: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -514,6 +516,8 @@ impl ShinkaiMessageBuilder {
             streamer_node_name: streamer_node,
             streamer_profile_name: streamer_profile,
             payment: requirements,
+            http_preferred,
+            base_folder,
         };
 
         Self::create_vecfs_message(
