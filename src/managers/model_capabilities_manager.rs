@@ -1,6 +1,11 @@
 use crate::{
     agent::{
-        error::AgentError, execution::prompts::prompts::Prompt, providers::shared::{openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}},
+        error::AgentError,
+        execution::prompts::prompts::Prompt,
+        providers::shared::{
+            openai::openai_prepare_messages,
+            shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
+        },
     },
     db::ShinkaiDB,
 };
@@ -145,37 +150,26 @@ impl ModelCapabilitiesManager {
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
-            AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("llama-2") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("mistral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("mixtral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("deepseek") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("meditron") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("starling-lm") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("orca2") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("yi") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("yarn-mistral") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("llama3") {
-                    vec![ModelCapability::TextInference]
-                } else if ollama.model_type.starts_with("llava") {
+            AgentLLMInterface::Ollama(ollama) => match ollama.model_type.as_str() {
+                model_type if model_type.starts_with("llama-2") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("mistral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("mixtral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("deepseek") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("meditron") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("starling-lm") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("orca2") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("yi") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("yarn-mistral") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("llava") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                } else if ollama.model_type.starts_with("bakllava") {
-                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
-                } else if ollama.model_type.starts_with("yarn-llama2") {
-                    vec![ModelCapability::TextInference]
-                } else {
-                    vec![]
                 }
-            }
+                model_type if model_type.starts_with("bakllava") => {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+                model_type if model_type.starts_with("yarn-llama2") => vec![ModelCapability::TextInference],
+                _ => vec![],
+            },
             AgentLLMInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
             }
@@ -368,22 +362,18 @@ impl ModelCapabilitiesManager {
                 }
             }
             AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("mistral:7b-instruct-v0.2") {
-                    return 32_000;
-                } else if ollama.model_type.starts_with("mixtral:8x7b-instruct-v0.1") {
-                    return 16_000;
-                    //  32_000
-                } else if ollama.model_type.starts_with("mixtral:8x22b") {
-                    return 65_000;
-                } else if ollama.model_type.starts_with("llama3-gradient") {
-                    eprintln!("llama3-gradient detected");
-                    return 256_000;
-                } else if ollama.model_type.starts_with("llama3") {
-                    return 8_000;
-                } else if ollama.model_type.starts_with("llava-llama3") {
-                    return 8_000;
-                }
-                
+                return match ollama.model_type.as_str() {
+                    model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
+                    model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
+                    model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
+                    model_type if model_type.starts_with("llama3-gradient") => {
+                        eprintln!("llama3-gradient detected");
+                        return 256_000;
+                    }
+                    model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
+                    _ => 4096, // Default token count if no specific model type matches
+                };
+
                 // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
                 let re = Regex::new(r"(\d+)k").unwrap();
                 match re.captures(&ollama.model_type) {
@@ -518,8 +508,7 @@ impl ModelCapabilitiesManager {
         // Apply the buffer to estimate the total token count
         let buffered_token_count = ((estimated_tokens as f64) * (1.0 - buffer_percentage)).floor() as usize;
 
-        // Rob note: Multiplying this estimation, as for mixtral 8x7b it's been extremely off
-        (buffered_token_count as f64 * 2.5).floor() as usize
+        (buffered_token_count as f64 * 2.6).floor() as usize
     }
 
     /// Counts the number of tokens from a single message string for llama3 model,
@@ -569,12 +558,13 @@ impl ModelCapabilitiesManager {
     /// and other symbols are counted as 1 token.
     /// This implementation avoids floating point arithmetic by scaling counts.
     pub fn num_tokens_from_llama3(messages: &[ChatCompletionRequestMessage]) -> usize {
-        messages
+        let num: usize = messages
             .iter()
             .map(|message| {
                 let role_prefix = match message.role.as_str() {
                     "user" => "User: ",
                     "sys" => "Sys: ",
+                    "assistant" => "A: ",
                     _ => "",
                 };
                 let full_message = format!(
@@ -584,13 +574,17 @@ impl ModelCapabilitiesManager {
                 );
                 Self::count_tokens_from_message_llama3(&full_message)
             })
-            .sum()
+            .sum();
+
+        (num as f32 * 1.04) as usize
     }
 }
 
 // TODO: add a tokenizer library only in the dev env and test that the estimations are always above it and in a specific margin (% wise)
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use tiktoken_rs::ChatCompletionRequestMessage;
 
@@ -727,6 +721,53 @@ mod tests {
         println!("Converted messages: \"{}\"", messages_to_string(&messages));
         println!("Number of tokens calculated: {}", num_tokens);
         println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+    }
+
+    #[test]
+    // fn test_num_tokens_from_real_prompt_success_overestimate() {
+    fn test_num_tokens_from_real_prompt() {
+        let file_path = "files/for tests/token_estimation_test_prompt.txt";
+        let content_result = fs::read_to_string(file_path);
+        let content = match content_result {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("Failed to read file: {:?}", e);
+                return;
+            }
+        };
+
+        // Alternatively generate the prompt using the struct and then into messages
+        // let mut prompt = Prompt::new();
+        // for text in content
+        //     .chars()
+        //     .collect::<Vec<char>>()
+        //     .chunks(chunk_size)
+        // {
+        //     prompt.add_content(text.to_string(), SubPromptType::User, 100);
+        // }
+        // let result = openai_prepare_messages(&model, prompt)?;
+
+        let chunk_size = 400;
+        let messages: Vec<ChatCompletionRequestMessage> = content
+            .chars()
+            .collect::<Vec<char>>()
+            .chunks(chunk_size)
+            .map(|chunk| ChatCompletionRequestMessage {
+                role: "user".to_string(),
+                content: Some(chunk.iter().collect::<String>()),
+                name: Some("Alice".to_string()),
+                function_call: None,
+            })
+            .collect();
+        let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
+        let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
+        println!("Converted messages: \"{}\"", messages_to_string(&messages));
+        println!("Number of tokens calculated: {}", num_tokens);
+        println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
+
+        // Check that the estimate is greater than the numbers below to ensure it over estimates and not under
+        assert!(num_tokens_llama3 > 28000);
+        assert!(num_tokens > 34000);
     }
 
     // #[test]

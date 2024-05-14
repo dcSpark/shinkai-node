@@ -157,7 +157,7 @@ impl IdentityManager {
             ShinkaiLogLevel::Info,
             format!("remove_agent_subidentity > agent_id: {}", agent_id).as_str(),
         );
-        eprintln!("all agents: {:?}", self.local_identities);
+        // eprintln!("all agents: {:?}", self.local_identities);
 
         let initial_count = self.local_identities.len();
         self.local_identities.retain(|identity| match identity {

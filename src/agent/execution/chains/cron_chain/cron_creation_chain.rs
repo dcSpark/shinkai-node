@@ -1,4 +1,3 @@
-
 use crate::agent::error::AgentError;
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -19,7 +18,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-
 
 /*
     We need:
@@ -300,12 +298,11 @@ impl JobManager {
             }
         };
 
-        let response_json = JobManager::inference_agent_json(agent.clone(), filled_prompt).await?;
+        let response_json = JobManager::inference_agent_markdown(agent.clone(), filled_prompt).await?;
         let mut cleaned_answer = String::new();
 
-        if let Ok(answer_str) = JobManager::direct_extract_key_inference_json_response(response_json.clone(), "answer")
-        {
-            cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
+        if let Ok(answer_str) = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer") {
+            cleaned_answer = answer_str;
             let re = Regex::new(r"(\\+n)").unwrap();
             cleaned_answer = re.replace_all(&cleaned_answer, "").to_string();
             shinkai_log(

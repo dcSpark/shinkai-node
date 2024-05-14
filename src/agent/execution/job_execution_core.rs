@@ -20,9 +20,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::source::{
-    DistributionInfo,
-};
+use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::result::Result::Ok;
 use std::sync::Weak;
@@ -57,7 +55,7 @@ impl JobManager {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e).await,
         };
-        
+
         // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,
@@ -67,7 +65,11 @@ impl JobManager {
             }
         };
 
-        let user_profile = ShinkaiName::from_node_and_profile_names(node_profile_name.node_name, user_profile.profile_name.unwrap_or_default()).unwrap();
+        let user_profile = ShinkaiName::from_node_and_profile_names(
+            node_profile_name.node_name,
+            user_profile.profile_name.unwrap_or_default(),
+        )
+        .unwrap();
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
@@ -196,7 +198,7 @@ impl JobManager {
         let start = Instant::now();
 
         // Call the inference chain router to choose which chain to use, and call it
-        let (inference_response_content, new_execution_context) = JobManager::inference_chain_router(
+        let inference_response = JobManager::inference_chain_router(
             db.clone(),
             vector_fs.clone(),
             agent_found,
@@ -207,6 +209,9 @@ impl JobManager {
             user_profile,
         )
         .await?;
+        let inference_response_content = inference_response.response;
+        let new_execution_context = inference_response.new_job_execution_context;
+
         let duration = start.elapsed();
         shinkai_log(
             ShinkaiLogOption::JobExecution,

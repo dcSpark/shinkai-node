@@ -285,10 +285,10 @@ mod tests {
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
             if let Some(msg) = receiver.recv().await {
-                println!("Received (from subscriber): {:?}", msg);
+                // println!("Received (from subscriber): {:?}", msg);
 
                 let results = manager_clone.get_all_elements_interleave().await.unwrap();
-                eprintln!("All elements: {:?}", results);
+                // eprintln!("All elements: {:?}", results);
 
                 // Dequeue from the queue inside the subscriber thread
                 if let Ok(Some(message)) = manager_clone.dequeue("job_id::123::false").await {
@@ -298,7 +298,7 @@ mod tests {
                     assert_eq!(message, msg, "Dequeued message does not match received message");
                 }
 
-                eprintln!("Dequeued (from subscriber): {:?}", msg);
+                // eprintln!("Dequeued (from subscriber): {:?}", msg);
                 // Assert that the queue is now empty
                 match manager_clone.dequeue("job_id::123::false").await {
                     Ok(None) => (),
@@ -332,9 +332,10 @@ mod tests {
         let db_path = "db_tests/";
         let db_arc = Arc::new(ShinkaiDB::new(db_path).unwrap());
         let db_weak = Arc::downgrade(&db_arc);
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+        let mut manager =
+            JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
+                .await
+                .unwrap();
 
         // Push to a queue
         let job = JobForProcessing::new(
@@ -362,9 +363,10 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(500));
 
         // Create a new manager and recover the state
-        let mut new_manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
-            .await
-            .unwrap();
+        let mut new_manager =
+            JobQueueManager::<JobForProcessing>::new(db_weak.clone(), Topic::AnyQueuesPrefixed.as_str(), None)
+                .await
+                .unwrap();
 
         // Try to pop the job from the queue using the new manager
         match new_manager.dequeue("my_queue").await {

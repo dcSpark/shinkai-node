@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::{fmt, fs};
 
 use reqwest::header::{HeaderMap, HeaderValue};
-use reqwest::multipart::{Form};
+use reqwest::multipart::Form;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -66,7 +66,7 @@ impl WebScraper {
         url = url.trim_end_matches('/').to_string();
 
         // Download the content
-        eprintln!("Downloading: {}", &url);
+        // eprintln!("Downloading: {}", &url);
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::limited(20))
@@ -119,7 +119,7 @@ impl WebScraper {
 
         if response.status().is_success() {
             let response_body: Vec<Value> = response.json().await?;
-            eprintln!("\n\n\n Response: {:?}", response_body);
+            // eprintln!("\n\n\n Response: {:?}", response_body);
             if let Some(first_obj) = response_body.get(0) {
                 match first_obj.get("text") {
                     Some(text) => Ok(WebScraperResult {

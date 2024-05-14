@@ -1,3 +1,4 @@
+use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::job_manager::JobManager;
 use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -23,7 +24,7 @@ impl LLMProvider for GenericAPI {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<LLMInferenceResponse, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/inference");
@@ -39,7 +40,6 @@ impl LLMProvider for GenericAPI {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
-                eprintln!("max_output_tokens: {:?}", max_output_tokens);
                 let payload = json!({
                     "model": self.model_type,
                     "max_tokens": max_output_tokens,
@@ -107,7 +107,7 @@ impl LLMProvider for GenericAPI {
                                     ShinkaiLogLevel::Debug,
                                     format!("Parsed JSON from Markdown: {:?}", json).as_str(),
                                 );
-                                Ok(json)
+                                Ok(LLMInferenceResponse::new(response_string, json))
                             }
                             Err(e) => {
                                 shinkai_log(

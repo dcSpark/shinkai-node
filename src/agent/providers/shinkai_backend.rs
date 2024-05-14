@@ -1,3 +1,4 @@
+use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
@@ -45,7 +46,7 @@ impl LLMProvider for ShinkaiBackend {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<LLMInferenceResponse, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
@@ -163,7 +164,7 @@ impl LLMProvider for ShinkaiBackend {
                                         ShinkaiLogLevel::Debug,
                                         format!("Parsed JSON from Markdown: {:?}", json).as_str(),
                                     );
-                                    Ok(json)
+                                    Ok(LLMInferenceResponse::new(response_string, json))
                                 }
                                 Err(e) => {
                                     shinkai_log(
@@ -192,7 +193,7 @@ impl LLMProvider for ShinkaiBackend {
                                         ShinkaiLogLevel::Debug,
                                         format!("Parsed JSON from Markdown: {:?}", json).as_str(),
                                     );
-                                    Ok(json)
+                                    Ok(LLMInferenceResponse::new(response_string, json))
                                 }
                                 Err(e) => {
                                     shinkai_log(

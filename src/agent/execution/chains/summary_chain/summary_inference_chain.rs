@@ -1,5 +1,12 @@
+use super::chain_detection_embeddings::{
+    top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
+    top_score_summarize_this_embeddings,
+};
 use crate::agent::error::AgentError;
 use crate::agent::execution::chains::inference_chain_router::InferenceChainDecision;
+use crate::agent::execution::chains::inference_chain_trait::{
+    InferenceChain, InferenceChainContext, InferenceChainResult, ScoreResult,
+};
 use crate::agent::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
@@ -22,18 +29,78 @@ use shinkai_vector_resources::model_type::{
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
+use tonic::async_trait;
 use tracing::instrument;
 
-use super::chain_detection_embeddings::{
-    top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
-    top_score_summarize_this_embeddings,
-};
+/// Inference Chain used for summarizing
+#[derive(Debug, Clone)]
+pub struct SummaryInferenceChain {
+    pub context: InferenceChainContext,
+    this_checked: ScoreResult,
+    these_checked: ScoreResult,
+    message_history_checked: ScoreResult,
+}
 
-impl JobManager {
+impl SummaryInferenceChain {
+    pub fn new(context: InferenceChainContext, score_results: HashMap<String, ScoreResult>) -> Self {
+        let this_checked = score_results
+            .get("this_check")
+            .unwrap_or(&ScoreResult::new_empty())
+            .clone();
+        let these_checked = score_results
+            .get("these_check")
+            .unwrap_or(&ScoreResult::new_empty())
+            .clone();
+        let message_history_checked = score_results
+            .get("message_history_check")
+            .unwrap_or(&ScoreResult::new_empty())
+            .clone();
+
+        Self {
+            context,
+            this_checked,
+            these_checked,
+            message_history_checked,
+        }
+    }
+}
+
+#[async_trait]
+impl InferenceChain for SummaryInferenceChain {
+    fn chain_id() -> String {
+        "summary_inference_chain".to_string()
+    }
+
+    fn chain_context(&mut self) -> &mut InferenceChainContext {
+        &mut self.context
+    }
+
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
+        let response = self
+            .start_summary_inference_chain(
+                self.context.db.clone(),
+                self.context.vector_fs.clone(),
+                self.context.full_job.clone(),
+                self.context.user_message.clone(),
+                self.context.agent.clone(),
+                self.context.execution_context.clone(),
+                self.context.generator.clone(),
+                self.context.user_profile.clone(),
+                self.context.max_iterations,
+                self.context.max_tokens_in_prompt,
+            )
+            .await?;
+        let job_execution_context = self.context.execution_context.clone();
+        Ok(InferenceChainResult::new(response, job_execution_context))
+    }
+}
+
+impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]
     pub async fn start_summary_inference_chain(
+        &self,
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
@@ -44,22 +111,30 @@ impl JobManager {
         user_profile: ShinkaiName,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
-        score_results: ((bool, f32), (bool, f32), (bool, f32)),
     ) -> Result<String, AgentError> {
         // Perform the checks
-        let this_check = score_results.0;
-        let these_check = score_results.1;
-        let message_history_check = score_results.2;
-
-        let checks = vec![this_check, these_check, message_history_check];
-        let highest_score_check = checks
-            .into_iter()
-            .filter(|check| check.0)
-            .fold((false, 0.0f32), |acc, check| if check.1 > acc.1 { check } else { acc });
+        let checks = vec![
+            self.this_checked.clone(),
+            self.these_checked.clone(),
+            self.message_history_checked.clone(),
+        ];
+        let highest_score_checked =
+            checks
+                .into_iter()
+                .filter(|check| check.passed_scoring)
+                .fold(ScoreResult::new_empty(), |acc, check| {
+                    if check.score > acc.score {
+                        check
+                    } else {
+                        acc
+                    }
+                });
 
         // Later implement this alternative summary flow
         // if message_history_check.1 == highest_score_check.1 {
-        if these_check.1 == highest_score_check.1 || this_check.1 == highest_score_check.1 {
+        if self.these_checked.score == highest_score_checked.score
+            || self.this_checked.score == highest_score_checked.score
+        {
             Self::start_summarize_job_context_sub_chain(
                 db,
                 vector_fs,
@@ -186,7 +261,7 @@ impl JobManager {
         eprintln!("generate_detailed_summary_for_resource> Prompt: {:?}", prompt);
 
         // Extract the JSON from the inference response Result and proceed forward
-        let response = JobManager::inference_agent_json(agent.clone(), prompt.clone()).await?;
+        let response = JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await?;
         let answer = &JobManager::advanced_extract_key_from_inference_response(
             agent.clone(),
             response.clone(),
@@ -306,7 +381,7 @@ impl JobManager {
             });
             if other_substring_result {
                 if let Ok(other_check_result) = other_check(&generator, &user_message, &job_scope).await {
-                    if other_check_result.0 {
+                    if other_check_result.passed_scoring {
                         return true;
                     }
                 }
@@ -322,10 +397,6 @@ impl JobManager {
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
     ) -> Option<InferenceChainDecision> {
-        let mut this_check_result = (false, 0.0);
-        let mut these_check_result = (false, 0.0);
-        let mut message_history_check_result = (false, 0.0);
-
         // If there are no VRs in the scope, we don't use the summary chain for now (may change when we do advanced message history summarization)
         if job_scope.is_empty() {
             return None;
@@ -340,23 +411,26 @@ impl JobManager {
         }
 
         // Perform the vector search detailed checks.
-        these_check_result = these_check(&generator, &user_message, job_scope)
+        let these_check_result = these_check(&generator, &user_message, job_scope)
             .await
-            .unwrap_or((false, 0.0));
-        this_check_result = this_check(&generator, &user_message, job_scope, step_history)
+            .unwrap_or(ScoreResult::new_empty());
+        let this_check_result = this_check(&generator, &user_message, job_scope, step_history)
             .await
-            .unwrap_or((false, 0.0));
+            .unwrap_or(ScoreResult::new_empty());
         // For now we don't use the message history check as its just useless/inefficient to do the embeddings gen
         // Later on may be useful
-        // message_history_check = message_history_check(&generator, &user_message)
+        //let  message_history_check = message_history_check(&generator, &user_message)
         //     .await
-        //     .unwrap_or((false, 0.0));
+        //     .unwrap_or(ScoreResult::new_empty());
+        let message_history_check_result = ScoreResult::new_empty();
 
-        Some(InferenceChainDecision::SummaryChain((
-            this_check_result,
-            these_check_result,
-            message_history_check_result,
-        )))
+        /// Create the scores hashmap
+        let mut scores = HashMap::new();
+        scores.insert("this_check".to_string(), this_check_result);
+        scores.insert("these_check".to_string(), these_check_result);
+        scores.insert("message_history_check".to_string(), message_history_check_result);
+
+        Some(InferenceChainDecision::new(Self::chain_id(), scores))
     }
 }
 
@@ -383,15 +457,18 @@ async fn these_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
-) -> Result<(bool, f32), AgentError> {
+) -> Result<ScoreResult, AgentError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
     let passing = passing_score(&generator.clone());
     let these_score = top_score_summarize_these_embeddings(generator.clone(), &user_message_embedding).await?;
-    println!("Top These score: {:.2}", these_score);
-    Ok((these_score > passing && !job_scope.is_empty(), these_score))
+    // println!("Top These score: {:.2}", these_score);
+    Ok(ScoreResult::new(
+        these_score,
+        these_score > passing && !job_scope.is_empty(),
+    ))
 }
 
 /// Checks if the user message's similarity score passes for any of the "this" summary strings
@@ -400,7 +477,7 @@ async fn this_check(
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
-) -> Result<(bool, f32), AgentError> {
+) -> Result<ScoreResult, AgentError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
@@ -408,7 +485,7 @@ async fn this_check(
 
     let passing = passing_score(&generator.clone());
     let this_score = top_score_summarize_this_embeddings(generator.clone(), &user_message_embedding).await?;
-    println!("Top This score: {:.2}", this_score);
+    // println!("Top This score: {:.2}", this_score);
 
     // Get current job task code block count, and the previous job task's code block count if it exists in step history
     let current_code_block_count = user_message.get_code_block_elements().len();
@@ -428,7 +505,7 @@ async fn this_check(
     // Only pass if there are VRs in scope, and no code blocks. This is to allow QA chain to deal with codeblock summary for now.
     let check = this_score > passing && !job_scope.is_empty() && !code_block_exists;
 
-    Ok((check, this_score))
+    Ok(ScoreResult::new(this_score, check))
 }
 
 /// Checks if the user message's similarity score passes for any of the other summary-esque strings (used only if no prev messages)
@@ -436,22 +513,25 @@ async fn other_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
-) -> Result<(bool, f32), AgentError> {
+) -> Result<ScoreResult, AgentError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
         .await?;
     let passing = passing_score(&generator.clone());
     let these_score = top_score_summarize_other_embeddings(generator.clone(), &user_message_embedding).await?;
-    println!("Top These score: {:.2}", these_score);
-    Ok((these_score > passing && !job_scope.is_empty(), these_score))
+    // println!("Top These score: {:.2}", these_score);
+    Ok(ScoreResult::new(
+        these_score,
+        these_score > passing && !job_scope.is_empty(),
+    ))
 }
 
 /// Checks if the user message's similarity score passes for the "message history" summary string
 async fn message_history_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
-) -> Result<(bool, f32), AgentError> {
+) -> Result<ScoreResult, AgentError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
@@ -460,6 +540,6 @@ async fn message_history_check(
     let passing = passing_score(&generator.clone());
     let message_history_score =
         top_score_message_history_summary_embeddings(generator.clone(), &user_message_embedding).await?;
-    println!("Top Message history score: {:.2}", message_history_score);
-    Ok((message_history_score > passing, message_history_score))
+    // println!("Top Message history score: {:.2}", message_history_score);
+    Ok(ScoreResult::new(message_history_score, message_history_score > passing))
 }
