@@ -76,6 +76,7 @@ mod tests {
                         Some(elements),
                         None,
                         1,
+                        32000,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -104,6 +105,7 @@ mod tests {
                         Some("".to_string()),
                         None,
                         1,
+                        32000,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
