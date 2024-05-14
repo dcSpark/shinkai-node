@@ -15,9 +15,6 @@ impl JobPromptGenerator {
         mut resource_sub_prompts: Vec<SubPrompt>,
         resource_source: VRSourceReference,
     ) -> Prompt {
-        // Reverse the sorting of resource_sub_prompts
-        resource_sub_prompts.reverse();
-
         let mut prompt = Prompt::new();
         add_setup_prompt(&mut prompt);
 
