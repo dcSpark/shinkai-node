@@ -32,13 +32,13 @@ impl JobPromptGenerator {
         // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics or chapters in the content (with 1-2 sentences describing each). \n Respond using the following markdown template and nothing else (no references). Don't forget to put all content under the top-level `# Answer`:\n";
+        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics or chapters in the content (with 1-2 sentences describing each).\n Respond using the following markdown template and nothing else (no references). Don't forget to put all content under the top-level `# Answer`:\n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        let markdown_message = r#"```md\n# Answer\n ## {{Content Title}}\n\n{{Introductory paragraph}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n - **{{Bulletpoint Title}}**: {{Bulletpoint Description}}\n```\n"#;
+        let markdown_message = r#"# Answer\n ## {{content title here}}\n\n{{introductory paragraph here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
-        let task_message = "Do not respond with absolutely anything else, except with the above markdown template, filling it in with info to fulfill the user's summary request:\n```md\n";
+        let task_message = "Do not respond with absolutely anything else, except with the above markdown template, filling it in with info to fulfill the user's summary request:\n";
         prompt.add_content(task_message.to_string(), SubPromptType::System, 100);
 
         prompt
