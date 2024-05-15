@@ -40,6 +40,7 @@ pub enum TransactionOperation {
     Delete(String, String),         // Represents a key to delete
 }
 
+#[derive(Debug)]
 pub struct VectorFSDB {
     pub db: OptimisticTransactionDB,
     pub path: String,

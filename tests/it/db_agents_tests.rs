@@ -275,14 +275,14 @@ mod tests {
         );
 
         let response = agent
-            .inference_json(JobPromptGenerator::basic_instant_response_prompt(
+            .inference_markdown(JobPromptGenerator::basic_instant_response_prompt(
                 "Hello!".to_string(),
                 None,
             ))
             .await;
         match response {
             Ok(res) => assert_eq!(
-                res["Answer"].as_str().unwrap(),
+                res.json["Answer"].as_str().unwrap(),
                 "Hello there, how may I assist you today?".to_string()
             ),
             Err(e) => panic!("Error when calling API: {}", e),

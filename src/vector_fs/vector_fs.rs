@@ -17,6 +17,7 @@ use tokio::sync::RwLock;
 /// Struct that wraps all functionality of the VectorFS.
 /// Of note, internals_map holds a hashmap of the VectorFSInternals
 /// for all profiles on the node.
+#[derive(Debug)]
 pub struct VectorFS {
     pub node_name: ShinkaiName,
     pub internals_map: RwLock<HashMap<ShinkaiName, VectorFSInternals>>,
@@ -158,19 +159,24 @@ impl VectorFS {
 
                 // Creates default folders and files if create_default_folders is true
                 if create_default_folders {
-                    let writer = self.new_writer(profile.clone(), VRPath::root(), profile.clone()).await?;
-                    self.create_new_folder(&writer, "My_Files_(Private)").await?;
-                    self.create_new_folder(&writer, "My_Subscriptions").await?;
-                    self.create_new_folder(&writer, "For_Sharing").await?;
+                    let writer = self
+                        .new_writer(profile.clone(), VRPath::root(), profile.clone())
+                        .await?;
+                    self.create_new_folder(&writer, "My Files (Private)").await?;
+                    self.create_new_folder(&writer, "My Subscriptions").await?;
+                    self.create_new_folder(&writer, "For Sharing").await?;
 
-                    let my_files = VRPath::from_string("/My_Files_(Private)").unwrap();
-                    let writer = self.new_writer(profile.clone(), my_files.clone(), profile.clone()).await?;
+                    let my_files = VRPath::from_string("/My Files (Private)").unwrap();
+                    let writer = self
+                        .new_writer(profile.clone(), my_files.clone(), profile.clone())
+                        .await?;
                     self.create_new_folder(&writer, "Shinkai").await?;
-
 
                     // Create a default file in the "My Files (Private)" folder
                     let shinkai_folder = my_files.push_cloned("Shinkai".to_string());
-                    let writer = self.new_writer(profile.clone(), shinkai_folder, profile.clone()).await?;
+                    let writer = self
+                        .new_writer(profile.clone(), shinkai_folder, profile.clone())
+                        .await?;
                     let shinkai_faq = VRKai::from_base64(SHINKAI_FAQ_VRKAI).unwrap();
                     let shinkai_whitepaper = VRKai::from_base64(SHINKAI_WHITEPAPER_VRKAI).unwrap();
                     let _save_result = self.save_vrkai_in_folder(&writer, shinkai_faq).await;

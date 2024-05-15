@@ -125,7 +125,7 @@ impl VRPack {
         if let Ok(vrkai) = v1 {
             return Ok(vrkai);
         } else if let Err(e) = v1 {
-            eprintln!("Error: {}", e);
+            eprintln!("VRPack Error: {}", e);
         }
 
         return Err(VRError::UnsupportedVRPackVersion("".to_string()));
