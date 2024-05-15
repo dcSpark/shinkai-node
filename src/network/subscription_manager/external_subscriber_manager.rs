@@ -1255,6 +1255,8 @@ impl ExternalSubscriberManager {
                 )?;
                 db.remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+                
+                // TODO: it should also remove the files from the 
             }
         }
 
