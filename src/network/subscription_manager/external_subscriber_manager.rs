@@ -814,8 +814,7 @@ impl ExternalSubscriberManager {
 
     pub async fn update_shared_folders(&mut self) -> Result<(), SubscriberManagerError> {
         let profiles = {
-            let db = 
-            self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
             let identities = db
@@ -958,10 +957,19 @@ impl ExternalSubscriberManager {
 
             for (path, permission) in filtered_results {
                 let path_str = path.to_string();
+                eprintln!(">> (available_shared_folders) path_str: {:?}", path_str);
                 let permission_str = format!("{:?}", permission);
                 let subscription_requirement = match db.get_folder_requirements(&path_str) {
                     Ok(req) => Some(req),
-                    Err(_) => None, // Instead of erroring out, we return None for folders without requirements
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::ExtSubscriptions,
+                            ShinkaiLogLevel::Error,
+                            format!("Error getting folder requirements: {:?}", e).as_str(),
+                        );
+                        return Err(SubscriberManagerError::DatabaseError(e.to_string()));
+                        // Return an error instead of None
+                    }
                 };
                 let tree = match FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
@@ -1176,20 +1184,7 @@ impl ExternalSubscriberManager {
             }
         }
 
-        // Trigger a refresh of the shareable folders cache
-        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
-            SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
-        )?;
-
-        let _ = self
-            .available_shared_folders(
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                "/".to_string(),
-            )
-            .await;
+        let _ = self.update_shared_folders().await;
 
         Ok(true)
     }
@@ -1244,8 +1239,6 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
-            db.remove_folder_requirements(&path)
-                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
 
             // Remove upload credentials if the folder had a web alternative
             let folder_subscription = db.get_folder_requirements(&path)?;
@@ -1255,9 +1248,12 @@ impl ExternalSubscriberManager {
                 )?;
                 db.remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
-                
-                // TODO: it should also remove the files from the 
+
+                // TODO: it should also remove the files from the cloud storage
             }
+
+            db.remove_folder_requirements(&path)
+                .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
 
         let _ = self.update_shared_folders().await;

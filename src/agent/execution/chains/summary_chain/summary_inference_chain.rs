@@ -15,6 +15,7 @@ use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
+use async_trait::async_trait;
 use futures::stream::StreamExt;
 use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
@@ -29,7 +30,6 @@ use shinkai_vector_resources::model_type::{
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tonic::async_trait;
 use tracing::instrument;
 
 /// Inference Chain used for summarizing

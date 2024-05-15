@@ -263,7 +263,7 @@ fn subscription_manager_test() {
                 create_folder(
                     &node1_commands_sender,
                     "/",
-                    "shared_test_folder",
+                    "shared test folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -324,7 +324,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     file_path,
                     0,
                 )
@@ -363,7 +363,7 @@ fn subscription_manager_test() {
                 // Create /shared test folder/crypto
                 create_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     "crypto",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -382,7 +382,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shared_test_folder/crypto",
+                    "/shared test folder/crypto",
                     file_path,
                     0,
                 )
@@ -410,7 +410,7 @@ fn subscription_manager_test() {
                 eprintln!("Make /shared test folder shareable");
                 make_folder_shareable(
                     &node1_commands_sender,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -481,6 +481,7 @@ fn subscription_manager_test() {
 
                 // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<Value, APIError>>,
                     async_channel::Receiver<Result<Value, APIError>>,
@@ -535,6 +536,7 @@ fn subscription_manager_test() {
 
                 // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<Value, APIError>>,
                     async_channel::Receiver<Result<Value, APIError>>,
@@ -559,23 +561,23 @@ fn subscription_manager_test() {
                     "state": "ResponseAvailable",
                     "response_last_updated": "2024-03-24T00:47:22.292347Z",
                     "response": {
-                        "/shared_test_folder": {
-                            "path": "/shared_test_folder",
+                        "/shared test folder": {
+                            "path": "/shared test folder",
                             "permission": "Public",
                             "profile": "main",
                             "tree": {
                                 "name": "/",
-                                "path": "/shared_test_folder",
+                                "path": "/shared test folder",
                                 "last_modified": "2024-03-24T00:47:20.713156+00:00",
                                 "children": {
                                     "crypto": {
                                         "name": "crypto",
-                                        "path": "/shared_test_folder/crypto",
+                                        "path": "/shared test folder/crypto",
                                         "last_modified": "2024-03-24T00:47:18.657987+00:00",
                                         "children": {
                                             "shinkai_intro": {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared_test_folder/crypto/shinkai_intro",
+                                                "path": "/shared test folder/crypto/shinkai_intro",
                                                 "last_modified": "2024-02-26T23:06:00.019065981+00:00",
                                                 "children": {}
                                             }
@@ -583,7 +585,7 @@ fn subscription_manager_test() {
                                     },
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
-                                        "path": "/shared_test_folder/shinkai_intro",
+                                        "path": "/shared test folder/shinkai_intro",
                                         "last_modified": "2024-02-26T23:06:00.019065981+00:00",
                                         "children": {}
                                     }
@@ -593,7 +595,7 @@ fn subscription_manager_test() {
                                 "minimum_token_delegation": 100,
                                 "minimum_time_delegated_hours": 100,
                                 "monthly_payment": {
-                                    "USD": 10.0
+                                    "USD": "10.00"
                                 },
                                 "has_web_alternative": false,
                                 "is_free": false,
@@ -624,7 +626,7 @@ fn subscription_manager_test() {
                 let requirements = SubscriptionPayment::Free;
 
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
-                    "/shared_test_folder".to_string(),
+                    "/shared test folder".to_string(),
                     requirements,
                     None,
                     None,
@@ -640,6 +642,7 @@ fn subscription_manager_test() {
                 )
                 .unwrap();
 
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<String, APIError>>,
                     async_channel::Receiver<Result<String, APIError>>,
@@ -678,6 +681,7 @@ fn subscription_manager_test() {
                 ).unwrap();
             
                 // Prepare the response channel
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<Value, APIError>>,
                     async_channel::Receiver<Result<Value, APIError>>,
@@ -699,14 +703,14 @@ fn subscription_manager_test() {
                     "subscription_id": {
                         "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared test folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
                         "exclude_folders": null,
-                        "include_folders": null,
-                        "http_upload_destination": null
+                        "include_folders": null
                     },
                     "shared_folder": "/shared test folder",
                     "streaming_node": "@@node1_test.sepolia-shinkai",
                     "streaming_profile": "main",
                     "subscriber_node": "@@node2_test.sepolia-shinkai",
                     "subscriber_profile": "main_profile_node2",
+                    "http_preferred": null,
                     "payment": "Free",
                     "state": "SubscriptionConfirmed",
                     "subscriber_destination_path": null,
@@ -731,7 +735,8 @@ fn subscription_manager_test() {
             {
                 eprintln!("Trigger External Manager Subscription Review in Node 1 (Streamer)");
                 {
-                    
+
+                    #[allow(clippy::type_complexity)]   
                     let (res_send_msg_sender, res_send_msg_receiver): (
                         async_channel::Sender<Result<(), String>>,
                         async_channel::Receiver<Result<(), String>>,
@@ -875,7 +880,7 @@ fn subscription_manager_test() {
 
                 eprintln!("Trigger External Manager Subscription Review in Node 1 (Streamer)");
                 {
-                    
+                    #[allow(clippy::type_complexity)]   
                     let (res_send_msg_sender, res_send_msg_receiver): (
                         async_channel::Sender<Result<(), String>>,
                         async_channel::Receiver<Result<(), String>>,
@@ -973,8 +978,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Expected structure: {}", expected_structure.to_string());
-                        eprintln!("Actual structure: {}", actual_resp_json.to_string())
+                        eprintln!("Expected structure: {}", expected_structure);
+                        eprintln!("Actual structure: {}", actual_resp_json)
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -1041,6 +1046,7 @@ fn subscription_manager_test() {
                 let mut structure_matched = false;
 
                 {
+                    #[allow(clippy::type_complexity)]
                     let (res_send_msg_sender, res_send_msg_receiver): (
                         async_channel::Sender<Result<(), String>>,
                         async_channel::Receiver<Result<(), String>>,
@@ -1120,8 +1126,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Expected structure: {}", expected_structure.to_string());
-                        eprintln!("Actual structure: {}", actual_resp_json.to_string())
+                        eprintln!("Expected structure: {}", expected_structure);
+                        eprintln!("Actual structure: {}", actual_resp_json)
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1142,6 +1148,7 @@ fn subscription_manager_test() {
                      node1_profile_name.to_string(),
                  ).unwrap(); 
  
+                #[allow(clippy::type_complexity)]
                  let (res_send_msg_sender, res_send_msg_receiver): (
                      async_channel::Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
                      async_channel::Receiver<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
@@ -1217,6 +1224,7 @@ fn subscription_manager_test() {
                 )
                 .unwrap();
 
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<String, APIError>>,
                     async_channel::Receiver<Result<String, APIError>>,
@@ -1250,6 +1258,7 @@ fn subscription_manager_test() {
                     "".to_string(),
                 ).unwrap(); 
 
+                #[allow(clippy::type_complexity)]
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
                     async_channel::Receiver<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,

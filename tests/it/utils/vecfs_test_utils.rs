@@ -314,6 +314,7 @@ pub async fn make_folder_shareable(
     profile_name: &str,
     credentials: Option<FileDestinationCredentials>,
 ) {
+    let has_web_alternative = credentials.is_some();
     let payload = APICreateShareableFolder {
         path: folder_path.to_string(),
         subscription_req: FolderSubscription {
@@ -321,7 +322,7 @@ pub async fn make_folder_shareable(
             minimum_time_delegated_hours: Some(100),
             monthly_payment: Some(PaymentOption::USD(Decimal::new(1000, 2))), // Represents 10.00
             is_free: false,
-            has_web_alternative: Some(true),
+            has_web_alternative: Some(has_web_alternative),
             folder_description: "This is a test folder".to_string(),
         },
         credentials,

@@ -3,12 +3,12 @@ use crate::agent::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainResult, LLMInferenceResponse,
 };
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
-use crate::agent::job::{Job, JobId, JobLike};
+use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
-use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
+use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -17,7 +17,6 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tonic::async_trait;
 use tracing::instrument;
 
 #[derive(Debug, Clone)]
