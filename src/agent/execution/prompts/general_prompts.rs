@@ -106,7 +106,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(
             format!(
-                r#"Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n```md\n"#,
+                r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n"#,
             ),
             SubPromptType::User,
             100,
@@ -136,7 +136,7 @@ impl JobPromptGenerator {
             100,
         );
         prompt.add_ebnf(
-            String::from(r#"```md\n# Summary\n{{summary}}\n```\n\n ```md"#),
+            String::from(r#"# Summary\n{{summary}}\n"#),
             SubPromptType::System,
             100,
         );

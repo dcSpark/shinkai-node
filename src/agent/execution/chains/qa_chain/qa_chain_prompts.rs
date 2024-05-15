@@ -53,7 +53,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            r#"```md\n# Answer\n{{answer}}\n```\n"#.to_string(),
+            r#"# Answer\n{{answer}}\n"#.to_string(),
             SubPromptType::System,
             100,
         );
@@ -71,7 +71,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_ebnf(
-            String::from(r#"```md\n# Search\n{{search term}}\n\n# Summary\n{{summary}}\n```\n\n ```md"#),
+            String::from(r#"# Search\n{{search_term}}\n\n# Summary\n{{summary}}\n"#),
             SubPromptType::System,
             100,
         );
@@ -134,7 +134,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            r#"```md\n# Answer\n{{answer}}\n```\n"#.to_string(),
+            r#"# Answer\n{{answer}}\n"#.to_string(),
             SubPromptType::System,
             100,
         );

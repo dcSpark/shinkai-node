@@ -17,8 +17,6 @@ use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use keyphrases::KeyPhraseExtractor;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
