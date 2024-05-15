@@ -1117,7 +1117,7 @@ mod tests {
             "shinkai_sharing/dummy_file1".to_string(),
             "shinkai_sharing/dummy_file2.2bbbbb39.checksum".to_string(),
             "shinkai_sharing/dummy_file2".to_string(),
-            "shinkai_sharing/shinkai_intro.aaaaaaaa.checksu4".to_string(),
+            "shinkai_sharing/shinkai_intro.aaaaaaaa.checksum".to_string(),
             "shinkai_sharing/shinkai_intro".to_string(),
         ];
         let checksum_map = HttpSubscriptionUploadManager::extract_checksum_map(&sync_file_paths);
