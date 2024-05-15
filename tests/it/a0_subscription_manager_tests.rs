@@ -1292,7 +1292,8 @@ fn subscription_manager_test() {
                     "subscription_id": {
                         "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared test folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
                         "exclude_folders": null,
-                        "include_folders": null
+                        "include_folders": null,
+                        "http_upload_destination": null
                     },
                     "shared_folder": "/shared test folder",
                     "streaming_node": "@@node1_test.sepolia-shinkai",
@@ -1516,18 +1517,7 @@ fn subscription_manager_test() {
                             {
                                 "name": "shared test folder",
                                 "path": "/shared test folder",
-                                "child_folders": [
-                                    {
-                                        "name": "crypto",
-                                        "path": "/shared test folder/crypto",
-                                        "child_folders": [],
-                                        "child_items": [
-                                            {
-                                                "name": "shinkai_intro",
-                                                "path": "/shared test folder/crypto/shinkai_intro"
-                                            },
-                                        ]
-                                    },
+                                "child_folders": [ 
                                     {
                                         "name": "zeko",
                                         "path": "/shared test folder/zeko",
@@ -1545,6 +1535,17 @@ fn subscription_manager_test() {
                                             }
                                         ],
                                         "child_items": []
+                                    },
+                                    {
+                                        "name": "crypto",
+                                        "path": "/shared test folder/crypto",
+                                        "child_folders": [],
+                                        "child_items": [
+                                            {
+                                                "name": "shinkai_intro",
+                                                "path": "/shared test folder/crypto/shinkai_intro"
+                                            },
+                                        ]
                                     }
                                 ],
                                 "child_items": [
@@ -1558,6 +1559,9 @@ fn subscription_manager_test() {
                         "child_items": []
                     });
 
+                    eprintln!("\n\nExpected structure: {:?}", expected_structure);
+                    eprintln!("-");
+                    eprintln!("Actual structure: {:?}", actual_resp_json);
                     structure_matched = check_structure(&actual_resp_json, &expected_structure);
                     if structure_matched {
                         eprintln!("The actual folder structure matches the expected structure.");
@@ -1965,3 +1969,4 @@ fn subscription_manager_test() {
 
     rt.shutdown_background();
 }
+
