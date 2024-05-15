@@ -215,32 +215,32 @@ impl HttpSubscriptionUploadManager {
             return tokio::task::spawn(async {});
         }
 
-        match Self::controlled_subscription_http_check_loop(
-            db,
-            vector_fs,
-            node_name,
-            subscription_file_map,
-            subscription_status,
-            shared_folders_trees_ref,
-            file_links,
-            subscription_http_upload_concurrency,
-            semaphore,
-        )
-        .await
-        {
-            Ok(_) => {}
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::SubscriptionHTTPUploader,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to process subscription: {:?}", e),
-                );
-            }
-        }
-
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(interval_minutes * 60)).await;
+
+                match Self::controlled_subscription_http_check_loop(
+                    db.clone(),
+                    vector_fs.clone(),
+                    node_name.clone(),
+                    subscription_file_map.clone(),
+                    subscription_status.clone(),
+                    shared_folders_trees_ref.clone(),
+                    file_links.clone(),
+                    subscription_http_upload_concurrency,
+                    semaphore.clone(),
+                )
+                .await
+                {
+                    Ok(_) => {}
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::SubscriptionHTTPUploader,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to process subscription: {:?}", e),
+                        );
+                    }
+                }
             }
         })
     }
@@ -517,14 +517,10 @@ impl HttpSubscriptionUploadManager {
         // Check if the subscription requirement has_web_alternative set to true
         if let Some(subscription_requirement) = &shared_folder_subs.subscription_requirement {
             if subscription_requirement.has_web_alternative != Some(true) {
-                return Err(HttpUploadError::InvalidSubscriptionRequirement(
-                    "Subscription does not have a web alternative".to_string(),
-                ));
+                return Ok(()); // No web alternative, so we skip this subscription
             }
         } else {
-            return Err(HttpUploadError::MissingSubscriptionRequirement(
-                "Missing subscription requirement".to_string(),
-            ));
+            return Ok(()); // No subscription requirement, so we skip this subscription
         }
 
         let key = format!("{}:::{}", profile.clone(), shared_folder_subs.path.clone());
@@ -661,7 +657,7 @@ impl HttpSubscriptionUploadManager {
             // Check if the checksum matches
             let checksum_matches = if let Some(checksum_path) = checksum_map.get(&potentially_sync_file) {
                 // Extract the last 8 characters of the hash from the checksum filename
-                let expected_hash = checksum_path.split('.').nth_back(1).unwrap_or("").to_string();
+                let expected_hash = checksum_path.to_string();
 
                 // Extract the last 8 characters of the current hash
                 let current_hash_last_8 = current_hash
@@ -923,8 +919,6 @@ impl HttpSubscriptionUploadManager {
                 if needs_update {
                     // Generate a new link
                     let link_result = generate_temporary_shareable_link(file_path, destination, expiration_secs).await;
-                    eprintln!("Link Result: {:p}", &link_result);
-                    // eprintln!("Link Result: {:?}", link_result);
                     match link_result {
                         Ok(new_link) => {
                             let new_file_link = FileLink {

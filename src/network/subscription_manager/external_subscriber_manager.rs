@@ -814,7 +814,8 @@ impl ExternalSubscriberManager {
 
     pub async fn update_shared_folders(&mut self) -> Result<(), SubscriberManagerError> {
         let profiles = {
-            let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
+            let db = 
+            self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
             let identities = db

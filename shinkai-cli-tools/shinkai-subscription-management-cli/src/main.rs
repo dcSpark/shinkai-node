@@ -125,7 +125,7 @@ async fn main() {
                         .value_name("SOURCE")
                         .help("Source type for web alternative (e.g., S3, R2)")
                         .takes_value(true)
-                        .required_if("has_web_alternative", "true"),
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("access_key_id")
@@ -133,7 +133,7 @@ async fn main() {
                         .value_name("ACCESS_KEY_ID")
                         .help("Access key ID for the source")
                         .takes_value(true)
-                        .required_if("has_web_alternative", "true"),
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("secret_access_key")
@@ -141,7 +141,7 @@ async fn main() {
                         .value_name("SECRET_ACCESS_KEY")
                         .help("Secret access key for the source")
                         .takes_value(true)
-                        .required_if("has_web_alternative", "true"),
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("endpoint_uri")
@@ -149,7 +149,7 @@ async fn main() {
                         .value_name("ENDPOINT_URI")
                         .help("Endpoint URI for the source")
                         .takes_value(true)
-                        .required_if("has_web_alternative", "true"),
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("bucket")
@@ -157,7 +157,7 @@ async fn main() {
                         .value_name("BUCKET")
                         .help("Bucket name for the source")
                         .takes_value(true)
-                        .required_if("has_web_alternative", "true"),
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("folder_description")
@@ -232,9 +232,10 @@ async fn main() {
         )
         .get_matches();
 
-    let encrypted_file_path = env::var("ENCRYPTED_FILE_PATH")
-        .ok()
-        .or_else(|| matches.value_of("encrypted_file_path").map(String::from))
+    let encrypted_file_path = matches
+        .value_of("encrypted_file_path")
+        .map(String::from)
+        .or_else(|| env::var("FILE").ok())
         .expect("encrypted_file_path is required");
 
     let passphrase = matches
@@ -327,7 +328,7 @@ async fn main() {
                     eprintln!("Source is required when web alternative is enabled");
                     process::exit(1); // Exit the program with an error code
                 });
-        
+
             let access_key_id = matches
                 .value_of("access_key_id")
                 .map(String::from)
@@ -336,7 +337,7 @@ async fn main() {
                     eprintln!("Access key ID is required when web alternative is enabled");
                     process::exit(1); // Exit the program with an error code
                 });
-        
+
             let secret_access_key = matches
                 .value_of("secret_access_key")
                 .map(String::from)
@@ -345,7 +346,7 @@ async fn main() {
                     eprintln!("Secret access key is required when web alternative is enabled");
                     process::exit(1); // Exit the program with an error code
                 });
-        
+
             let endpoint_uri = matches
                 .value_of("endpoint_uri")
                 .map(String::from)
@@ -354,7 +355,7 @@ async fn main() {
                     eprintln!("Endpoint URI is required when web alternative is enabled");
                     process::exit(1); // Exit the program with an error code
                 });
-        
+
             let bucket = matches
                 .value_of("bucket")
                 .map(String::from)
