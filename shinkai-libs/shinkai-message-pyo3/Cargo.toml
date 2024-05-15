@@ -20,6 +20,7 @@ ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = "0.8.4"
 hex = "=0.4.3"
 chrono = "0.4"
+rust_decimal = "1.17.0"
 
 [dependencies.pyo3]
 version = "0.20.0"

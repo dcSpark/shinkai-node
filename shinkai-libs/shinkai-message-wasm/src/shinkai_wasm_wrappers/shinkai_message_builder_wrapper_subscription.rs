@@ -49,6 +49,8 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn vecfs_subscribe_to_shared_folder(
         shared_folder: String,
         requirements: JsValue,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
         streamer_node: String,
         streamer_profile: String,
         my_encryption_secret_key: String,
@@ -65,6 +67,8 @@ impl ShinkaiMessageBuilderWrapper {
             streamer_node_name: streamer_node,
             streamer_profile_name: streamer_profile,
             payment,
+            http_preferred,
+            base_folder,
         };
         let body = serde_json::to_string(&payload).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let schema = MessageSchemaType::SubscribeToSharedFolder.to_str().to_string();
