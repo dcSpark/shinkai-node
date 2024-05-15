@@ -792,8 +792,8 @@ impl VRHeader {
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     pub fn generate_resource_reference_string(name: String, resource_id: String) -> String {
-        let name = name.replace(" ", "_").replace(":", "_");
-        let resource_id = resource_id.replace(" ", "_").replace(":", "_");
+        let name = VRPath::clean_string(&name);
+        let resource_id = VRPath::clean_string(&resource_id);
         format!("{}:::{}", name, resource_id)
     }
 
@@ -972,7 +972,7 @@ impl VRPath {
     /// Adds an id to the end of the VRPath's path_ids. Automatically cleans the id String
     /// to remove unsupported characters that would break the path.
     pub fn push(&mut self, id: String) {
-        self.path_ids.push(id);
+        self.path_ids.push(VRPath::clean_string(&id));
     }
 
     /// Removes an element from the end of the path_ids
@@ -1098,9 +1098,9 @@ impl VRPath {
     }
 
     /// Cleans an input string to ensure that it does not have any
-    /// characters which would break a VRPath.
+    /// characters which would break a VRPath, or cause issues generally for the VectorFS.
     pub fn clean_string(s: &str) -> String {
-        s.replace(" ", "_").replace("/", "-")
+        s.replace(" ", "_").replace("/", "-").replace(":", "_")
     }
 }
 

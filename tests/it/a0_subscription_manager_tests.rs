@@ -33,7 +33,6 @@ use super::utils::node_test_local::local_registration_profile_node;
 use crate::it::utils::db_handlers::setup;
 use crate::it::utils::vecfs_test_utils::{check_structure, check_subscription_success, create_folder, fetch_last_messages, generate_message_with_payload, make_folder_shareable, print_tree_simple, remove_folder, remove_item, remove_timestamps_from_shared_folder_cache_response, retrieve_file_info, show_available_shared_items, upload_file};
 
-
 #[test]
 fn subscription_manager_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
@@ -260,7 +259,7 @@ fn subscription_manager_test() {
             eprintln!("\n\n### Creating a folder and uploading some files to the vector db \n\n");
             // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
             {
-                // Create /shared_test_folder
+                // Create /shared test folder
                 create_folder(
                     &node1_commands_sender,
                     "/",
@@ -316,7 +315,7 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Upload File to /shared_test_folder
+                // Upload File to /shared test folder
                 let file_path = Path::new("files/shinkai_intro.vrkai");
                 upload_file(
                     &node1_commands_sender,
@@ -347,7 +346,7 @@ fn subscription_manager_test() {
             }
             {
                 // Show available shared items
-                eprintln!("Show available shared items before making /shared_test_folder shareable");
+                eprintln!("Show available shared items before making /shared test folder shareable");
                 show_available_shared_items(
                     node1_identity_name,
                     node1_profile_name,
@@ -361,7 +360,7 @@ fn subscription_manager_test() {
                 .await;
             }
             {
-                // Create /shared_test_folder/crypto
+                // Create /shared test folder/crypto
                 create_folder(
                     &node1_commands_sender,
                     "/shared_test_folder",
@@ -374,7 +373,7 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Upload File to /shared_test_folder/crypto
+                // Upload File to /shared test folder/crypto
                 let file_path = Path::new("files/shinkai_intro.vrkai");
                 upload_file(
                     &node1_commands_sender,
@@ -407,8 +406,8 @@ fn subscription_manager_test() {
                 }
             }
             {
-                // Make /shared_test_folder shareable
-                eprintln!("Make /shared_test_folder shareable");
+                // Make /shared test folder shareable
+                eprintln!("Make /shared test folder shareable");
                 make_folder_shareable(
                     &node1_commands_sender,
                     "/shared_test_folder",
@@ -438,7 +437,7 @@ fn subscription_manager_test() {
             }
             {
                 // Show available shared items
-                eprintln!("Show available shared items after making /shared_test_folder shareable");
+                eprintln!("Show available shared items after making /shared test folder shareable");
                 show_available_shared_items(
                     node1_identity_name,
                     node1_profile_name,
@@ -620,7 +619,7 @@ fn subscription_manager_test() {
             {
                 eprintln!(">>> Subscribe to the shared folder");
                 eprintln!(
-                    "\n\n### Sending message from node 2 to node 1 requesting: subscription to shared_test_folder\n"
+                    "\n\n### Sending message from node 2 to node 1 requesting: subscription to shared test folder\n"
                 );
                 let requirements = SubscriptionPayment::Free;
 
@@ -657,7 +656,7 @@ fn subscription_manager_test() {
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("\n\nsend_result: {:?}", send_result);
 
-                let subscription_success_message = "{\"subscription_details\":\"Subscribed to /shared_test_folder\",\"shared_folder\":\"/shared_test_folder\",\"status\":\"Success\",\"error\":null,\"metadata\":null}";
+                let subscription_success_message = "{\"subscription_details\":\"Subscribed to /shared test folder\",\"shared_folder\":\"/shared test folder\",\"status\":\"Success\",\"error\":null,\"metadata\":null}";
                 let subscription_success = check_subscription_success(
                     &node2_commands_sender,
                     4, // attempts
@@ -698,11 +697,11 @@ fn subscription_manager_test() {
                 // Expected response template without dates for comparison
                 let expected_resp_template = r#"[{
                     "subscription_id": {
-                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared_test_folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
+                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared test folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
                         "exclude_folders": null,
                         "include_folders": null
                     },
-                    "shared_folder": "/shared_test_folder",
+                    "shared_folder": "/shared test folder",
                     "streaming_node": "@@node1_test.sepolia-shinkai",
                     "streaming_profile": "main",
                     "subscriber_node": "@@node2_test.sepolia-shinkai",
@@ -784,17 +783,17 @@ fn subscription_manager_test() {
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared_test_folder",
-                                "path": "/shared_test_folder",
+                                "name": "shared test folder",
+                                "path": "/shared test folder",
                                 "child_folders": [
                                     {
                                         "name": "crypto",
-                                        "path": "/shared_test_folder/crypto",
+                                        "path": "/shared test folder/crypto",
                                         "child_folders": [],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared_test_folder/crypto/shinkai_intro"
+                                                "path": "/shared test folder/crypto/shinkai_intro"
                                             }
                                         ]
                                     }
@@ -802,7 +801,7 @@ fn subscription_manager_test() {
                                 "child_items": [
                                     {
                                         "name": "shinkai_intro",
-                                        "path": "/shared_test_folder/shinkai_intro"
+                                        "path": "/shared test folder/shinkai_intro"
                                     }
                                 ]
                             }
@@ -826,10 +825,10 @@ fn subscription_manager_test() {
             }
             {
                 eprintln!("Add a new file to the streamer");
-                 // Create /shared_test_folder/zeko
+                 // Create /shared test folder/zeko
                  create_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder",
+                    "/shared test folder",
                     "zeko",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -839,10 +838,10 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Create /shared_test_folder/zeko/paper
+                // Create /shared test folder/zeko/paper
                 create_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder/zeko",
+                    "/shared test folder/zeko",
                     "paper",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -852,7 +851,7 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Upload File to /shared_test_folder/crypto
+                // Upload File to /shared test folder/crypto
                 let file_path = Path::new("files/zeko.vrkai");
                 upload_file(
                     &node1_commands_sender,
@@ -861,7 +860,7 @@ fn subscription_manager_test() {
                     node1_encryption_pk,
                     node1_identity_name,
                     node1_profile_name,
-                    "/shared_test_folder/zeko/paper",
+                    "/shared test folder/zeko/paper",
                     file_path,
                     0,
                 )
@@ -923,32 +922,32 @@ fn subscription_manager_test() {
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared_test_folder",
-                                "path": "/shared_test_folder",
+                                "name": "shared test folder",
+                                "path": "/shared test folder",
                                 "child_folders": [
                                     {
                                         "name": "crypto",
-                                        "path": "/shared_test_folder/crypto",
+                                        "path": "/shared test folder/crypto",
                                         "child_folders": [],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared_test_folder/crypto/shinkai_intro"
+                                                "path": "/shared test folder/crypto/shinkai_intro"
                                             },
                                         ]
                                     },
                                     {
                                         "name": "zeko",
-                                        "path": "/shared_test_folder/zeko",
+                                        "path": "/shared test folder/zeko",
                                         "child_folders": [
                                             {
                                                 "name": "paper",
-                                                "path": "/shared_test_folder/zeko/paper",
+                                                "path": "/shared test folder/zeko/paper",
                                                 "child_folders": [],
                                                 "child_items": [
                                                     {
                                                         "name": "Zeko_Mina_Rollup",
-                                                        "path": "/shared_test_folder/zeko/paper/Zeko_Mina_Rollup"
+                                                        "path": "/shared test folder/zeko/paper/Zeko_Mina_Rollup"
                                                     },
                                                 ]
                                             }
@@ -959,7 +958,7 @@ fn subscription_manager_test() {
                                 "child_items": [
                                     {
                                         "name": "shinkai_intro",
-                                        "path": "/shared_test_folder/shinkai_intro"
+                                        "path": "/shared test folder/shinkai_intro"
                                     }
                                 ]
                             }
@@ -984,10 +983,10 @@ fn subscription_manager_test() {
             {
                 eprintln!("Removing a file from the streamer");
 
-                // Create /shared_test_folder/zeko/paper
+                // Create /shared test folder/zeko/paper
                 remove_item(
                     &node1_commands_sender,
-                    "/shared_test_folder/zeko/paper/Zeko_Mina_Rollup",
+                    "/shared test folder/zeko/paper/Zeko_Mina_Rollup",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -996,11 +995,11 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Remove /shared_test_folder/zeko/paper
+                // Remove /shared test folder/zeko/paper
                  
                 remove_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder/zeko/paper",
+                    "/shared test folder/zeko/paper",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -1009,10 +1008,10 @@ fn subscription_manager_test() {
                 )
                 .await;
 
-                // Remove /shared_test_folder/zeko/paper
+                // Remove /shared test folder/zeko/paper
                 remove_folder(
                     &node1_commands_sender,
-                    "/shared_test_folder/zeko",
+                    "/shared test folder/zeko",
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
@@ -1088,17 +1087,17 @@ fn subscription_manager_test() {
                         "path": "/",
                         "child_folders": [
                             {
-                                "name": "shared_test_folder",
-                                "path": "/shared_test_folder",
+                                "name": "shared test folder",
+                                "path": "/shared test folder",
                                 "child_folders": [
                                     {
                                         "name": "crypto",
-                                        "path": "/shared_test_folder/crypto",
+                                        "path": "/shared test folder/crypto",
                                         "child_folders": [],
                                         "child_items": [
                                             {
                                                 "name": "shinkai_intro",
-                                                "path": "/shared_test_folder/crypto/shinkai_intro"
+                                                "path": "/shared test folder/crypto/shinkai_intro"
                                             },
                                         ]
                                     }
@@ -1106,7 +1105,7 @@ fn subscription_manager_test() {
                                 "child_items": [
                                     {
                                         "name": "shinkai_intro",
-                                        "path": "/shared_test_folder/shinkai_intro"
+                                        "path": "/shared test folder/shinkai_intro"
                                     }
                                 ]
                             }
@@ -1163,9 +1162,9 @@ fn subscription_manager_test() {
 
                     // Prepare the expected subscriptions for comparison
                     let mut expected_subscriptions = HashMap::from([
-                        ("/shared_test_folder".to_string(), vec![
+                        ("/shared test folder".to_string(), vec![
                             ShinkaiSubscription::new(
-                                "/shared_test_folder".to_string(),
+                                "/shared test folder".to_string(),
                                 ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
                                 "main".to_string(),
                                 ShinkaiName::new("@@node2_test.sepolia-shinkai".to_string()).unwrap(),
@@ -1204,7 +1203,7 @@ fn subscription_manager_test() {
                 // Unsubscribe from the shared folder
                 eprintln!("\n\nUnsubscribe from the shared folder");
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_unsubscribe_to_shared_folder(
-                    "/shared_test_folder".to_string(),
+                    "/shared test folder".to_string(),
                     node1_identity_name.to_string(),
                     node1_profile_name.to_string(),
                     node2_profile_encryption_sk.clone(),
@@ -1272,7 +1271,7 @@ fn subscription_manager_test() {
             {
                 // unshare folder
                 let msg = ShinkaiMessageBuilder::subscriptions_unshare_folder(
-                    "/shared_test_folder".to_string(),
+                    "/shared test folder".to_string(),
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
