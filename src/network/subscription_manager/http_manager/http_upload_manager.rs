@@ -91,8 +91,6 @@ where
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileStatus {
     Sync(String),
-    Uploading(String),
-    Waiting(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -552,16 +550,7 @@ impl HttpSubscriptionUploadManager {
             .or_default()
             .clone();
 
-        let mut sync_file_paths: Vec<String> = subscription_files
-            .iter()
-            .filter_map(|(key, value)| {
-                if let FileStatus::Sync(_) = value {
-                    Some(key.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut sync_file_paths: Vec<String> = subscription_files.keys().cloned().collect();
 
         drop(subscription_files);
 
@@ -896,11 +885,7 @@ impl HttpSubscriptionUploadManager {
         if let Some(files_status) = subscription_file_map.get(&folder_subs_with_path) {
             for (file_path, file_status) in files_status.iter() {
                 // we assume that the file status is Sync
-                let current_hash = if let FileStatus::Sync(hash) = file_status {
-                    hash
-                } else {
-                    continue; // Skip if not in Sync status
-                };
+                let FileStatus::Sync(current_hash) = file_status;
 
                 let needs_update = match file_links.get(&folder_subs_with_path) {
                     Some(links) => {
@@ -984,17 +969,7 @@ impl HttpSubscriptionUploadManager {
         let reader = vector_fs_strong
             .new_reader(streamer.clone(), vr_path.clone(), streamer.clone())
             .await
-            .map_err(|e| {
-                shinkai_log(
-                    ShinkaiLogOption::ExtSubscriptions,
-                    ShinkaiLogLevel::Error,
-                    &format!(
-                        "Failed to create a new reader for the vector filesystem at path: {:?}, error: {:?}",
-                        vr_path, e
-                    ),
-                );
-                HttpUploadError::FileSystemError("Failed to create reader".to_string())
-            })?;
+            .map_err(|_e| HttpUploadError::FileSystemError("Failed to create reader".to_string()))?;
 
         let resource = vector_fs_strong
             .retrieve_vector_resource(&reader)
@@ -1023,50 +998,38 @@ impl HttpSubscriptionUploadManager {
         format!("{}.{}.checksum", file_name, hash_part)
     }
 
-    // Note: subscription should already have the profile and the shared folder
-    // pub async fn add_http_support_to_subscription(
-    //     &self,
-    //     subscription_id: SubscriptionId,
-    // ) -> Result<(), HttpUploadError> {
-    //     if let Some(credentials) = subscription_id.http_upload_destination.clone() {
-    //         let destination = FileDestination::from_credentials(credentials).await?;
-    //         self.subscription_config.insert(subscription_id.clone(), destination);
-    //         self.subscription_status
-    //             .insert(subscription_id, SubscriptionStatus::NotStarted);
-    //         Ok(())
-    //     } else {
-    //         Err(HttpUploadError::SubscriptionNotFound) // Assuming SubscriptionNotFound is appropriate; adjust as necessary
-    //     }
-    // }
+    pub async fn remove_http_support_for_subscription(
+        &self,
+        folder_subs_with_path: FolderSubscriptionWithPath,
+        profile: &str,
+    ) -> Result<(), HttpUploadError> {
+        // Remove the subscription status
+        self.subscription_status.remove(&folder_subs_with_path);
 
-    // pub async fn remove_http_support_from_subscription(
-    //     &self,
-    //     subscription_id: SubscriptionId,
-    // ) -> Result<(), HttpUploadError> {
-    //     self.subscription_status.remove(&subscription_id);
-    //     // get the files from the server
-    //     let destination = self
-    //         .subscription_config
-    //         .get(&subscription_id)
-    //         .ok_or(HttpUploadError::SubscriptionNotFound)?;
-    //     let shared_folder = subscription_id.extract_shared_folder()?;
-    //     let file_paths = list_folder_contents(&destination.clone(), shared_folder.as_str()).await?;
+        // Retrieve the destination from the database
+        let db_strong = self.db.upgrade().ok_or_else(|| {
+            HttpUploadError::DatabaseError("Failed to upgrade Weak<ShinkaiDB> to a strong reference".to_string())
+        })?;
 
-    //     // remove the files and folders from the server
-    //     delete_all_in_folder(&destination, shared_folder.as_str()).await?;
+        let credentials = db_strong
+            .get_upload_credentials(&folder_subs_with_path.path, profile)
+            .map_err(|e| HttpUploadError::DatabaseError(format!("Failed to retrieve upload credentials: {}", e)))?;
 
-    //     for file_path in file_paths {
-    //         // remove the file from the subscription_file_map
-    //         self.subscription_file_map
-    //             .entry(subscription_id.clone())
-    //             .or_default()
-    //             .remove(&file_path.path);
-    //     }
-    //     self.subscription_config.remove(&subscription_id);
-    //     Ok(())
-    // }
+        let destination = FileDestination::from_credentials(credentials).await?;
 
-    // make them last for a day (we could make this configurable)
+        // Remove the main folder from the server
+        let delete_result = delete_file_or_folder(&destination, &folder_subs_with_path.path).await;
+        if let Err(e) = delete_result {
+            return Err(HttpUploadError::from(e));
+        }
+
+        // Remove the subscription from the file_links, subscription_file_map, and subscription_status
+        self.file_links.remove(&folder_subs_with_path);
+        self.subscription_file_map.remove(&folder_subs_with_path);
+        self.subscription_status.remove(&folder_subs_with_path);
+
+        Ok(())
+    }
 
     /// Retrieves cached subscription file links that are in sync.
     pub fn get_cached_subscription_files_links(

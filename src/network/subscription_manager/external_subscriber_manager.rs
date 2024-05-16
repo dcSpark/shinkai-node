@@ -957,7 +957,6 @@ impl ExternalSubscriberManager {
 
             for (path, permission) in filtered_results {
                 let path_str = path.to_string();
-                eprintln!(">> (available_shared_folders) path_str: {:?}", path_str);
                 let permission_str = format!("{:?}", permission);
                 let subscription_requirement = match db.get_folder_requirements(&path_str) {
                     Ok(req) => Some(req),
@@ -1246,10 +1245,16 @@ impl ExternalSubscriberManager {
                 let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
                     SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
                 )?;
+
+                let subscription_with_path = FolderSubscriptionWithPath {
+                    path: path.clone(),
+                    folder_subscription: folder_subscription.clone(),
+                };
+                let profile = requester_shinkai_identity.clone().get_profile_name_string().unwrap_or_default();
+                self.http_subscription_upload_manager.remove_http_support_for_subscription(subscription_with_path, &profile);
+
                 db.remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
-
-                // TODO: it should also remove the files from the cloud storage
             }
 
             db.remove_folder_requirements(&path)
