@@ -1,23 +1,15 @@
 use std::fs;
 use std::path::Path;
 
-use crate::http_requests::{
-    request_post, request_post_multipart, PostDataResponse, PostRequestError, PostStringResponse,
-};
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use rand::RngCore;
+use crate::http_requests::{request_post, PostRequestError};
+use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APICreateShareableFolder;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    APICreateShareableFolder, FileDestinationCredentials,
 };
 use shinkai_message_primitives::shinkai_utils::{
     encryption::{string_to_encryption_public_key, string_to_encryption_static_key},
-    file_encryption::{aes_encryption_key_to_string, random_aes_encryption_key},
     shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
     signatures::string_to_signature_secret_key,
 };
@@ -117,13 +109,13 @@ impl ShinkaiManagerForSubs {
                     Err("Failed to reach Shinkai node for health check")
                 }
             }
-            Err(e) => Err("Error verifying node health"),
+            Err(_e) => Err("Error verifying node health"),
         }
     }
 
     // Need review
     pub async fn get_node_folder(&self, path: &str) -> Result<serde_json::Value, PostRequestError> {
-        let formatted_path = if path.starts_with("/") {
+        let formatted_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("/{}", path)
@@ -160,12 +152,12 @@ impl ShinkaiManagerForSubs {
         let formatted_path = if path == "/" {
             path.to_string()
         } else {
-            let mut name = if !path.starts_with("/") {
+            let mut name = if !path.starts_with('/') {
                 format!("/{}", path) // Add "/" at the start if not present
             } else {
                 path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -200,7 +192,7 @@ impl ShinkaiManagerForSubs {
             Ok(_) => {
                 // println!("Folder creation successful: {:?}", response);
             }
-            Err(e) => {
+            Err(_e) => {
                 return Err("Failed to create folder");
             }
         }
@@ -212,16 +204,17 @@ impl ShinkaiManagerForSubs {
         &self,
         path: &str,
         subscription_req: FolderSubscription,
+        credentials: Option<FileDestinationCredentials>,
     ) -> Result<(), &'static str> {
         let formatted_path = if path == "/" {
             path.to_string()
         } else {
-            let mut name = if !path.starts_with("/") {
+            let mut name = if !path.starts_with('/') {
                 format!("/{}", path) // Add "/" at the start if not present
             } else {
                 path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -230,6 +223,7 @@ impl ShinkaiManagerForSubs {
         let payload = APICreateShareableFolder {
             path: formatted_path.to_string(),
             subscription_req,
+            credentials,
         };
 
         let shinkai_message = ShinkaiMessageBuilder::subscriptions_create_share_folder(
@@ -255,7 +249,7 @@ impl ShinkaiManagerForSubs {
             Ok(_) => {
                 // println!("Folder creation successful: {:?}", response);
             }
-            Err(e) => {
+            Err(_e) => {
                 return Err("Failed to create folder");
             }
         }
@@ -269,16 +263,18 @@ impl ShinkaiManagerForSubs {
         streamer_node: String,
         streamer_profile: String,
         subscription_req: SubscriptionPayment,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
     ) -> Result<(), &'static str> {
         let formatted_path = if shared_folder_path == "/" {
             shared_folder_path.to_string()
         } else {
-            let mut name = if !shared_folder_path.starts_with("/") {
+            let mut name = if !shared_folder_path.starts_with('/') {
                 format!("/{}", shared_folder_path) // Add "/" at the start if not present
             } else {
                 shared_folder_path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -287,6 +283,8 @@ impl ShinkaiManagerForSubs {
         let shinkai_message = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
             formatted_path.to_string(),
             subscription_req,
+            http_preferred,
+            base_folder,
             streamer_node.to_string(),
             streamer_profile.to_string(),
             self.my_encryption_secret_key.clone(),
@@ -311,7 +309,7 @@ impl ShinkaiManagerForSubs {
             Ok(_) => {
                 // println!("Folder creation successful: {:?}", response);
             }
-            Err(e) => {
+            Err(_e) => {
                 return Err("Failed to create folder");
             }
         }
@@ -328,12 +326,12 @@ impl ShinkaiManagerForSubs {
         let formatted_path = if path == "/" {
             path.to_string()
         } else {
-            let mut name = if !path.starts_with("/") {
+            let mut name = if !path.starts_with('/') {
                 format!("/{}", path) // Add "/" at the start if not present
             } else {
                 path.to_string()
             };
-            if name.ends_with("/") && name != "/" {
+            if name.ends_with('/') && name != "/" {
                 name.pop(); // Remove trailing '/' if present and not the root path
             }
             name
@@ -370,7 +368,6 @@ impl ShinkaiManagerForSubs {
                 Err("Failed to get available shared items")
             }
         }
-
     }
 
     pub async fn my_subscriptions(&self) -> Result<Value, &'static str> {
@@ -397,7 +394,7 @@ impl ShinkaiManagerForSubs {
                 // println!("Folder creation successful: {:?}", response);
                 Ok(resp.data)
             }
-            Err(e) => Err("Failed to create folder"),
+            Err(_e) => Err("Failed to create folder"),
         }
     }
 }

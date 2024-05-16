@@ -3,9 +3,8 @@ use crate::agent::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainResult, LLMInferenceResponse,
 };
 use crate::agent::execution::prompts::prompts::JobPromptGenerator;
-use crate::agent::job::{Job, JobId, JobLike};
+use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
-use crate::agent::parsing_helper::ParsingHelper;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;

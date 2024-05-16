@@ -35,8 +35,9 @@ use tokio::sync::Mutex;
 
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_entry_tree::FSEntryTree;
+use super::http_manager::http_download_manager::HttpDownloadManager;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 const NUM_THREADS: usize = 2;
 const LRU_CAPACITY: usize = 100;
@@ -49,6 +50,7 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    pub http_download_manager: HttpDownloadManager,
 
     // Cache for shared folders including the ones that you are not subscribed to
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
@@ -102,6 +104,9 @@ impl MySubscriptionsManager {
 
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
+        // Instantiate HttpDownloadManager
+        let http_download_manager = HttpDownloadManager::new(db.clone(), vector_fs.clone(), node_name.clone()).await;
+
         MySubscriptionsManager {
             db,
             vector_fs,
@@ -112,6 +117,7 @@ impl MySubscriptionsManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            http_download_manager,
         }
     }
 
@@ -131,6 +137,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn insert_shared_folder_sm(
         &mut self,
         name: ShinkaiName,
@@ -155,7 +162,7 @@ impl MySubscriptionsManager {
                     .response_last_updated
                     .map(|last_updated| current_time.signed_duration_since(last_updated))
                     // If response_last_updated is None, consider the duration since last update to be maximum to force a refresh
-                    .unwrap_or_else(|| chrono::Duration::max_value());
+                    .unwrap_or_else(chrono::Duration::max_value);
                 // Determine if the folder is up-to-date
                 let is_up_to_date =
                     duration_since_last_update < chrono::Duration::minutes(REFRESH_THRESHOLD_MINUTES as i64);
@@ -360,6 +367,12 @@ impl MySubscriptionsManager {
         }
     }
 
+    // TODO: add new fn to create a scheduler for an HTTP API
+    // it needs to be able to ping the API and check if the folder has been updated
+    // probably we can expand the api endpoint to return some versioning (timestamp / merkle tree root hash)
+    // here or in download_manager we should be checking every X time
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
         &self,
         streamer_node_name: ShinkaiName,
@@ -367,6 +380,8 @@ impl MySubscriptionsManager {
         my_profile: String,
         folder_name: String,
         payment: SubscriptionPayment,
+        base_folder: Option<String>,
+        http_preferred: Option<bool>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -422,6 +437,8 @@ impl MySubscriptionsManager {
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                 folder_name.clone(),
                 payment.clone(),
+                http_preferred,
+                None,
                 streamer_node_name.clone().get_node_name_string(),
                 streamer_profile.clone(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
@@ -435,7 +452,7 @@ impl MySubscriptionsManager {
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
             // Update local status
-            let new_subscription = ShinkaiSubscription::new(
+            let mut new_subscription = ShinkaiSubscription::new(
                 folder_name.clone(),
                 streamer_node_name,
                 streamer_profile,
@@ -443,7 +460,11 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 ShinkaiSubscriptionStatus::SubscriptionRequested,
                 Some(payment),
+                base_folder,
+                None,
             );
+
+            new_subscription.update_http_preferred(http_preferred);
 
             if let Some(db_lock) = self.db.upgrade() {
                 db_lock.add_my_subscription(new_subscription)?;

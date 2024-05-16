@@ -4,11 +4,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
+use shinkai_vector_resources::vector_resource::VRPath;
 
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptionId {
-    unique_id: String,
+    pub unique_id: String,
+    pub include_folders: Option<Vec<VRPath>>,
+    pub exclude_folders: Option<Vec<VRPath>>,
 }
 
 impl SubscriptionId {
@@ -32,11 +35,19 @@ impl SubscriptionId {
             "{}:::{}:::{}:::{}:::{}",
             streamer_node_str, streamer_profile, shared_folder, subscriber_node_str, subscriber_profile
         );
-        SubscriptionId { unique_id }
+        SubscriptionId {
+            unique_id,
+            include_folders: None,
+            exclude_folders: None,
+        }
     }
 
     pub fn from_unique_id(unique_id: String) -> Self {
-        SubscriptionId { unique_id }
+        SubscriptionId {
+            unique_id,
+            include_folders: None,
+            exclude_folders: None,
+        }
     }
 
     pub fn get_unique_id(&self) -> &str {
@@ -126,6 +137,16 @@ impl SubscriptionId {
             Err("Invalid SubscriptionId format")
         }
     }
+
+    // Method to update include_folders
+    pub fn update_include_folders(&mut self, folders: Vec<VRPath>) {
+        self.include_folders = Some(folders);
+    }
+
+    // Method to update exclude_folders
+    pub fn update_exclude_folders(&mut self, folders: Vec<VRPath>) {
+        self.exclude_folders = Some(folders);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -153,6 +174,7 @@ pub struct ShinkaiSubscription {
     pub date_created: DateTime<Utc>,
     pub last_modified: DateTime<Utc>,
     pub last_sync: Option<DateTime<Utc>>,
+    pub http_preferred: Option<bool>,
 }
 
 impl ShinkaiSubscription {
@@ -164,6 +186,8 @@ impl ShinkaiSubscription {
         subscriber_profile: String,
         state: ShinkaiSubscriptionStatus,
         payment: Option<SubscriptionPayment>,
+        base_folder: Option<String>,
+        subscription_description: Option<String>,
     ) -> Self {
         ShinkaiSubscription {
             subscription_id: SubscriptionId::new(
@@ -176,8 +200,8 @@ impl ShinkaiSubscription {
             shared_folder,
             streaming_node,
             streaming_profile,
-            subscription_description: None, // TODO: update api and models to support this
-            subscriber_destination_path: None, // TODO: update api to support this
+            subscription_description,
+            subscriber_destination_path: base_folder,
             subscriber_node,
             subscriber_profile,
             payment,
@@ -185,7 +209,14 @@ impl ShinkaiSubscription {
             date_created: Utc::now(),
             last_modified: Utc::now(),
             last_sync: None,
+            http_preferred: None,
         }
+    }
+
+    // Method to update the http_preferred field
+    pub fn update_http_preferred(&mut self, preferred: Option<bool>) {
+        self.http_preferred = preferred;
+        self.last_modified = Utc::now();
     }
 
     pub fn with_state(mut self, new_state: ShinkaiSubscriptionStatus) -> Self {

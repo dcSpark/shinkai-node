@@ -1,9 +1,5 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
-    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData},
-    node_error::NodeError,
-    node_shareable_logic::validate_message_main_logic,
-    Node,
+    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
 };
 use crate::{
     agent::job_manager::JobManager,
@@ -81,7 +77,7 @@ impl Node {
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
         let has_permission = db
-            .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
+            .has_permission(&inbox_name.to_string(), std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
@@ -113,15 +109,15 @@ impl Node {
 
         match sender_subidentity {
             Identity::Standard(std_identity) => {
-                return Self::has_standard_identity_access(db, inbox_name, std_identity).await;
+                Self::has_standard_identity_access(db, inbox_name, std_identity).await
             }
             Identity::Device(std_device) => {
-                return Self::has_device_identity_access(db, inbox_name, std_device).await;
+                Self::has_device_identity_access(db, inbox_name, std_device).await
             }
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.to_string()
+                    inbox_name
                 ),
             }),
         }
@@ -211,7 +207,7 @@ impl Node {
                             .await;
                     let processed_response = response_handler(response);
                     let _ = res.send(Ok(processed_response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -219,12 +215,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -239,7 +235,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -345,7 +341,7 @@ impl Node {
         // TODO(Discuss): can local admin read any messages from any device or profile?
         match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
+                if value {
                     let response = Self::internal_get_last_unread_messages_from_inbox(
                         db.clone(),
                         inbox_name.to_string(),
@@ -354,7 +350,7 @@ impl Node {
                     )
                     .await;
                     let _ = res.send(Ok(response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -362,12 +358,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -382,7 +378,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -578,7 +574,7 @@ impl Node {
                                     error: "Don't have access".to_string(),
                                     message: format!(
                                         "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                        inbox_name.to_string()
+                                        inbox_name
                                     ),
                                 }))
                                 .await;
@@ -592,12 +588,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -612,7 +608,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -791,8 +787,7 @@ impl Node {
 
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
-        let mut profile_list = vec![];
-        profile_list = match db.get_all_profiles(node_name.clone()) {
+        let profile_list = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -1286,16 +1281,15 @@ impl Node {
         };
 
         let profile_requested_str: String = msg.get_message_content()?;
-        let profile_requested: ShinkaiName;
-        if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
-            profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
+        let profile_requested: ShinkaiName = if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
+            ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?
         } else {
-            profile_requested = ShinkaiName::from_node_and_profile_names(
+            ShinkaiName::from_node_and_profile_names(
                 node_name.get_node_name_string(),
                 profile_requested_str.clone(),
             )
-            .map_err(|err| err.to_string())?;
-        }
+            .map_err(|err| err.to_string())?
+        };
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
@@ -1352,7 +1346,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1391,7 +1385,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1406,11 +1400,12 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_toolkit(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -1626,7 +1621,7 @@ impl Node {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
-                message: format!("{}", err),
+                message: err.to_string(),
             };
             let _ = res.send(Err(api_error)).await;
             return Ok(());
@@ -1887,7 +1882,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2014,6 +2009,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_ollama_models(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2108,6 +2104,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_agent(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2626,6 +2623,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_change_nodes_name(
         secret_file_path: &str,
         node_name: ShinkaiName,

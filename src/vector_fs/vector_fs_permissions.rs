@@ -680,6 +680,7 @@ impl VectorFS {
     }
 
     /// Finds all paths that have one of the specified types of read permissions, starting from the path in the given VFSReader.
+    /// Includes folders, sub-folders and items.
     pub async fn find_paths_with_read_permissions_as_vec(
         &self,
         reader: &VFSReader,

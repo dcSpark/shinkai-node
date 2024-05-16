@@ -1,7 +1,10 @@
 use serde_json::Value;
-use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName,
-    shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
+use shinkai_message_primitives::{
+    schemas::{
+        shinkai_name::ShinkaiName,
+        shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
+    },
+    shinkai_message::shinkai_message_schemas::FileDestinationCredentials,
 };
 
 use crate::{
@@ -43,8 +46,15 @@ impl SubscriptionManager {
         self.shinkai_manager_for_subs.create_folder(&folder_name, &path).await
     }
 
-    pub async fn share_folder(&self, path: String, req: FolderSubscription) -> Result<(), &'static str> {
-        self.shinkai_manager_for_subs.create_share_folder(&path, req).await
+    pub async fn share_folder(
+        &self,
+        path: String,
+        req: FolderSubscription,
+        file_credentials: Option<FileDestinationCredentials>,
+    ) -> Result<(), &'static str> {
+        self.shinkai_manager_for_subs
+            .create_share_folder(&path, req, file_credentials)
+            .await
     }
 
     pub async fn subscribe_to_folder(
@@ -53,9 +63,18 @@ impl SubscriptionManager {
         node_name: String,
         profile_name: String,
         subscription_req: SubscriptionPayment,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
     ) -> Result<(), &'static str> {
         self.shinkai_manager_for_subs
-            .subscribe_to_folder(&path, node_name, profile_name, subscription_req)
+            .subscribe_to_folder(
+                &path,
+                node_name,
+                profile_name,
+                subscription_req,
+                http_preferred,
+                base_folder,
+            )
             .await
     }
 

@@ -5,7 +5,6 @@ use super::network::ws_manager::{WSUpdateHandler, WebSocketManager};
 use super::network::ws_routes::run_ws_api;
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
-use super::utils::open_telemetry::init_telemetry_tracing;
 use super::utils::static_server::start_static_server;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
