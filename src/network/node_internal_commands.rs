@@ -643,7 +643,7 @@ impl Node {
                     .find(|m| m["name"].as_str() == Some(model))
                     .unwrap();
                 let external_url = format!(
-                    "http://localhost:{}/api/generate",
+                    "http://localhost:{}",
                     model_data["port_used"].as_str().unwrap_or("11434")
                 );
 

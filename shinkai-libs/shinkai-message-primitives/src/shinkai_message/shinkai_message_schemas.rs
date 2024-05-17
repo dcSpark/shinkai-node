@@ -24,6 +24,7 @@ pub enum MessageSchemaType {
     APIRemoveAgentRequest,
     APIModifyAgentRequest,
     APIFinishJob,
+    ChangeJobAgentRequest,
     TextContent,
     ChangeNodesName,
     WSMessage,
@@ -76,6 +77,7 @@ impl MessageSchemaType {
             "APIAddOllamaModels" => Some(Self::APIAddOllamaModels),
             "APIRemoveAgentRequest" => Some(Self::APIRemoveAgentRequest),
             "APIModifyAgentRequest" => Some(Self::APIModifyAgentRequest),
+            "ChangeJobAgentRequest" => Some(Self::ChangeJobAgentRequest),
             "TextContent" => Some(Self::TextContent),
             "ChangeNodesName" => Some(Self::ChangeNodesName),
             "WSMessage" => Some(Self::WSMessage),
@@ -130,6 +132,7 @@ impl MessageSchemaType {
             Self::APIAddOllamaModels => "APIAddOllamaModels",
             Self::APIRemoveAgentRequest => "APIRemoveAgentRequest",
             Self::APIModifyAgentRequest => "APIModifyAgentRequest",
+            Self::ChangeJobAgentRequest => "ChangeJobAgentRequest",
             Self::TextContent => "TextContent",
             Self::ChangeNodesName => "ChangeNodesName",
             Self::WSMessage => "WSMessage",
@@ -507,6 +510,12 @@ pub struct APIAddOllamaModels {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMySubscribers {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIChangeJobAgentRequest {
+    pub job_id: String,
+    pub new_agent_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
