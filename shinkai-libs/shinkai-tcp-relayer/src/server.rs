@@ -9,6 +9,47 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
+use std::fmt;
+
+#[derive(Debug)]
+pub enum NetworkMessageError {
+    ReadError(std::io::Error),
+    Utf8Error(std::string::FromUtf8Error),
+    UnknownMessageType(u8),
+}
+
+impl fmt::Display for NetworkMessageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkMessageError::ReadError(err) => write!(f, "Failed to read exact bytes from socket: {}", err),
+            NetworkMessageError::Utf8Error(err) => write!(f, "Invalid UTF-8 sequence: {}", err),
+            NetworkMessageError::UnknownMessageType(t) => write!(f, "Unknown message type: {}", t),
+        }
+    }
+}
+
+impl std::error::Error for NetworkMessageError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            NetworkMessageError::ReadError(err) => Some(err),
+            NetworkMessageError::Utf8Error(err) => Some(err),
+            NetworkMessageError::UnknownMessageType(_) => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for NetworkMessageError {
+    fn from(err: std::io::Error) -> NetworkMessageError {
+        NetworkMessageError::ReadError(err)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for NetworkMessageError {
+    fn from(err: std::string::FromUtf8Error) -> NetworkMessageError {
+        NetworkMessageError::Utf8Error(err)
+    }
+}
+// end error code
 
 #[derive(Serialize, Deserialize, Debug)]
 enum Message {
@@ -26,40 +67,30 @@ pub struct NetworkMessage {
 }
 
 impl NetworkMessage {
-    pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Option<Self> {
+    pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Self, NetworkMessageError> {
         eprintln!("\n\nReading message");
         let mut socket = socket.lock().await;
         let mut length_bytes = [0u8; 4];
-        if socket.read_exact(&mut length_bytes).await.is_err() {
-            return None;
-        }
+        socket.read_exact(&mut length_bytes).await?;
         let total_length = u32::from_be_bytes(length_bytes) as usize;
         println!("Read total length: {}", total_length);
 
         let mut identity_length_bytes = [0u8; 4];
-        if socket.read_exact(&mut identity_length_bytes).await.is_err() {
-            return None;
-        }
+        socket.read_exact(&mut identity_length_bytes).await?;
         let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
         println!("Read identity length: {}", identity_length);
 
         let mut identity_bytes = vec![0u8; identity_length];
-        if socket.read_exact(&mut identity_bytes).await.is_err() {
-            return None;
-        }
+        socket.read_exact(&mut identity_bytes).await?;
         println!("Read identity bytes length: {}", identity_bytes.len());
-        let identity = String::from_utf8(identity_bytes).ok()?;
-        println!("Read identity: {}", identity);
+        let identity = String::from_utf8(identity_bytes)?;
 
         let mut header_byte = [0u8; 1];
-        if socket.read_exact(&mut header_byte).await.is_err() {
-            eprintln!("Failed to read header byte");
-            return None;
-        }
+        socket.read_exact(&mut header_byte).await?;
         let message_type = match header_byte[0] {
             0x01 => NetworkMessageType::ShinkaiMessage,
             0x02 => NetworkMessageType::VRKaiPathPair,
-            _ => return None,
+            _ => return Err(NetworkMessageError::UnknownMessageType(header_byte[0])),
         };
         println!("Read message type: {}", header_byte[0]);
 
@@ -67,12 +98,10 @@ impl NetworkMessage {
         let mut buffer = vec![0u8; msg_length];
         println!("Calculated payload length: {}", msg_length);
 
-        if socket.read_exact(&mut buffer).await.is_err() {
-            return None;
-        }
+        socket.read_exact(&mut buffer).await?;
         println!("Read payload length: {}", buffer.len());
 
-        Some(NetworkMessage {
+        Ok(NetworkMessage {
             identity,
             message_type,
             payload: buffer,
@@ -104,9 +133,9 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
 
     // Read identity
     let identity_msg = match NetworkMessage::read_from_socket(socket.clone()).await {
-        Some(msg) => msg,
-        None => {
-            eprintln!("Failed to read identity");
+        Ok(msg) => msg,
+        Err(e) => {
+            eprintln!("Failed to read identity: {}", e);
             return;
         }
     };
@@ -148,7 +177,7 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
         tokio::select! {
             msg = NetworkMessage::read_from_socket(socket.clone()) => {
                 match msg {
-                    Some(msg) => {
+                    Ok(msg) => {
                         match msg.message_type {
                             NetworkMessageType::ShinkaiMessage | NetworkMessageType::VRKaiPathPair => {
                                 let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
@@ -161,8 +190,8 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
                             }
                         }
                     }
-                    None => {
-                        eprintln!("Failed to read message");
+                    Err(e) => {
+                        eprintln!("Failed to read message: {}", e);
                         break;
                     }
                 }
