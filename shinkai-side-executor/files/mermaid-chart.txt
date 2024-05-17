@@ -1,0 +1,15 @@
+---
+title: PDF parsing approaches
+---
+flowchart TD
+    A[Start PDF parsing] --> B{PDFium}
+    B --> C[Process pages into images]
+    B --> D[Parse text and extract images]
+    C --> E[Ocrs each page]
+    E --> F[Convert to text groups]
+    D --> G[Ocrs images]
+    G --> H[Merge parsed text and OCR results]
+    H --> F[Convert to text groups]
+    A --> I[Layout analysis]
+    I --> J[PDFium]
+    J --> D
