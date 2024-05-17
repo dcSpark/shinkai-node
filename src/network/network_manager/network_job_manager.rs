@@ -15,6 +15,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -48,12 +49,6 @@ pub struct NetworkVRKai {
 pub struct VRPackPlusChanges {
     pub vr_pack: VRPack,
     pub diff: FSEntryTree,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum NetworkMessageType {
-    ShinkaiMessage,
-    VRKaiPathPair,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

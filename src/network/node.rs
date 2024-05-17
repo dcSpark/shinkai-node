@@ -1,5 +1,5 @@
 use super::network_manager::network_job_manager::{
-    NetworkJobManager, NetworkJobQueue, NetworkMessageType, NetworkVRKai, VRPackPlusChanges,
+    NetworkJobManager, NetworkJobQueue, NetworkVRKai, VRPackPlusChanges,
 };
 use super::node_api::{APIError, SendResponseBodyData};
 use super::node_api_handlers::APIUseRegistrationCodeSuccessResponse;
@@ -22,6 +22,7 @@ use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
