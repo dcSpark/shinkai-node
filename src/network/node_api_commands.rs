@@ -1,5 +1,10 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
+    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
+    node_api::{APIError, SendResponseBodyData},
+    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
+    node_error::NodeError,
+    node_shareable_logic::validate_message_main_logic,
+    Node,
 };
 use crate::{
     agent::job_manager::JobManager,
@@ -33,8 +38,9 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -108,12 +114,8 @@ impl Node {
         }
 
         match sender_subidentity {
-            Identity::Standard(std_identity) => {
-                Self::has_standard_identity_access(db, inbox_name, std_identity).await
-            }
-            Identity::Device(std_device) => {
-                Self::has_device_identity_access(db, inbox_name, std_device).await
-            }
+            Identity::Standard(std_identity) => Self::has_standard_identity_access(db, inbox_name, std_identity).await,
+            Identity::Device(std_device) => Self::has_device_identity_access(db, inbox_name, std_device).await,
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
@@ -1284,11 +1286,8 @@ impl Node {
         let profile_requested: ShinkaiName = if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
             ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?
         } else {
-            ShinkaiName::from_node_and_profile_names(
-                node_name.get_node_name_string(),
-                profile_requested_str.clone(),
-            )
-            .map_err(|err| err.to_string())?
+            ShinkaiName::from_node_and_profile_names(node_name.get_node_name_string(), profile_requested_str.clone())
+                .map_err(|err| err.to_string())?
         };
 
         // Check that the message is coming from someone with the right permissions to do this action
@@ -2367,6 +2366,147 @@ impl Node {
                     let _ = res.send(Err(api_error)).await;
                     Ok(())
                 }
+            }
+        }
+    }
+
+    pub async fn api_change_job_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg.clone(),
+            Some(MessageSchemaType::ChangeJobAgentRequest),
+        )
+        .await;
+        let (validated_msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract job ID and new agent ID from the message content
+        let content = match validated_msg.get_message_content() {
+            Ok(content) => content,
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to get message content: {}", e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let change_request: APIChangeJobAgentRequest = match serde_json::from_str(&content) {
+            Ok(request) => request,
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to parse APIChangeJobAgentRequest: {}", e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(change_request.job_id.clone()) {
+            Ok(name) => name.to_string(),
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::FORBIDDEN.as_u16(),
+                        error: "Don't have access".to_string(),
+                        message: "Permission denied. You don't have enough permissions to change this job agent."
+                            .to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Check if the sender has the right permissions to change the job agent
+        match sender_subidentity {
+            Identity::Standard(std_identity) => {
+                if std_identity.permission_type == IdentityPermissions::Admin {
+                    // Attempt to change the job agent in the job manager
+                    match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                        Ok(_) => {
+                            let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
+                            Ok(())
+                        }
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to change job agent: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            Ok(())
+                        }
+                    }
+                } else {
+                    let has_permission = db
+                        .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
+                        .map_err(|e| NodeError {
+                            message: format!("Failed to check permissions: {}", e),
+                        })?;
+                    if has_permission {
+                        match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                            Ok(_) => {
+                                let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
+                                Ok(())
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to change job agent: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                Ok(())
+                            }
+                        }
+                    } else {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Don't have access".to_string(),
+                                message:
+                                    "Permission denied. You don't have enough permissions to change this job agent."
+                                        .to_string(),
+                            }))
+                            .await;
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender_subidentity
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                Ok(())
             }
         }
     }

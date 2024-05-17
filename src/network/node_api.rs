@@ -1,59 +1,60 @@
 use super::node::NodeCommand;
+use super::node_api_handlers::add_agent_handler;
 use super::node_api_handlers::add_ollama_models_handler;
 use super::node_api_handlers::add_toolkit_handler;
-use super::node_api_handlers::api_vec_fs_retrieve_path_simplified_json_handler;
-use super::node_api_handlers::get_peers_handler;
-use super::node_api_handlers::get_subscription_links_handler;
-use super::node_api_handlers::identity_name_to_external_profile_data_handler;
-use super::node_api_handlers::ping_all_handler;
-use super::node_api_handlers::scan_ollama_models_handler;
-use super::node_api_handlers::retrieve_vrpack_handler;
-use super::node_api_handlers::retrieve_vrkai_handler;
-use super::node_api_handlers::get_my_subscribers_handler;
-use super::node_api_handlers::unsubscribe_handler;
+use super::node_api_handlers::api_convert_files_and_save_to_folder_handler;
+use super::node_api_handlers::api_my_subscriptions_handler;
+use super::node_api_handlers::api_subscription_available_shared_items_handler;
+use super::node_api_handlers::api_subscription_available_shared_items_open_handler;
+use super::node_api_handlers::api_subscription_create_shareable_folder_handler;
 use super::node_api_handlers::api_subscription_unshare_folder_handler;
 use super::node_api_handlers::api_subscription_update_shareable_folder_handler;
-use super::node_api_handlers::subscribe_to_shared_folder_handler;
-use super::node_api_handlers::api_subscription_create_shareable_folder_handler;
-use super::node_api_handlers::api_my_subscriptions_handler;
-use super::node_api_handlers::api_subscription_available_shared_items_open_handler;
-use super::node_api_handlers::api_subscription_available_shared_items_handler;
-use super::node_api_handlers::update_job_to_finished_handler;
-use super::node_api_handlers::handle_file_upload;
-use super::node_api_handlers::create_files_inbox_with_symmetric_key_handler;
-use super::node_api_handlers::get_last_messages_from_inbox_with_branches_handler;
-use super::node_api_handlers::update_smart_inbox_name_handler;
-use super::node_api_handlers::get_all_smart_inboxes_for_profile_handler;
-use super::node_api_handlers::get_last_messages_from_inbox_handler;
-use super::node_api_handlers::remove_agent_handler;
-use super::node_api_handlers::get_all_subidentities_handler;
-use super::node_api_handlers::use_registration_code_handler;
-use super::node_api_handlers::get_all_inboxes_for_profile_handler;
-use super::node_api_handlers::get_last_unread_messages_from_inbox_handler;
-use super::node_api_handlers::job_message_handler;
-use super::node_api_handlers::create_job_handler;
-use super::node_api_handlers::mark_as_read_up_to_handler;
-use super::node_api_handlers::get_filenames_message_handler;
-use super::node_api_handlers::create_registration_code_handler;
-use super::node_api_handlers::api_vec_fs_retrieve_vector_resource_handler;
-use super::node_api_handlers::api_vec_fs_remove_item_handler;
+use super::node_api_handlers::api_vec_fs_copy_folder_handler;
 use super::node_api_handlers::api_vec_fs_copy_item_handler;
+use super::node_api_handlers::api_vec_fs_create_folder_handler;
+use super::node_api_handlers::api_vec_fs_move_folder_handler;
 use super::node_api_handlers::api_vec_fs_move_item_handler;
 use super::node_api_handlers::api_vec_fs_remove_folder_handler;
-use super::node_api_handlers::api_vec_fs_copy_folder_handler;
-use super::node_api_handlers::api_vec_fs_move_folder_handler;
-use super::node_api_handlers::api_vec_fs_create_folder_handler;
-use super::node_api_handlers::api_vec_fs_search_item_handler;
-use super::node_api_handlers::get_public_key_handler;
+use super::node_api_handlers::api_vec_fs_remove_item_handler;
 use super::node_api_handlers::api_vec_fs_retrieve_path_minimal_json_handler;
+use super::node_api_handlers::api_vec_fs_retrieve_path_simplified_json_handler;
+use super::node_api_handlers::api_vec_fs_retrieve_vector_resource_handler;
 use super::node_api_handlers::api_vec_fs_retrieve_vector_search_simplified_json_handler;
-use super::node_api_handlers::api_convert_files_and_save_to_folder_handler;
-use super::node_api_handlers::change_nodes_name_handler;
-use super::node_api_handlers::shinkai_health_handler;
+use super::node_api_handlers::api_vec_fs_search_item_handler;
 use super::node_api_handlers::available_agents_handler;
-use super::node_api_handlers::send_msg_handler;
-use super::node_api_handlers::add_agent_handler;
+use super::node_api_handlers::change_job_agent_handler;
+use super::node_api_handlers::change_nodes_name_handler;
+use super::node_api_handlers::create_files_inbox_with_symmetric_key_handler;
+use super::node_api_handlers::create_job_handler;
+use super::node_api_handlers::create_registration_code_handler;
+use super::node_api_handlers::get_all_inboxes_for_profile_handler;
+use super::node_api_handlers::get_all_smart_inboxes_for_profile_handler;
+use super::node_api_handlers::get_all_subidentities_handler;
+use super::node_api_handlers::get_filenames_message_handler;
+use super::node_api_handlers::get_last_messages_from_inbox_handler;
+use super::node_api_handlers::get_last_messages_from_inbox_with_branches_handler;
+use super::node_api_handlers::get_last_unread_messages_from_inbox_handler;
+use super::node_api_handlers::get_my_subscribers_handler;
+use super::node_api_handlers::get_peers_handler;
+use super::node_api_handlers::get_public_key_handler;
+use super::node_api_handlers::get_subscription_links_handler;
+use super::node_api_handlers::handle_file_upload;
+use super::node_api_handlers::identity_name_to_external_profile_data_handler;
+use super::node_api_handlers::job_message_handler;
+use super::node_api_handlers::mark_as_read_up_to_handler;
 use super::node_api_handlers::modify_agent_handler;
+use super::node_api_handlers::ping_all_handler;
+use super::node_api_handlers::remove_agent_handler;
+use super::node_api_handlers::retrieve_vrkai_handler;
+use super::node_api_handlers::retrieve_vrpack_handler;
+use super::node_api_handlers::scan_ollama_models_handler;
+use super::node_api_handlers::send_msg_handler;
+use super::node_api_handlers::shinkai_health_handler;
+use super::node_api_handlers::subscribe_to_shared_folder_handler;
+use super::node_api_handlers::unsubscribe_handler;
+use super::node_api_handlers::update_job_to_finished_handler;
+use super::node_api_handlers::update_smart_inbox_name_handler;
+use super::node_api_handlers::use_registration_code_handler;
 use super::node_api_handlers::NameToExternalProfileData;
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -67,7 +68,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use warp::Filter;
-
 
 #[derive(serde::Serialize, Debug, Clone)]
 pub struct SendResponseBodyData {
@@ -89,7 +89,6 @@ pub struct GetPublicKeysResponse {
     pub signature_public_key: String,
     pub encryption_public_key: String,
 }
-
 
 #[derive(Serialize, Debug, Clone)]
 pub struct APIError {
@@ -717,9 +716,8 @@ pub async fn run_api(
         warp::path!("v1" / "scan_ollama_models")
             .and(warp::post()) // Corrected from .and(warp::get()) to match the handler's expected method
             .and(warp::body::json::<ShinkaiMessage>()) // Ensure the body is deserialized into a ShinkaiMessage
-            .and_then(move |message: ShinkaiMessage| {
-                scan_ollama_models_handler(node_commands_sender.clone(), message)
-            }) // Corrected handler name and added message parameter
+            .and_then(move |message: ShinkaiMessage| scan_ollama_models_handler(node_commands_sender.clone(), message))
+        // Corrected handler name and added message parameter
     };
 
     // POST v1/add_ollama_models
@@ -740,6 +738,15 @@ pub async fn run_api(
             .and_then(move |subscription_id: String| {
                 get_subscription_links_handler(node_commands_sender.clone(), subscription_id)
             })
+    };
+
+    // POST v1/change_job_agent
+    let change_job_agent = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "change_job_agent")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| change_job_agent_handler(node_commands_sender.clone(), message))
     };
 
     let cors = warp::cors() // build the CORS filter
@@ -802,6 +809,7 @@ pub async fn run_api(
         .or(retrieve_vrkai)
         .or(retrieve_vrpack)
         .or(get_subscription_links)
+        .or(change_job_agent)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
