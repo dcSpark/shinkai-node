@@ -404,15 +404,21 @@ impl Node {
                 match subidentity_manager.add_agent_subidentity(agent.clone()).await {
                     Ok(_) => {
                         drop(subidentity_manager);
-                        let inboxes = Self::internal_get_all_inboxes_for_profile(
-                            identity_manager.clone(),
-                            db.clone(),
-                            profile.clone(),
-                        )
-                        .await;
 
-                        let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
-                        let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+                        let (has_job_inbox, welcome_message) = if profile.has_agent() {
+                            (false, false)
+                        } else {
+                            let inboxes = Self::internal_get_all_inboxes_for_profile(
+                                identity_manager.clone(),
+                                db.clone(),
+                                profile.clone(),
+                            )
+                            .await;
+
+                            let has_job_inbox = inboxes.iter().any(|inbox| inbox.starts_with("job_inbox"));
+                            let welcome_message = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+                            (has_job_inbox, welcome_message)
+                        };
 
                         if !has_job_inbox && welcome_message {
                             let shinkai_folder_fs = VectorFSFolderScopeEntry {
