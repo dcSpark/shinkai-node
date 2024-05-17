@@ -235,6 +235,10 @@ pub enum NodeCommand {
         profile: ShinkaiName,
         res: Sender<String>,
     },
+    APIChangeJobAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     APIAvailableAgents {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<SerializedAgent>, APIError>>,
@@ -302,6 +306,7 @@ pub enum NodeCommand {
     },
     APIVecFSRetrieveVectorSearchSimplifiedJson {
         msg: ShinkaiMessage,
+        #[allow(clippy::complexity)]
         res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
     },
     APIConvertFilesAndSaveToFolder {
@@ -388,6 +393,7 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    #[allow(dead_code)]
     LocalExtManagerProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
     },
@@ -598,7 +604,7 @@ impl Node {
         )
         .await;
 
-        let node = Arc::new(Mutex::new(Node {
+        Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             identity_public_key,
@@ -623,9 +629,7 @@ impl Node {
             ext_subscription_manager: ext_subscriber_manager,
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
-        }));
-
-        node
+        }))
     }
 
     // Start the node's operations.
@@ -1166,9 +1170,9 @@ impl Node {
                                                     msg,
                                                     res,
                                                 ).await;
-                                            }); 
+                                            });
                                         },
-                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await, 
+                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await,
                                         NodeCommand::APIModifyAgent { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let identity_manager_clone = self.identity_manager.clone();
@@ -1183,7 +1187,7 @@ impl Node {
                                                     msg,
                                                     res,
                                                 ).await;
-                                            }); 
+                                            });
                                         },
                                         NodeCommand::APIJobMessage { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
@@ -1198,6 +1202,23 @@ impl Node {
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
                                                     job_manager_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // NodeCommand::APIChangeJobAgent { msg, res } => self.api_change_job_agent(msg, res).await,
+                                        NodeCommand::APIChangeJobAgent { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let node_name_clone = self.node_name.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_change_job_agent(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
                                                     msg,
                                                     res,
                                                 ).await;
@@ -1387,7 +1408,7 @@ impl Node {
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
-                                                    msg, 
+                                                    msg,
                                                     res,
                                                 ).await;
                                             });

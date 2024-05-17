@@ -877,6 +877,19 @@ pub async fn get_subscription_links_handler(
     Ok(warp::reply::json(&links))
 }
 
+pub async fn change_job_agent_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIChangeJobAgent {
+            msg: message,
+            res: res_sender,
+        }
+    })
+    .await
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct APIUseRegistrationCodeSuccessResponse {
     pub message: String,

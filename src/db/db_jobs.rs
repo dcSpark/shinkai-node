@@ -34,7 +34,6 @@ impl ShinkaiDB {
 
         // Construct keys with job_id as part of the key
         let job_scope_key = format!("jobinbox_{}_scope", job_id);
-        let jobs_by_agent_id_key = format!("jobinbox_{}_{}_{}", agent_id, current_time, job_id); // Note: It won't work with prefix search. Unnecesary?
         let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
         let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
         let job_parent_agentid = format!("jobinbox_{}_agentid", job_id);
@@ -58,7 +57,6 @@ impl ShinkaiDB {
 
         // Put Job Data into the DB
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
-        batch.put_cf(cf_inbox, jobs_by_agent_id_key.as_bytes(), "".as_bytes());
         batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
         batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
         batch.put_cf(cf_inbox, job_parent_agentid.as_bytes(), agent_id.as_bytes());
@@ -96,6 +94,41 @@ impl ShinkaiDB {
                 format!("create_new_job execution time: {:?}", duration).as_str(),
             );
         }
+
+        Ok(())
+    }
+
+    /// Changes the agent of a specific job
+    pub fn change_job_agent(&self, job_id: &str, new_agent_id: &str) -> Result<(), ShinkaiDBError> {
+        let cf_inbox = self.get_cf_handle(Topic::Inbox).unwrap();
+
+        // Fetch the current agent ID
+        let current_agent_id_key = format!("jobinbox_{}_agentid", job_id);
+        let current_agent_id_value = self
+            .db
+            .get_cf(cf_inbox, current_agent_id_key.as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
+        let current_agent_id = std::str::from_utf8(&current_agent_id_value)?.to_string();
+
+        // Update the agent ID
+        let new_agent_id_key = format!("jobinbox_{}_agentid", job_id);
+        self.db
+            .put_cf(cf_inbox, new_agent_id_key.as_bytes(), new_agent_id.as_bytes())?;
+
+        // Update the job_parent_agentid_key
+        let old_job_parent_agentid_key = format!(
+            "jobinbox_agent_{}_{}",
+            Self::agent_id_to_hash(&current_agent_id),
+            job_id
+        );
+        let new_job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::agent_id_to_hash(new_agent_id), job_id);
+        let job_id_value = self
+            .db
+            .get_cf(cf_inbox, old_job_parent_agentid_key.as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
+        self.db.delete_cf(cf_inbox, old_job_parent_agentid_key.as_bytes())?;
+        self.db
+            .put_cf(cf_inbox, new_job_parent_agentid_key.as_bytes(), job_id_value)?;
 
         Ok(())
     }
@@ -312,7 +345,7 @@ impl ShinkaiDB {
         let mut jobs = Vec::new();
         let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
-            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let job_id = std::str::from_utf8(&value)?.to_string();
             let job = self.get_job_like(&job_id)?;
             jobs.push(job);
