@@ -27,30 +27,33 @@ pub struct NetworkMessage {
 
 impl NetworkMessage {
     pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Option<Self> {
+        eprintln!("\n\nReading message");
         let mut socket = socket.lock().await;
         let mut length_bytes = [0u8; 4];
         if socket.read_exact(&mut length_bytes).await.is_err() {
             return None;
         }
         let total_length = u32::from_be_bytes(length_bytes) as usize;
+        println!("Read total length: {}", total_length);
 
         let mut identity_length_bytes = [0u8; 4];
         if socket.read_exact(&mut identity_length_bytes).await.is_err() {
             return None;
         }
         let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+        println!("Read identity length: {}", identity_length);
 
         let mut identity_bytes = vec![0u8; identity_length];
         if socket.read_exact(&mut identity_bytes).await.is_err() {
             return None;
         }
+        println!("Read identity bytes length: {}", identity_bytes.len());
         let identity = String::from_utf8(identity_bytes).ok()?;
-
-        let msg_length = total_length - 1 - 4 - identity_length;
-        let mut buffer = vec![0u8; msg_length];
+        println!("Read identity: {}", identity);
 
         let mut header_byte = [0u8; 1];
         if socket.read_exact(&mut header_byte).await.is_err() {
+            eprintln!("Failed to read header byte");
             return None;
         }
         let message_type = match header_byte[0] {
@@ -58,10 +61,16 @@ impl NetworkMessage {
             0x02 => NetworkMessageType::VRKaiPathPair,
             _ => return None,
         };
+        println!("Read message type: {}", header_byte[0]);
+
+        let msg_length = total_length - 1 - 4 - identity_length;
+        let mut buffer = vec![0u8; msg_length];
+        println!("Calculated payload length: {}", msg_length);
 
         if socket.read_exact(&mut buffer).await.is_err() {
             return None;
         }
+        println!("Read payload length: {}", buffer.len());
 
         Some(NetworkMessage {
             identity,
@@ -84,71 +93,83 @@ impl NetworkMessage {
 // Notes:
 // Messages redirected to someone should be checked if the client is still connected if not send an error message back to the sender
 
-
 // TODO:
 // Messages are ShinkaiMessage / Encrypted Messages
 //
 // Check current implementation of the TCP protocol
 
-pub async fn handle_client(mut socket: TcpStream, clients: Clients) {
-    let (mut reader, mut writer) = socket.split();
-    let mut buffer = BytesMut::with_capacity(1024);
+pub async fn handle_client(socket: TcpStream, clients: Clients) {
+    eprintln!("New connection");
+    let socket = Arc::new(Mutex::new(socket));
 
     // Read identity
-    let identity = match read_message(&mut reader, &mut buffer).await {
-        Ok(msg) => msg,
-        Err(e) => {
-            eprintln!("Failed to read identity: {}", e);
+    let identity_msg = match NetworkMessage::read_from_socket(socket.clone()).await {
+        Some(msg) => msg,
+        None => {
+            eprintln!("Failed to read identity");
             return;
         }
     };
-    let identity_msg: Message = match serde_json::from_slice(&identity) {
-        Ok(msg) => msg,
-        Err(e) => {
-            eprintln!("Failed to parse identity message: {}", e);
-            return;
-        }
-    };
-    let identity = if let Message::Identity(id) = identity_msg {
-        id
-    } else {
-        eprintln!("Expected identity message");
-        return;
-    };
+
+    let identity = identity_msg.identity;
     println!("connected: {} ", identity);
+
+    // Old
+    // let (mut reader, mut writer) = socket.split();
+    // let mut buffer = BytesMut::with_capacity(1024);
+
+    // // Read identity
+    // let identity = match read_message(&mut reader, &mut buffer).await {
+    //     Ok(msg) => msg,
+    //     Err(e) => {
+    //         eprintln!("Failed to read identity: {}", e);
+    //         return;
+    //     }
+    // };
+    // let identity_msg: Message = match serde_json::from_slice(&identity) {
+    //     Ok(msg) => msg,
+    //     Err(e) => {
+    //         eprintln!("Failed to parse identity message: {}", e);
+    //         return;
+    //     }
+    // };
+    // let identity = if let Message::Identity(id) = identity_msg {
+    //     id
+    // } else {
+    //     eprintln!("Expected identity message");
+    //     return;
+    // };
+    // println!("connected: {} ", identity);
 
     let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
     clients.lock().await.insert(identity.clone(), tx);
 
     loop {
         tokio::select! {
-            msg = read_message(&mut reader, &mut buffer) => {
+            msg = NetworkMessage::read_from_socket(socket.clone()) => {
                 match msg {
-                    Ok(msg) => {
-                        let msg: Message = match serde_json::from_slice(&msg) {
-                            Ok(msg) => msg,
-                            Err(e) => {
-                                eprintln!("Failed to parse data message: {}", e);
-                                continue;
-                            }
-                        };
-                        if let Message::Data { destination, payload } = msg {
-                            if let Some(tx) = clients.lock().await.get(&destination) {
-                                 println!("sending: {} -> {}", identity, &destination);
-                                if tx.send(payload).await.is_err() {
-                                    eprintln!("Failed to send data to {}", destination);
+                    Some(msg) => {
+                        match msg.message_type {
+                            NetworkMessageType::ShinkaiMessage | NetworkMessageType::VRKaiPathPair => {
+                                let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
+                                if let Some(tx) = clients.lock().await.get(&destination) {
+                                    println!("sending: {} -> {}", identity, &destination);
+                                    if tx.send(msg.payload).await.is_err() {
+                                        eprintln!("Failed to send data to {}", destination);
+                                    }
                                 }
                             }
                         }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to read message: {}", e);
+                    None => {
+                        eprintln!("Failed to read message");
                         break;
                     }
                 }
             }
             Some(data) = rx.recv() => {
-                if write_message(&mut writer, &data).await.is_err() {
+                let mut socket = socket.lock().await;
+                if socket.write_all(&data).await.is_err() {
                     eprintln!("Failed to write message");
                     break;
                 }

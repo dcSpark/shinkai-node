@@ -1,3 +1,2 @@
-mod server;
-
+pub mod server;
 pub use server::*;

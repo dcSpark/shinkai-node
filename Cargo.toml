@@ -1,7 +1,7 @@
 [package]
 name = "shinkai_node"
 version = "0.7.5"
-edition = "2018"
+edition = "2021"
 
 [features]
 default = []
@@ -43,6 +43,7 @@ reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocki
 # llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 keyphrases = "0.3.3"
 shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives" }
+shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 bincode = "1.3.3"
 qrcode = "0.12"
