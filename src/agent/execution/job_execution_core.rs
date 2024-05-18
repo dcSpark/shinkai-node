@@ -292,6 +292,7 @@ impl JobManager {
                     &format!("Processing file: {}", filename),
                 );
 
+                let filename_lower = filename.to_lowercase();
                 if filename.ends_with(".jobkai") {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
@@ -367,10 +368,10 @@ impl JobManager {
                             return Err(AgentError::AgentNotFound);
                         }
                     }
-                } else if filename.ends_with(".png")
-                    || filename.ends_with(".jpg")
-                    || filename.ends_with(".jpeg")
-                    || filename.ends_with(".gif")
+                } else if filename_lower.ends_with(".png")
+                    || filename_lower.ends_with(".jpg")
+                    || filename_lower.ends_with(".jpeg")
+                    || filename_lower.ends_with(".gif")
                 {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
