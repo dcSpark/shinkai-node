@@ -1,21 +1,26 @@
 use bytes::{Buf, BytesMut};
 use clap::Parser;
+use rand::distributions::Alphanumeric;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
-use std::fmt;
 
 #[derive(Debug)]
 pub enum NetworkMessageError {
     ReadError(std::io::Error),
     Utf8Error(std::string::FromUtf8Error),
     UnknownMessageType(u8),
+    InvalidData,
 }
 
 impl fmt::Display for NetworkMessageError {
@@ -24,6 +29,7 @@ impl fmt::Display for NetworkMessageError {
             NetworkMessageError::ReadError(err) => write!(f, "Failed to read exact bytes from socket: {}", err),
             NetworkMessageError::Utf8Error(err) => write!(f, "Invalid UTF-8 sequence: {}", err),
             NetworkMessageError::UnknownMessageType(t) => write!(f, "Unknown message type: {}", t),
+            NetworkMessageError::InvalidData => write!(f, "Invalid data received"),
         }
     }
 }
@@ -34,6 +40,7 @@ impl std::error::Error for NetworkMessageError {
             NetworkMessageError::ReadError(err) => Some(err),
             NetworkMessageError::Utf8Error(err) => Some(err),
             NetworkMessageError::UnknownMessageType(_) => None,
+            NetworkMessageError::InvalidData => None,
         }
     }
 }
@@ -143,32 +150,12 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
     let identity = identity_msg.identity;
     println!("connected: {} ", identity);
 
-    // Old
-    // let (mut reader, mut writer) = socket.split();
-    // let mut buffer = BytesMut::with_capacity(1024);
+    if let Err(e) = validate_identity(socket.clone(), &identity).await {
+        eprintln!("Identity validation failed: {}", e);
+        return;
+    }
 
-    // // Read identity
-    // let identity = match read_message(&mut reader, &mut buffer).await {
-    //     Ok(msg) => msg,
-    //     Err(e) => {
-    //         eprintln!("Failed to read identity: {}", e);
-    //         return;
-    //     }
-    // };
-    // let identity_msg: Message = match serde_json::from_slice(&identity) {
-    //     Ok(msg) => msg,
-    //     Err(e) => {
-    //         eprintln!("Failed to parse identity message: {}", e);
-    //         return;
-    //     }
-    // };
-    // let identity = if let Message::Identity(id) = identity_msg {
-    //     id
-    // } else {
-    //     eprintln!("Expected identity message");
-    //     return;
-    // };
-    // println!("connected: {} ", identity);
+    println!("Identity validated: {}", identity);
 
     let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
     clients.lock().await.insert(identity.clone(), tx);
@@ -212,6 +199,69 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
 
     clients.lock().await.remove(&identity);
     println!("disconnected: {}", identity);
+}
+
+async fn validate_identity(socket: Arc<Mutex<TcpStream>>, identity: &str) -> Result<(), NetworkMessageError> {
+    if !identity.starts_with("localhost") {
+        let mut rng = StdRng::from_entropy();
+        let random_string: String = (0..16).map(|_| rng.sample(Alphanumeric) as char).collect();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        let validation_data = format!("{}{}", random_string, timestamp);
+
+        eprintln!("server> Generated validation data: {}", validation_data);
+
+        let validation_data_len = validation_data.len() as u32;
+        let validation_data_len_bytes = validation_data_len.to_be_bytes();
+
+        {
+            let mut socket = socket.lock().await;
+            eprintln!("server> Writing validation data length to socket");
+            socket.write_all(&validation_data_len_bytes).await?;
+            eprintln!("server> Validation data length written to socket");
+
+            eprintln!("server> Writing validation data to socket");
+            socket.write_all(validation_data.as_bytes()).await?;
+            eprintln!("server> Validation data written to socket");
+        }
+
+        let mut len_buffer = [0u8; 4];
+        {
+            let mut socket = socket.lock().await;
+            eprintln!("server> Reading validation response length from socket");
+            socket.read_exact(&mut len_buffer).await?;
+            eprintln!("server> Validation response length read from socket");
+        }
+
+        let response_len = u32::from_be_bytes(len_buffer) as usize;
+        let mut buffer = vec![0u8; response_len];
+        {
+            let mut socket = socket.lock().await;
+            eprintln!("server> Reading validation response from socket");
+            match socket.read_exact(&mut buffer).await {
+                Ok(_) => eprintln!("server> Validation response read from socket"),
+                Err(e) => eprintln!("server> Failed to read validation response: {}", e),
+            }
+        }
+
+        match String::from_utf8(buffer) {
+            Ok(data) => {
+                eprintln!("server> Received validation response: {}", data);
+                if data.trim() != validation_data {
+                    eprintln!("server> Validation response mismatch");
+                    return Err(NetworkMessageError::InvalidData);
+                }
+            }
+            Err(e) => {
+                eprintln!("server> Failed to decode validation response: {}", e);
+                return Err(NetworkMessageError::Utf8Error(e));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn read_message(

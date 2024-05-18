@@ -8,6 +8,47 @@ use tokio::sync::Mutex;
 use tokio::task;
 use tokio::time::sleep;
 use tokio::time::Duration;
+use tokio::io::AsyncReadExt;
+
+// #[tokio::test]
+async fn test_handle_client_localhost() {
+    // Setup a TCP listener
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    // Create a shared clients map
+    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+
+    // Spawn a task to accept connections
+    let clients_clone = clients.clone();
+    let handle = task::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        handle_client(socket, clients_clone).await;
+    });
+
+    // Connect to the listener
+    let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+
+    // Send a mock identity message
+    let identity = "localhost.shinkai";
+    let identity_msg = NetworkMessage {
+        identity: identity.to_string(),
+        message_type: NetworkMessageType::ShinkaiMessage,
+        payload: b"Hello, world!".to_vec(),
+    };
+    send_network_message(&mut socket, &identity_msg).await;
+    eprintln!("Sent identity message");
+    sleep(Duration::from_millis(100)).await;
+
+    // Check if the client was added to the clients map
+    {
+        let clients = clients.lock().await;
+        assert!(clients.contains_key(identity));
+    }
+
+    // Clean up
+    handle.abort();
+}
 
 #[tokio::test]
 async fn test_handle_client() {
@@ -35,8 +76,39 @@ async fn test_handle_client() {
         message_type: NetworkMessageType::ShinkaiMessage,
         payload: b"Hello, world!".to_vec(),
     };
+    eprintln!("Sending identity message");
     send_network_message(&mut socket, &identity_msg).await;
     eprintln!("Sent identity message");
+
+    // Handle validation
+    let mut len_buffer = [0u8; 4];
+    eprintln!("Waiting to read validation data length from server");
+    socket.read_exact(&mut len_buffer).await.unwrap();
+    let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
+    eprintln!("Received validation data length: {}", validation_data_len);
+
+    let mut buffer = vec![0u8; validation_data_len];
+    eprintln!("Waiting to read validation data from server");
+    match socket.read_exact(&mut buffer).await {
+        Ok(_) => {
+            eprintln!("Read validation data from server");
+            let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
+            eprintln!("Received validation data: {}", validation_data);
+
+            // Send the length of the validation data back to the server
+            let validation_data_len = validation_data.len() as u32;
+            let validation_data_len_bytes = validation_data_len.to_be_bytes();
+            socket.write_all(&validation_data_len_bytes).await.unwrap();
+
+            // Send the actual validation data back to the server
+            match socket.write_all(validation_data.as_bytes()).await {
+                Ok(_) => eprintln!("Sent validation data back to server"),
+                Err(e) => eprintln!("Failed to send validation data: {}", e),
+            }
+        }
+        Err(e) => eprintln!("Failed to read validation data: {}", e),
+    }
+
     sleep(Duration::from_millis(100)).await;
 
     // Check if the client was added to the clients map
@@ -47,6 +119,7 @@ async fn test_handle_client() {
 
     // Clean up
     handle.abort();
+    eprintln!("Test completed and handle aborted");
 }
 
 async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkMessage) {

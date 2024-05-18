@@ -2044,21 +2044,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinkai-tcp-relayer"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "clap",
- "ed25519-dalek",
- "serde",
- "serde_json",
- "shinkai_message_primitives",
- "tokio",
- "tokio-util 0.6.10",
- "x25519-dalek",
-]
-
-[[package]]
 name = "shinkai_message_primitives"
 version = "0.6.0"
 dependencies = [
@@ -2082,6 +2067,22 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "x25519-dalek",
+]
+
+[[package]]
+name = "shinkai_tcp_relayer"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "clap",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "shinkai_message_primitives",
+ "tokio",
+ "tokio-util 0.6.10",
  "x25519-dalek",
 ]
 
