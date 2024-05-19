@@ -179,7 +179,7 @@ pub struct ShinkaiRegistry {
 }
 
 impl ShinkaiRegistry {
-    pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
+    pub async fn new(url: &str, contract_address: &str, abi_path: Option<String>) -> Result<Self, ShinkaiRegistryError> {
         let provider =
             Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
@@ -191,16 +191,17 @@ impl ShinkaiRegistry {
             ShinkaiRegistryError::AbiError(ethers::abi::Error::InvalidData)
         })?;
 
-        let mut abi_json = include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string();
-        if !abi_path.is_empty() {
-            abi_json = fs::read_to_string(abi_path).map_err(ShinkaiRegistryError::IoError)?;
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::CryptoIdentity,
-                ShinkaiLogLevel::Info,
-                "Using default ABI",
-            );
-        }
+        let abi_json = match abi_path {
+            Some(path) => fs::read_to_string(path).map_err(ShinkaiRegistryError::IoError)?,
+            None => {
+                shinkai_log(
+                    ShinkaiLogOption::CryptoIdentity,
+                    ShinkaiLogLevel::Info,
+                    "Using default ABI",
+                );
+                include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string()
+            }
+        };
         let abi: Abi = serde_json::from_str(&abi_json).map_err(ShinkaiRegistryError::JsonError)?;
 
         let contract = Contract::new(contract_address, abi, Arc::new(provider));
@@ -270,6 +271,7 @@ impl ShinkaiRegistry {
         ) {
             Ok(call) => call,
             Err(err) => {
+                eprintln!("Error creating function call: {}", err);
                 shinkai_log(
                     ShinkaiLogOption::CryptoIdentity,
                     ShinkaiLogLevel::Error,
@@ -290,6 +292,7 @@ impl ShinkaiRegistry {
                 return Err(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
             }
         };
+        eprintln!("Result: {:?}", result);
 
         let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
         let last_updated = DateTime::<Utc>::from(last_updated);

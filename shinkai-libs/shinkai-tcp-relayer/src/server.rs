@@ -1,14 +1,16 @@
-use bytes::{Buf, BytesMut};
 use clap::Parser;
+use ed25519_dalek::Verifier;
 use rand::distributions::Alphanumeric;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use std::collections::HashMap;
-use std::fmt;
+use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{env, fmt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -74,6 +76,29 @@ pub struct NetworkMessage {
 }
 
 impl NetworkMessage {
+    fn validate_signature(
+        public_key: &ed25519_dalek::VerifyingKey,
+        message: &str,
+        signature: &str,
+    ) -> Result<bool, NetworkMessageError> {
+        // Decode the hex signature to bytes
+        let signature_bytes = hex::decode(signature).map_err(|_e| NetworkMessageError::InvalidData)?;
+
+        // Convert the bytes to Signature
+        let signature_bytes_slice = &signature_bytes[..];
+        let signature_bytes_array: &[u8; 64] = signature_bytes_slice
+            .try_into()
+            .map_err(|_| NetworkMessageError::InvalidData)?;
+
+        let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
+
+        // Verify the signature against the message
+        match public_key.verify(message.as_bytes(), &signature) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
     pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Self, NetworkMessageError> {
         eprintln!("\n\nReading message");
         let mut socket = socket.lock().await;
@@ -247,53 +272,31 @@ async fn validate_identity(socket: Arc<Mutex<TcpStream>>, identity: &str) -> Res
             }
         }
 
-        match String::from_utf8(buffer) {
-            Ok(data) => {
-                eprintln!("server> Received validation response: {}", data);
-                if data.trim() != validation_data {
-                    eprintln!("server> Validation response mismatch");
-                    return Err(NetworkMessageError::InvalidData);
-                }
-            }
-            Err(e) => {
-                eprintln!("server> Failed to decode validation response: {}", e);
-                return Err(NetworkMessageError::Utf8Error(e));
-            }
-        }
-    }
-    Ok(())
-}
+        let response = String::from_utf8(buffer).map_err(NetworkMessageError::Utf8Error)?;
+        eprintln!("server> Received validation response: {}", response);
 
-pub async fn read_message(
-    reader: &mut (impl AsyncReadExt + Unpin),
-    buffer: &mut BytesMut,
-) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
-    // Read the length prefix
-    while buffer.len() < 4 {
-        if reader.read_buf(buffer).await? == 0 {
-            return Err("Connection closed".into());
-        }
-    }
-    let len = (&buffer[..4]).get_u32() as usize;
-    buffer.advance(4);
+        // Fetch the public key from ShinkaiRegistry
+        let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
+        let contract_address =
+            env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
 
-    // Read the message
-    while buffer.len() < len {
-        if reader.read_buf(buffer).await? == 0 {
-            return Err("Connection closed".into());
-        }
-    }
-    let msg = buffer.split_to(len).to_vec();
-    Ok(msg)
-}
+        let mut registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None)
+            .await
+            .unwrap();
+        eprintln!("server> ShinkaiRegistry initialized");
+        let identity = identity.trim_start_matches("@@");
+        eprintln!("server> Fetching identity from registry: {}", identity);
+        let onchain_identity = registry.get_identity_record(identity.to_string()).await;
+        eprintln!("server> Identity fetched from registry: {:?}", onchain_identity);
+        let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
 
-pub async fn write_message(
-    writer: &mut (impl AsyncWriteExt + Unpin),
-    msg: &[u8],
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let len = msg.len() as u32;
-    writer.write_all(&len.to_be_bytes()).await?;
-    writer.write_all(msg).await?;
+        // Validate the signature
+        if !NetworkMessage::validate_signature(&public_key, &validation_data, &response)? {
+            eprintln!("server> Validation response mismatch");
+            return Err(NetworkMessageError::InvalidData);
+        }
+        eprintln!("server> Validation response matched");
+    }
     Ok(())
 }
 

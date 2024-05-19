@@ -1,11 +1,11 @@
 use super::identity_network_manager::IdentityNetworkManager;
-use crate::crypto_identities::shinkai_registry::ShinkaiRegistryError;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use async_trait::async_trait;
+use shinkai_crypto_identities::ShinkaiRegistryError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;

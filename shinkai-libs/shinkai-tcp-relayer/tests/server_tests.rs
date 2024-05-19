@@ -1,14 +1,16 @@
+use ed25519_dalek::Signer;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_tcp_relayer::server::{handle_client, Clients, NetworkMessage};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task;
 use tokio::time::sleep;
 use tokio::time::Duration;
-use tokio::io::AsyncReadExt;
 
 // #[tokio::test]
 async fn test_handle_client_localhost() {
@@ -70,7 +72,7 @@ async fn test_handle_client() {
     let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
 
     // Send a mock identity message
-    let identity = "@@test_client.shinkai";
+    let identity = "nico_requester.sepolia-shinkai";
     let identity_msg = NetworkMessage {
         identity: identity.to_string(),
         message_type: NetworkMessageType::ShinkaiMessage,
@@ -95,21 +97,35 @@ async fn test_handle_client() {
             let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
             eprintln!("Received validation data: {}", validation_data);
 
-            // Send the length of the validation data back to the server
-            let validation_data_len = validation_data.len() as u32;
-            let validation_data_len_bytes = validation_data_len.to_be_bytes();
-            socket.write_all(&validation_data_len_bytes).await.unwrap();
+            // Sign the validation data
+            let secret_key_bytes =
+                hex::decode("df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119").unwrap();
+            let secret_key_array: [u8; 32] = secret_key_bytes.try_into().expect("slice with incorrect length");
+            let secret_key = ed25519_dalek::SigningKey::from_bytes(&secret_key_array);
+            let signature = secret_key.sign(validation_data.as_bytes());
+            let signature_hex = hex::encode(signature.to_bytes());
+            eprintln!("Signed validation data: {}", signature_hex);
 
-            // Send the actual validation data back to the server
-            match socket.write_all(validation_data.as_bytes()).await {
-                Ok(_) => eprintln!("Sent validation data back to server"),
-                Err(e) => eprintln!("Failed to send validation data: {}", e),
+            // Send the length of the validation data back to the server
+            let signature_len = signature_hex.len() as u32;
+            let signature_len_bytes = signature_len.to_be_bytes();
+
+            // Send the length of the signed validation data back to the server
+            socket.write_all(&signature_len_bytes).await.unwrap();
+
+            // Send the signed validation data back to the server
+            match socket.write_all(signature_hex.as_bytes()).await {
+                Ok(_) => eprintln!("Sent signed validation data back to server"),
+                Err(e) => eprintln!("Failed to send signed validation data: {}", e),
             }
+
+            // Wait for the server to validate the signature
+            // TODO: add code to wait up to X            
         }
         Err(e) => eprintln!("Failed to read validation data: {}", e),
     }
 
-    sleep(Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(1000)).await;
 
     // Check if the client was added to the clients map
     {
