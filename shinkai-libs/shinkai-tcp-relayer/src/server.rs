@@ -8,57 +8,16 @@ use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::env;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, fmt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 
-#[derive(Debug)]
-pub enum NetworkMessageError {
-    ReadError(std::io::Error),
-    Utf8Error(std::string::FromUtf8Error),
-    UnknownMessageType(u8),
-    InvalidData,
-}
-
-impl fmt::Display for NetworkMessageError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NetworkMessageError::ReadError(err) => write!(f, "Failed to read exact bytes from socket: {}", err),
-            NetworkMessageError::Utf8Error(err) => write!(f, "Invalid UTF-8 sequence: {}", err),
-            NetworkMessageError::UnknownMessageType(t) => write!(f, "Unknown message type: {}", t),
-            NetworkMessageError::InvalidData => write!(f, "Invalid data received"),
-        }
-    }
-}
-
-impl std::error::Error for NetworkMessageError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            NetworkMessageError::ReadError(err) => Some(err),
-            NetworkMessageError::Utf8Error(err) => Some(err),
-            NetworkMessageError::UnknownMessageType(_) => None,
-            NetworkMessageError::InvalidData => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for NetworkMessageError {
-    fn from(err: std::io::Error) -> NetworkMessageError {
-        NetworkMessageError::ReadError(err)
-    }
-}
-
-impl From<std::string::FromUtf8Error> for NetworkMessageError {
-    fn from(err: std::string::FromUtf8Error) -> NetworkMessageError {
-        NetworkMessageError::Utf8Error(err)
-    }
-}
-// end error code
+use crate::NetworkMessageError;
 
 #[derive(Serialize, Deserialize, Debug)]
 enum Message {
@@ -183,51 +142,77 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
     println!("Identity validated: {}", identity);
 
     let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
-    clients.lock().await.insert(identity.clone(), tx);
+    {
+        let mut clients_lock = clients.lock().await;
+        clients_lock.insert(identity.clone(), tx);
+    }
 
-    loop {
-        tokio::select! {
-            msg = NetworkMessage::read_from_socket(socket.clone()) => {
-                match msg {
-                    Ok(msg) => {
-                        match msg.message_type {
-                            NetworkMessageType::ShinkaiMessage | NetworkMessageType::VRKaiPathPair => {
-                                let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
-                                if let Some(tx) = clients.lock().await.get(&destination) {
-                                    println!("sending: {} -> {}", identity, &destination);
-                                    if tx.send(msg.payload).await.is_err() {
-                                        eprintln!("Failed to send data to {}", destination);
+    let clients_clone = clients.clone();
+    let socket_clone = socket.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                msg = NetworkMessage::read_from_socket(socket_clone.clone()) => {
+                    match msg {
+                        Ok(msg) => {
+                            match msg.message_type {
+                                NetworkMessageType::ShinkaiMessage | NetworkMessageType::VRKaiPathPair => {
+                                    eprintln!("Received a new message: {:?}", msg);
+                                    let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
+                                    eprintln!("with destination: {}", destination);
+                                    if let Some(tx) = clients_clone.lock().await.get(&destination) {
+                                        println!("sending: {} -> {}", identity, &destination);
+                                        if tx.send(msg.payload).await.is_err() {
+                                            eprintln!("Failed to send data to {}", destination);
+                                        }
                                     }
                                 }
                             }
                         }
+                        Err(e) => {
+                            eprintln!("Failed to read message: {}", e);
+                            break;
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to read message: {}", e);
+                }
+                Some(data) = rx.recv() => {
+                    eprintln!("rx.recv()");
+                    let mut socket = socket_clone.lock().await;
+                    if socket.write_all(&data).await.is_err() {
+                        eprintln!("Failed to write message");
                         break;
                     }
                 }
-            }
-            Some(data) = rx.recv() => {
-                let mut socket = socket.lock().await;
-                if socket.write_all(&data).await.is_err() {
-                    eprintln!("Failed to write message");
+                else => {
+                    eprintln!("Connection lost for {}", identity);
                     break;
                 }
             }
-            else => {
-                eprintln!("Connection lost for {}", identity);
-                break;
-            }
         }
-    }
 
-    clients.lock().await.remove(&identity);
-    println!("disconnected: {}", identity);
+        {
+            let mut clients_lock = clients_clone.lock().await;
+            clients_lock.remove(&identity);
+        }
+        println!("disconnected: {}", identity);
+    });
+}
+
+async fn send_message_with_length(socket: &Arc<Mutex<TcpStream>>, message: String) -> Result<(), NetworkMessageError> {
+    let message_len = message.len() as u32;
+    let message_len_bytes = message_len.to_be_bytes();
+    let message_bytes = message.as_bytes();
+
+    let mut socket = socket.lock().await;
+    socket.write_all(&message_len_bytes).await?;
+    socket.write_all(message_bytes).await?;
+
+    Ok(())
 }
 
 async fn validate_identity(socket: Arc<Mutex<TcpStream>>, identity: &str) -> Result<(), NetworkMessageError> {
-    if !identity.starts_with("localhost") {
+    let identity = identity.trim_start_matches("@@");
+    let validation_result = if !identity.starts_with("localhost") {
         let mut rng = StdRng::from_entropy();
         let random_string: String = (0..16).map(|_| rng.sample(Alphanumeric) as char).collect();
         let timestamp = SystemTime::now()
@@ -237,35 +222,18 @@ async fn validate_identity(socket: Arc<Mutex<TcpStream>>, identity: &str) -> Res
             .to_string();
         let validation_data = format!("{}{}", random_string, timestamp);
 
-        eprintln!("server> Generated validation data: {}", validation_data);
-
-        let validation_data_len = validation_data.len() as u32;
-        let validation_data_len_bytes = validation_data_len.to_be_bytes();
-
-        {
-            let mut socket = socket.lock().await;
-            eprintln!("server> Writing validation data length to socket");
-            socket.write_all(&validation_data_len_bytes).await?;
-            eprintln!("server> Validation data length written to socket");
-
-            eprintln!("server> Writing validation data to socket");
-            socket.write_all(validation_data.as_bytes()).await?;
-            eprintln!("server> Validation data written to socket");
-        }
+        send_message_with_length(&socket, validation_data.clone()).await?;
 
         let mut len_buffer = [0u8; 4];
         {
             let mut socket = socket.lock().await;
-            eprintln!("server> Reading validation response length from socket");
             socket.read_exact(&mut len_buffer).await?;
-            eprintln!("server> Validation response length read from socket");
         }
 
         let response_len = u32::from_be_bytes(len_buffer) as usize;
         let mut buffer = vec![0u8; response_len];
         {
             let mut socket = socket.lock().await;
-            eprintln!("server> Reading validation response from socket");
             match socket.read_exact(&mut buffer).await {
                 Ok(_) => eprintln!("server> Validation response read from socket"),
                 Err(e) => eprintln!("server> Failed to read validation response: {}", e),
@@ -273,31 +241,36 @@ async fn validate_identity(socket: Arc<Mutex<TcpStream>>, identity: &str) -> Res
         }
 
         let response = String::from_utf8(buffer).map_err(NetworkMessageError::Utf8Error)?;
-        eprintln!("server> Received validation response: {}", response);
 
         // Fetch the public key from ShinkaiRegistry
         let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
         let contract_address =
             env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
 
-        let mut registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None)
-            .await
-            .unwrap();
-        eprintln!("server> ShinkaiRegistry initialized");
+        let mut registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
         let identity = identity.trim_start_matches("@@");
-        eprintln!("server> Fetching identity from registry: {}", identity);
         let onchain_identity = registry.get_identity_record(identity.to_string()).await;
-        eprintln!("server> Identity fetched from registry: {:?}", onchain_identity);
         let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
 
         // Validate the signature
         if !NetworkMessage::validate_signature(&public_key, &validation_data, &response)? {
-            eprintln!("server> Validation response mismatch");
-            return Err(NetworkMessageError::InvalidData);
+            Err(NetworkMessageError::InvalidData)
+        } else {
+            Ok(())
         }
-        eprintln!("server> Validation response matched");
-    }
-    Ok(())
+    } else {
+        Ok(())
+    };
+
+    // Send validation result back to the client
+    let validation_message = match &validation_result {
+        Ok(_) => "Validation successful".to_string(),
+        Err(e) => format!("Validation failed: {}", e),
+    };
+
+    send_message_with_length(&socket, validation_message).await?;
+
+    validation_result
 }
 
 #[derive(Parser, Debug)]

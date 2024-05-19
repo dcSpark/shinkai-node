@@ -271,7 +271,6 @@ impl ShinkaiRegistry {
         ) {
             Ok(call) => call,
             Err(err) => {
-                eprintln!("Error creating function call: {}", err);
                 shinkai_log(
                     ShinkaiLogOption::CryptoIdentity,
                     ShinkaiLogLevel::Error,
@@ -292,7 +291,6 @@ impl ShinkaiRegistry {
                 return Err(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
             }
         };
-        eprintln!("Result: {:?}", result);
 
         let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
         let last_updated = DateTime::<Utc>::from(last_updated);
