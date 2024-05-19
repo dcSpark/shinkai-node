@@ -1,5 +1,10 @@
 use ed25519_dalek::Signer;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_tcp_relayer::server::{handle_client, Clients, NetworkMessage};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -191,11 +196,19 @@ async fn test_message_from_localhost_to_nico_requester() {
         eprintln!("localhost connected");
     }
 
+    // Create a valid ShinkaiMessage
+    let encoded_msg = create_shinkai_message(
+        "@@localhost.sepolia-shinkai",
+        "@@nico_requester.sepolia-shinkai",
+        "Message from localhost to nico_requester",
+    )
+    .await;
+
     // Send a message from localhost to nico_requester
     let message_to_nico = NetworkMessage {
-        identity: nico_identity.to_string(),
+        identity: localhost_identity.to_string(),
         message_type: NetworkMessageType::ShinkaiMessage,
-        payload: b"Message from localhost to nico_requester".to_vec(),
+        payload: encoded_msg,
     };
     send_network_message(&mut localhost_socket, &message_to_nico).await;
     eprintln!("Sent message from localhost to nico_requester");
@@ -278,4 +291,22 @@ async fn handle_validation(socket: &mut tokio::net::TcpStream) {
     let response = String::from_utf8(response_buffer).unwrap();
     eprintln!("Received validation response: {}", response);
     assert_eq!(response, "Validation successful");
+}
+
+async fn create_shinkai_message(sender: &str, recipient: &str, content: &str) -> Vec<u8> {
+    let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+    let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+    let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
+        .message_raw_content(content.to_string())
+        .body_encryption(EncryptionMethod::None)
+        .message_schema_type(MessageSchemaType::TextContent)
+        .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None, None)
+        .external_metadata(recipient.to_string(), sender.to_string())
+        .build();
+
+    assert!(message_result.is_ok());
+    let message = message_result.unwrap();
+    serde_json::to_vec(&message).unwrap()
 }

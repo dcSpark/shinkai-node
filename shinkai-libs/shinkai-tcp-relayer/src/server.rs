@@ -6,6 +6,7 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
@@ -156,8 +157,35 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
                     match msg {
                         Ok(msg) => {
                             match msg.message_type {
-                                NetworkMessageType::ShinkaiMessage | NetworkMessageType::VRKaiPathPair => {
-                                    eprintln!("Received a new message: {:?}", msg);
+                                NetworkMessageType::ShinkaiMessage => {
+                                    eprintln!("Received a ShinkaiMessage: {:?}", msg);
+                                    let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
+                                    match shinkai_message {
+                                        Ok(parsed_message) => {
+                                            // Handle the parsed ShinkaiMessage here
+                                            eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
+
+                                                  // Extract recipient's name and remove @@ prefix if it exists
+                                            let recipient = parsed_message.external_metadata.recipient.trim_start_matches("@@").to_string();
+                                            eprintln!("Recipient: {}", recipient);
+
+                                             // Check if recipient exists in the list of connected clients
+                                             if let Some(tx) = clients_clone.lock().await.get(&recipient) {
+                                                 println!("redirecting message: {} -> {}", identity, &recipient);
+                                                 if tx.send(msg.payload).await.is_err() {
+                                                     eprintln!("Failed to send data to {}", recipient);
+                                                 }
+                                             } else {
+                                                 eprintln!("Recipient {} not connected", recipient);
+                                             }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                                        }
+                                    }
+                                }
+                                NetworkMessageType::VRKaiPathPair => {
+                                    eprintln!("Received a VRKaiPathPair message: {:?}", msg);
                                     let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
                                     eprintln!("with destination: {}", destination);
                                     if let Some(tx) = clients_clone.lock().await.get(&destination) {
@@ -176,7 +204,6 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
                     }
                 }
                 Some(data) = rx.recv() => {
-                    eprintln!("rx.recv()");
                     let mut socket = socket_clone.lock().await;
                     if socket.write_all(&data).await.is_err() {
                         eprintln!("Failed to write message");
