@@ -213,6 +213,17 @@ async fn test_message_from_localhost_to_nico_requester() {
     send_network_message(&mut localhost_socket, &message_to_nico).await;
     eprintln!("Sent message from localhost to nico_requester");
 
+    // Read the confirmation message from the server
+    let mut len_buffer = [0u8; 4];
+    localhost_socket.read_exact(&mut len_buffer).await.unwrap();
+    let message_len = u32::from_be_bytes(len_buffer) as usize;
+    eprintln!("Message length: {}", message_len);
+
+    let mut buffer = vec![0u8; message_len];
+    localhost_socket.read_exact(&mut buffer).await.unwrap();
+    let confirmation_message = String::from_utf8(buffer).unwrap();
+    eprintln!("Received confirmation on localhost: {}", confirmation_message);
+
     // Read the message on nico_requester side
     let mut len_buffer = [0u8; 4];
     nico_socket.read_exact(&mut len_buffer).await.unwrap();

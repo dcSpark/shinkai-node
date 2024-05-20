@@ -165,22 +165,45 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
                                             // Handle the parsed ShinkaiMessage here
                                             eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
 
-                                                  // Extract recipient's name and remove @@ prefix if it exists
+                                            // Extract recipient's name and remove @@ prefix if it exists
                                             let recipient = parsed_message.external_metadata.recipient.trim_start_matches("@@").to_string();
                                             eprintln!("Recipient: {}", recipient);
 
-                                             // Check if recipient exists in the list of connected clients
-                                             if let Some(tx) = clients_clone.lock().await.get(&recipient) {
-                                                 println!("redirecting message: {} -> {}", identity, &recipient);
-                                                 if tx.send(msg.payload).await.is_err() {
-                                                     eprintln!("Failed to send data to {}", recipient);
-                                                 }
-                                             } else {
-                                                 eprintln!("Recipient {} not connected", recipient);
-                                             }
+                                            // Check if recipient exists in the list of connected clients
+                                            if let Some(tx) = clients_clone.lock().await.get(&recipient) {
+                                                println!("redirecting message: {} -> {}", identity, &recipient);
+                                                if tx.send(msg.payload).await.is_err() {
+                                                    eprintln!("Failed to send data to {}", recipient);
+                                                    // Send back an error message to the sender
+                                                    let error_message = format!("Failed to send data to {}", recipient);
+                                                    if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                        eprintln!("Failed to send error message to sender: {}", e);
+                                                    }
+                                                } else {
+                                                    // Send back an OK message to the sender
+                                                    let ok_message = "OK".to_string();
+                                                    if let Err(e) = send_message_with_length(&socket_clone, ok_message).await {
+                                                        eprintln!("Failed to send OK message to sender: {}", e);
+                                                    } else {
+                                                        eprintln!("Sent OK message to sender");
+                                                    }
+                                                }
+                                            } else {
+                                                eprintln!("Recipient {} not connected", recipient);
+                                                // Send back an error message to the sender
+                                                let error_message = format!("Recipient {} not connected", recipient);
+                                                if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                    eprintln!("Failed to send error message to sender: {}", e);
+                                                }
+                                            }
                                         }
                                         Err(e) => {
                                             eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                                            // Send back an error message to the sender
+                                            let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
+                                            if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                eprintln!("Failed to send error message to sender: {}", e);
+                                            }
                                         }
                                     }
                                 }
@@ -227,7 +250,7 @@ pub async fn handle_client(socket: TcpStream, clients: Clients) {
 
 async fn send_message_with_length(socket: &Arc<Mutex<TcpStream>>, message: String) -> Result<(), NetworkMessageError> {
     let message_len = message.len() as u32;
-    let message_len_bytes = message_len.to_be_bytes();
+    let message_len_bytes = message_len.to_be_bytes(); // This will always be 4 bytes big-endian
     let message_bytes = message.as_bytes();
 
     let mut socket = socket.lock().await;
