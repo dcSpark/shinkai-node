@@ -9,7 +9,8 @@ async fn main() -> Result<(), NetworkMessageError> {
 
     let listener = TcpListener::bind(&address).await.unwrap();
     println!("Server listening on {}", address);
-    let proxy = TCPProxy::new().await?;
+    // TODO: Update this so it reads from cli args
+    let proxy = TCPProxy::new(None, None, None).await?;
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();

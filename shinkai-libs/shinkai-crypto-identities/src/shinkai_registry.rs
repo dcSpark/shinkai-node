@@ -212,6 +212,12 @@ impl ShinkaiRegistry {
     }
 
     pub async fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let identity = if identity.starts_with("@@") {
+            identity.trim_start_matches("@@").to_string()
+        } else {
+            identity
+        };
+        
         // eprintln!("Getting identity record for: {}", identity);
         let now = SystemTime::now();
 

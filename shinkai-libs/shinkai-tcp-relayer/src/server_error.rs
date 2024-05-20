@@ -1,11 +1,14 @@
 use std::fmt;
 
+use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
+
 #[derive(Debug)]
 pub enum NetworkMessageError {
     ReadError(std::io::Error),
     Utf8Error(std::string::FromUtf8Error),
     UnknownMessageType(u8),
     InvalidData,
+    ShinkaiMessageError(ShinkaiMessageError),
 }
 
 impl fmt::Display for NetworkMessageError {
@@ -15,6 +18,7 @@ impl fmt::Display for NetworkMessageError {
             NetworkMessageError::Utf8Error(err) => write!(f, "Invalid UTF-8 sequence: {}", err),
             NetworkMessageError::UnknownMessageType(t) => write!(f, "Unknown message type: {}", t),
             NetworkMessageError::InvalidData => write!(f, "Invalid data received"),
+            NetworkMessageError::ShinkaiMessageError(err) => write!(f, "Shinkai message error: {}", err),
         }
     }
 }
@@ -26,6 +30,7 @@ impl std::error::Error for NetworkMessageError {
             NetworkMessageError::Utf8Error(err) => Some(err),
             NetworkMessageError::UnknownMessageType(_) => None,
             NetworkMessageError::InvalidData => None,
+            NetworkMessageError::ShinkaiMessageError(err) => Some(err),
         }
     }
 }
@@ -39,5 +44,11 @@ impl From<std::io::Error> for NetworkMessageError {
 impl From<std::string::FromUtf8Error> for NetworkMessageError {
     fn from(err: std::string::FromUtf8Error) -> NetworkMessageError {
         NetworkMessageError::Utf8Error(err)
+    }
+}
+
+impl From<ShinkaiMessageError> for NetworkMessageError {
+    fn from(error: ShinkaiMessageError) -> Self {
+        NetworkMessageError::ShinkaiMessageError(error)
     }
 }

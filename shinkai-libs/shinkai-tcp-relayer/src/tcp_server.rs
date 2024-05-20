@@ -1,13 +1,16 @@
 use clap::Parser;
-use ed25519_dalek::Verifier;
+use derivative::Derivative;
+use ed25519_dalek::{SigningKey, Verifier, VerifyingKey};
 use rand::distributions::Alphanumeric;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use shinkai_crypto_identities::ShinkaiRegistry;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
+use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_static_key;
+use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
@@ -18,6 +21,7 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::NetworkMessageError;
 
@@ -61,22 +65,23 @@ impl NetworkMessage {
     }
 
     pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Self, NetworkMessageError> {
-        eprintln!("\n\nReading message");
+        eprintln!("\n\nread_from_socket> Reading message");
         let mut socket = socket.lock().await;
         let mut length_bytes = [0u8; 4];
         socket.read_exact(&mut length_bytes).await?;
         let total_length = u32::from_be_bytes(length_bytes) as usize;
-        println!("Read total length: {}", total_length);
+        println!("read_from_socket> Read total length: {}", total_length);
 
         let mut identity_length_bytes = [0u8; 4];
         socket.read_exact(&mut identity_length_bytes).await?;
         let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
-        println!("Read identity length: {}", identity_length);
+        println!("read_from_socket> Read identity length: {}", identity_length);
 
         let mut identity_bytes = vec![0u8; identity_length];
         socket.read_exact(&mut identity_bytes).await?;
-        println!("Read identity bytes length: {}", identity_bytes.len());
+        println!("read_from_socket> Read identity bytes length: {}", identity_bytes.len());
         let identity = String::from_utf8(identity_bytes)?;
+        eprintln!("read_from_socket> Read identity: {}", identity);
 
         let mut header_byte = [0u8; 1];
         socket.read_exact(&mut header_byte).await?;
@@ -85,14 +90,14 @@ impl NetworkMessage {
             0x02 => NetworkMessageType::VRKaiPathPair,
             _ => return Err(NetworkMessageError::UnknownMessageType(header_byte[0])),
         };
-        println!("Read message type: {}", header_byte[0]);
+        println!("read_from_socket> Read message type: {}", header_byte[0]);
 
         let msg_length = total_length - 1 - 4 - identity_length;
         let mut buffer = vec![0u8; msg_length];
-        println!("Calculated payload length: {}", msg_length);
+        println!("read_from_socket> Calculated payload length: {}", msg_length);
 
         socket.read_exact(&mut buffer).await?;
-        println!("Read payload length: {}", buffer.len());
+        println!("read_from_socket> Read payload length: {}", buffer.len());
 
         Ok(NetworkMessage {
             identity,
@@ -120,23 +125,89 @@ impl NetworkMessage {
 //
 // Check current implementation of the TCP protocol
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct TCPProxy {
     pub clients: TCPProxyClients,
     pub registry: ShinkaiRegistry,
+    pub node_name: ShinkaiName,
+    #[derivative(Debug = "ignore")]
+    pub identity_secret_key: SigningKey,
+    pub identity_public_key: VerifyingKey,
+    #[derivative(Debug = "ignore")]
+    pub encryption_secret_key: EncryptionStaticKey,
+    pub encryption_public_key: EncryptionPublicKey,
 }
 
 impl TCPProxy {
-    pub async fn new() -> Result<Self, NetworkMessageError> {
+    pub async fn new(
+        identity_secret_key: Option<SigningKey>,
+        encryption_secret_key: Option<EncryptionStaticKey>,
+        node_name: Option<String>,
+    ) -> Result<Self, NetworkMessageError> {
         let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
         let contract_address =
             env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
+        let identity_secret_key = identity_secret_key
+            .or_else(|| {
+                let key = env::var("IDENTITY_SECRET_KEY").expect("IDENTITY_SECRET_KEY not found in ENV");
+                let key_bytes: [u8; 32] = hex::decode(key)
+                    .expect("Invalid IDENTITY_SECRET_KEY")
+                    .try_into()
+                    .expect("Invalid length for IDENTITY_SECRET_KEY");
+                Some(SigningKey::from_bytes(&key_bytes))
+            })
+            .unwrap();
+
+        let encryption_secret_key = encryption_secret_key
+            .or_else(|| {
+                let key = env::var("ENCRYPTION_SECRET_KEY").expect("ENCRYPTION_SECRET_KEY not found in ENV");
+                Some(string_to_encryption_static_key(&key).expect("Invalid ENCRYPTION_SECRET_KEY"))
+            })
+            .unwrap();
+
+        let node_name = node_name
+            .or_else(|| Some(env::var("NODE_NAME").expect("NODE_NAME not found in ENV")))
+            .unwrap();
+
+        let identity_public_key = identity_secret_key.verifying_key();
+        let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
+        let node_name = ShinkaiName::new(node_name).unwrap();
+
+        // Fetch the public keys from the registry
+        let registry_identity = registry.get_identity_record(node_name.to_string()).await.unwrap();
+        eprintln!("Registry Identity: {:?}", registry_identity);
+        let registry_identity_public_key = registry_identity.signature_verifying_key().unwrap();
+        let registry_encryption_public_key = registry_identity.encryption_public_key().unwrap();
+
+        // Check if the provided keys match the ones from the registry
+        if identity_public_key != registry_identity_public_key {
+            eprintln!(
+                "Identity Public Key ENV: {:?}",
+                signature_public_key_to_string(identity_public_key)
+            );
+            eprintln!(
+                "Identity Public Key Registry: {:?}",
+                signature_public_key_to_string(registry_identity_public_key)
+            );
+            return Err(NetworkMessageError::InvalidData);
+        }
+
+        if encryption_public_key != registry_encryption_public_key {
+            return Err(NetworkMessageError::InvalidData);
+        }
+
         Ok(TCPProxy {
             clients: Arc::new(Mutex::new(HashMap::new())),
             registry,
+            node_name,
+            identity_secret_key,
+            identity_public_key,
+            encryption_secret_key,
+            encryption_public_key,
         })
     }
 
@@ -172,142 +243,22 @@ impl TCPProxy {
         let clients_clone = self.clients.clone();
         let socket_clone = socket.clone();
         let registry_clone = self.registry.clone();
+        let node_name = self.node_name.clone();
+        let identity_sk = self.identity_secret_key.clone();
+        let encryption_sk = self.encryption_secret_key.clone();
 
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     msg = NetworkMessage::read_from_socket(socket_clone.clone()) => {
-                        match msg {
-                            Ok(msg) => {
-                                match msg.message_type {
-                                    NetworkMessageType::ShinkaiMessage => {
-                                        eprintln!("Received a ShinkaiMessage ...");
-                                        let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
-                                        match shinkai_message {
-                                            Ok(parsed_message) => {
-                                                // Handle the parsed ShinkaiMessage here
-                                                eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
-
-                                                // Extract recipient's name and remove @@ prefix if it exists
-                                                let recipient = parsed_message.external_metadata.recipient.trim_start_matches("@@").to_string();
-                                                eprintln!("Recipient: {}", recipient);
-
-                                                // Check if recipient exists in the list of connected clients
-                                                if let Some(tx) = clients_clone.lock().await.get(&recipient) {
-                                                    println!("redirecting message: {} -> {}", identity, &recipient);
-                                                    if tx.send(msg.payload).await.is_err() {
-                                                        eprintln!("Failed to send data to {}", recipient);
-                                                        // Send back an error message to the sender
-                                                        let error_message = format!("Failed to send data to {}", recipient);
-                                                        if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                            eprintln!("Failed to send error message to sender: {}", e);
-                                                        }
-                                                    } else {
-                                                        // Send back an OK message to the sender
-                                                        let ok_message = "OK".to_string();
-                                                        if let Err(e) = send_message_with_length(&socket_clone, ok_message).await {
-                                                            eprintln!("Failed to send OK message to sender: {}", e);
-                                                        } else {
-                                                            eprintln!("Sent OK message to sender");
-                                                        }
-                                                    }
-                                                } else {
-                                                    eprintln!("Recipient {} not connected", recipient);
-                                                   // Attempt to fetch the first address of the recipient from the on-chain registry
-                                                   match registry_clone.get_identity_record(recipient.clone()).await {
-                                                    Ok(onchain_identity) => {
-                                                        match onchain_identity.first_address().await {
-                                                            Ok(first_address) => {
-                                                                // Connect to the first address and send the message
-                                                                eprintln!("Connecting to first address: {}", first_address);
-
-                                                                // TODO: check who is the receiving identity (localhost or valid identity)
-                                                                // TODO: if localhost we need to resign the message with the identity of the tcp relayer
-
-                                                                match TcpStream::connect(first_address).await {
-                                                                    Ok(mut stream) => {
-                                                                        let identity = &parsed_message.external_metadata.recipient;
-                                                                        let identity_bytes = identity.as_bytes();
-                                                                        let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-
-                                                                        // Prepare the message with a length prefix and identity length
-                                                                        let total_length = (msg.payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
-
-                                                                        let mut data_to_send = Vec::new();
-                                                                        let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
-                                                                        data_to_send.extend_from_slice(&total_length);
-                                                                        data_to_send.extend_from_slice(&identity_length);
-                                                                        data_to_send.extend(identity_bytes);
-                                                                        data_to_send.extend(header_data_to_send);
-                                                                        data_to_send.extend_from_slice(&msg.payload);
-                                                                        let _ = stream.write_all(&data_to_send).await;
-                                                                        let _ = stream.flush().await;
-                                                                        eprintln!("Sent message to {}", stream.peer_addr().unwrap());
-                                                                    }
-                                                                    Err(e) => {
-                                                                        eprintln!("Failed to connect to first address: {}", e);
-                                                                        // Send back an error message to the sender
-                                                                        let error_message = format!("Failed to connect to first address for {}", recipient);
-                                                                        if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                                            eprintln!("Failed to send error message to sender: {}", e);
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                eprintln!("Failed to fetch first address for {}: {}", recipient, e);
-                                                                // Send back an error message to the sender
-                                                                let error_message = format!("Recipient {} not connected and failed to fetch first address", recipient);
-                                                                if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                                    eprintln!("Failed to send error message to sender: {}", e);
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        eprintln!("Failed to fetch onchain identity for {}: {}", recipient, e);
-                                                        // Send back an error message to the sender
-                                                        let error_message = format!("Recipient {} not connected and failed to fetch onchain identity", recipient);
-                                                        if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                            eprintln!("Failed to send error message to sender: {}", e);
-                                                        }
-                                                    }
-                                                }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                eprintln!("Failed to parse ShinkaiMessage: {}", e);
-                                                // Send back an error message to the sender
-                                                let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
-                                                if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                    eprintln!("Failed to send error message to sender: {}", e);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    NetworkMessageType::VRKaiPathPair => {
-                                        eprintln!("Received a VRKaiPathPair message: {:?}", msg);
-                                        let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
-                                        eprintln!("with destination: {}", destination);
-                                        if let Some(tx) = clients_clone.lock().await.get(&destination) {
-                                            println!("sending: {} -> {}", identity, &destination);
-                                            if  tx.send(msg.payload).await.is_err() {
-                                                eprintln!("Failed to send data to {}", destination);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to read message: {}", e);
-                                break;
-                            }
+                        if let Err(e) = Self::handle_incoming_message(msg, &clients_clone, &socket_clone, &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
+                            eprintln!("Error handling incoming message: {}", e);
+                            break;
                         }
                     }
                     Some(data) = rx.recv() => {
-                        let mut socket = socket_clone.lock().await;
-                        if socket.write_all(&data).await.is_err() {
-                            eprintln!("Failed to write message");
+                        if let Err(e) = Self::handle_outgoing_message(data, &socket_clone).await {
+                            eprintln!("Error handling outgoing message: {}", e);
                             break;
                         }
                     }
@@ -324,6 +275,175 @@ impl TCPProxy {
             }
             println!("disconnected: {}", identity);
         });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_incoming_message(
+        msg: Result<NetworkMessage, NetworkMessageError>,
+        clients: &TCPProxyClients,
+        socket: &Arc<Mutex<TcpStream>>,
+        registry: &ShinkaiRegistry,
+        identity: &str,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+    ) -> Result<(), NetworkMessageError> {
+        match msg {
+            Ok(msg) => match msg.message_type {
+                NetworkMessageType::ShinkaiMessage => {
+                    eprintln!("Received a ShinkaiMessage ...");
+                    let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
+                    match shinkai_message {
+                        Ok(parsed_message) => {
+                            Self::handle_shinkai_message(
+                                parsed_message,
+                                clients,
+                                socket,
+                                registry,
+                                identity,
+                                node_name,
+                                identity_secret_key,
+                                encryption_secret_key,
+                            )
+                            .await
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                            let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
+                            send_message_with_length(socket, error_message).await
+                        }
+                    }
+                }
+                NetworkMessageType::VRKaiPathPair => {
+                    eprintln!("Received a VRKaiPathPair message: {:?}", msg);
+                    let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
+                    eprintln!("with destination: {}", destination);
+                    if let Some(tx) = clients.lock().await.get(&destination) {
+                        println!("sending: {} -> {}", identity, &destination);
+                        if tx.send(msg.payload).await.is_err() {
+                            eprintln!("Failed to send data to {}", destination);
+                        }
+                    }
+                    Ok(())
+                }
+            },
+            Err(e) => {
+                eprintln!("Failed to read message: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_shinkai_message(
+        parsed_message: ShinkaiMessage,
+        _clients: &TCPProxyClients,
+        socket: &Arc<Mutex<TcpStream>>,
+        registry: &ShinkaiRegistry,
+        sender_identity: &str,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+    ) -> Result<(), NetworkMessageError> {
+        eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
+
+        let recipient = parsed_message
+            .external_metadata
+            .recipient
+            .trim_start_matches("@@")
+            .to_string();
+        eprintln!("Recipient: {}", recipient);
+
+        // Check if the sender is @@localhost.*
+        eprintln!("Sender Identity {:?}", sender_identity);
+        let modified_message = if sender_identity.starts_with("localhost") {
+            eprintln!("Sender is localhost, modifying ShinkaiMessage");
+            Self::modify_shinkai_message(parsed_message, node_name, identity_secret_key, encryption_secret_key).await?
+        } else {
+            parsed_message
+        };
+        eprintln!("\n\nModified ShinkaiMessage: {:?}", modified_message);
+
+        match registry.get_identity_record(recipient.clone()).await {
+            Ok(onchain_identity) => {
+                match onchain_identity.first_address().await {
+                    Ok(first_address) => {
+                        eprintln!("Connecting to first address: {}", first_address);
+                        match TcpStream::connect(first_address).await {
+                            Ok(mut stream) => {
+                                let payload = modified_message.encode_message().unwrap();
+
+                                let identity_bytes = recipient.as_bytes();
+                                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+                                let total_length =
+                                    (payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
+
+                                let mut data_to_send = Vec::new();
+                                data_to_send.extend_from_slice(&total_length);
+                                data_to_send.extend_from_slice(&identity_length);
+                                data_to_send.extend(identity_bytes);
+                                data_to_send.push(0x01); // Message type identifier for ShinkaiMessage
+                                data_to_send.extend_from_slice(&payload);
+
+                                stream.write_all(&data_to_send).await?;
+                                stream.flush().await?;
+                                eprintln!("Sent message to {}", stream.peer_addr().unwrap());
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to connect to first address: {}", e);
+                                let error_message = format!("Failed to connect to first address for {}", recipient);
+                                send_message_with_length(socket, error_message).await?;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch first address for {}: {}", recipient, e);
+                        let error_message = format!(
+                            "Recipient {} not connected and failed to fetch first address",
+                            recipient
+                        );
+                        send_message_with_length(socket, error_message).await?;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch onchain identity for {}: {}", recipient, e);
+                let error_message = format!(
+                    "Recipient {} not connected and failed to fetch onchain identity",
+                    recipient
+                );
+                send_message_with_length(socket, error_message).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn modify_shinkai_message(
+        message: ShinkaiMessage,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+    ) -> Result<ShinkaiMessage, NetworkMessageError> {
+        eprintln!("Modifying ShinkaiMessage");
+
+        let mut modified_message = message;
+        modified_message.external_metadata.sender = node_name.to_string();
+        modified_message.external_metadata.intra_sender = node_name.to_string();
+        modified_message.body = match modified_message.body {
+            MessageBody::Unencrypted(mut body) => {
+                body.internal_metadata.sender_subidentity = node_name.to_string();
+                MessageBody::Unencrypted(body)
+            }
+            encrypted => encrypted,
+        };
+
+        // Re-sign the inner layer
+        modified_message.sign_inner_layer(&identity_secret_key)?;
+
+        // Re-sign the outer layer
+        let signed_message = modified_message.sign_outer_layer(&identity_secret_key)?;
+
+        Ok(signed_message)
     }
 
     async fn validate_identity(
@@ -386,6 +506,12 @@ impl TCPProxy {
         send_message_with_length(&socket, validation_message).await?;
 
         validation_result
+    }
+
+    async fn handle_outgoing_message(data: Vec<u8>, socket: &Arc<Mutex<TcpStream>>) -> Result<(), NetworkMessageError> {
+        let mut socket = socket.lock().await;
+        socket.write_all(&data).await?;
+        Ok(())
     }
 }
 

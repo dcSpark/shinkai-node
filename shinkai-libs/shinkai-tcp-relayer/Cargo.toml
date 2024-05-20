@@ -18,6 +18,7 @@ ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = "0.8"
 hex = "=0.4.3"
 chrono = "0.4"
+derivative = "2.2"
 
 [dependencies.serde]
 version = "1.0.188"
