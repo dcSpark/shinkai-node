@@ -525,6 +525,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), NodeError> {
         info!("{} > Pinging all peers {} ", listen_address, peers.len());
         for (peer, _) in peers.clone() {
@@ -549,6 +550,7 @@ impl Node {
                 receiver,
                 Arc::clone(&db),
                 identity_manager.clone(),
+                proxy_address,
             )
             .await;
         }

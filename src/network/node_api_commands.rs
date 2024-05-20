@@ -46,7 +46,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use std::{convert::TryInto, sync::Arc};
+use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -2733,6 +2733,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        proxy_address: Option<SocketAddr>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -2886,6 +2887,7 @@ impl Node {
             encrypted_msg,
             Arc::new(clone_static_secret_key(&encryption_secret_key)),
             (node_addr, recipient_node_name_string),
+            proxy_address,
             db.clone(),
             identity_manager.clone(),
             true,

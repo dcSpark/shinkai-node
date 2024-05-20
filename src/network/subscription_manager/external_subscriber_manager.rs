@@ -28,6 +28,7 @@ use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -89,6 +90,7 @@ pub struct ExternalSubscriberManager {
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
     pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
+    pub proxy_address: Option<SocketAddr>,
 }
 
 impl ExternalSubscriberManager {
@@ -99,6 +101,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
+        proxy_address: Option<SocketAddr>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
@@ -132,6 +135,7 @@ impl ExternalSubscriberManager {
                 subscription_ids_are_sync.clone(),
                 shared_folders_to_ephemeral_versioning.clone(),
                 thread_number,
+                proxy_address,
             )
             .await;
 
@@ -147,6 +151,7 @@ impl ExternalSubscriberManager {
             subscription_ids_are_sync.clone(),
             shared_folders_to_ephemeral_versioning.clone(),
             thread_number,
+            proxy_address,
             |subscription_with_tree,
              db,
              vector_fs,
@@ -156,7 +161,8 @@ impl ExternalSubscriberManager {
              identity_manager,
              shared_folders_trees,
              subscription_ids_are_sync,
-             shared_folders_to_ephemeral_versioning| {
+             shared_folders_to_ephemeral_versioning,
+             proxy_address | {
                 ExternalSubscriberManager::process_subscription_job_message_queued(
                     subscription_with_tree,
                     db,
@@ -168,6 +174,7 @@ impl ExternalSubscriberManager {
                     shared_folders_trees,
                     subscription_ids_are_sync,
                     shared_folders_to_ephemeral_versioning,
+                    proxy_address,
                 )
             },
         )
@@ -196,6 +203,7 @@ impl ExternalSubscriberManager {
             my_signature_secret_key,
             my_encryption_secret_key,
             http_subscription_upload_manager,
+            proxy_address,
         };
 
         let result = manager.update_shared_folders().await;
@@ -247,6 +255,7 @@ impl ExternalSubscriberManager {
         identity_manager: Weak<Mutex<IdentityManager>>,
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        proxy_address: Option<SocketAddr>,
     ) {
         let subscriptions_ids_to_process: Vec<SubscriptionId> = {
             let db = match db.upgrade() {
@@ -307,6 +316,7 @@ impl ExternalSubscriberManager {
                 my_signature_secret_key.clone(),
                 node_name.clone(),
                 identity_manager.clone(),
+                proxy_address,
             )
             .await;
         }
@@ -325,6 +335,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         _: usize, // tread_number
+        proxy_address: Option<SocketAddr>,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -361,6 +372,7 @@ impl ExternalSubscriberManager {
                     identity_manager.clone(),
                     subscription_ids_are_sync.clone(),
                     shared_folders_to_ephemeral_versioning.clone(),
+                    proxy_address,
                 )
                 .await;
 
@@ -389,6 +401,7 @@ impl ExternalSubscriberManager {
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         _subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         _shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        proxy_address: Option<SocketAddr>
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
@@ -555,6 +568,7 @@ impl ExternalSubscriberManager {
                         subscription_id.clone(),
                         standard_identity,
                         subscription_with_tree.symmetric_key,
+                        proxy_address,
                     )
                     .await;
 
@@ -591,6 +605,7 @@ impl ExternalSubscriberManager {
         subscription_id: SubscriptionId,
         receiver_identity: StandardIdentity,
         symmetric_key: String,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), SubscriberManagerError> {
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
@@ -616,6 +631,7 @@ impl ExternalSubscriberManager {
             subscription_id,
             symmetric_key,
             receiver_socket_addr,
+            proxy_address,
             receiver_name,
         )
         .await;
@@ -635,6 +651,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         thread_number: usize,
+        proxy_address: Option<SocketAddr>,
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<ShinkaiDB>,
@@ -646,6 +663,7 @@ impl ExternalSubscriberManager {
                 Arc<DashMap<String, SharedFolderInfo>>,
                 Arc<DashMap<String, (String, usize)>>,
                 Arc<DashMap<String, usize>>,
+                Option<SocketAddr>,
             ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
             + Send
             + Sync
@@ -742,6 +760,7 @@ impl ExternalSubscriberManager {
                                         shared_folders_trees.clone(),
                                         subscription_ids_are_sync.clone(),
                                         shared_folders_to_ephemeral_versioning_clone.clone(),
+                                        proxy_address,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager
@@ -1470,6 +1489,7 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1525,6 +1545,7 @@ impl ExternalSubscriberManager {
                 standard_identity,
                 my_encryption_secret_key.clone(),
                 maybe_identity_manager.clone(),
+                proxy_address,
             )
             .await?;
         } else {
@@ -1660,6 +1681,7 @@ impl ExternalSubscriberManager {
             self.identity_manager.clone(),
             self.subscription_ids_are_sync.clone(),
             self.shared_folders_to_ephemeral_versioning.clone(),
+            self.proxy_address,
         )
         .await;
     }

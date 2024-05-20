@@ -29,6 +29,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::Mutex;
@@ -61,6 +62,8 @@ pub struct MySubscriptionsManager {
     pub my_signature_secret_key: SigningKey,
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
+    // The address of the proxy server (if any)
+    proxy_address: Option<SocketAddr>,
 }
 
 impl MySubscriptionsManager {
@@ -71,6 +74,7 @@ impl MySubscriptionsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
+        proxy_address: Option<SocketAddr>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -118,6 +122,7 @@ impl MySubscriptionsManager {
             my_signature_secret_key,
             my_encryption_secret_key,
             http_download_manager,
+            proxy_address,
         }
     }
 
@@ -230,6 +235,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
+                        self.proxy_address,
                     )
                     .await?;
 
@@ -251,6 +257,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_address,
             )
             .await?;
 
@@ -352,6 +359,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_address,
             )
             .await?;
 
@@ -480,6 +488,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_address,
             )
             .await?;
 
@@ -714,6 +723,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
+                        self.proxy_address,
                     )
                     .await?;
                 }
@@ -745,6 +755,7 @@ impl MySubscriptionsManager {
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -779,7 +790,7 @@ impl MySubscriptionsManager {
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
         // Call the send function
-        Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
+        Node::send(message, my_encryption_sk, peer, proxy_address, db, maybe_identity_manager, false, None);
 
         Ok(())
     }

@@ -94,6 +94,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -132,6 +133,7 @@ impl NetworkJobManager {
             my_subscription_manager,
             external_subscription_manager,
             network_job_queue_manager.clone(),
+            proxy_address,
             |job,
              db,
              vector_fs,
@@ -140,7 +142,8 @@ impl NetworkJobManager {
              my_signature_secret_key,
              identity_manager,
              my_subscription_manager,
-             external_subscription_manager| {
+             external_subscription_manager,
+             proxy_address | {
                 Box::pin(NetworkJobManager::process_network_request_queued(
                     job,
                     db,
@@ -151,6 +154,7 @@ impl NetworkJobManager {
                     identity_manager,
                     my_subscription_manager,
                     external_subscription_manager,
+                    proxy_address,
                 ))
             },
         )
@@ -174,6 +178,7 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
+        proxy_address: Option<SocketAddr>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
                 Weak<ShinkaiDB>,                       // db
@@ -184,6 +189,7 @@ impl NetworkJobManager {
                 Arc<Mutex<IdentityManager>>,           // identity_manager
                 Arc<Mutex<MySubscriptionsManager>>,    // my_subscription_manager
                 Arc<Mutex<ExternalSubscriberManager>>, // external_subscription_manager
+                Option<SocketAddr>,                    // proxy_address
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
             + Send
             + Sync
@@ -260,6 +266,7 @@ impl NetworkJobManager {
                     let identity_manager_clone_2 = identity_manager_clone.clone();
                     let my_subscription_manager_clone_2 = my_subscription_manager_clone.clone();
                     let external_subscription_manager_clone_2 = external_subscription_manager_clone.clone();
+                    let proxy_address = proxy_address.clone();
 
                     let job_processing_fn = Arc::clone(&job_processing_fn);
 
@@ -287,6 +294,7 @@ impl NetworkJobManager {
                                         identity_manager_clone_2,
                                         my_subscription_manager_clone_2,
                                         external_subscription_manager_clone_2,
+                                        proxy_address,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -357,6 +365,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<String, NetworkJobQueueError> {
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -382,6 +391,7 @@ impl NetworkJobManager {
                     identity_manager.clone(),
                     my_subscription_manager.clone(),
                     external_subscription_manager.clone(),
+                    proxy_address,
                 )
                 .await;
             }
@@ -670,6 +680,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), NetworkJobQueueError> {
         let maybe_db = shinkai_db
             .upgrade()
@@ -757,6 +768,7 @@ impl NetworkJobManager {
             unsafe_sender_address,
             my_subscription_manager,
             external_subscription_manager,
+            proxy_address,
         )
         .await
     }

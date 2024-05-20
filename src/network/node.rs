@@ -573,6 +573,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
+                proxy_address,
             )
             .await,
         ));
@@ -585,6 +586,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
+                proxy_address,
             )
             .await,
         ));
@@ -599,6 +601,7 @@ impl Node {
             identity_manager.clone(),
             my_subscription_manager.clone(),
             ext_subscriber_manager.clone(),
+            proxy_address,
         )
         .await;
 
@@ -706,6 +709,7 @@ impl Node {
                         let db_clone = self.db.clone();
                         let encryption_secret_key_clone = self.encryption_secret_key.clone();
                         let identity_manager_clone = self.identity_manager.clone();
+                        let proxy_address = self.proxy_address.clone();
 
                         // Spawn a new task to call `retry_messages` asynchronously
                         tokio::spawn(async move {
@@ -713,6 +717,7 @@ impl Node {
                                 db_clone,
                                 encryption_secret_key_clone,
                                 identity_manager_clone,
+                                proxy_address,
                             ).await;
                         });
                     },
@@ -726,6 +731,7 @@ impl Node {
                         let db_clone = Arc::clone(&self.db);
                         let identity_manager_clone = Arc::clone(&self.identity_manager);
                         let listen_address_clone = self.listen_address;
+                        let proxy_address = self.proxy_address.clone();
 
                         // Spawn a new task to call `ping_all` asynchronously
                         tokio::spawn(async move {
@@ -737,6 +743,7 @@ impl Node {
                                 db_clone,
                                 identity_manager_clone,
                                 listen_address_clone,
+                                proxy_address,
                             ).await;
                         });
                     },
@@ -758,6 +765,7 @@ impl Node {
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let db_clone = Arc::clone(&self.db);
                                             let listen_address_clone = self.listen_address;
+                                            let proxy_address = self.proxy_address;
                                             tokio::spawn(async move {
                                                 let _ = Self::ping_all(
                                                     node_name_clone,
@@ -767,6 +775,7 @@ impl Node {
                                                     db_clone,
                                                     identity_manager_clone,
                                                     listen_address_clone,
+                                                    proxy_address,
                                                 ).await;
                                             });
                                         },
@@ -797,6 +806,7 @@ impl Node {
                                             let identity_manager_clone = Arc::clone(&self.identity_manager);
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let proxy_address = self.proxy_address;
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_send_onionized_message(
                                                     db_clone,
@@ -805,6 +815,7 @@ impl Node {
                                                     encryption_secret_key_clone,
                                                     identity_secret_key_clone,
                                                     msg,
+                                                    proxy_address,
                                                     res,
                                                 ).await;
                                             });
@@ -2128,6 +2139,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        proxy_address: Option<SocketAddr>,
     ) -> Result<(), NodeError> {
         let messages_to_retry = db.get_messages_to_retry_before(None)?;
 
@@ -2150,6 +2162,7 @@ impl Node {
                 retry_message.message,
                 Arc::new(encrypted_secret_key),
                 retry_message.peer,
+                proxy_address,
                 db.clone(),
                 identity_manager.clone(),
                 save_to_db_flag,
@@ -2177,10 +2190,12 @@ impl Node {
     // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the time to the current time
 
     // Send a message to a peer.
+    #[allow(clippy::too_many_arguments)]
     pub fn send(
         message: ShinkaiMessage,
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
+        proxy_address: Option<SocketAddr>,
         db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
@@ -2260,6 +2275,7 @@ impl Node {
         subscription_id: SubscriptionId,
         encryption_key_hex: String,
         peer: SocketAddr,
+        proxy_address: Option<SocketAddr>,
         recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {
