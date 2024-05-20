@@ -10,7 +10,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsRetrievePathSimplifiedJson, MessageSchemaType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair 
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -95,6 +95,7 @@ fn subscription_manager_test() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
@@ -114,6 +115,7 @@ fn subscription_manager_test() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,

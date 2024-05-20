@@ -80,7 +80,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
         })
     }
 
-    fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         match self.cache.get(&identity) {
             Some(value) => Ok(value.value().1.clone()),
             None => Err(ShinkaiRegistryError::CustomError("Identity not found in mock".to_string())),

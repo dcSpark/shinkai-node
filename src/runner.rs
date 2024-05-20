@@ -61,46 +61,6 @@ impl From<Box<dyn StdError + Send + Sync>> for NodeRunnerError {
     }
 }
 
-pub async fn tauri_initialize_node() -> Result<
-    (
-        async_channel::Sender<NodeCommand>,
-        JoinHandle<()>,
-        JoinHandle<()>,
-        JoinHandle<()>,
-        Weak<Mutex<Node>>,
-    ),
-    NodeRunnerError,
-> {
-    match initialize_node().await {
-        Ok((node_local_commands, api_server, node_task, ws_server, node)) => {
-            Ok((node_local_commands, api_server, node_task, ws_server, node))
-        }
-        Err(e) => {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                format!("Error running node: {}", e).as_str(),
-            );
-            Err(NodeRunnerError { source: e })
-        }
-    }
-}
-
-pub async fn tauri_run_node_tasks(
-    api_server: JoinHandle<()>,
-    node_task: JoinHandle<()>,
-    ws_server: JoinHandle<()>,
-    node: Weak<Mutex<Node>>,
-) -> Result<(), NodeRunnerError> {
-    match run_node_tasks(api_server, node_task, ws_server, node).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            eprintln!("Error running node tasks: {}", e);
-            Err(NodeRunnerError { source: e })
-        }
-    }
-}
-
 pub async fn initialize_node() -> Result<
     (
         Sender<NodeCommand>,
@@ -112,11 +72,11 @@ pub async fn initialize_node() -> Result<
     Box<dyn std::error::Error + Send + Sync>,
 > {
     // Check if TELEMETRY_ENDPOINT is defined
-    if let Ok(telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
+    if let Ok(_telemetry_endpoint) = std::env::var("TELEMETRY_ENDPOINT") {
         // If TELEMETRY_ENDPOINT is defined, initialize telemetry tracing
         #[cfg(feature = "telemetry")]
         {
-            init_telemetry_tracing(&telemetry_endpoint);
+            init_telemetry_tracing(&_telemetry_endpoint);
         }
     } else {
         // If TELEMETRY_ENDPOINT is not defined, initialize default tracing
@@ -221,6 +181,7 @@ pub async fn initialize_node() -> Result<
         node_commands_receiver,
         main_db_path.clone(),
         secrets_file_path.clone(),
+        node_env.proxy_address,
         node_env.first_device_needs_registration_code,
         initial_agents,
         node_env.js_toolkit_executor_remote.clone(),

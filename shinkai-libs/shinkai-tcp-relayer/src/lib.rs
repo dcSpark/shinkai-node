@@ -1,4 +1,4 @@
-pub mod server;
+pub mod tcp_server;
 pub mod server_error;
-pub use server::*;
+pub use tcp_server::*;
 pub use server_error::*;

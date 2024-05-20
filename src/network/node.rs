@@ -22,7 +22,6 @@ use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -31,6 +30,7 @@ use rand::Rng;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -457,6 +457,8 @@ pub struct Node {
     pub my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     // Network Job Manager
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
+    // Proxy Address
+    pub proxy_address: Option<SocketAddr>,
 }
 
 impl Node {
@@ -472,6 +474,7 @@ impl Node {
         commands: Receiver<NodeCommand>,
         main_db_path: String,
         secrets_file_path: String,
+        proxy_address: Option<SocketAddr>,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -599,7 +602,7 @@ impl Node {
         )
         .await;
 
-        let node = Arc::new(Mutex::new(Node {
+        Arc::new(Mutex::new(Node {
             node_name: node_name.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             identity_public_key,
@@ -624,9 +627,8 @@ impl Node {
             ext_subscription_manager: ext_subscriber_manager,
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
-        }));
-
-        node
+            proxy_address,
+        }))
     }
 
     // Start the node's operations.
@@ -1167,9 +1169,9 @@ impl Node {
                                                     msg,
                                                     res,
                                                 ).await;
-                                            }); 
+                                            });
                                         },
-                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await, 
+                                        // NodeCommand::APIModifyAgent { msg, res } => self.api_modify_agent(msg, res).await,
                                         NodeCommand::APIModifyAgent { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let identity_manager_clone = self.identity_manager.clone();
@@ -1184,7 +1186,7 @@ impl Node {
                                                     msg,
                                                     res,
                                                 ).await;
-                                            }); 
+                                            });
                                         },
                                         NodeCommand::APIJobMessage { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
@@ -1388,7 +1390,7 @@ impl Node {
                                                     node_name_clone,
                                                     identity_manager_clone,
                                                     encryption_secret_key_clone,
-                                                    msg, 
+                                                    msg,
                                                     res,
                                                 ).await;
                                             });

@@ -5,7 +5,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
-use shinkai_tcp_relayer::server::NetworkMessage;
+use shinkai_tcp_relayer::tcp_server::NetworkMessage;
 use shinkai_tcp_relayer::TCPProxy;
 use std::convert::TryInto;
 use tokio::io::AsyncReadExt;

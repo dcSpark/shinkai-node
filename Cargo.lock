@@ -6458,6 +6458,7 @@ dependencies = [
  "shinkai_crypto_identities",
  "shinkai_fs_mirror",
  "shinkai_message_primitives",
+ "shinkai_tcp_relayer",
  "shinkai_vector_resources",
  "tempfile",
  "thiserror",
@@ -6472,6 +6473,24 @@ dependencies = [
  "urlencoding 2.1.3",
  "uuid 0.8.2",
  "warp",
+ "x25519-dalek",
+]
+
+[[package]]
+name = "shinkai_tcp_relayer"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "clap 3.2.25",
+ "ed25519-dalek",
+ "hex",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shinkai_crypto_identities",
+ "shinkai_message_primitives",
+ "tokio",
+ "tokio-util 0.6.10",
  "x25519-dalek",
 ]
 

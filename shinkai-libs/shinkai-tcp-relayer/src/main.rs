@@ -1,6 +1,6 @@
-use shinkai_tcp_relayer::{Args, NetworkMessageError, TCPProxy};
-use tokio::net::TcpListener ;
 use clap::Parser;
+use shinkai_tcp_relayer::{Args, NetworkMessageError, TCPProxy};
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), NetworkMessageError> {

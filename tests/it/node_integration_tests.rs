@@ -1,12 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
 use core::panic;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
-};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
@@ -27,7 +22,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
@@ -101,6 +95,7 @@ fn subidentity_registration() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
@@ -120,6 +115,7 @@ fn subidentity_registration() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
