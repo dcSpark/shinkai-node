@@ -1,24 +1,21 @@
-use std::sync::Arc;
-use shinkai_tcp_relayer::{handle_client, Clients, Args};
-use std::collections::HashMap;
+use shinkai_tcp_relayer::{Args, NetworkMessageError, TCPProxy};
 use tokio::net::TcpListener ;
-use tokio::sync::Mutex;
 use clap::Parser;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), NetworkMessageError> {
     let args = Args::parse();
     let address = args.address;
 
     let listener = TcpListener::bind(&address).await.unwrap();
     println!("Server listening on {}", address);
-    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    let proxy = TCPProxy::new().await?;
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();
-        let clients = clients.clone();
+        let proxy = proxy.clone();
         tokio::spawn(async move {
-            handle_client(socket, clients).await;
+            proxy.handle_client(socket).await;
         });
     }
 }

@@ -5,32 +5,32 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
-use shinkai_tcp_relayer::server::{handle_client, Clients, NetworkMessage};
-use std::collections::HashMap;
+use shinkai_tcp_relayer::server::NetworkMessage;
+use shinkai_tcp_relayer::TCPProxy;
 use std::convert::TryInto;
-use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
 use tokio::task;
 use tokio::time::sleep;
 use tokio::time::Duration;
 
-// #[tokio::test]
+#[tokio::test]
 async fn test_handle_client_localhost() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // Create a shared clients map
-    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    // Create a TCPProxy instance
+    let proxy = TCPProxy::new().await.unwrap();
 
     // Spawn a task to accept connections
-    let clients_clone = clients.clone();
-    let handle = task::spawn(async move {
-        let (socket, _) = listener.accept().await.unwrap();
-        handle_client(socket, clients_clone).await;
+    let handle = task::spawn({
+        let proxy = proxy.clone();
+        async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            proxy.handle_client(socket).await;
+        }
     });
 
     // Connect to the listener
@@ -49,7 +49,7 @@ async fn test_handle_client_localhost() {
 
     // Check if the client was added to the clients map
     {
-        let clients = clients.lock().await;
+        let clients = proxy.clients.lock().await;
         assert!(clients.contains_key(identity));
     }
 
@@ -57,20 +57,22 @@ async fn test_handle_client_localhost() {
     handle.abort();
 }
 
-// #[tokio::test]
+#[tokio::test]
 async fn test_handle_client() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // Create a shared clients map
-    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    // Create a TCPProxy instance
+    let proxy = TCPProxy::new().await.unwrap();
 
     // Spawn a task to accept connections
-    let clients_clone = clients.clone();
-    let handle = task::spawn(async move {
-        let (socket, _) = listener.accept().await.unwrap();
-        handle_client(socket, clients_clone).await;
+    let handle = task::spawn({
+        let proxy = proxy.clone();
+        async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            proxy.handle_client(socket).await;
+        }
     });
 
     // Connect to the listener
@@ -134,7 +136,7 @@ async fn test_handle_client() {
 
     // Check if the client was added to the clients map
     {
-        let clients = clients.lock().await;
+        let clients = proxy.clients.lock().await;
         assert!(clients.contains_key(identity));
     }
 
@@ -149,15 +151,17 @@ async fn test_message_from_localhost_to_nico_requester() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // Create a shared clients map
-    let clients: Clients = Arc::new(Mutex::new(HashMap::new()));
+    // Create a TCPProxy instance
+    let proxy = TCPProxy::new().await.unwrap();
 
     // Spawn a task to accept connections
-    let clients_clone = clients.clone();
-    let handle = task::spawn(async move {
-        loop {
-            let (socket, _) = listener.accept().await.unwrap();
-            handle_client(socket, clients_clone.clone()).await;
+    let handle = task::spawn({
+        let proxy = proxy.clone();
+        async move {
+            loop {
+                let (socket, _) = listener.accept().await.unwrap();
+                proxy.handle_client(socket).await;
+            }
         }
     });
 
@@ -190,7 +194,7 @@ async fn test_message_from_localhost_to_nico_requester() {
 
     // Confirm localhost connection
     {
-        let clients = clients.lock().await;
+        let clients = proxy.clients.lock().await;
         eprintln!("{:?}", clients.keys());
         assert!(clients.contains_key(localhost_identity));
         eprintln!("localhost connected");
@@ -217,25 +221,24 @@ async fn test_message_from_localhost_to_nico_requester() {
     let mut len_buffer = [0u8; 4];
     localhost_socket.read_exact(&mut len_buffer).await.unwrap();
     let message_len = u32::from_be_bytes(len_buffer) as usize;
-    eprintln!("Message length: {}", message_len);
 
     let mut buffer = vec![0u8; message_len];
     localhost_socket.read_exact(&mut buffer).await.unwrap();
     let confirmation_message = String::from_utf8(buffer).unwrap();
     eprintln!("Received confirmation on localhost: {}", confirmation_message);
 
-    // Read the message on nico_requester side
+    // Read the message from the server on localhost
     let mut len_buffer = [0u8; 4];
-    nico_socket.read_exact(&mut len_buffer).await.unwrap();
+    localhost_socket.read_exact(&mut len_buffer).await.unwrap();
     let message_len = u32::from_be_bytes(len_buffer) as usize;
 
     let mut buffer = vec![0u8; message_len];
-    nico_socket.read_exact(&mut buffer).await.unwrap();
+    localhost_socket.read_exact(&mut buffer).await.unwrap();
     let received_message = String::from_utf8(buffer).unwrap();
-    eprintln!("Received message on nico_requester: {}", received_message);
+    eprintln!("Received message on localhost: {}", received_message);
 
     // Assert the received message
-    assert_eq!(received_message, "Message from localhost to nico_requester");
+    assert_eq!(received_message, "OK");
 
     // Clean up
     handle.abort();

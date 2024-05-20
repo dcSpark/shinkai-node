@@ -168,7 +168,7 @@ pub trait ShinkaiRegistryTrait {
     fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError>
     where
         Self: Sized;
-    fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError>;
+    fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError>;
     fn get_cache_time(&self, identity: &str) -> Option<SystemTime>;
 }
 
@@ -211,7 +211,7 @@ impl ShinkaiRegistry {
         })
     }
 
-    pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    pub async fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         // eprintln!("Getting identity record for: {}", identity);
         let now = SystemTime::now();
 
