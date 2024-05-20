@@ -3770,6 +3770,7 @@ name = "shinkai_tcp_relayer"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "chrono",
  "clap",
  "ed25519-dalek",
  "hex",

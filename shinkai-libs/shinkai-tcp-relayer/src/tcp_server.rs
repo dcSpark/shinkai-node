@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
@@ -170,6 +171,8 @@ impl TCPProxy {
 
         let clients_clone = self.clients.clone();
         let socket_clone = socket.clone();
+        let registry_clone = self.registry.clone();
+
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -210,11 +213,66 @@ impl TCPProxy {
                                                     }
                                                 } else {
                                                     eprintln!("Recipient {} not connected", recipient);
-                                                    // Send back an error message to the sender
-                                                    let error_message = format!("Recipient {} not connected", recipient);
-                                                    if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
-                                                        eprintln!("Failed to send error message to sender: {}", e);
+                                                   // Attempt to fetch the first address of the recipient from the on-chain registry
+                                                   match registry_clone.get_identity_record(recipient.clone()).await {
+                                                    Ok(onchain_identity) => {
+                                                        match onchain_identity.first_address().await {
+                                                            Ok(first_address) => {
+                                                                // Connect to the first address and send the message
+                                                                eprintln!("Connecting to first address: {}", first_address);
+
+                                                                // TODO: check who is the receiving identity (localhost or valid identity)
+                                                                // TODO: if localhost we need to resign the message with the identity of the tcp relayer
+
+                                                                match TcpStream::connect(first_address).await {
+                                                                    Ok(mut stream) => {
+                                                                        let identity = &parsed_message.external_metadata.recipient;
+                                                                        let identity_bytes = identity.as_bytes();
+                                                                        let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+
+                                                                        // Prepare the message with a length prefix and identity length
+                                                                        let total_length = (msg.payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
+
+                                                                        let mut data_to_send = Vec::new();
+                                                                        let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                                                                        data_to_send.extend_from_slice(&total_length);
+                                                                        data_to_send.extend_from_slice(&identity_length);
+                                                                        data_to_send.extend(identity_bytes);
+                                                                        data_to_send.extend(header_data_to_send);
+                                                                        data_to_send.extend_from_slice(&msg.payload);
+                                                                        let _ = stream.write_all(&data_to_send).await;
+                                                                        let _ = stream.flush().await;
+                                                                        eprintln!("Sent message to {}", stream.peer_addr().unwrap());
+                                                                    }
+                                                                    Err(e) => {
+                                                                        eprintln!("Failed to connect to first address: {}", e);
+                                                                        // Send back an error message to the sender
+                                                                        let error_message = format!("Failed to connect to first address for {}", recipient);
+                                                                        if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                                            eprintln!("Failed to send error message to sender: {}", e);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                eprintln!("Failed to fetch first address for {}: {}", recipient, e);
+                                                                // Send back an error message to the sender
+                                                                let error_message = format!("Recipient {} not connected and failed to fetch first address", recipient);
+                                                                if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                                    eprintln!("Failed to send error message to sender: {}", e);
+                                                                }
+                                                            }
+                                                        }
                                                     }
+                                                    Err(e) => {
+                                                        eprintln!("Failed to fetch onchain identity for {}: {}", recipient, e);
+                                                        // Send back an error message to the sender
+                                                        let error_message = format!("Recipient {} not connected and failed to fetch onchain identity", recipient);
+                                                        if let Err(e) = send_message_with_length(&socket_clone, error_message).await {
+                                                            eprintln!("Failed to send error message to sender: {}", e);
+                                                        }
+                                                    }
+                                                }
                                                 }
                                             }
                                             Err(e) => {
