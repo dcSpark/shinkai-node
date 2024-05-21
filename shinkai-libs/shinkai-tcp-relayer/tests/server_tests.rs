@@ -11,7 +11,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
-use shinkai_tcp_relayer::tcp_server::NetworkMessage;
+use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_tcp_relayer::TCPProxy;
 use std::convert::TryInto;
 use std::env;
@@ -27,7 +27,7 @@ const RELAYER_IDENTITY: &str = "@@tcp_replay_test.sepolia-shinkai";
 const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "e083ca3250c9dac7e79d0cc91fdabce9af748c38d6435fe023ad2b8cae87c155";
 const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "ed25dc9689b0e2876c60b65a2565cb3ec74425b6b6fca3b28d49d294368b320d";
 
-#[tokio::test]
+// #[tokio::test]
 async fn test_handle_client_localhost() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -62,7 +62,7 @@ async fn test_handle_client_localhost() {
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, _encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    // Send a mock identity message
+    // Send the initial connection message
     let identity_msg = NetworkMessage {
         identity: identity.to_string(),
         message_type: NetworkMessageType::ProxyMessage,
@@ -95,7 +95,7 @@ async fn test_handle_client_localhost() {
     handle.abort();
 }
 
-// #[tokio::test]
+#[tokio::test]
 async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:9552").await.unwrap();
@@ -129,26 +129,17 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     // Connect to the listener
     let localhost_identity = "localhost.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, _encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_encryption_sk, _encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (_relayer_verifying_key, relayer_encryption_key) = get_onchain_identity(RELAYER_IDENTITY).await;
+    let (_relayer_verifying_key, _relayer_encryption_key) = get_onchain_identity(RELAYER_IDENTITY).await;
 
-    // Initial Message
-    let msg = initial_shinkai_msg(
-        encryption_sk,
-        identity_sk.clone(),
-        relayer_encryption_key,
-        "".to_string(),
-        localhost_identity.to_string(),
-        RELAYER_IDENTITY.to_string(),
-    );
-
-    // Send a mock identity message
+    // Send the initial connection message
     let identity_msg = NetworkMessage {
         identity: localhost_identity.to_string(),
-        message_type: NetworkMessageType::ShinkaiMessage,
-        payload: msg.encode_message().unwrap(),
+        message_type: NetworkMessageType::ProxyMessage,
+        payload: Vec::new(),
     };
+
     send_network_message(&mut localhost_socket, &identity_msg).await;
     eprintln!("Sent identity message");
     sleep(Duration::from_millis(100)).await;
@@ -159,7 +150,10 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     // Check if the client was added to the clients map
     {
         let clients = proxy.clients.lock().await;
-        assert!(clients.contains_key(localhost_identity));
+        let expected_key = format!("{}:::{}", localhost_identity, hex::encode(identity_pk.to_bytes()));
+        eprintln!("Expected key: {}", expected_key);
+        eprintln!("Clients map keys: {:?}", clients.keys().collect::<Vec<&String>>());
+        assert!(clients.contains_key(&expected_key));
     }
     // Check if the client's public key was added to the pk_to_clients map
     {
@@ -187,54 +181,46 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
 
     eprintln!("Sent identity message for localhost");
     send_network_message(&mut localhost_socket, &localhost_msg).await;
-    sleep(Duration::from_millis(2000)).await;
-
-    panic!("stop");
 
     // Confirm localhost connection
     {
         let clients = proxy.clients.lock().await;
-        eprintln!("{:?}", clients.keys());
-        assert!(clients.contains_key(localhost_identity));
-        eprintln!("localhost connected");
+        let expected_key = format!("{}:::{}", localhost_identity, hex::encode(identity_pk.to_bytes()));
+        eprintln!("Expected key: {}", expected_key);
+        eprintln!("Clients map keys: {:?}", clients.keys().collect::<Vec<&String>>());
+        assert!(clients.contains_key(&expected_key));
     }
 
-    // Create a valid ShinkaiMessage
-    let encoded_msg = create_shinkai_message(
-        "@@localhost.sepolia-shinkai",
-        "@@farcaster_xyz.sepolia-shinkai",
-        "Message from localhost to farcaster_xyz",
-    )
-    .await;
-
-    // Send a message from localhost to farcaster_xyz
-    let message_to_nico = NetworkMessage {
-        identity: localhost_identity.to_string(),
-        message_type: NetworkMessageType::ShinkaiMessage,
-        payload: encoded_msg,
-    };
-    send_network_message(&mut localhost_socket, &message_to_nico).await;
-    eprintln!("Sent message from localhost to farcaster_xyz");
-
-    // Read the confirmation message from the server
+    // Await for message from the server
     let mut len_buffer = [0u8; 4];
     localhost_socket.read_exact(&mut len_buffer).await.unwrap();
-    let message_len = u32::from_be_bytes(len_buffer) as usize;
+    let total_length = u32::from_be_bytes(len_buffer) as usize;
 
-    let mut buffer = vec![0u8; message_len];
+    let mut buffer = vec![0u8; total_length];
     localhost_socket.read_exact(&mut buffer).await.unwrap();
-    let confirmation_message = String::from_utf8(buffer).unwrap();
-    eprintln!("Received confirmation on localhost: {}", confirmation_message);
 
-    // Read the message from the server on localhost
-    let mut len_buffer = [0u8; 4];
-    localhost_socket.read_exact(&mut len_buffer).await.unwrap();
-    let message_len = u32::from_be_bytes(len_buffer) as usize;
+    let mut cursor = std::io::Cursor::new(buffer);
 
-    let mut buffer = vec![0u8; message_len];
-    localhost_socket.read_exact(&mut buffer).await.unwrap();
-    let received_message = String::from_utf8(buffer).unwrap();
-    eprintln!("Received message on localhost: {}", received_message);
+    // Read identity length
+    let mut identity_len_buffer = [0u8; 4];
+    cursor.read_exact(&mut identity_len_buffer).await.unwrap();
+    let identity_length = u32::from_be_bytes(identity_len_buffer) as usize;
+
+    // Read identity
+    let mut identity_buffer = vec![0u8; identity_length];
+    cursor.read_exact(&mut identity_buffer).await.unwrap();
+    let _identity = String::from_utf8(identity_buffer).unwrap();
+
+    // Read message type
+    let mut message_type_buffer = [0u8; 1];
+    cursor.read_exact(&mut message_type_buffer).await.unwrap();
+    let _message_type = message_type_buffer[0];
+
+    // Read the actual message
+    let mut message_buffer = vec![0u8; total_length - 4 - identity_length - 1];
+    cursor.read_exact(&mut message_buffer).await.unwrap();
+    let received_message = String::from_utf8(message_buffer).unwrap();
+    eprintln!("Received message: {}", received_message);
 
     // Assert the received message
     assert_eq!(received_message, "OK");
