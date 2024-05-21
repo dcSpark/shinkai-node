@@ -32,7 +32,6 @@ export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-previ
 
 export RPC_URL="https://rpc.sepolia.org"
 export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"
-export ABI_PATH="./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

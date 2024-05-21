@@ -2092,6 +2092,7 @@ impl Node {
                         let message_type = match header_byte[0] {
                             0x01 => NetworkMessageType::ShinkaiMessage,
                             0x02 => NetworkMessageType::VRKaiPathPair,
+                            0x03 => NetworkMessageType::ProxyMessage,
                             _ => {
                                 shinkai_log(
                                     ShinkaiLogOption::Node,

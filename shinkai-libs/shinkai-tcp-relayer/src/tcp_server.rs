@@ -4,7 +4,6 @@ use ed25519_dalek::{SigningKey, Verifier, VerifyingKey};
 use rand::distributions::Alphanumeric;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use serde::{Deserialize, Serialize};
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -25,13 +24,9 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::NetworkMessageError;
 
-#[derive(Serialize, Deserialize, Debug)]
-enum Message {
-    Identity(String),
-    Data { destination: String, payload: Vec<u8> },
-}
-
-pub type TCPProxyClients = Arc<Mutex<HashMap<String, Sender<Vec<u8>>>>>;
+pub type TCPProxyClients = Arc<Mutex<HashMap<String, Sender<Vec<u8>>>>>; // e.g. @@nico.shinkai -> Sender, @@localhost.shinkai:::PK -> Sender
+pub type TCPProxyPKtoIdentity = Arc<Mutex<HashMap<String, Sender<Vec<u8>>>>>; // e.g. PK -> @@localhost.shinkai:::PK
+pub type PublicKeyHex = String;
 
 #[derive(Debug)]
 pub struct NetworkMessage {
@@ -41,29 +36,6 @@ pub struct NetworkMessage {
 }
 
 impl NetworkMessage {
-    fn validate_signature(
-        public_key: &ed25519_dalek::VerifyingKey,
-        message: &str,
-        signature: &str,
-    ) -> Result<bool, NetworkMessageError> {
-        // Decode the hex signature to bytes
-        let signature_bytes = hex::decode(signature).map_err(|_e| NetworkMessageError::InvalidData)?;
-
-        // Convert the bytes to Signature
-        let signature_bytes_slice = &signature_bytes[..];
-        let signature_bytes_array: &[u8; 64] = signature_bytes_slice
-            .try_into()
-            .map_err(|_| NetworkMessageError::InvalidData)?;
-
-        let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
-
-        // Verify the signature against the message
-        match public_key.verify(message.as_bytes(), &signature) {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
-        }
-    }
-
     pub async fn read_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Self, NetworkMessageError> {
         eprintln!("\n\nread_from_socket> Reading message");
         let mut socket = socket.lock().await;
@@ -88,6 +60,7 @@ impl NetworkMessage {
         let message_type = match header_byte[0] {
             0x01 => NetworkMessageType::ShinkaiMessage,
             0x02 => NetworkMessageType::VRKaiPathPair,
+            0x03 => NetworkMessageType::ProxyMessage,
             _ => return Err(NetworkMessageError::UnknownMessageType(header_byte[0])),
         };
         println!("read_from_socket> Read message type: {}", header_byte[0]);
@@ -129,6 +102,7 @@ impl NetworkMessage {
 #[derivative(Debug)]
 pub struct TCPProxy {
     pub clients: TCPProxyClients,
+    pub pk_to_clients: TCPProxyPKtoIdentity,
     pub registry: ShinkaiRegistry,
     pub node_name: ShinkaiName,
     #[derivative(Debug = "ignore")]
@@ -202,6 +176,7 @@ impl TCPProxy {
 
         Ok(TCPProxy {
             clients: Arc::new(Mutex::new(HashMap::new())),
+            pk_to_clients: Arc::new(Mutex::new(HashMap::new())),
             registry,
             node_name,
             identity_secret_key,
@@ -211,33 +186,111 @@ impl TCPProxy {
         })
     }
 
+    /// Handle a new client connection
+    /// Which could be:
+    /// - a Node that needs punch hole
+    /// - a Node answering to a request that needs to get redirected to a Node using a punch hole
     pub async fn handle_client(&self, socket: TcpStream) {
         eprintln!("New connection");
         let socket = Arc::new(Mutex::new(socket));
 
         // Read identity
-        let identity_msg = match NetworkMessage::read_from_socket(socket.clone()).await {
+        let network_msg = match NetworkMessage::read_from_socket(socket.clone()).await {
             Ok(msg) => msg,
             Err(e) => {
                 eprintln!("Failed to read identity: {}", e);
                 return;
             }
         };
+        let mut identity = network_msg.identity.clone();
+        println!(
+            "connecting: {} with message_type: {:?}",
+            identity, network_msg.message_type
+        );
 
-        let identity = identity_msg.identity;
-        println!("connected: {} ", identity);
+        match network_msg.message_type {
+            NetworkMessageType::ProxyMessage => {
+                self.handle_proxy_message_type(socket, identity).await;
+            }
+            NetworkMessageType::ShinkaiMessage => {
+                eprintln!("Received a ShinkaiMessage ...");
+                let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&network_msg.payload);
+                match shinkai_message {
+                    Ok(parsed_message) => {
+                        let response = Self::handle_proxy_message(
+                            parsed_message,
+                            &self.clients,
+                            &socket,
+                            &self.registry,
+                            &identity,
+                            self.node_name.clone(),
+                            self.identity_secret_key.clone(),
+                            self.encryption_secret_key.clone(),
+                        )
+                        .await;
+                        match response {
+                            Ok(_) => {
+                                eprintln!("Successfully handled ShinkaiMessage");
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to handle ShinkaiMessage: {}", e);
+                                let error_message = format!("Failed to handle ShinkaiMessage: {}", e);
+                                match send_message_with_length(&socket, error_message).await {
+                                    Ok(_) => eprintln!("Error message sent"),
+                                    Err(e) => eprintln!("Failed to send error message: {}", e),
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                        let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
+                        match send_message_with_length(&socket, error_message).await {
+                            Ok(_) => eprintln!("Error message sent"),
+                            Err(e) => eprintln!("Failed to send error message: {}", e),
+                        }
+                    }
+                }
+            }
+            NetworkMessageType::VRKaiPathPair => {
+                eprintln!("Received a VRKaiPathPair message: {:?}", network_msg);
+                let destination = String::from_utf8(network_msg.payload.clone()).unwrap_or_default();
+                eprintln!("with destination: {}", destination);
+                if let Some(tx) = self.clients.lock().await.get(&destination) {
+                    println!("sending: {} -> {}", identity, &destination);
+                    if tx.send(network_msg.payload).await.is_err() {
+                        eprintln!("Failed to send data to {}", destination);
+                    }
+                }
+            }
+        };
+    }
 
-        if let Err(e) = self.validate_identity(socket.clone(), &identity).await {
-            eprintln!("Identity validation failed: {}", e);
-            return;
-        }
+    async fn handle_proxy_message_type(&self, socket: Arc<Mutex<TcpStream>>, mut identity: String) {
+        eprintln!("Received a ProxyMessage ...");
+
+        let public_key_hex = match self.validate_identity(socket.clone(), &identity).await {
+            Ok(pk) => pk,
+            Err(e) => {
+                eprintln!("Identity validation failed: {}", e);
+                return;
+            }
+        };
 
         println!("Identity validated: {}", identity);
+        // Transform identity for localhost clients
+        if identity.starts_with("@@localhost") {
+            identity = format!("{}:::{}", identity, public_key_hex);
+        }
 
         let (tx, mut rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel(100);
         {
             let mut clients_lock = self.clients.lock().await;
-            clients_lock.insert(identity.clone(), tx);
+            clients_lock.insert(identity.clone(), tx.clone());
+        }
+        {
+            let mut pk_to_clients_lock = self.pk_to_clients.lock().await;
+            pk_to_clients_lock.insert(public_key_hex, tx);
         }
 
         let clients_clone = self.clients.clone();
@@ -257,6 +310,7 @@ impl TCPProxy {
                         }
                     }
                     Some(data) = rx.recv() => {
+                        println!("rex recv");
                         if let Err(e) = Self::handle_outgoing_message(data, &socket_clone).await {
                             eprintln!("Error handling outgoing message: {}", e);
                             break;
@@ -290,12 +344,36 @@ impl TCPProxy {
     ) -> Result<(), NetworkMessageError> {
         match msg {
             Ok(msg) => match msg.message_type {
+                NetworkMessageType::ProxyMessage => {
+                    eprintln!("Received a ProxyMessage ...");
+                    let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
+                    match shinkai_message {
+                        Ok(parsed_message) => {
+                            Self::handle_proxy_message(
+                                parsed_message,
+                                clients,
+                                socket,
+                                registry,
+                                identity,
+                                node_name,
+                                identity_secret_key,
+                                encryption_secret_key,
+                            )
+                            .await
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse ShinkaiMessage: {}", e);
+                            let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
+                            send_message_with_length(socket, error_message).await
+                        }
+                    }
+                }
                 NetworkMessageType::ShinkaiMessage => {
                     eprintln!("Received a ShinkaiMessage ...");
                     let shinkai_message: Result<ShinkaiMessage, _> = serde_json::from_slice(&msg.payload);
                     match shinkai_message {
                         Ok(parsed_message) => {
-                            Self::handle_shinkai_message(
+                            Self::handle_proxy_message(
                                 parsed_message,
                                 clients,
                                 socket,
@@ -335,7 +413,7 @@ impl TCPProxy {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn handle_shinkai_message(
+    async fn handle_proxy_message(
         parsed_message: ShinkaiMessage,
         _clients: &TCPProxyClients,
         socket: &Arc<Mutex<TcpStream>>,
@@ -358,7 +436,14 @@ impl TCPProxy {
         eprintln!("Sender Identity {:?}", sender_identity);
         let modified_message = if sender_identity.starts_with("localhost") {
             eprintln!("Sender is localhost, modifying ShinkaiMessage");
-            Self::modify_shinkai_message(parsed_message, node_name, identity_secret_key, encryption_secret_key).await?
+            Self::modify_shinkai_message(
+                parsed_message,
+                node_name,
+                identity_secret_key,
+                encryption_secret_key,
+                "test".to_string(),
+            )
+            .await?
         } else {
             parsed_message
         };
@@ -371,6 +456,7 @@ impl TCPProxy {
                         eprintln!("Connecting to first address: {}", first_address);
                         match TcpStream::connect(first_address).await {
                             Ok(mut stream) => {
+                                eprintln!("Connected successfully. Streaming...");
                                 let payload = modified_message.encode_message().unwrap();
 
                                 let identity_bytes = recipient.as_bytes();
@@ -423,6 +509,7 @@ impl TCPProxy {
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
+        subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
         eprintln!("Modifying ShinkaiMessage");
 
@@ -431,7 +518,7 @@ impl TCPProxy {
         modified_message.external_metadata.intra_sender = node_name.to_string();
         modified_message.body = match modified_message.body {
             MessageBody::Unencrypted(mut body) => {
-                body.internal_metadata.sender_subidentity = node_name.to_string();
+                body.internal_metadata.sender_subidentity = subidentity;
                 MessageBody::Unencrypted(body)
             }
             encrypted => encrypted,
@@ -450,51 +537,18 @@ impl TCPProxy {
         &self,
         socket: Arc<Mutex<TcpStream>>,
         identity: &str,
-    ) -> Result<(), NetworkMessageError> {
+    ) -> Result<PublicKeyHex, NetworkMessageError> {
         let identity = identity.trim_start_matches("@@");
+        let validation_data = Self::generate_validation_data();
+
+        // Send validation data to the client
+        send_message_with_length(&socket, validation_data.clone()).await?;
+
         let validation_result = if !identity.starts_with("localhost") {
-            let mut rng = StdRng::from_entropy();
-            let random_string: String = (0..16).map(|_| rng.sample(Alphanumeric) as char).collect();
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                .to_string();
-            let validation_data = format!("{}{}", random_string, timestamp);
-
-            send_message_with_length(&socket, validation_data.clone()).await?;
-
-            let mut len_buffer = [0u8; 4];
-            {
-                let mut socket = socket.lock().await;
-                socket.read_exact(&mut len_buffer).await?;
-            }
-
-            let response_len = u32::from_be_bytes(len_buffer) as usize;
-            let mut buffer = vec![0u8; response_len];
-            {
-                let mut socket = socket.lock().await;
-                match socket.read_exact(&mut buffer).await {
-                    Ok(_) => eprintln!("server> Validation response read from socket"),
-                    Err(e) => eprintln!("server> Failed to read validation response: {}", e),
-                }
-            }
-
-            let response = String::from_utf8(buffer).map_err(NetworkMessageError::Utf8Error)?;
-
-            // Fetch the public key from ShinkaiRegistry
-            let identity = identity.trim_start_matches("@@");
-            let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
-            let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
-
-            // Validate the signature
-            if !NetworkMessage::validate_signature(&public_key, &validation_data, &response)? {
-                Err(NetworkMessageError::InvalidData)
-            } else {
-                Ok(())
-            }
+            self.validate_non_localhost_identity(socket.clone(), identity, &validation_data)
+                .await
         } else {
-            Ok(())
+            self.validate_localhost_identity(socket.clone(), &validation_data).await
         };
 
         // Send validation result back to the client
@@ -508,10 +562,155 @@ impl TCPProxy {
         validation_result
     }
 
+    fn generate_validation_data() -> String {
+        let mut rng = StdRng::from_entropy();
+        let random_string: String = (0..16).map(|_| rng.sample(Alphanumeric) as char).collect();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .to_string();
+        format!("{}{}", random_string, timestamp)
+    }
+
+    async fn validate_non_localhost_identity(
+        &self,
+        socket: Arc<Mutex<TcpStream>>,
+        identity: &str,
+        validation_data: &str,
+    ) -> Result<PublicKeyHex, NetworkMessageError> {
+        // The client is expected to send back a message containing:
+        // 1. The length of the signed validation data (4 bytes, big-endian).
+        // 2. The signed validation data (hex-encoded string).
+        let response = Self::read_response_from_socket(socket.clone()).await?;
+        let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
+        let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
+
+        if !Self::validate_signature(&public_key, validation_data, &response)? {
+            Err(NetworkMessageError::InvalidData)
+        } else {
+            Ok(hex::encode(public_key.to_bytes()))
+        }
+    }
+
+    async fn validate_localhost_identity(
+        &self,
+        socket: Arc<Mutex<TcpStream>>,
+        validation_data: &str,
+    ) -> Result<PublicKeyHex, NetworkMessageError> {
+        // The client is expected to send back a message containing:
+        // 1. The length of the public key (4 bytes, big-endian).
+        // 2. The public key itself (hex-encoded string).
+        // 3. The length of the signed validation data (4 bytes, big-endian).
+        // 4. The signed validation data (hex-encoded string).
+        let buffer = Self::read_buffer_from_socket(socket.clone()).await?;
+        let mut cursor = std::io::Cursor::new(buffer);
+
+        let public_key = Self::read_public_key_from_cursor(&mut cursor).await?;
+        let signature = Self::read_signature_from_cursor(&mut cursor).await?;
+
+        if public_key.verify(validation_data.as_bytes(), &signature).is_err() {
+            Err(NetworkMessageError::InvalidData)
+        } else {
+            Ok(hex::encode(public_key.to_bytes()))
+        }
+    }
+
+    async fn read_response_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<String, NetworkMessageError> {
+        let mut len_buffer = [0u8; 4];
+        {
+            let mut socket = socket.lock().await;
+            socket.read_exact(&mut len_buffer).await?;
+        }
+
+        let response_len = u32::from_be_bytes(len_buffer) as usize;
+        let mut buffer = vec![0u8; response_len];
+        {
+            let mut socket = socket.lock().await;
+            socket.read_exact(&mut buffer).await?;
+        }
+
+        String::from_utf8(buffer).map_err(NetworkMessageError::Utf8Error)
+    }
+
+    async fn read_buffer_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Vec<u8>, NetworkMessageError> {
+        let mut len_buffer = [0u8; 4];
+        {
+            let mut socket = socket.lock().await;
+            socket.read_exact(&mut len_buffer).await?;
+        }
+
+        let total_len = u32::from_be_bytes(len_buffer) as usize;
+        let mut buffer = vec![0u8; total_len];
+        {
+            let mut socket = socket.lock().await;
+            socket.read_exact(&mut buffer).await?;
+        }
+
+        Ok(buffer)
+    }
+
+    async fn read_public_key_from_cursor(
+        cursor: &mut std::io::Cursor<Vec<u8>>,
+    ) -> Result<ed25519_dalek::VerifyingKey, NetworkMessageError> {
+        let mut len_buffer = [0u8; 4];
+        cursor.read_exact(&mut len_buffer).await?;
+        let public_key_len = u32::from_be_bytes(len_buffer) as usize;
+
+        let mut public_key_buffer = vec![0u8; public_key_len];
+        cursor.read_exact(&mut public_key_buffer).await?;
+        let public_key_hex = String::from_utf8(public_key_buffer).map_err(|_| NetworkMessageError::InvalidData)?;
+        let public_key_bytes = hex::decode(public_key_hex).map_err(|_| NetworkMessageError::InvalidData)?;
+        let public_key_array: [u8; 32] = public_key_bytes
+            .try_into()
+            .map_err(|_| NetworkMessageError::InvalidData)?;
+        ed25519_dalek::VerifyingKey::from_bytes(&public_key_array).map_err(|_| NetworkMessageError::InvalidData)
+    }
+
+    async fn read_signature_from_cursor(
+        cursor: &mut std::io::Cursor<Vec<u8>>,
+    ) -> Result<ed25519_dalek::Signature, NetworkMessageError> {
+        let mut len_buffer = [0u8; 4];
+        cursor.read_exact(&mut len_buffer).await?;
+        let signature_len = u32::from_be_bytes(len_buffer) as usize;
+
+        let mut signature_buffer = vec![0u8; signature_len];
+        cursor.read_exact(&mut signature_buffer).await?;
+        let signature_hex = String::from_utf8(signature_buffer).map_err(|_| NetworkMessageError::InvalidData)?;
+        let signature_bytes = hex::decode(signature_hex).map_err(|_| NetworkMessageError::InvalidData)?;
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
+            .map_err(|_| NetworkMessageError::InvalidData)?;
+        Ok(ed25519_dalek::Signature::from_bytes(&signature_array))
+    }
+
     async fn handle_outgoing_message(data: Vec<u8>, socket: &Arc<Mutex<TcpStream>>) -> Result<(), NetworkMessageError> {
         let mut socket = socket.lock().await;
         socket.write_all(&data).await?;
         Ok(())
+    }
+
+    fn validate_signature(
+        public_key: &ed25519_dalek::VerifyingKey,
+        message: &str,
+        signature: &str,
+    ) -> Result<bool, NetworkMessageError> {
+        // Decode the hex signature to bytes
+        let signature_bytes = hex::decode(signature).map_err(|_e| NetworkMessageError::InvalidData)?;
+
+        // Convert the bytes to Signature
+        let signature_bytes_slice = &signature_bytes[..];
+        let signature_bytes_array: &[u8; 64] = signature_bytes_slice
+            .try_into()
+            .map_err(|_| NetworkMessageError::InvalidData)?;
+
+        let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
+
+        // Verify the signature against the message
+        match public_key.verify(message.as_bytes(), &signature) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
     }
 }
 

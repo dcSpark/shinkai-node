@@ -379,6 +379,9 @@ impl NetworkJobManager {
         );
 
         match job.message_type {
+            NetworkMessageType::ProxyMessage => {
+                // do nothing not supported on this context
+            }
             NetworkMessageType::ShinkaiMessage => {
                 let _ = Self::handle_message_internode(
                     job.receiver_address,
