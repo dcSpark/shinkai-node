@@ -152,7 +152,7 @@ impl TCPProxy {
         let socket = Arc::new(Mutex::new(socket));
 
         // Read identity
-        let network_msg = match NetworkMessage::read_from_socket(socket.clone()).await {
+        let network_msg = match NetworkMessage::read_from_socket(socket.clone(), None).await {
             Ok(msg) => msg,
             Err(e) => {
                 eprintln!("Failed to read identity: {}", e);
@@ -187,12 +187,6 @@ impl TCPProxy {
                 eprintln!("Received a VRKaiPathPair message: {:?}", network_msg);
                 let destination = String::from_utf8(network_msg.payload.clone()).unwrap_or_default();
                 eprintln!("with destination: {}", destination);
-                if let Some(tx) = self.clients.lock().await.get(&destination) {
-                    println!("sending: {} -> {}", identity, &destination);
-                    // if tx.send(network_msg.payload).await.is_err() {
-                    //     eprintln!("Failed to send data to {}", destination);
-                    // }
-                }
             }
         };
     }
@@ -240,7 +234,7 @@ impl TCPProxy {
         }
     }
 
-    async fn handle_proxy_message_type(&self, socket: Arc<Mutex<TcpStream>>, mut identity: String) {
+    async fn handle_proxy_message_type(&self, socket: Arc<Mutex<TcpStream>>, identity: String) {
         eprintln!("Received a ProxyMessage ...");
 
         let public_key_hex = match self.validate_identity(socket.clone(), &identity).await {
@@ -278,7 +272,7 @@ impl TCPProxy {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    msg = NetworkMessage::read_from_socket(socket_clone.clone()) => {
+                    msg = NetworkMessage::read_from_socket(socket_clone.clone(), Some(identity.clone())) => {
                         if let Err(e) = Self::handle_incoming_message(msg, &clients_clone, &pk_to_clients_clone, &socket_clone, &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
                             eprintln!("Error handling incoming message: {}", e);
                             break;
@@ -311,12 +305,6 @@ impl TCPProxy {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
     ) -> Result<(), NetworkMessageError> {
-        {
-            eprintln!("Attempting to acquire lock for reading message...");
-            let mut socket_lock = socket.lock().await;
-            eprintln!("Lock acquired for reading message.");
-        
-        }
         match msg {
             Ok(msg) => match msg.message_type {
                 NetworkMessageType::ProxyMessage => {

@@ -13,6 +13,9 @@ pub enum NetworkMessageError {
     ShinkaiRegistryError(ShinkaiRegistryError),
     CustomError(String),
     SendError,
+    ConnectionClosed,
+    IoError(std::io::Error),
+    Timeout,
 }
 
 impl fmt::Display for NetworkMessageError {
@@ -26,6 +29,9 @@ impl fmt::Display for NetworkMessageError {
             NetworkMessageError::ShinkaiRegistryError(err) => write!(f, "Shinkai registry error: {}", err),
             NetworkMessageError::CustomError(msg) => write!(f, "{}", msg),
             NetworkMessageError::SendError => write!(f, "Failed to send message"),
+            NetworkMessageError::ConnectionClosed => write!(f, "Connection closed"),
+            NetworkMessageError::IoError(err) => write!(f, "I/O error: {}", err),
+            NetworkMessageError::Timeout => write!(f, "Operation timed out"),
         }
     }
 }
@@ -41,6 +47,9 @@ impl std::error::Error for NetworkMessageError {
             NetworkMessageError::ShinkaiRegistryError(err) => Some(err),
             NetworkMessageError::CustomError(_) => None,
             NetworkMessageError::SendError => None,
+            NetworkMessageError::ConnectionClosed => None,
+            NetworkMessageError::IoError(err) => Some(err),
+            NetworkMessageError::Timeout => None,
         }
     }
 }
