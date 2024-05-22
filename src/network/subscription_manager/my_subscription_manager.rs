@@ -2,6 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
@@ -29,7 +30,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
 use std::env;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::sync::Mutex;
@@ -63,7 +63,7 @@ pub struct MySubscriptionsManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     // The address of the proxy server (if any)
-    proxy_address: Option<SocketAddr>,
+    proxy_connection_info: Option<ProxyConnectionInfo>,
 }
 
 impl MySubscriptionsManager {
@@ -74,7 +74,7 @@ impl MySubscriptionsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -122,7 +122,7 @@ impl MySubscriptionsManager {
             my_signature_secret_key,
             my_encryption_secret_key,
             http_download_manager,
-            proxy_address,
+            proxy_connection_info,
         }
     }
 
@@ -235,7 +235,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
-                        self.proxy_address,
+                        self.proxy_connection_info.clone(),
                     )
                     .await?;
 
@@ -257,7 +257,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
-                self.proxy_address,
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -359,7 +359,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
-                self.proxy_address,
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -488,7 +488,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
-                self.proxy_address,
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -723,7 +723,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
-                        self.proxy_address,
+                        self.proxy_connection_info.clone(),
                     )
                     .await?;
                 }
@@ -755,7 +755,7 @@ impl MySubscriptionsManager {
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -790,7 +790,7 @@ impl MySubscriptionsManager {
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
         // Call the send function
-        Node::send(message, my_encryption_sk, peer, proxy_address, db, maybe_identity_manager, false, None);
+        Node::send(message, my_encryption_sk, peer, proxy_connection_info, db, maybe_identity_manager, false, None);
 
         Ok(())
     }

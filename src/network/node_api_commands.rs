@@ -1,5 +1,5 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS}, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
 };
 use crate::{
     agent::job_manager::JobManager,
@@ -2733,7 +2733,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -2887,7 +2887,7 @@ impl Node {
             encrypted_msg,
             Arc::new(clone_static_secret_key(&encryption_secret_key)),
             (node_addr, recipient_node_name_string),
-            proxy_address,
+            proxy_connection_info,
             db.clone(),
             identity_manager.clone(),
             true,

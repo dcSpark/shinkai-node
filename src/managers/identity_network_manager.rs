@@ -36,7 +36,7 @@ impl IdentityNetworkManager {
     ) -> Result<OnchainIdentity, &'static str> {
         let record = {
             let identity = global_identity.trim_start_matches("@@");
-            let mut registry = self.registry.lock().await;
+            let registry = self.registry.lock().await;
             match registry.get_identity_record(identity.to_string()).await {
                 Ok(record) => record,
                 Err(_) => return Err("Unrecognized global identity"),

@@ -6495,6 +6495,7 @@ dependencies = [
  "chrono",
  "clap 3.2.25",
  "derivative",
+ "dotenv",
  "ed25519-dalek",
  "hex",
  "rand 0.8.5",

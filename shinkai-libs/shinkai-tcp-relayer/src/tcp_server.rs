@@ -624,6 +624,9 @@ impl TCPProxy {
         let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
         let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
 
+        // TODO: validate that the timestamp is recent enough
+        // TODO: and it hasn't been used before
+
         if !Self::validate_signature(&public_key, validation_data, &response)? {
             Err(NetworkMessageError::InvalidData(
                 "Signature verification failed".to_string(),

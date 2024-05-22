@@ -1,3 +1,4 @@
+use super::node::ProxyConnectionInfo;
 use super::{node_error::NodeError, Node};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
@@ -16,8 +17,6 @@ use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
-use shinkai_vector_resources::vector_resource::VRPath;
-use tokio::io::AsyncReadExt;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -34,8 +33,10 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_vector_resources::vector_resource::VRPath;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -525,7 +526,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
     ) -> Result<(), NodeError> {
         info!("{} > Pinging all peers {} ", listen_address, peers.len());
         for (peer, _) in peers.clone() {
@@ -550,7 +551,7 @@ impl Node {
                 receiver,
                 Arc::clone(&db),
                 identity_manager.clone(),
-                proxy_address,
+                proxy_connection_info.clone(),
             )
             .await;
         }

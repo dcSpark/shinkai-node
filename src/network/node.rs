@@ -407,6 +407,13 @@ lazy_static! {
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 
+// Define the ConnectionInfo struct
+#[derive(Clone, Debug)]
+pub struct ProxyConnectionInfo {
+    pub proxy_address: SocketAddr,
+    pub tcp_connection: Arc<Mutex<Option<TcpStream>>>,
+}
+
 // The `Node` struct represents a single node in the network.
 pub struct Node {
     // The profile name of the node.
@@ -458,7 +465,7 @@ pub struct Node {
     // Network Job Manager
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
-    pub proxy_address: Option<SocketAddr>,
+    pub proxy_connection_info: Option<ProxyConnectionInfo>,
 }
 
 impl Node {
@@ -565,6 +572,16 @@ impl Node {
             max_connections_per_ip.try_into().unwrap(),
         ));
 
+        // Initialize ProxyConnectionInfo if proxy_address is provided
+        let proxy_connection_info = if let Some(proxy_addr) = proxy_address {
+            Some(ProxyConnectionInfo {
+                proxy_address: proxy_addr,
+                tcp_connection: Arc::new(Mutex::new(None)),
+            })
+        } else {
+            None
+        };
+
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
                 Arc::downgrade(&db_arc),
@@ -573,7 +590,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
-                proxy_address,
+                proxy_connection_info.clone(),
             )
             .await,
         ));
@@ -586,7 +603,7 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
-                proxy_address,
+                proxy_connection_info.clone(),
             )
             .await,
         ));
@@ -601,7 +618,7 @@ impl Node {
             identity_manager.clone(),
             my_subscription_manager.clone(),
             ext_subscriber_manager.clone(),
-            proxy_address,
+            proxy_connection_info.clone(),
         )
         .await;
 
@@ -630,7 +647,7 @@ impl Node {
             ext_subscription_manager: ext_subscriber_manager,
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
-            proxy_address,
+            proxy_connection_info,
         }))
     }
 
@@ -694,6 +711,8 @@ impl Node {
         let check_peers_interval_secs = 5;
         let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
+        // TODO: implement a TCP connection here with a proxy if it's set
+
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
@@ -709,7 +728,7 @@ impl Node {
                         let db_clone = self.db.clone();
                         let encryption_secret_key_clone = self.encryption_secret_key.clone();
                         let identity_manager_clone = self.identity_manager.clone();
-                        let proxy_address = self.proxy_address.clone();
+                        let proxy_connection_info = self.proxy_connection_info.clone();
 
                         // Spawn a new task to call `retry_messages` asynchronously
                         tokio::spawn(async move {
@@ -717,7 +736,7 @@ impl Node {
                                 db_clone,
                                 encryption_secret_key_clone,
                                 identity_manager_clone,
-                                proxy_address,
+                                proxy_connection_info,
                             ).await;
                         });
                     },
@@ -731,7 +750,7 @@ impl Node {
                         let db_clone = Arc::clone(&self.db);
                         let identity_manager_clone = Arc::clone(&self.identity_manager);
                         let listen_address_clone = self.listen_address;
-                        let proxy_address = self.proxy_address.clone();
+                        let proxy_connection_info = self.proxy_connection_info.clone();
 
                         // Spawn a new task to call `ping_all` asynchronously
                         tokio::spawn(async move {
@@ -743,7 +762,7 @@ impl Node {
                                 db_clone,
                                 identity_manager_clone,
                                 listen_address_clone,
-                                proxy_address,
+                                proxy_connection_info,
                             ).await;
                         });
                     },
@@ -765,7 +784,7 @@ impl Node {
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let db_clone = Arc::clone(&self.db);
                                             let listen_address_clone = self.listen_address;
-                                            let proxy_address = self.proxy_address;
+                                            let proxy_connection_info = self.proxy_connection_info.clone();
                                             tokio::spawn(async move {
                                                 let _ = Self::ping_all(
                                                     node_name_clone,
@@ -775,7 +794,7 @@ impl Node {
                                                     db_clone,
                                                     identity_manager_clone,
                                                     listen_address_clone,
-                                                    proxy_address,
+                                                    proxy_connection_info,
                                                 ).await;
                                             });
                                         },
@@ -806,7 +825,7 @@ impl Node {
                                             let identity_manager_clone = Arc::clone(&self.identity_manager);
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
-                                            let proxy_address = self.proxy_address;
+                                            let proxy_connection_info = self.proxy_connection_info.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_send_onionized_message(
                                                     db_clone,
@@ -815,7 +834,7 @@ impl Node {
                                                     encryption_secret_key_clone,
                                                     identity_secret_key_clone,
                                                     msg,
-                                                    proxy_address,
+                                                    proxy_connection_info,
                                                     res,
                                                 ).await;
                                             });
@@ -2140,7 +2159,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
     ) -> Result<(), NodeError> {
         let messages_to_retry = db.get_messages_to_retry_before(None)?;
 
@@ -2163,7 +2182,7 @@ impl Node {
                 retry_message.message,
                 Arc::new(encrypted_secret_key),
                 retry_message.peer,
-                proxy_address,
+                proxy_connection_info.clone(),
                 db.clone(),
                 identity_manager.clone(),
                 save_to_db_flag,
@@ -2196,7 +2215,7 @@ impl Node {
         message: ShinkaiMessage,
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
         db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
@@ -2276,7 +2295,7 @@ impl Node {
         subscription_id: SubscriptionId,
         encryption_key_hex: String,
         peer: SocketAddr,
-        proxy_address: Option<SocketAddr>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
         recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {
