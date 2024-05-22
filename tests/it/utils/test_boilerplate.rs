@@ -16,7 +16,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node::{NodeCommand, ProxyConnectionInfo};
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
@@ -80,7 +80,7 @@ where
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
         // Fetch the PROXY_ADDRESS environment variable
-        let proxy_connection_info: Option<ProxyConnectionInfo> = env::var("PROXY_ADDRESS").ok().and_then(|addr| addr.parse().ok());
+        let proxy_address: Option<SocketAddr> = env::var("PROXY_ADDRESS").ok().and_then(|addr| addr.parse().ok());
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -93,7 +93,7 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             "".to_string(),
-            proxy_connection_info,
+            proxy_address,
             false,
             vec![],
             None,

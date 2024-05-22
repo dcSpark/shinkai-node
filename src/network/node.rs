@@ -2041,6 +2041,7 @@ impl Node {
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
         let listener = TcpListener::bind(&self.listen_address).await?;
+
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
@@ -2050,6 +2051,7 @@ impl Node {
         // Initialize your connection limiter
         loop {
             let (socket, addr) = listener.accept().await?;
+
             // Too many requests by IP protection
             let ip = addr.ip().to_string();
             let conn_limiter_clone = self.conn_limiter.clone();
@@ -2079,81 +2081,229 @@ impl Node {
             let _identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
             let _node_profile_name_clone = self.node_name.clone();
             let network_job_manager = Arc::clone(&self.network_job_manager);
+            let proxy_connection_info = self.proxy_connection_info.clone();
 
             tokio::spawn(async move {
                 let mut socket = socket.lock().await;
-                let mut length_bytes = [0u8; 4];
-                if socket.read_exact(&mut length_bytes).await.is_ok() {
-                    let total_length = u32::from_be_bytes(length_bytes) as usize;
 
-                    // Read the identity length
-                    let mut identity_length_bytes = [0u8; 4];
-                    if socket.read_exact(&mut identity_length_bytes).await.is_err() {
-                        return; // Exit if we fail to read identity length
-                    }
-                    let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
-
-                    // Read the identity bytes
-                    let mut identity_bytes = vec![0u8; identity_length];
-                    if socket.read_exact(&mut identity_bytes).await.is_err() {
-                        return; // Exit if we fail to read identity
-                    }
-
-                    // Calculate the message length excluding the identity length and the identity itself
-                    let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
-
-                    // Initialize buffer to fit the message
-                    let mut buffer = vec![0u8; msg_length];
-
-                    // Read the header byte to determine the message type
-                    let mut header_byte = [0u8; 1];
-                    if socket.read_exact(&mut header_byte).await.is_ok() {
-                        let message_type = match header_byte[0] {
-                            0x01 => NetworkMessageType::ShinkaiMessage,
-                            0x02 => NetworkMessageType::VRKaiPathPair,
-                            0x03 => NetworkMessageType::ProxyMessage,
-                            _ => {
-                                shinkai_log(
-                                    ShinkaiLogOption::Node,
-                                    ShinkaiLogLevel::Error,
-                                    "Received message with unknown type identifier",
-                                );
-                                return; // Exit the task if the message type is unknown
-                            }
-                        };
-
-                        // Read the rest of the message into the buffer
-                        if socket.read_exact(&mut buffer).await.is_ok() {
+                // Check if a proxy connection is specified
+                if let Some(proxy_info) = proxy_connection_info {
+                    let mut proxy_stream = match TcpStream::connect(&proxy_info.proxy_address).await {
+                        Ok(stream) => stream,
+                        Err(e) => {
+                            eprintln!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e);
                             shinkai_log(
                                 ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Info,
-                                &format!("Received message of type {:?} from: {:?}", message_type, addr),
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e),
                             );
-
-                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                            let network_job = NetworkJobQueue {
-                                receiver_address: addr,
-                                unsafe_sender_address: destination_socket,
-                                message_type,
-                                content: buffer.clone(), // Now buffer does not include the header
-                                date_created: Utc::now(),
-                            };
-
-                            let mut network_job_manager = network_job_manager.lock().await;
-                            if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
-                                shinkai_log(
-                                    ShinkaiLogOption::Node,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to add network job to queue: {}", e),
-                                );
-                            }
+                            return;
                         }
-                    }
+                    };
+
+                    // Use the `proxy_stream` for further processing or communication
+                    Self::handle_connection(&mut proxy_stream, addr, network_job_manager).await;
+                } else {
+                    // Use the `socket` directly for further processing or communication
+                    Self::handle_connection(&mut socket, addr, network_job_manager).await;
                 }
+
                 conn_limiter_clone.decrement_connection(&ip).await;
             });
         }
     }
+
+    async fn handle_connection(
+        socket: &mut TcpStream,
+        addr: SocketAddr,
+        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+    ) {
+        let mut length_bytes = [0u8; 4];
+        if socket.read_exact(&mut length_bytes).await.is_ok() {
+            let total_length = u32::from_be_bytes(length_bytes) as usize;
+
+            // Read the identity length
+            let mut identity_length_bytes = [0u8; 4];
+            if socket.read_exact(&mut identity_length_bytes).await.is_err() {
+                return; // Exit if we fail to read identity length
+            }
+            let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+
+            // Read the identity bytes
+            let mut identity_bytes = vec![0u8; identity_length];
+            if socket.read_exact(&mut identity_bytes).await.is_err() {
+                return; // Exit if we fail to read identity
+            }
+
+            // Calculate the message length excluding the identity length and the identity itself
+            let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
+
+            // Initialize buffer to fit the message
+            let mut buffer = vec![0u8; msg_length];
+
+            // Read the header byte to determine the message type
+            let mut header_byte = [0u8; 1];
+            if socket.read_exact(&mut header_byte).await.is_ok() {
+                let message_type = match header_byte[0] {
+                    0x01 => NetworkMessageType::ShinkaiMessage,
+                    0x02 => NetworkMessageType::VRKaiPathPair,
+                    0x03 => NetworkMessageType::ProxyMessage,
+                    _ => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            "Received message with unknown type identifier",
+                        );
+                        return; // Exit the task if the message type is unknown
+                    }
+                };
+
+                // Read the rest of the message into the buffer
+                if socket.read_exact(&mut buffer).await.is_ok() {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Received message of type {:?} from: {:?}", message_type, addr),
+                    );
+
+                    let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                    let network_job = NetworkJobQueue {
+                        receiver_address: addr,
+                        unsafe_sender_address: destination_socket,
+                        message_type,
+                        content: buffer.clone(), // Now buffer does not include the header
+                        date_created: Utc::now(),
+                    };
+
+                    let mut network_job_manager = network_job_manager.lock().await;
+                    if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to add network job to queue: {}", e),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // // A function that listens for incoming connections.
+    // async fn listen(&self) -> io::Result<()> {
+    //     let listener = TcpListener::bind(&self.listen_address).await?;
+    //     shinkai_log(
+    //         ShinkaiLogOption::Node,
+    //         ShinkaiLogLevel::Info,
+    //         &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
+    //     );
+
+    //     // Initialize your connection limiter
+    //     loop {
+    //         let (socket, addr) = listener.accept().await?;
+    //         // Too many requests by IP protection
+    //         let ip = addr.ip().to_string();
+    //         let conn_limiter_clone = self.conn_limiter.clone();
+
+    //         if !conn_limiter_clone.check_rate_limit(&ip).await {
+    //             shinkai_log(
+    //                 ShinkaiLogOption::Node,
+    //                 ShinkaiLogLevel::Info,
+    //                 &format!("Rate limit exceeded for IP: {}", ip),
+    //             );
+    //             continue;
+    //         }
+
+    //         if !conn_limiter_clone.increment_connection(&ip).await {
+    //             shinkai_log(
+    //                 ShinkaiLogOption::Node,
+    //                 ShinkaiLogLevel::Info,
+    //                 &format!("Too many connections from IP: {}", ip),
+    //             );
+    //             continue;
+    //         }
+
+    //         let socket = Arc::new(Mutex::new(socket));
+    //         let _db = Arc::clone(&self.db);
+    //         let _identity_manager = Arc::clone(&self.identity_manager);
+    //         let _encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
+    //         let _identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
+    //         let _node_profile_name_clone = self.node_name.clone();
+    //         let network_job_manager = Arc::clone(&self.network_job_manager);
+
+    //         tokio::spawn(async move {
+    //             let mut socket = socket.lock().await;
+    //             let mut length_bytes = [0u8; 4];
+    //             if socket.read_exact(&mut length_bytes).await.is_ok() {
+    //                 let total_length = u32::from_be_bytes(length_bytes) as usize;
+
+    //                 // Read the identity length
+    //                 let mut identity_length_bytes = [0u8; 4];
+    //                 if socket.read_exact(&mut identity_length_bytes).await.is_err() {
+    //                     return; // Exit if we fail to read identity length
+    //                 }
+    //                 let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+
+    //                 // Read the identity bytes
+    //                 let mut identity_bytes = vec![0u8; identity_length];
+    //                 if socket.read_exact(&mut identity_bytes).await.is_err() {
+    //                     return; // Exit if we fail to read identity
+    //                 }
+
+    //                 // Calculate the message length excluding the identity length and the identity itself
+    //                 let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
+
+    //                 // Initialize buffer to fit the message
+    //                 let mut buffer = vec![0u8; msg_length];
+
+    //                 // Read the header byte to determine the message type
+    //                 let mut header_byte = [0u8; 1];
+    //                 if socket.read_exact(&mut header_byte).await.is_ok() {
+    //                     let message_type = match header_byte[0] {
+    //                         0x01 => NetworkMessageType::ShinkaiMessage,
+    //                         0x02 => NetworkMessageType::VRKaiPathPair,
+    //                         0x03 => NetworkMessageType::ProxyMessage,
+    //                         _ => {
+    //                             shinkai_log(
+    //                                 ShinkaiLogOption::Node,
+    //                                 ShinkaiLogLevel::Error,
+    //                                 "Received message with unknown type identifier",
+    //                             );
+    //                             return; // Exit the task if the message type is unknown
+    //                         }
+    //                     };
+
+    //                     // Read the rest of the message into the buffer
+    //                     if socket.read_exact(&mut buffer).await.is_ok() {
+    //                         shinkai_log(
+    //                             ShinkaiLogOption::Node,
+    //                             ShinkaiLogLevel::Info,
+    //                             &format!("Received message of type {:?} from: {:?}", message_type, addr),
+    //                         );
+
+    //                         let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+    //                         let network_job = NetworkJobQueue {
+    //                             receiver_address: addr,
+    //                             unsafe_sender_address: destination_socket,
+    //                             message_type,
+    //                             content: buffer.clone(), // Now buffer does not include the header
+    //                             date_created: Utc::now(),
+    //                         };
+
+    //                         let mut network_job_manager = network_job_manager.lock().await;
+    //                         if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+    //                             shinkai_log(
+    //                                 ShinkaiLogOption::Node,
+    //                                 ShinkaiLogLevel::Error,
+    //                                 &format!("Failed to add network job to queue: {}", e),
+    //                             );
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //             conn_limiter_clone.decrement_connection(&ip).await;
+    //         });
+    //     }
+    // }
 
     async fn retry_messages(
         db: Arc<ShinkaiDB>,
@@ -2230,42 +2380,82 @@ impl Node {
         let message = Arc::new(message);
 
         tokio::spawn(async move {
-            let stream = TcpStream::connect(address).await;
-            match stream {
-                Ok(mut stream) => {
-                    let encoded_msg = message.encode_message().unwrap();
-                    let identity = &message.external_metadata.recipient;
-                    let identity_bytes = identity.as_bytes();
-                    let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+            let stream = Node::get_stream(address, proxy_connection_info).await;
 
-                    // Prepare the message with a length prefix and identity length
-                    let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
+            if let Some(mut stream) = stream {
+                let encoded_msg = message.encode_message().unwrap();
+                let identity = &message.external_metadata.recipient;
+                let identity_bytes = identity.as_bytes();
+                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
 
-                    let mut data_to_send = Vec::new();
-                    let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
-                    data_to_send.extend_from_slice(&total_length);
-                    data_to_send.extend_from_slice(&identity_length);
-                    data_to_send.extend(identity_bytes);
-                    data_to_send.extend(header_data_to_send);
-                    data_to_send.extend_from_slice(&encoded_msg);
-                    let _ = stream.write_all(&data_to_send).await;
-                    let _ = stream.flush().await;
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Sent message to {}", stream.peer_addr().unwrap()),
-                    );
-                    if save_to_db_flag {
-                        let _ = Node::save_to_db(
-                            true,
-                            &message,
-                            Arc::clone(&my_encryption_sk).as_ref().clone(),
-                            db.clone(),
-                            maybe_identity_manager.clone(),
-                        )
-                        .await;
+                // Prepare the message with a length prefix and identity length
+                let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
+
+                let mut data_to_send = Vec::new();
+                let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+                data_to_send.extend_from_slice(&total_length);
+                data_to_send.extend_from_slice(&identity_length);
+                data_to_send.extend(identity_bytes);
+                data_to_send.extend(header_data_to_send);
+                data_to_send.extend_from_slice(&encoded_msg);
+                let _ = stream.write_all(&data_to_send).await;
+                let _ = stream.flush().await;
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Sent message to {}", stream.peer_addr().unwrap()),
+                );
+                if save_to_db_flag {
+                    let _ = Node::save_to_db(
+                        true,
+                        &message,
+                        Arc::clone(&my_encryption_sk).as_ref().clone(),
+                        db.clone(),
+                        maybe_identity_manager.clone(),
+                    )
+                    .await;
+                }
+            } else {
+                // If retry is enabled, add the message to retry list on failure
+                let retry_count = retry.unwrap_or(0) + 1;
+                let retry_message = RetryMessage {
+                    retry_count,
+                    message: message.as_ref().clone(),
+                    peer: peer.clone(),
+                    save_to_db_flag,
+                };
+                // Calculate the delay for the next retry
+                let delay_seconds = 4_u64.pow(retry_count - 1);
+                let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
+                db.add_message_to_retry(&retry_message, retry_time).unwrap();
+            }
+        });
+    }
+
+    /// Function to get the stream, either directly or through a proxy
+    async fn get_stream(address: SocketAddr, proxy_connection_info: Option<ProxyConnectionInfo>) -> Option<TcpStream> {
+        if let Some(proxy_info) = proxy_connection_info {
+            let mut tcp_connection = proxy_info.tcp_connection.lock().await;
+            if tcp_connection.is_none() {
+                match TcpStream::connect(proxy_info.proxy_address).await {
+                    Ok(new_stream) => {
+                        *tcp_connection = Some(new_stream);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e);
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e),
+                        );
+                        return None;
                     }
                 }
+            }
+            tcp_connection.take()
+        } else {
+            match TcpStream::connect(address).await {
+                Ok(stream) => Some(stream),
                 Err(e) => {
                     eprintln!("Failed to connect to {}: {}", address, e);
                     shinkai_log(
@@ -2273,21 +2463,10 @@ impl Node {
                         ShinkaiLogLevel::Error,
                         &format!("Failed to connect to {}: {}", address, e),
                     );
-                    // If retry is enabled, add the message to retry list on failure
-                    let retry_count = retry.unwrap_or(0) + 1;
-                    let retry_message = RetryMessage {
-                        retry_count,
-                        message: message.as_ref().clone(),
-                        peer: peer.clone(),
-                        save_to_db_flag,
-                    };
-                    // Calculate the delay for the next retry
-                    let delay_seconds = 4_u64.pow(retry_count - 1);
-                    let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                    db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                    None
                 }
             }
-        });
+        }
     }
 
     pub async fn send_encrypted_vrpack(
@@ -2345,17 +2524,15 @@ impl Node {
             data_to_send.extend(header_data_to_send);
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
-            // Convert to Vec<u8> to send over TCP
-            let stream_result = TcpStream::connect(peer).await;
-            match stream_result {
-                Ok(mut stream) => {
-                    let _ = stream.write_all(&data_to_send).await;
-                    let _ = stream.flush().await;
-                    println!("Encrypted data sent to {}", peer);
-                }
-                Err(e) => {
-                    eprintln!("Failed to connect to {}: {}", peer, e);
-                }
+            // Get the stream using the get_stream function
+            let stream = Node::get_stream(peer, proxy_connection_info).await;
+
+            if let Some(mut stream) = stream {
+                let _ = stream.write_all(&data_to_send).await;
+                let _ = stream.flush().await;
+                println!("Encrypted data sent to {}", peer);
+            } else {
+                eprintln!("Failed to connect to {}", peer);
             }
         });
     }
