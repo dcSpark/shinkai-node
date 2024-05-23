@@ -6,10 +6,10 @@ use warp::{Buf, Filter};
 use crate::pdf_parser;
 
 pub async fn post_extract_json_to_text_groups_handler(
+    max_node_text_size: u64,
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    // TODO: Specify max_node_text_size
-    let max_node_text_size = 4096;
+    // TODO: Add custom errors
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
@@ -37,7 +37,7 @@ pub async fn post_extract_json_to_text_groups_handler(
         let file_extension = filename.split('.').last();
         match file_extension {
             Some("pdf") => {
-                let pdf_parser = pdf_parser::PDFParser::new();
+                let pdf_parser = pdf_parser::PDFParser::new().map_err(|_| warp::reject::reject())?;
                 let result = pdf_parser.process_pdf_file(file_data, max_node_text_size);
 
                 match result {
@@ -59,13 +59,17 @@ pub async fn post_extract_json_to_text_groups_handler(
 }
 
 pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Starting server at: {:?}", address);
+
     let try_bind = TcpListener::bind(&address).await;
 
-    let extract_json_to_text_groups = warp::path!("v1" / "extract_json_to_text_groups")
+    let extract_json_to_text_groups = warp::path!("v1" / "extract_json_to_text_groups" / u64)
         .and(warp::post())
         .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
         .and(warp::multipart::form().max_length(1024 * 1024 * 200))
-        .and_then(move |form: warp::multipart::FormData| post_extract_json_to_text_groups_handler(form));
+        .and_then(move |max_node_text_size: u64, form: warp::multipart::FormData| {
+            post_extract_json_to_text_groups_handler(max_node_text_size, form)
+        });
 
     let routes = extract_json_to_text_groups;
 

@@ -6,14 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.4", features = ["derive"] }
 futures = "0.3.30"
 image = "0.25.1"
+ocrs = "0.7.0"
 pdfium-render = { version = "=0.8.20", features = ["static", "libc++"] }
-serde_json = "1.0.105"
+rten = { version = "0.9.0" }
+serde_json = "1.0.117"
 shinkai_vector_resources = { path = "../shinkai-libs/shinkai-vector-resources", default-features = false }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3.7"
 
 [dependencies.serde]
-version = "1.0.188"
+version = "1.0.202"
 features = ["derive"]
