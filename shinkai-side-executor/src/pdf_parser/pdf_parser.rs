@@ -2,10 +2,7 @@ use image::GenericImageView;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
-use shinkai_vector_resources::{
-    file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup},
-    resource_errors::VRError,
-};
+use shinkai_vector_resources::file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup};
 use std::{collections::HashMap, path::PathBuf};
 
 pub struct PDFParser {
@@ -40,25 +37,36 @@ impl PDFParser {
         })
     }
 
-    pub fn process_pdf_file(&self, file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        let document = self
-            .pdfium
-            .load_pdf_from_byte_vec(file_buffer, None)
-            .map_err(|_| VRError::FailedPDFParsing)?;
+    pub fn process_pdf_file(&self, file_buffer: Vec<u8>, max_node_text_size: u64) -> anyhow::Result<Vec<TextGroup>> {
+        let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
         let mut text_groups = Vec::new();
         let mut page_text = "".to_owned();
 
         for (page_index, page) in document.pages().iter().enumerate() {
-            println!("=============== Page {} ===============", page_index + 1);
+            // Debug info
+            eprintln!("=============== Page {} ===============", page_index + 1);
+            let mut found_text = false;
+            let mut found_image = false;
+
             for object in page.objects().iter() {
                 match object.object_type() {
                     PdfPageObjectType::Text => {
+                        if !found_text {
+                            eprintln!("Processing text objects...");
+                            found_text = true;
+                        }
+
                         let text_object = object.as_text_object().unwrap();
 
                         page_text.push_str(&format!(" {}", &text_object.text()));
                     }
                     PdfPageObjectType::Image => {
+                        if !found_image {
+                            eprintln!("Processing image objects...");
+                            found_image = true;
+                        }
+
                         // Save text from previous text objects.
                         Self::process_text_into_text_groups(
                             &page_text,
@@ -75,8 +83,7 @@ impl PDFParser {
                             &mut text_groups,
                             max_node_text_size,
                             page_index + 1,
-                        )
-                        .map_err(|_| VRError::FailedPDFParsing)?;
+                        )?;
                     }
                     _ => {}
                 }

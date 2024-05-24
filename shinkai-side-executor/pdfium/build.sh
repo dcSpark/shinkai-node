@@ -1,26 +1,83 @@
-#!/usr/bin/env bash
-set -e
+#!/bin/bash -eu
+
+OS_NAMES="linux|mac"
+CPU_NAMES="arm64|x64"
+
+if [[ $# -lt 2 ]]
+then
+  echo "PDFium build script.
+Usage $0 os cpu
+
+Arguments:
+   os  = Target OS ($OS_NAMES)
+   cpu = Target CPU ($CPU_NAMES)"
+  exit
+fi
+
+if [[ ! $1 =~ ^($OS_NAMES)$ ]]
+then
+  echo "Unknown OS: $1"
+  exit 1
+fi
+
+if [[ ! $2 =~ ^($CPU_NAMES)$ ]]
+then
+  echo "Unknown CPU: $2"
+  exit 1
+fi
+
+## Environment
+
+TARGET_OS=$1
+TARGET_CPU=$2
 
 mkdir -p pdfium-source
 cd pdfium-source
+
+## Install
+case "$TARGET_OS" in
+  linux)
+    sudo apt-get update
+    sudo apt-get install -y cmake pkg-config g++
+    ;;
+esac
 
 # Clone depot tools, standard tools used for building Chromium and associated projects.
 git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
 export PATH="$PATH:$(cd depot_tools; pwd)"
 
-# Clone the pdfium source.
+## Checkout
+
 gclient config --unmanaged https://pdfium.googlesource.com/pdfium.git
 gclient sync --no-history
 
-# Create default build configuration...
+## Install dependencies
+case "$TARGET_OS" in
+  linux)
+    build/install-build-deps.sh
+    gclient runhooks
+    ;;
+esac
+
+## Configure build
+
+BUILD_TARGET_DIR=out/$TARGET_OS-$TARGET_CPU
+
 cd pdfium
-rm -rf out/lib
-gn gen out/lib
+rm -rf $BUILD_TARGET_DIR
+gn gen $BUILD_TARGET_DIR
 
-cp args.gn out/lib/args.gn
+cp ../../args.gn $BUILD_TARGET_DIR/args.gn
 
-# Run the build.
-ninja -C out/lib pdfium
+(
+  cd $BUILD_TARGET_DIR
+  echo "target_os = \"$TARGET_OS\"" >> args.gn
+  echo "target_cpu = \"$TARGET_CPU\"" >> args.gn
+)
 
-# Grab libpdfium.a from out/lib/obj
-cp out/lib/obj/libpdfium.a ./libpdfium.a
+## Run the build
+ninja -C $BUILD_TARGET_DIR pdfium
+
+## Grab the static library
+mkdir -p ../../$TARGET_OS-$TARGET_CPU
+mv -f $BUILD_TARGET_DIR/obj/libpdfium.a ../../$TARGET_OS-$TARGET_CPU/libpdfium.a
