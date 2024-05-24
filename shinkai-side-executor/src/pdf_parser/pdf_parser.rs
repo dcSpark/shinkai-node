@@ -40,10 +40,19 @@ impl PDFParser {
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>, max_node_text_size: u64) -> anyhow::Result<Vec<TextGroup>> {
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
+        struct TextProperties {
+            x: f32,
+            y: f32,
+            font_size: f32,
+            font_weight: PdfFontWeight,
+        }
+
         let mut text_groups = Vec::new();
         let mut page_text = "".to_owned();
 
         for (page_index, page) in document.pages().iter().enumerate() {
+            let mut previous_text_properties: Option<TextProperties> = None;
+
             // Debug info
             eprintln!("=============== Page {} ===============", page_index + 1);
             let mut found_text = false;
@@ -58,8 +67,55 @@ impl PDFParser {
                         }
 
                         let text_object = object.as_text_object().unwrap();
+                        let current_text_properties = TextProperties {
+                            x: text_object.get_translation().0.value,
+                            y: text_object.get_translation().1.value,
+                            font_size: text_object.unscaled_font_size().value,
+                            font_weight: text_object.font().weight().unwrap_or(PdfFontWeight::Weight100),
+                        };
 
-                        page_text.push_str(&format!(" {}", &text_object.text()));
+                        // eprintln!(
+                        //     "Text object: [({}, {}) {} {:?}] {:?}",
+                        //     current_text_properties.x,
+                        //     current_text_properties.y,
+                        //     current_text_properties.font_size,
+                        //     current_text_properties.font_weight,
+                        //     text_object.text()
+                        // );
+
+                        if let Some(previous_text_properties) = previous_text_properties {
+                            let likely_heading = previous_text_properties.font_size > current_text_properties.font_size;
+
+                            // Same line, append text
+                            if current_text_properties.y == previous_text_properties.y {
+                                page_text.push_str(&format!("{}", &text_object.text()));
+                            }
+                            // likely heading or new paragraph
+                            else if likely_heading
+                                || (current_text_properties.y < previous_text_properties.y
+                                    && (previous_text_properties.y - current_text_properties.y)
+                                        > previous_text_properties.font_size * 1.5)
+                            {
+                                // Save text from previous text objects.
+                                Self::process_text_into_text_groups(
+                                    &page_text,
+                                    &mut text_groups,
+                                    max_node_text_size,
+                                    page_index + 1,
+                                );
+                                page_text.clear();
+
+                                page_text.push_str(&format!("{}", &text_object.text()));
+                            }
+                            // add new line
+                            else {
+                                page_text.push_str(&format!("\n{}", &text_object.text()));
+                            }
+                        } else {
+                            page_text.push_str(&format!("{}", &text_object.text()));
+                        }
+
+                        previous_text_properties = Some(current_text_properties);
                     }
                     PdfPageObjectType::Image => {
                         if !found_image {
@@ -77,13 +133,35 @@ impl PDFParser {
                         page_text.clear();
 
                         let image_object = object.as_image_object().unwrap();
-                        Self::process_image_object(
+
+                        if let Err(err) = Self::process_image_object(
                             self,
                             &image_object,
                             &mut text_groups,
                             max_node_text_size,
                             page_index + 1,
-                        )?;
+                        ) {
+                            eprintln!("Error processing image object: {:?}", err);
+                            match image_object.get_raw_image() {
+                                Ok(img) => {
+                                    let current_time = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+                                    let _ = std::fs::create_dir("broken_images");
+                                    let img_path = format!("broken_images/image_{}.png", current_time);
+
+                                    match img.save_with_format(&img_path, image::ImageFormat::Png) {
+                                        Ok(_) => {
+                                            eprintln!("Saved image to {}", &img_path);
+                                        }
+                                        Err(err) => {
+                                            eprintln!("Error saving image: {:?}", err);
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    eprintln!("Error getting raw image: {:?}", err);
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 }
