@@ -31,7 +31,7 @@ use super::utils::node_test_local::local_registration_profile_node;
 #[test]
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 #[test]
@@ -49,15 +49,15 @@ fn subidentity_registration() {
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-        let node1_encryption_sk_clone = node1_encryption_sk.clone();
+        let _node1_encryption_sk_clone = node1_encryption_sk.clone();
         let node1_encryption_sk_clone2 = node1_encryption_sk.clone();
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
 
-        let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
-        let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
+        let _node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
+        let _node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
 
         let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
         let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
@@ -68,11 +68,11 @@ fn subidentity_registration() {
         let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
         let node2_subencryption_sk_clone = node2_subencryption_sk.clone();
 
-        let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
-        let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
+        let _node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
+        let _node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
 
-        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
@@ -362,7 +362,7 @@ fn subidentity_registration() {
                 }
                 let message_to_check_content_unencrypted = message_to_check
                     .clone()
-                    .decrypt_inner_layer(&&node1_profile_encryption_sk.clone(), &node2_subencryption_pk)
+                    .decrypt_inner_layer(&node1_profile_encryption_sk.clone(), &node2_subencryption_pk)
                     .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated

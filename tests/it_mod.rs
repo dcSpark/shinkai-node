@@ -36,5 +36,6 @@ mod it {
     // mod websocket_tests;
     
     mod z_shinkai_mirror_tests;
+    mod tcp_proxy_tests;
     mod change_nodes_name_tests;
 }

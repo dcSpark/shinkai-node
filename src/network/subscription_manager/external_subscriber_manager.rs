@@ -570,6 +570,7 @@ impl ExternalSubscriberManager {
                         standard_identity,
                         subscription_with_tree.symmetric_key,
                         proxy_connection_info,
+                        identity_manager_lock.clone()
                     )
                     .await;
 
@@ -607,6 +608,7 @@ impl ExternalSubscriberManager {
         receiver_identity: StandardIdentity,
         symmetric_key: String,
         proxy_connection_info: Option<ProxyConnectionInfo>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
@@ -633,6 +635,7 @@ impl ExternalSubscriberManager {
             symmetric_key,
             receiver_socket_addr,
             proxy_connection_info,
+            identity_manager,
             receiver_name,
         )
         .await;

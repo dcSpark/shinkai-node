@@ -7,9 +7,11 @@ use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIAvailableSharedItems;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_tcp_relayer::TCPProxy;
@@ -23,9 +25,9 @@ use tokio::time::sleep;
 use tokio::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-const RELAYER_IDENTITY: &str = "@@tcp_replay_test.sepolia-shinkai";
-const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "e083ca3250c9dac7e79d0cc91fdabce9af748c38d6435fe023ad2b8cae87c155";
-const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "ed25dc9689b0e2876c60b65a2565cb3ec74425b6b6fca3b28d49d294368b320d";
+const RELAYER_IDENTITY: &str = "@@tcp_tests_proxy.sepolia-shinkai";
+const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
+const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 
 // #[tokio::test]
 async fn test_handle_client_localhost() {
@@ -79,15 +81,13 @@ async fn test_handle_client_localhost() {
     // Check if the client was added to the clients map
     {
         let clients = proxy.clients.lock().await;
-        assert!(clients.contains_key(identity));
+        let expected_key = format!("{}:::{}", identity, hex::encode(identity_pk.to_bytes()));
+        assert!(clients.contains_key(&expected_key));
     }
-
     // Check if the client's public key was added to the pk_to_clients map
     {
         let pk_to_clients = proxy.pk_to_clients.lock().await;
         let public_key_hex = hex::encode(identity_pk.to_bytes());
-        // eprintln!("Public Key Hex: {}", public_key_hex);
-        // eprintln!("Current pk_to_clients map: {:?}", pk_to_clients.keys().collect::<Vec<&String>>());
         assert!(pk_to_clients.contains_key(&public_key_hex));
     }
 
@@ -95,7 +95,10 @@ async fn test_handle_client_localhost() {
     handle.abort();
 }
 
-#[tokio::test]
+// #[tokio::test]
+/// This test needs to have a node running on the same machine.
+/// There is a proper test in the node codebase that tests the connection to the relayer.
+/// So this one's purpose is for development rather than of a throughout test.
 async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:9552").await.unwrap();
@@ -231,10 +234,16 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
 }
 
 // #[tokio::test]
-async fn test_message_from_localhost_to_farcaster_xyz_to_localhost() {
+/// This test needs to have a node running on the same machine.
+/// There is a proper test in the node codebase that tests the connection to the relayer.
+/// So this one's purpose is for development rather than of a throughout test.
+async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
     // Setup a TCP listener
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
     let addr = listener.local_addr().unwrap();
+
+    // Node1
+    let mut node1_socket = tokio::net::TcpStream::connect(addr).await.unwrap();
 
     // Create a TCPProxy instance
     let (signature_key, encryption_key) = get_keys();
@@ -251,86 +260,133 @@ async fn test_message_from_localhost_to_farcaster_xyz_to_localhost() {
         let proxy = proxy.clone();
         async move {
             loop {
-                let (socket, _) = listener.accept().await.unwrap();
-                proxy.handle_client(socket).await;
+                if let Ok((socket, _)) = listener.accept().await {
+                    proxy.handle_client(socket).await;
+                }
+                eprintln!("handle_client new loop");
+                sleep(Duration::from_millis(200)).await;
             }
         }
     });
 
-    // Connect localhost client
-    let mut localhost_socket = tokio::net::TcpStream::connect(addr).await.unwrap();
-    let localhost_identity = "localhost.sepolia-shinkai";
-    let localhost_msg = NetworkMessage {
-        identity: localhost_identity.to_string(),
-        message_type: NetworkMessageType::ShinkaiMessage,
-        payload: b"Hello from localhost!".to_vec(),
+    // Connect to the listener
+    let node1_identity = "@@node1_test_with_proxy.sepolia-shinkai";
+    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    eprintln!(
+        "Node1 local verifying key: {}",
+        signature_public_key_to_string(identity_pk)
+    );
+    eprintln!(
+        "Node1 local encryption key: {}",
+        encryption_public_key_to_string(encryption_pk)
+    );
+
+    let (verifying_key, encryption_key) = get_onchain_identity(node1_identity).await;
+    eprintln!(
+        "Node1 chain verifying key: {}",
+        signature_public_key_to_string(verifying_key)
+    );
+    eprintln!(
+        "Node1 chain encryption key: {}",
+        encryption_public_key_to_string(encryption_key)
+    );
+
+    let (_relayer_verifying_key, _relayer_encryption_key) = get_onchain_identity(RELAYER_IDENTITY).await;
+
+    // Send the initial connection message
+    let identity_msg = NetworkMessage {
+        identity: node1_identity.to_string(),
+        message_type: NetworkMessageType::ProxyMessage,
+        payload: Vec::new(),
     };
-    send_network_message(&mut localhost_socket, &localhost_msg).await;
-    eprintln!("Sent identity message for localhost");
 
-    // Handle validation for localhost
-    handle_validation(&mut localhost_socket).await;
-    eprintln!("localhost connected");
+    send_network_message(&mut node1_socket, &identity_msg).await;
+    eprintln!("Sent identity message {}", node1_identity);
+    sleep(Duration::from_millis(200)).await;
 
-    // Connect nico_requester client
-    let mut nico_socket = tokio::net::TcpStream::connect(addr).await.unwrap();
-    let nico_identity = "farcaster_xyz.sepolia-shinkai";
-    let nico_msg = NetworkMessage {
-        identity: nico_identity.to_string(),
-        message_type: NetworkMessageType::ShinkaiMessage,
-        payload: b"Hello from nico_requester!".to_vec(),
-    };
-    send_network_message(&mut nico_socket, &nico_msg).await;
-    eprintln!("Sent identity message for nico_requester");
-    sleep(Duration::from_millis(500)).await;
+    // Authenticate node1 using the provided signing key
+    authenticate_localhost(&mut node1_socket, &identity_sk).await;
 
-    // Confirm nico_requester connection
+    // Check if the client was added to the clients map
     {
         let clients = proxy.clients.lock().await;
-        eprintln!("{:?}", clients.keys());
-        assert!(clients.contains_key(nico_identity));
-        eprintln!("nico_requester connected");
+        // let expected_key = format!("{}:::{}", node1_identity, hex::encode(identity_pk.to_bytes()));
+        eprintln!("Expected key:: {}", node1_identity.to_string().trim_start_matches("@@"));
+        eprintln!("Clients map keys: {:?}", clients.keys().collect::<Vec<&String>>());
+        assert!(clients.contains_key(node1_identity.to_string().trim_start_matches("@@")));
+    }
+    // Check if the client's public key was added to the pk_to_clients map
+    {
+        let pk_to_clients = proxy.pk_to_clients.lock().await;
+        let public_key_hex = hex::encode(identity_pk.to_bytes());
+        assert!(pk_to_clients.contains_key(&public_key_hex));
     }
 
-    // Create a valid ShinkaiMessage
-    let encoded_msg = create_shinkai_message(
-        "@@farcaster_xyz.sepolia-shinkai",
-        "@@localhost.sepolia-shinkai",
-        "Message from nico_requester to localhost",
+    // Node1 is connected ✅
+    eprintln!("Node1 connection confirmed");
+    // Now we send a message to farcaster_xyz asking for shared_files
+
+    // Create the payload using create_shinkai_message_for_shared_files
+    let payload = create_shinkai_message_for_shared_files(
+        "@@node1_test_with_proxy.sepolia-shinkai",
+        "@@external_identity_testing_tcp_relay.sepolia-shinkai",
+        "main",
     )
     .await;
 
-    // Send a message from nico_requester to localhost
-    let message_to_localhost = NetworkMessage {
-        identity: nico_identity.to_string(),
+    let node1_msg = NetworkMessage {
+        identity: node1_identity.to_string(),
         message_type: NetworkMessageType::ShinkaiMessage,
-        payload: encoded_msg,
+        payload,
     };
-    send_network_message(&mut nico_socket, &message_to_localhost).await;
-    eprintln!("Sent message from nico_requester to localhost");
 
-    // Read the confirmation message from the server
+    eprintln!("\n\nSent identity message for node1");
+    send_network_message(&mut node1_socket, &node1_msg).await;
+
+    // Confirm node1 connection
+    {
+        let clients = proxy.clients.lock().await;
+        // let expected_key = format!("{}:::{}", node1_identity, hex::encode(identity_pk.to_bytes()));
+        eprintln!("Expected key: {}", node1_identity.to_string().trim_start_matches("@@"));
+        eprintln!("Clients map keys: {:?}", clients.keys().collect::<Vec<&String>>());
+        assert!(clients.contains_key(node1_identity.to_string().trim_start_matches("@@")));
+    }
+    eprintln!("Node1 connection confirmed");
+
+    // Await for message from the server
     let mut len_buffer = [0u8; 4];
-    nico_socket.read_exact(&mut len_buffer).await.unwrap();
-    let message_len = u32::from_be_bytes(len_buffer) as usize;
+    node1_socket.read_exact(&mut len_buffer).await.unwrap();
+    let total_length = u32::from_be_bytes(len_buffer) as usize;
 
-    let mut buffer = vec![0u8; message_len];
-    nico_socket.read_exact(&mut buffer).await.unwrap();
-    let confirmation_message = String::from_utf8(buffer).unwrap();
-    eprintln!("Received confirmation on nico_requester: {}", confirmation_message);
+    let mut buffer = vec![0u8; total_length];
+    node1_socket.read_exact(&mut buffer).await.unwrap();
 
-    // Read the message from the server on nico_requester
-    let mut len_buffer = [0u8; 4];
-    nico_socket.read_exact(&mut len_buffer).await.unwrap();
-    let message_len = u32::from_be_bytes(len_buffer) as usize;
+    let mut cursor = std::io::Cursor::new(buffer);
 
-    let mut buffer = vec![0u8; message_len];
-    nico_socket.read_exact(&mut buffer).await.unwrap();
-    let received_message = String::from_utf8(buffer).unwrap();
-    eprintln!("Received message on nico_requester: {}", received_message);
+    // Read identity length
+    let mut identity_len_buffer = [0u8; 4];
+    cursor.read_exact(&mut identity_len_buffer).await.unwrap();
+    let identity_length = u32::from_be_bytes(identity_len_buffer) as usize;
+
+    // Read identity
+    let mut identity_buffer = vec![0u8; identity_length];
+    cursor.read_exact(&mut identity_buffer).await.unwrap();
+    let _identity = String::from_utf8(identity_buffer).unwrap();
+
+    // Read message type
+    let mut message_type_buffer = [0u8; 1];
+    cursor.read_exact(&mut message_type_buffer).await.unwrap();
+    let _message_type = message_type_buffer[0];
+
+    // Read the actual message
+    let mut message_buffer = vec![0u8; total_length - 4 - identity_length - 1];
+    cursor.read_exact(&mut message_buffer).await.unwrap();
+    let received_message = String::from_utf8(message_buffer).unwrap();
+    eprintln!("Received message: {}", received_message);
 
     // Assert the received message
-    assert_eq!(received_message, "OK");
+    // assert_eq!(received_message, "OK");
 
     // Clean up
     handle.abort();
@@ -367,41 +423,6 @@ async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkM
 
     socket.write_all(&data_to_send).await.unwrap();
     socket.flush().await.unwrap();
-}
-
-#[allow(dead_code)]
-async fn handle_validation(socket: &mut tokio::net::TcpStream) {
-    let mut len_buffer = [0u8; 4];
-    socket.read_exact(&mut len_buffer).await.unwrap();
-    let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
-
-    let mut buffer = vec![0u8; validation_data_len];
-    socket.read_exact(&mut buffer).await.unwrap();
-    let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
-
-    // Sign the validation data
-    let secret_key_bytes = hex::decode("df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119").unwrap();
-    let secret_key_array: [u8; 32] = secret_key_bytes.try_into().expect("slice with incorrect length");
-    let secret_key = ed25519_dalek::SigningKey::from_bytes(&secret_key_array);
-    let signature = secret_key.sign(validation_data.as_bytes());
-    let signature_hex = hex::encode(signature.to_bytes());
-
-    // Send the length of the signed validation data back to the server
-    let signature_len = signature_hex.len() as u32;
-    let signature_len_bytes = signature_len.to_be_bytes();
-    socket.write_all(&signature_len_bytes).await.unwrap();
-    socket.write_all(signature_hex.as_bytes()).await.unwrap();
-    eprintln!("Sent signed validation data");
-
-    // Wait for the server to validate the signature
-    socket.read_exact(&mut len_buffer).await.unwrap();
-    let response_len = u32::from_be_bytes(len_buffer) as usize;
-
-    let mut response_buffer = vec![0u8; response_len];
-    socket.read_exact(&mut response_buffer).await.unwrap();
-    let response = String::from_utf8(response_buffer).unwrap();
-    eprintln!("Received validation response: {}", response);
-    assert_eq!(response, "Validation successful");
 }
 
 async fn create_shinkai_message(sender: &str, recipient: &str, content: &str) -> Vec<u8> {
@@ -496,27 +517,6 @@ async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPubli
     let registry_encryption_public_key = registry_identity.encryption_public_key().unwrap();
 
     (registry_identity_public_key, registry_encryption_public_key)
-}
-
-fn initial_shinkai_msg(
-    my_subidentity_encryption_sk: EncryptionStaticKey,
-    my_subidentity_signature_sk: SigningKey,
-    receiver_public_key: EncryptionPublicKey,
-    sender_subidentity: String,
-    sender: String,
-    receiver: String,
-) -> ShinkaiMessage {
-    ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
-        my_subidentity_encryption_sk,
-        my_subidentity_signature_sk,
-        receiver_public_key,
-        "".to_string(),
-        sender_subidentity,
-        sender,
-        receiver,
-        MessageSchemaType::TextContent,
-    )
-    .unwrap()
 }
 
 async fn authenticate_localhost(socket: &mut tokio::net::TcpStream, signing_key: &SigningKey) {

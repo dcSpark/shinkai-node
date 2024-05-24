@@ -22,6 +22,7 @@ use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_tcp_relayer::NetworkMessage;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -410,7 +411,7 @@ type ProfileName = String;
 // Define the ConnectionInfo struct
 #[derive(Clone, Debug)]
 pub struct ProxyConnectionInfo {
-    pub proxy_address: SocketAddr,
+    pub proxy_identity: ShinkaiName,
     pub tcp_connection: Arc<Mutex<Option<TcpStream>>>,
 }
 
@@ -481,7 +482,7 @@ impl Node {
         commands: Receiver<NodeCommand>,
         main_db_path: String,
         secrets_file_path: String,
-        proxy_address: Option<SocketAddr>,
+        proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -572,15 +573,14 @@ impl Node {
             max_connections_per_ip.try_into().unwrap(),
         ));
 
-        // Initialize ProxyConnectionInfo if proxy_address is provided
-        let proxy_connection_info = if let Some(proxy_addr) = proxy_address {
-            Some(ProxyConnectionInfo {
-                proxy_address: proxy_addr,
+        // Initialize ProxyConnectionInfo if proxy_identity is provided
+        let proxy_connection_info = proxy_identity.map(|proxy_identity| {
+            let proxy_identity = ShinkaiName::new(proxy_identity).expect("Invalid proxy identity name");
+            ProxyConnectionInfo {
+                proxy_identity,
                 tcp_connection: Arc::new(Mutex::new(None)),
-            })
-        } else {
-            None
-        };
+            }
+        });
 
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
@@ -2040,76 +2040,122 @@ impl Node {
 
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
-        let listener = TcpListener::bind(&self.listen_address).await?;
+        if let Some(proxy_info) = &self.proxy_connection_info {
+            // If proxy connection info is provided, connect to the proxy
+            let proxy_addr = Node::get_address_from_identity(
+                self.identity_manager.clone(),
+                &proxy_info.proxy_identity.get_node_name_string(),
+            )
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
-        );
-
-        // Initialize your connection limiter
-        loop {
-            let (socket, addr) = listener.accept().await?;
-
-            // Too many requests by IP protection
-            let ip = addr.ip().to_string();
-            let conn_limiter_clone = self.conn_limiter.clone();
-
-            if !conn_limiter_clone.check_rate_limit(&ip).await {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Rate limit exceeded for IP: {}", ip),
-                );
-                continue;
-            }
-
-            if !conn_limiter_clone.increment_connection(&ip).await {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Too many connections from IP: {}", ip),
-                );
-                continue;
-            }
-
-            let socket = Arc::new(Mutex::new(socket));
-            let _db = Arc::clone(&self.db);
-            let _identity_manager = Arc::clone(&self.identity_manager);
-            let _encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
-            let _identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
-            let _node_profile_name_clone = self.node_name.clone();
             let network_job_manager = Arc::clone(&self.network_job_manager);
-            let proxy_connection_info = self.proxy_connection_info.clone();
+            let identity_manager = Arc::clone(&self.identity_manager);
+            let proxy_connection_info = proxy_info.clone();
+            let node_name = self.node_name.clone();
 
             tokio::spawn(async move {
-                let mut socket = socket.lock().await;
+                loop {
+                    match TcpStream::connect(proxy_addr).await {
+                        Ok(mut proxy_stream) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Info,
+                                &format!("Connected to proxy at {}", proxy_addr),
+                            );
 
-                // Check if a proxy connection is specified
-                if let Some(proxy_info) = proxy_connection_info {
-                    let mut proxy_stream = match TcpStream::connect(&proxy_info.proxy_address).await {
-                        Ok(stream) => stream,
+                            // Send the initial connection message
+                            let identity_msg = NetworkMessage {
+                                identity: node_name.to_string(),
+                                message_type: NetworkMessageType::ProxyMessage,
+                                payload: Vec::new(),
+                            };
+                            Self::send_network_message(&mut proxy_stream, &identity_msg).await;
+
+                            // Handle connection through the proxy
+                            Self::handle_connection(&mut proxy_stream, proxy_addr, network_job_manager.clone()).await;
+                        }
                         Err(e) => {
-                            eprintln!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e);
                             shinkai_log(
                                 ShinkaiLogOption::Node,
                                 ShinkaiLogLevel::Error,
-                                &format!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e),
+                                &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
                             );
-                            return;
+                            // Wait before retrying to connect to the proxy
+                            tokio::time::sleep(Duration::from_secs(5)).await;
                         }
-                    };
+                    }
+                }
+            });
+        } else {
+            // If no proxy connection info, listen for incoming connections directly
+            let listener = TcpListener::bind(&self.listen_address).await?;
 
-                    // Use the `proxy_stream` for further processing or communication
-                    Self::handle_connection(&mut proxy_stream, addr, network_job_manager).await;
-                } else {
-                    // Use the `socket` directly for further processing or communication
-                    Self::handle_connection(&mut socket, addr, network_job_manager).await;
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
+            );
+
+            // Initialize your connection limiter
+            loop {
+                let (socket, addr) = listener.accept().await?;
+
+                // Too many requests by IP protection
+                let ip = addr.ip().to_string();
+                let conn_limiter_clone = self.conn_limiter.clone();
+
+                if !conn_limiter_clone.check_rate_limit(&ip).await {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Rate limit exceeded for IP: {}", ip),
+                    );
+                    continue;
                 }
 
-                conn_limiter_clone.decrement_connection(&ip).await;
-            });
+                if !conn_limiter_clone.increment_connection(&ip).await {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Too many connections from IP: {}", ip),
+                    );
+                    continue;
+                }
+
+                let socket = Arc::new(Mutex::new(socket));
+                let network_job_manager = Arc::clone(&self.network_job_manager);
+                let conn_limiter_clone = self.conn_limiter.clone();
+
+                tokio::spawn(async move {
+                    let mut socket = socket.lock().await;
+                    Self::handle_connection(&mut socket, addr, network_job_manager).await;
+                    conn_limiter_clone.decrement_connection(&ip).await;
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    // Static function to get the address from a ShinkaiName identity
+    async fn get_address_from_identity(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        proxy_identity: &str,
+    ) -> Result<SocketAddr, String> {
+        let identity_manager = identity_manager.lock().await;
+        match identity_manager
+            .external_profile_to_global_identity(proxy_identity)
+            .await
+        {
+            Ok(identity) => {
+                if let Some(proxy_addr) = identity.addr {
+                    Ok(proxy_addr)
+                } else {
+                    Err(format!("No address found for proxy identity: {}", proxy_identity))
+                }
+            }
+            Err(e) => Err(format!("Failed to resolve proxy identity {}: {}", proxy_identity, e)),
         }
     }
 
@@ -2380,7 +2426,7 @@ impl Node {
         let message = Arc::new(message);
 
         tokio::spawn(async move {
-            let stream = Node::get_stream(address, proxy_connection_info).await;
+            let stream = Node::get_stream(address, proxy_connection_info, maybe_identity_manager.clone()).await;
 
             if let Some(mut stream) = stream {
                 let encoded_msg = message.encode_message().unwrap();
@@ -2433,21 +2479,37 @@ impl Node {
     }
 
     /// Function to get the stream, either directly or through a proxy
-    async fn get_stream(address: SocketAddr, proxy_connection_info: Option<ProxyConnectionInfo>) -> Option<TcpStream> {
+    async fn get_stream(
+        address: SocketAddr,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> Option<TcpStream> {
         if let Some(proxy_info) = proxy_connection_info {
             let mut tcp_connection = proxy_info.tcp_connection.lock().await;
             if tcp_connection.is_none() {
-                match TcpStream::connect(proxy_info.proxy_address).await {
-                    Ok(new_stream) => {
-                        *tcp_connection = Some(new_stream);
-                    }
+                match Node::get_address_from_identity(
+                    identity_manager,
+                    &proxy_info.proxy_identity.get_node_name_string(),
+                )
+                .await
+                {
+                    Ok(proxy_addr) => match TcpStream::connect(proxy_addr).await {
+                        Ok(new_stream) => {
+                            *tcp_connection = Some(new_stream);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
+                            );
+                            return None;
+                        }
+                    },
                     Err(e) => {
-                        eprintln!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e);
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to connect to proxy {}: {}", proxy_info.proxy_address, e),
-                        );
+                        eprintln!("{}", e);
+                        shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, &e);
                         return None;
                     }
                 }
@@ -2475,6 +2537,7 @@ impl Node {
         encryption_key_hex: String,
         peer: SocketAddr,
         proxy_connection_info: Option<ProxyConnectionInfo>,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         recipient: ShinkaiName,
     ) {
         tokio::spawn(async move {
@@ -2525,7 +2588,7 @@ impl Node {
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
             // Get the stream using the get_stream function
-            let stream = Node::get_stream(peer, proxy_connection_info).await;
+            let stream = Node::get_stream(peer, proxy_connection_info, maybe_identity_manager).await;
 
             if let Some(mut stream) = stream {
                 let _ = stream.write_all(&data_to_send).await;
@@ -2638,4 +2701,37 @@ impl Node {
         }
         Ok(())
     }
+
+    async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkMessage) {
+        let encoded_msg = msg.payload.clone();
+        let identity = &msg.identity;
+        let identity_bytes = identity.as_bytes();
+        let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+    
+        // Prepare the message with a length prefix and identity length
+        let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
+    
+        let mut data_to_send = Vec::new();
+        let header_data_to_send = vec![match msg.message_type {
+            NetworkMessageType::ShinkaiMessage => 0x01,
+            NetworkMessageType::VRKaiPathPair => 0x02,
+            NetworkMessageType::ProxyMessage => 0x03,
+        }];
+        data_to_send.extend_from_slice(&total_length);
+        data_to_send.extend_from_slice(&identity_length);
+        data_to_send.extend(identity_bytes);
+        data_to_send.extend(header_data_to_send);
+        data_to_send.extend_from_slice(&encoded_msg);
+    
+        // Print the name and length of each component
+        println!("Total length: {}", u32::from_be_bytes(total_length));
+        println!("Identity length: {}", u32::from_be_bytes(identity_length));
+        println!("Identity bytes length: {}", identity_bytes.len());
+        println!("Message type length: 1");
+        println!("Payload length: {}", encoded_msg.len());
+    
+        socket.write_all(&data_to_send).await.unwrap();
+        socket.flush().await.unwrap();
+    }
+
 }

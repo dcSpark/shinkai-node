@@ -155,7 +155,7 @@ impl TCPProxy {
         let network_msg = match NetworkMessage::read_from_socket(socket.clone(), None).await {
             Ok(msg) => msg,
             Err(e) => {
-                eprintln!("Failed to read identity: {}", e);
+                eprintln!("Failed to read_from_socket: {}", e);
                 return;
             }
         };
@@ -379,6 +379,17 @@ impl TCPProxy {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
     ) -> Result<(), NetworkMessageError> {
+        /*
+         For Proxy Message we have multiple cases
+
+         1) From external source
+            1.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
+            1.b) If the recipient is not the same as the node_name but the recipient's address is this node's address, then we handle the message locally
+
+         2) From internal source
+            2.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
+            2.b) If the recipient is not the same as the node_name, then we need to proxy the message to the recipient
+        */
         eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
 
         // Check if the message needs to be proxied or if it's meant for one of the connected nodes behind NAT
@@ -395,16 +406,29 @@ impl TCPProxy {
         eprintln!("Recipient: {}", recipient);
         eprintln!("Node Name: {}", node_name);
 
+        let recipient_matches = recipient == stripped_node_name
+            || recipient.starts_with("localhost")
+            || recipient.starts_with("@@localhost");
+
+        let recipient_addresses = if !recipient_matches {
+            // Fetch the public keys from the registry
+            let registry_identity = registry.get_identity_record(recipient.clone()).await.unwrap();
+            eprintln!("Registry Identity (recipient_addresses): {:?}", registry_identity);
+            registry_identity.address_or_proxy_nodes
+        } else {
+            vec![]
+        };
+
         // check if it matches the tcp relayer's node name
         if recipient == stripped_node_name {
+            eprintln!("Recipient is the same as the node name, handling message locally");
+
             // Fetch the public keys from the registry
             let msg_sender = parsed_message.clone().external_metadata.sender;
             let registry_identity = registry.get_identity_record(msg_sender).await.unwrap();
             eprintln!("Registry Identity: {:?}", registry_identity);
             let sender_encryption_pk = registry_identity.encryption_public_key()?;
             let sender_signature_pk = registry_identity.signature_verifying_key()?;
-
-            eprintln!("Recipient is the same as the node name, handling message locally");
 
             // validate that's signed by the sender
             parsed_message.verify_outer_layer_signature(&sender_signature_pk)?;
@@ -461,6 +485,33 @@ impl TCPProxy {
                 .is_err()
             {
                 eprintln!("Failed to send message to client {}", client_identity);
+            }
+
+            Ok(())
+        } else if recipient_addresses.iter().any(|addr| addr == &stripped_node_name) {
+            eprintln!(
+                "Recipient is {} and uses this node as proxy, handling message locally",
+                recipient
+            );
+
+            let connection = {
+                let clients_guard = clients.lock().await;
+                match clients_guard.get(&recipient) {
+                    Some(connection) => connection.clone(),
+                    None => {
+                        eprintln!("Error: Connection not found for recipient {}", recipient);
+                        return Ok(());
+                    }
+                }
+            };
+
+            // Send message to the client using connection
+            eprintln!("Sending message to client {}", recipient);
+            if Self::send_shinkai_message_to_proxied_identity(&connection, parsed_message)
+                .await
+                .is_err()
+            {
+                eprintln!("Failed to send message to client {}", recipient);
             }
 
             Ok(())
@@ -582,6 +633,7 @@ impl TCPProxy {
         // Send validation data to the client
         send_message_with_length(&socket, validation_data.clone()).await?;
 
+        eprintln!("Validating identity: {}", identity);
         let validation_result = if !identity.starts_with("localhost") {
             self.validate_non_localhost_identity(socket.clone(), identity, &validation_data)
                 .await
@@ -617,23 +669,39 @@ impl TCPProxy {
         identity: &str,
         validation_data: &str,
     ) -> Result<PublicKeyHex, NetworkMessageError> {
+        eprintln!("Validating non-localhost identity: {}", identity);
         // The client is expected to send back a message containing:
         // 1. The length of the signed validation data (4 bytes, big-endian).
         // 2. The signed validation data (hex-encoded string).
-        let response = Self::read_response_from_socket(socket.clone()).await?;
+        let buffer = Self::read_buffer_from_socket(socket.clone()).await?;
+        let mut cursor = std::io::Cursor::new(buffer);
+
+        let _public_key = Self::read_public_key_from_cursor(&mut cursor).await?;
+        let signature = Self::read_signature_from_cursor(&mut cursor).await?;
+
+        // eprintln!("Received response: {}", signature);
         let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
+        eprintln!("Onchain identity: {:?}", onchain_identity);
         let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
 
-        // TODO: validate that the timestamp is recent enough
-        // TODO: and it hasn't been used before
-
-        if !Self::validate_signature(&public_key, validation_data, &response)? {
+        if public_key.verify(validation_data.as_bytes(), &signature).is_err() {
             Err(NetworkMessageError::InvalidData(
                 "Signature verification failed".to_string(),
             ))
         } else {
             Ok(hex::encode(public_key.to_bytes()))
         }
+
+        // TODO: validate that the timestamp is recent enough
+        // TODO: and it hasn't been used before
+
+        // if !Self::validate_signature(&public_key, validation_data, &signature)? {
+        //     Err(NetworkMessageError::InvalidData(
+        //         "Signature verification failed".to_string(),
+        //     ))
+        // } else {
+        //     Ok(hex::encode(public_key.to_bytes()))
+        // }
     }
 
     async fn validate_localhost_identity(

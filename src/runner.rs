@@ -181,7 +181,7 @@ pub async fn initialize_node() -> Result<
         node_commands_receiver,
         main_db_path.clone(),
         secrets_file_path.clone(),
-        node_env.proxy_address,
+        node_env.proxy_identity.clone(),
         node_env.first_device_needs_registration_code,
         initial_agents,
         node_env.js_toolkit_executor_remote.clone(),

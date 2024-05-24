@@ -23,7 +23,7 @@ pub struct NodeEnvironment {
     pub embeddings_server_url: Option<String>,
     pub embeddings_server_api_key: Option<String>,
     pub auto_detect_local_llms: bool,
-    pub proxy_address: Option<SocketAddr>,
+    pub proxy_identity: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,8 +160,8 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     let embeddings_server_url: Option<String> = env::var("EMBEDDINGS_SERVER_URL").ok();
     let embeddings_server_api_key: Option<String> = env::var("EMBEDDINGS_SERVER_API_KEY").ok();
 
-    // Fetch the PROXY_ADDRESS environment variable
-    let proxy_address: Option<SocketAddr> = env::var("PROXY_ADDRESS").ok().and_then(|addr| addr.parse().ok());
+    // Fetch the PROXY_IDENTITY environment variable
+    let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
     // Check if NODE_API_IP:NODE_API_PORT is the same as NODE_IP:NODE_PORT
     if ip == api_ip && port == api_port {
@@ -185,7 +185,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         embeddings_server_url,
         embeddings_server_api_key,
         auto_detect_local_llms,
-        proxy_address,
+        proxy_identity,
     }
 }
 

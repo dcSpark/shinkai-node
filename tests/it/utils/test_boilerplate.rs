@@ -80,7 +80,7 @@ where
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
         // Fetch the PROXY_ADDRESS environment variable
-        let proxy_address: Option<SocketAddr> = env::var("PROXY_ADDRESS").ok().and_then(|addr| addr.parse().ok());
+        let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -93,7 +93,7 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             "".to_string(),
-            proxy_address,
+            proxy_identity,
             false,
             vec![],
             None,

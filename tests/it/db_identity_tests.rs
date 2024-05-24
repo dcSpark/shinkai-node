@@ -180,11 +180,14 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
     let device_name = "device_main";
     let (_device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
     let (_device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+    // eprintln!("device_identity_pk: {:?}", signature_public_key_to_string(device_identity_pk));
+    // eprintln!("device_encryption_pk: {:?}", encryption_public_key_to_string(device_encryption_pk));
+    // panic!("stop here");
 
     // Create the keys for the node
     task::block_on(create_local_node_profile(
         &shinkai_db,
-        node_profile_name.clone().to_string(),
+        node_profile_name.to_string(),
         encryption_pk,
         identity_pk,
     ));
