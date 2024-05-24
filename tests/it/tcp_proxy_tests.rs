@@ -20,7 +20,7 @@ use shinkai_message_primitives::shinkai_utils::{
 use shinkai_node::network::{node::NodeCommand, node_api::APIError, Node};
 use shinkai_tcp_relayer::TCPProxy;
 use shinkai_vector_resources::utils::hash_string;
-use tokio::{net::TcpListener, runtime::Runtime};
+use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 
 use crate::it::utils::{
     node_test_api::api_registration_device_node_profile_main, node_test_local::local_registration_profile_node,
@@ -248,6 +248,8 @@ fn tcp_proxy_test_identity() {
                 Some(tcp_proxy_identity_sk),
                 Some(tcp_proxy_encryption_sk),
                 Some(tcp_proxy_identity_name.to_string()),
+                None,
+                None,
             )
             .await
             .unwrap();
@@ -260,10 +262,16 @@ fn tcp_proxy_test_identity() {
             let _tcp_handle = tokio::spawn({
                 let proxy = proxy.clone();
                 async move {
-                    let (socket, _) = listener.accept().await.unwrap();
-                    proxy.handle_client(socket).await;
+                    loop {
+                        if let Ok((socket, _)) = listener.accept().await {
+                            proxy.handle_client(socket).await;
+                        }
+                        eprintln!("handle_client new loop");
+                        sleep(Duration::from_millis(200)).await;
+                    }
                 }
             });
+            sleep(Duration::from_secs(1)).await;
 
             // Register a Profile in Node1 and verifies it
             {
@@ -297,7 +305,7 @@ fn tcp_proxy_test_identity() {
                 .await;
             }
 
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
 
             // Shinkai Testing Framework
             let node_2_testing_framework = ShinkaiTestingFramework::new(
@@ -612,16 +620,13 @@ fn tcp_proxy_test_localhost() {
             eprintln!("Starting interactions");
             eprintln!("Registration of Subidentities");
 
-            // start a tcp proxy node
-            // start node with proxy node ENV variable set
-            // start another node that has some files shared
-            // node 1 should be able to access the files on node 2 using the proxy
-
             // Creates a TCPProxy instance
             let proxy = TCPProxy::new(
                 Some(tcp_proxy_identity_sk),
                 Some(tcp_proxy_encryption_sk),
                 Some(tcp_proxy_identity_name.to_string()),
+                None,
+                None,
             )
             .await
             .unwrap();

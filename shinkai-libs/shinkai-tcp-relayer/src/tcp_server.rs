@@ -679,12 +679,15 @@ impl TCPProxy {
         // 1. The length of the signed validation data (4 bytes, big-endian).
         // 2. The signed validation data (hex-encoded string).
         let buffer = Self::read_buffer_from_socket(socket.clone()).await?;
+        eprintln!("Received buffer: {:?}", buffer);
         let mut cursor = std::io::Cursor::new(buffer);
 
         let _public_key = Self::read_public_key_from_cursor(&mut cursor).await?;
+        eprintln!("Received public key: {:?}", _public_key);
         let signature = Self::read_signature_from_cursor(&mut cursor).await?;
 
         // eprintln!("Received response: {}", signature);
+        eprintln!("Obtaining onchain identity for {}...", identity);
         let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
         eprintln!("Onchain identity: {:?}", onchain_identity);
         let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
@@ -934,7 +937,9 @@ impl TCPProxy {
 }
 
 async fn send_message_with_length(socket: &Arc<Mutex<TcpStream>>, message: String) -> Result<(), NetworkMessageError> {
+    eprintln!("send_message_with_length> Sending message: {}", message);
     let message_len = message.len() as u32;
+    eprintln!("send_message_with_length> Message length: {}", message_len);
     let message_len_bytes = message_len.to_be_bytes(); // This will always be 4 bytes big-endian
     let message_bytes = message.as_bytes();
 
