@@ -61,10 +61,15 @@ impl TCPProxy {
         identity_secret_key: Option<SigningKey>,
         encryption_secret_key: Option<EncryptionStaticKey>,
         node_name: Option<String>,
+        rpc_url: Option<String>,
+        contract_address: Option<String>,
     ) -> Result<Self, NetworkMessageError> {
-        let rpc_url = env::var("RPC_URL").unwrap_or("https://sepolia.drpc.org".to_string()); // https://ethereum-sepolia-rpc.publicnode.com
-        let contract_address =
-            env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
+        let rpc_url = rpc_url
+            .or_else(|| env::var("RPC_URL").ok())
+            .unwrap_or("https://sepolia.drpc.org".to_string());
+        let contract_address = contract_address
+            .or_else(|| env::var("CONTRACT_ADDRESS").ok())
+            .unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 

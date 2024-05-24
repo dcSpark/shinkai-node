@@ -1,6 +1,8 @@
 use clap::{App, Arg};
 use dotenv::dotenv;
-use shinkai_message_primitives::shinkai_utils::{encryption::string_to_encryption_static_key, signatures::string_to_signature_secret_key};
+use shinkai_message_primitives::shinkai_utils::{
+    encryption::string_to_encryption_static_key, signatures::string_to_signature_secret_key,
+};
 use shinkai_tcp_relayer::{NetworkMessageError, TCPProxy};
 use std::env;
 use tokio::net::TcpListener;
@@ -94,6 +96,7 @@ async fn main() -> Result<(), NetworkMessageError> {
         .map(String::from)
         .or_else(|| env::var("NODE_NAME").ok())
         .expect("NODE_NAME is required");
+    // TODO: implement restrictions
     let open_to_all = matches
         .value_of("open_to_all")
         .map(|v| v == "true")
@@ -107,7 +110,14 @@ async fn main() -> Result<(), NetworkMessageError> {
     let listener = TcpListener::bind(&address).await.unwrap();
     println!("Server listening on {}", address);
 
-    let proxy = TCPProxy::new(Some(identity_secret_key), Some(encryption_secret_key), Some(node_name)).await?;
+    let proxy = TCPProxy::new(
+        Some(identity_secret_key),
+        Some(encryption_secret_key),
+        Some(node_name),
+        rpc_url,
+        contract_address,
+    )
+    .await?;
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();

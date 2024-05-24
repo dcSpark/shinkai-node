@@ -29,7 +29,7 @@ const RELAYER_IDENTITY: &str = "@@tcp_tests_proxy.sepolia-shinkai";
 const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 
-// #[tokio::test]
+#[tokio::test]
 async fn test_handle_client_localhost() {
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -44,6 +44,8 @@ async fn test_handle_client_localhost() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -76,13 +78,80 @@ async fn test_handle_client_localhost() {
     sleep(Duration::from_millis(100)).await;
 
     // Authenticate localhost using the provided signing key
-    authenticate_localhost(&mut socket, &identity_sk).await;
+    authenticate_identity_or_localhost(&mut socket, &identity_sk).await;
 
     // Check if the client was added to the clients map
     {
         let clients = proxy.clients.lock().await;
         let expected_key = format!("{}:::{}", identity, hex::encode(identity_pk.to_bytes()));
         assert!(clients.contains_key(&expected_key));
+    }
+    // Check if the client's public key was added to the pk_to_clients map
+    {
+        let pk_to_clients = proxy.pk_to_clients.lock().await;
+        let public_key_hex = hex::encode(identity_pk.to_bytes());
+        assert!(pk_to_clients.contains_key(&public_key_hex));
+    }
+
+    // Clean up
+    handle.abort();
+}
+
+#[tokio::test]
+async fn test_handle_client_identity() {
+    // Setup a TCP listener
+    let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    // Fetch the on-chain identity of the relayer
+    let (_relayer_verifying_key, _relayer_encryption_key) = get_onchain_identity(RELAYER_IDENTITY).await;
+
+    // Create a TCPProxy instance
+    let (signature_key, encryption_key) = get_keys();
+    let proxy = TCPProxy::new(
+        Some(signature_key),
+        Some(encryption_key),
+        Some(RELAYER_IDENTITY.to_string()),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Spawn a task to accept connections
+    let handle = task::spawn({
+        let proxy = proxy.clone();
+        async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            proxy.handle_client(socket).await;
+        }
+    });
+
+    // Connect to the listener
+    let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
+
+    let identity = "@@node1_test_with_proxy.sepolia-shinkai";
+    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_encryption_sk, _encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    // Send the initial connection message
+    let identity_msg = NetworkMessage {
+        identity: identity.to_string(),
+        message_type: NetworkMessageType::ProxyMessage,
+        payload: Vec::new(),
+    };
+
+    send_network_message(&mut socket, &identity_msg).await;
+    eprintln!("Sent identity message");
+    sleep(Duration::from_millis(100)).await;
+
+    // Authenticate localhost using the provided signing key
+    authenticate_identity_or_localhost(&mut socket, &identity_sk).await;
+
+    // Check if the client was added to the clients map
+    {
+        let clients = proxy.clients.lock().await;
+        assert!(clients.contains_key(identity.to_string().trim_start_matches("@@")));
     }
     // Check if the client's public key was added to the pk_to_clients map
     {
@@ -114,6 +183,8 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -148,7 +219,7 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     sleep(Duration::from_millis(100)).await;
 
     // Authenticate localhost using the provided signing key
-    authenticate_localhost(&mut localhost_socket, &identity_sk).await;
+    authenticate_identity_or_localhost(&mut localhost_socket, &identity_sk).await;
 
     // Check if the client was added to the clients map
     {
@@ -251,6 +322,8 @@ async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
         Some(signature_key),
         Some(encryption_key),
         Some(RELAYER_IDENTITY.to_string()),
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -306,7 +379,7 @@ async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
     sleep(Duration::from_millis(200)).await;
 
     // Authenticate node1 using the provided signing key
-    authenticate_localhost(&mut node1_socket, &identity_sk).await;
+    authenticate_identity_or_localhost(&mut node1_socket, &identity_sk).await;
 
     // Check if the client was added to the clients map
     {
@@ -425,24 +498,6 @@ async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkM
     socket.flush().await.unwrap();
 }
 
-async fn create_shinkai_message(sender: &str, recipient: &str, content: &str) -> Vec<u8> {
-    let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-    let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
-    let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
-
-    let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
-        .message_raw_content(content.to_string())
-        .body_encryption(EncryptionMethod::None)
-        .message_schema_type(MessageSchemaType::TextContent)
-        .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None, None)
-        .external_metadata(recipient.to_string(), sender.to_string())
-        .build();
-
-    assert!(message_result.is_ok());
-    let message = message_result.unwrap();
-    serde_json::to_vec(&message).unwrap()
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn generate_message_with_payload<T: ToString>(
     payload: T,
@@ -473,6 +528,7 @@ pub fn generate_message_with_payload<T: ToString>(
         .unwrap()
 }
 
+#[allow(dead_code)]
 async fn create_shinkai_message_for_shared_files(
     sender: &str,
     recipient: &str,
@@ -519,7 +575,7 @@ async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPubli
     (registry_identity_public_key, registry_encryption_public_key)
 }
 
-async fn authenticate_localhost(socket: &mut tokio::net::TcpStream, signing_key: &SigningKey) {
+async fn authenticate_identity_or_localhost(socket: &mut tokio::net::TcpStream, signing_key: &SigningKey) {
     // Handle validation
     let mut len_buffer = [0u8; 4];
     socket.read_exact(&mut len_buffer).await.unwrap();
