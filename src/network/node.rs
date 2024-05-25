@@ -48,7 +48,6 @@ use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -469,6 +468,8 @@ pub struct Node {
     pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Option<ProxyConnectionInfo>,
+    // Handle for the listen_and_reconnect task
+    pub listen_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Node {
@@ -650,6 +651,7 @@ impl Node {
             my_subscription_manager,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
+            listen_handle: None,
         }))
     }
 
@@ -2034,22 +2036,46 @@ impl Node {
         );
 
         loop {
-            match self.listen().await {
-                Ok(_) => unreachable!(),
-                Err(_) => {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                },
+            let listen_address = self.listen_address;
+            let identity_manager = self.identity_manager.clone();
+            let proxy_connection_info = self.proxy_connection_info.clone();
+            let network_job_manager = self.network_job_manager.clone();
+            let conn_limiter = self.conn_limiter.clone();
+            let node_name = self.node_name.clone();
+            let identity_secret_key = self.identity_secret_key.clone();
+
+            let result = Node::listen(
+                listen_address,
+                identity_manager,
+                proxy_connection_info,
+                network_job_manager,
+                conn_limiter,
+                node_name,
+                identity_secret_key,
+            )
+            .await;
+
+            if result.is_err() {
+                tokio::time::sleep(Duration::from_secs(1)).await;
             }
         }
     }
 
     // A function that listens for incoming connections.
-    async fn listen(&self) -> io::Result<()> {
-        if let Some(proxy_info) = &self.proxy_connection_info {
+    async fn listen(
+        listen_address: SocketAddr,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
+        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        conn_limiter: Arc<ConnectionLimiter>,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+    ) -> io::Result<()> {
+        if let Some(proxy_info) = &proxy_connection_info {
             eprintln!("Proxy connection info provided: {:?}", proxy_info);
             // If proxy connection info is provided, connect to the proxy
             let proxy_addr = Node::get_address_from_identity(
-                self.identity_manager.clone(),
+                identity_manager.clone(),
                 &proxy_info.proxy_identity.get_node_name_string(),
             )
             .await;
@@ -2062,9 +2088,9 @@ impl Node {
                 }
             };
 
-            let network_job_manager = Arc::clone(&self.network_job_manager);
-            let node_name = self.node_name.clone();
-            let signing_sk = self.identity_secret_key.clone();
+            let network_job_manager = Arc::clone(&network_job_manager);
+            let node_name = node_name.clone();
+            let signing_sk = identity_secret_key.clone();
 
             eprintln!("Calling TcpStream for proxy_addr");
             match TcpStream::connect(proxy_addr).await {
@@ -2097,9 +2123,18 @@ impl Node {
                     loop {
                         let reader_clone = Arc::clone(&reader);
                         let network_job_manager_clone = Arc::clone(&network_job_manager);
-                        tokio::spawn(async move {
+                        eprintln!("proxy path before spawn");
+                        let handle = tokio::spawn(async move {
+                            eprintln!("handle_connection");
                             Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
                         });
+
+                        // Await the task's completion
+                        if let Err(e) = handle.await {
+                            eprintln!("Task failed: {:?}", e);
+                            // Sleep for 50ms before retrying
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
                     }
                 }
                 Err(e) => {
@@ -2114,13 +2149,13 @@ impl Node {
             }
         } else {
             // If no proxy connection info, listen for incoming connections directly
-            eprintln!("No proxy connection info provided, listening directly");
-            let listener = TcpListener::bind(&self.listen_address).await?;
+            eprintln!("No proxy connection info provided, listening directly. Node {}", node_name);
+            let listener = TcpListener::bind(&listen_address).await?;
 
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,
-                &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
+                &format!("{} > TCP: Listening on {}", listen_address, listen_address),
             );
 
             // Initialize your connection limiter
@@ -2129,7 +2164,7 @@ impl Node {
 
                 // Too many requests by IP protection
                 let ip = addr.ip().to_string();
-                let conn_limiter_clone = self.conn_limiter.clone();
+                let conn_limiter_clone = conn_limiter.clone();
 
                 if !conn_limiter_clone.check_rate_limit(&ip).await {
                     shinkai_log(
@@ -2149,9 +2184,10 @@ impl Node {
                     continue;
                 }
 
-                let network_job_manager = Arc::clone(&self.network_job_manager);
-                let conn_limiter_clone = self.conn_limiter.clone();
+                let network_job_manager = Arc::clone(&network_job_manager);
+                let conn_limiter_clone = conn_limiter.clone();
 
+                eprintln!("loop before spawn for normal socket");
                 tokio::spawn(async move {
                     let (reader, _writer) = tokio::io::split(socket);
                     let reader = Arc::new(Mutex::new(reader));
@@ -2262,6 +2298,8 @@ impl Node {
                         eprintln!("Failed to read message from: {:?}", addr);
                     }
                 }
+            } else {
+                eprintln!("read_exact not ok");
             }
         }
     }

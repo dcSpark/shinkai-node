@@ -185,6 +185,10 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
+        eprintln!("api_subscription_available_shared_items");
+        eprintln!("node_name: {}", node_name);
+        eprintln!("potentially enc message: {:?}", potentially_encrypted_msg);
+        
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAvailableSharedItems>(
             node_name.clone(),
             identity_manager.clone(),
@@ -202,6 +206,7 @@ impl Node {
         };
 
         if input_payload.streamer_node_name == node_name.clone().get_node_name_string() {
+            eprintln!("input_payload.streamer_node_name == node_name");
             if !requester_name.has_profile() {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -267,6 +272,7 @@ impl Node {
                 }
             }
         } else {
+            eprintln!("input_payload.streamer_node_name NOT THE SAME as node_name");
             let mut my_subscription_manager = my_subscription_manager.lock().await;
 
             match ShinkaiName::from_node_and_profile_names(

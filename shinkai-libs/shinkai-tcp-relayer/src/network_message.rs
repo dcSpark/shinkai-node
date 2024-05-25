@@ -24,6 +24,7 @@ impl NetworkMessage {
             log_with_identity.unwrap_or_default()
         );
         let mut reader = reader.lock().await;
+        eprintln!("reader locked");
 
         async fn read_exact(reader: &mut ReadHalf<TcpStream>, buf: &mut [u8]) -> Result<(), NetworkMessageError> {
             let mut total_read = 0;

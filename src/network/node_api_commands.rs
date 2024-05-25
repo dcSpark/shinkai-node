@@ -630,6 +630,7 @@ impl Node {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        eprintln!("api_handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str());
 

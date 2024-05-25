@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_channel::{bounded, Receiver, Sender};
+use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use shinkai_message_primitives::shinkai_utils::{
     encryption::{
@@ -23,11 +24,14 @@ use shinkai_vector_resources::utils::hash_string;
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 
 use crate::it::utils::{
-    node_test_api::api_registration_device_node_profile_main, node_test_local::local_registration_profile_node,
-    shinkai_testing_framework::ShinkaiTestingFramework, vecfs_test_utils::fetch_last_messages,
+    node_test_api::api_registration_device_node_profile_main,
+    node_test_local::local_registration_profile_node,
+    shinkai_testing_framework::ShinkaiTestingFramework,
+    vecfs_test_utils::{fetch_last_messages, remove_timestamps_from_shared_folder_cache_response},
 };
 
 use super::utils::db_handlers::setup;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
 fn tcp_proxy_test_identity() {
@@ -41,7 +45,6 @@ fn tcp_proxy_test_identity() {
         let node2_identity_name = "@@node2_test.sepolia-shinkai";
         let node1_profile_name = "main";
         let node2_profile_name = "main";
-        let node1_device_name = "device1";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -216,6 +219,38 @@ fn tcp_proxy_test_identity() {
         );
 
         eprintln!("Starting nodes");
+
+        // Setup a TCP listener
+        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
+
+        // Spawn a task to accept connections
+        let tcp_handle = tokio::spawn({
+            // Creates a TCPProxy instance
+            let proxy = TCPProxy::new(
+                Some(tcp_proxy_identity_sk),
+                Some(tcp_proxy_encryption_sk),
+                Some(tcp_proxy_identity_name.to_string()),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+            let proxy = proxy.clone();
+            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
+            async move {
+                loop {
+                    if let Ok((socket, _)) = listener.accept().await {
+                        proxy.handle_client(socket).await;
+                    }
+                    eprintln!("handle_client new loop");
+                    sleep(Duration::from_millis(200)).await;
+                }
+            }
+        });
+        let tcp_abort_handler = tcp_handle.abort_handle();
+        sleep(Duration::from_secs(3)).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -240,17 +275,15 @@ fn tcp_proxy_test_identity() {
 
             // Register a Profile in Node1 and verifies it
             {
-                eprintln!("Register a Device with main profile in Node1 and verify it");
-                api_registration_device_node_profile_main(
+                eprintln!("Register a Profile in Node1 and verify it");
+                local_registration_profile_node(
                     node1_commands_sender.clone(),
                     node1_profile_name,
                     node1_identity_name,
+                    node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
-                    node1_device_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_device_identity_sk),
-                    node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_device_name,
+                    1,
                 )
                 .await;
             }
@@ -299,96 +332,100 @@ fn tcp_proxy_test_identity() {
                 eprintln!("Node 2 info: {:?}", node2_info);
                 node_2_testing_framework.show_available_shared_items().await;
             }
-            // Creates a TCPProxy instance
-            let proxy = TCPProxy::new(
-                Some(tcp_proxy_identity_sk),
-                Some(tcp_proxy_encryption_sk),
-                Some(tcp_proxy_identity_name.to_string()),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-            // Setup a TCP listener
-            // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
-            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
-
-            // Spawn a task to accept connections
-            let _tcp_handle = tokio::spawn({
-                let proxy = proxy.clone();
-                async move {
-                    loop {
-                        if let Ok((socket, _)) = listener.accept().await {
-                            proxy.handle_client(socket).await;
-                        }
-                        eprintln!("handle_client new loop");
-                        sleep(Duration::from_millis(200)).await;
-                    }
-                }
-            });
-            sleep(Duration::from_secs(3)).await;
             {
                 eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 2 requesting shared folders*\n");
 
-                let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
-                    None,
-                    node2_identity_name.to_string(),
-                    node2_profile_name.to_string(),
-                    node1_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_identity_sk),
-                    node2_encryption_pk,
-                    node1_identity_name.to_string().clone(),
-                    node1_profile_name.to_string().clone(),
-                    node2_identity_name.to_string(),
-                    node2_profile_name.to_string().clone(),
+                let _send_result = create_and_send_message(
+                    node1_commands_sender.clone(),
+                    node2_identity_name,
+                    node2_profile_name,
+                    &node1_profile_encryption_sk,
+                    &node1_profile_identity_sk,
+                    &node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
                 )
-                .unwrap();
+                .await;
 
-                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-                #[allow(clippy::type_complexity)]
-                let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<Value, APIError>>,
-                    async_channel::Receiver<Result<Value, APIError>>,
-                ) = async_channel::bounded(1);
+                let send_result = create_and_send_message(
+                    node1_commands_sender.clone(),
+                    node2_identity_name,
+                    node2_profile_name,
+                    &node1_profile_encryption_sk,
+                    &node1_profile_identity_sk,
+                    &node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
 
-                // node1_commands_sender
-                //     .send(NodeCommand::APIAvailableSharedItems {
-                //         msg: unchanged_message,
-                //         res: res_send_msg_sender,
-                //     })
-                //     .await
-                //     .unwrap();
-
-                let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("send_result: {:?}", send_result);
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-                tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
 
-                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 2");
+                let mut expected_response = serde_json::json!({
+                    "node_name": "@@node2_test.sepolia-shinkai/main",
+                    "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
+                    "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
+                    "last_updated": "2024-05-25T20:42:48.285935Z",
+                    "state": "ResponseAvailable",
+                    "response_last_updated": "2024-05-25T20:42:48.285935Z",
+                    "response": {
+                        "/shinkai_sharing": {
+                            "path": "/shinkai_sharing",
+                            "permission": "Public",
+                            "profile": "main",
+                            "tree": {
+                                "name": "/",
+                                "path": "/shinkai_sharing",
+                                "last_modified": "2024-05-25T20:42:47.557583Z",
+                                "children": {
+                                    "shinkai_intro": {
+                                        "name": "shinkai_intro",
+                                        "path": "/shinkai_sharing/shinkai_intro",
+                                        "last_modified": "2024-05-01T17:38:59.904492Z",
+                                        "children": {}
+                                    }
+                                }
+                            },
+                            "subscription_requirement": {
+                                "minimum_token_delegation": 100,
+                                "minimum_time_delegated_hours": 100,
+                                "monthly_payment": {
+                                    "USD": "10.00"
+                                },
+                                "has_web_alternative": false,
+                                "is_free": false,
+                                "folder_description": "This is a test folder"
+                            }
+                        }
+                    }
+                });
 
-                eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                eprintln!("\n\n");
+                let mut actual_response: serde_json::Value = send_result.clone().unwrap();
 
-                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 1");
+                // Remove timestamps from both expected and actual responses using the new function
+                remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
+                remove_timestamps_from_shared_folder_cache_response(&mut actual_response);
 
-                eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                eprintln!("\n\n");
+                // Perform the assertion
+                assert_eq!(
+                    actual_response, expected_response,
+                    "Failed to match the expected shared folder information"
+                );
+                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
             }
             {
                 // Dont forget to do this at the end
                 node1_abort_handler.abort();
                 node2_abort_handler.abort();
+                tcp_abort_handler.abort();
             }
         });
 
         // Wait for all tasks to complete
-        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, node2_handler, tcp_handle, interactions_handler);
         match result {
             Ok(_) => {}
             Err(e) => {
@@ -418,7 +455,6 @@ fn tcp_proxy_test_localhost() {
         let node2_identity_name = "@@node2_test.sepolia-shinkai";
         let node1_profile_name = "main";
         let node2_profile_name = "main";
-        let node1_device_name = "device1";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -484,7 +520,7 @@ fn tcp_proxy_test_localhost() {
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
-            node1_encryption_sk,
+            node1_encryption_sk.clone(),
             0,
             node1_commands_receiver,
             node1_db_path,
@@ -593,6 +629,38 @@ fn tcp_proxy_test_localhost() {
         );
 
         eprintln!("Starting nodes");
+
+        // Setup a TCP listener
+        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
+
+        // Spawn a task to accept connections
+        let tcp_handle = tokio::spawn({
+            // Creates a TCPProxy instance
+            let proxy = TCPProxy::new(
+                Some(tcp_proxy_identity_sk),
+                Some(tcp_proxy_encryption_sk),
+                Some(tcp_proxy_identity_name.to_string()),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+            let proxy = proxy.clone();
+            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
+            async move {
+                loop {
+                    if let Ok((socket, _)) = listener.accept().await {
+                        proxy.handle_client(socket).await;
+                    }
+                    eprintln!("handle_client new loop");
+                    sleep(Duration::from_millis(200)).await;
+                }
+            }
+        });
+        let tcp_abort_handler = tcp_handle.abort_handle();
+        sleep(Duration::from_secs(3)).await;
+
         // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
@@ -615,43 +683,19 @@ fn tcp_proxy_test_localhost() {
             eprintln!("Starting interactions");
             eprintln!("Registration of Subidentities");
 
-            // Creates a TCPProxy instance
-            let proxy = TCPProxy::new(
-                Some(tcp_proxy_identity_sk),
-                Some(tcp_proxy_encryption_sk),
-                Some(tcp_proxy_identity_name.to_string()),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-            // Setup a TCP listener
-            // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
-            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
-
-            // Spawn a task to accept connections
-            let _tcp_handle = tokio::spawn({
-                let proxy = proxy.clone();
-                async move {
-                    let (socket, _) = listener.accept().await.unwrap();
-                    proxy.handle_client(socket).await;
-                }
-            });
+            tokio::time::sleep(Duration::from_secs(3)).await;
 
             // Register a Profile in Node1 and verifies it
             {
-                eprintln!("Register a Device with main profile in Node1 and verify it");
-                api_registration_device_node_profile_main(
+                eprintln!("Register a Profile in Node1 and verify it");
+                local_registration_profile_node(
                     node1_commands_sender.clone(),
                     node1_profile_name,
                     node1_identity_name,
+                    node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
-                    node1_device_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_device_identity_sk),
-                    node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_device_name,
+                    1,
                 )
                 .await;
             }
@@ -671,8 +715,9 @@ fn tcp_proxy_test_localhost() {
                 .await;
             }
 
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
 
+            // Shinkai Testing Framework
             let node_2_testing_framework = ShinkaiTestingFramework::new(
                 node2_commands_sender.clone(),
                 node2_profile_identity_sk.clone(),
@@ -695,70 +740,104 @@ fn tcp_proxy_test_localhost() {
                 node_2_testing_framework.make_folder_shareable("/shinkai_sharing").await;
 
                 // For Debugging
-                node_2_testing_framework.retrieve_file_info("/", true).await;
+                let node2_info = node_2_testing_framework.retrieve_file_info("/", true).await;
+                eprintln!("Node 2 info: {:?}", node2_info);
                 node_2_testing_framework.show_available_shared_items().await;
             }
             {
                 eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 2 requesting shared folders*\n");
 
-                let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
-                    None,
-                    node2_identity_name.to_string(),
-                    node2_profile_name.to_string(),
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node2_encryption_pk,
-                    node1_identity_name.to_string().clone(),
-                    node1_profile_name.to_string().clone(),
-                    node2_identity_name.to_string(),
-                    node2_profile_name.to_string().clone(),
+                let _send_result = create_and_send_message(
+                    node1_commands_sender.clone(),
+                    node2_identity_name,
+                    node2_profile_name,
+                    &node1_profile_encryption_sk,
+                    &node1_profile_identity_sk,
+                    &node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
                 )
-                .unwrap();
+                .await;
 
-                // eprintln!("\n\n unchanged message: {:?}", unchanged_message);
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
-                #[allow(clippy::type_complexity)]
-                let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<Result<Value, APIError>>,
-                    async_channel::Receiver<Result<Value, APIError>>,
-                ) = async_channel::bounded(1);
+                let send_result = create_and_send_message(
+                    node1_commands_sender.clone(),
+                    node2_identity_name,
+                    node2_profile_name,
+                    &node1_profile_encryption_sk,
+                    &node1_profile_identity_sk,
+                    &node1_encryption_pk,
+                    node1_identity_name,
+                    node1_profile_name,
+                )
+                .await;
 
-                node1_commands_sender
-                    .send(NodeCommand::APIAvailableSharedItems {
-                        msg: unchanged_message,
-                        res: res_send_msg_sender,
-                    })
-                    .await
-                    .unwrap();
-
-                let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("send_result: {:?}", send_result);
                 assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-                tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
 
-                let node2_last_messages = fetch_last_messages(&node2_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 2");
+                let mut expected_response = serde_json::json!({
+                    "node_name": "@@node2_test.sepolia-shinkai/main",
+                    "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
+                    "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
+                    "last_updated": "2024-05-25T20:42:48.285935Z",
+                    "state": "ResponseAvailable",
+                    "response_last_updated": "2024-05-25T20:42:48.285935Z",
+                    "response": {
+                        "/shinkai_sharing": {
+                            "path": "/shinkai_sharing",
+                            "permission": "Public",
+                            "profile": "main",
+                            "tree": {
+                                "name": "/",
+                                "path": "/shinkai_sharing",
+                                "last_modified": "2024-05-25T20:42:47.557583Z",
+                                "children": {
+                                    "shinkai_intro": {
+                                        "name": "shinkai_intro",
+                                        "path": "/shinkai_sharing/shinkai_intro",
+                                        "last_modified": "2024-05-01T17:38:59.904492Z",
+                                        "children": {}
+                                    }
+                                }
+                            },
+                            "subscription_requirement": {
+                                "minimum_token_delegation": 100,
+                                "minimum_time_delegated_hours": 100,
+                                "monthly_payment": {
+                                    "USD": "10.00"
+                                },
+                                "has_web_alternative": false,
+                                "is_free": false,
+                                "folder_description": "This is a test folder"
+                            }
+                        }
+                    }
+                });
 
-                eprintln!("Node 2 last messages: {:?}", node2_last_messages);
-                eprintln!("\n\n");
+                let mut actual_response: serde_json::Value = send_result.clone().unwrap();
 
-                let node1_last_messages = fetch_last_messages(&node1_commands_sender, 2)
-                    .await
-                    .expect("Failed to fetch last messages for node 1");
+                // Remove timestamps from both expected and actual responses using the new function
+                remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
+                remove_timestamps_from_shared_folder_cache_response(&mut actual_response);
 
-                eprintln!("\n\nNode 1 last messages: {:?}", node1_last_messages);
-                eprintln!("\n\n");
+                // Perform the assertion
+                assert_eq!(
+                    actual_response, expected_response,
+                    "Failed to match the expected shared folder information"
+                );
+                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
             }
             {
                 // Dont forget to do this at the end
                 node1_abort_handler.abort();
                 node2_abort_handler.abort();
+                tcp_abort_handler.abort();
             }
         });
 
         // Wait for all tasks to complete
-        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, node2_handler, tcp_handle, interactions_handler);
         match result {
             Ok(_) => {}
             Err(e) => {
@@ -774,4 +853,46 @@ fn tcp_proxy_test_localhost() {
     });
 
     rt.shutdown_background();
+}
+
+#[allow(clippy::complexity)]
+async fn create_and_send_message(
+    node1_commands_sender: Sender<NodeCommand>,
+    node2_identity_name: &str,
+    node2_profile_name: &str,
+    node1_profile_encryption_sk: &EncryptionStaticKey,
+    node1_profile_identity_sk: &SigningKey,
+    node1_encryption_pk: &EncryptionPublicKey,
+    node1_identity_name: &str,
+    node1_profile_name: &str,
+) -> Result<Value, APIError> {
+    let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
+        None,
+        node2_identity_name.to_string(),
+        node2_profile_name.to_string(),
+        node1_profile_encryption_sk.clone(),
+        clone_signature_secret_key(node1_profile_identity_sk),
+        node1_encryption_pk.clone(),
+        node1_identity_name.to_string(),
+        node1_profile_name.to_string(),
+        node1_identity_name.to_string(),
+        "".to_string(),
+    )
+    .unwrap();
+
+    #[allow(clippy::type_complexity)]
+    let (res_send_msg_sender, res_send_msg_receiver): (
+        async_channel::Sender<Result<Value, APIError>>,
+        async_channel::Receiver<Result<Value, APIError>>,
+    ) = async_channel::bounded(1);
+
+    node1_commands_sender
+        .send(NodeCommand::APIAvailableSharedItems {
+            msg: unchanged_message,
+            res: res_send_msg_sender,
+        })
+        .await
+        .unwrap();
+
+    res_send_msg_receiver.recv().await.unwrap()
 }
