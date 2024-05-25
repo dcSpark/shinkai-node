@@ -16,15 +16,17 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::env;
 use std::sync::Arc;
+use std::thread::sleep;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{NetworkMessage, NetworkMessageError};
 
-pub type TCPProxyClients = Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<tokio::net::TcpStream>>>>>; // e.g. @@nico.shinkai -> Sender, @@localhost.shinkai:::PK -> Sender
+pub type TCPProxyClients =
+    Arc<Mutex<HashMap<String, (Arc<Mutex<ReadHalf<TcpStream>>>, Arc<Mutex<WriteHalf<TcpStream>>>)>>>; // e.g. @@nico.shinkai -> (Reader, Writer)
 pub type TCPProxyPKtoIdentity = Arc<Mutex<HashMap<String, String>>>; // e.g. PK -> @@localhost.shinkai:::PK, PK -> @@nico.shinkai
 pub type PublicKeyHex = String;
 
@@ -148,16 +150,17 @@ impl TCPProxy {
         })
     }
 
-    /// Handle a new client connection
-    /// Which could be:
+    /// Handle a new client connection which could be:
     /// - a Node that needs punch hole
     /// - a Node answering to a request that needs to get redirected to a Node using a punch hole
     pub async fn handle_client(&self, socket: TcpStream) {
         eprintln!("New connection");
-        let socket = Arc::new(Mutex::new(socket));
+        let (reader, writer) = tokio::io::split(socket);
+        let reader = Arc::new(Mutex::new(reader));
+        let writer = Arc::new(Mutex::new(writer));
 
         // Read identity
-        let network_msg = match NetworkMessage::read_from_socket(socket.clone(), None).await {
+        let network_msg = match NetworkMessage::read_from_socket(reader.clone(), None).await {
             Ok(msg) => msg,
             Err(e) => {
                 eprintln!("Failed to read_from_socket: {}", e);
@@ -172,11 +175,12 @@ impl TCPProxy {
 
         match network_msg.message_type {
             NetworkMessageType::ProxyMessage => {
-                self.handle_proxy_message_type(socket, identity).await;
+                self.handle_proxy_message_type(reader, writer, identity).await;
             }
             NetworkMessageType::ShinkaiMessage => {
                 Self::handle_shinkai_message(
-                    socket,
+                    reader,
+                    writer,
                     network_msg,
                     &self.clients,
                     &self.pk_to_clients,
@@ -198,7 +202,8 @@ impl TCPProxy {
 
     #[allow(clippy::too_many_arguments)]
     async fn handle_shinkai_message(
-        socket: Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         network_msg: NetworkMessage,
         clients: &TCPProxyClients,
         pk_to_clients: &TCPProxyPKtoIdentity,
@@ -216,7 +221,8 @@ impl TCPProxy {
                     parsed_message.clone(),
                     clients,
                     pk_to_clients,
-                    &socket,
+                    reader,
+                    writer,
                     registry,
                     identity,
                     node_name,
@@ -239,10 +245,15 @@ impl TCPProxy {
         }
     }
 
-    async fn handle_proxy_message_type(&self, socket: Arc<Mutex<TcpStream>>, identity: String) {
+    async fn handle_proxy_message_type(
+        &self,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+        identity: String,
+    ) {
         eprintln!("Received a ProxyMessage ...");
 
-        let public_key_hex = match self.validate_identity(socket.clone(), &identity).await {
+        let public_key_hex = match self.validate_identity(reader.clone(), writer.clone(), &identity).await {
             Ok(pk) => pk,
             Err(e) => {
                 eprintln!("Identity validation failed: {}", e);
@@ -259,7 +270,7 @@ impl TCPProxy {
 
         {
             let mut clients_lock = self.clients.lock().await;
-            clients_lock.insert(identity.clone(), socket.clone());
+            clients_lock.insert(identity.clone(), (reader.clone(), writer.clone()));
         }
         {
             let mut pk_to_clients_lock = self.pk_to_clients.lock().await;
@@ -268,7 +279,8 @@ impl TCPProxy {
 
         let clients_clone = self.clients.clone();
         let pk_to_clients_clone = self.pk_to_clients.clone();
-        let socket_clone = socket.clone();
+        let reader = reader.clone();
+        let writer = writer.clone();
         let registry_clone = self.registry.clone();
         let node_name = self.node_name.clone();
         let identity_sk = self.identity_secret_key.clone();
@@ -277,10 +289,21 @@ impl TCPProxy {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    msg = NetworkMessage::read_from_socket(socket_clone.clone(), Some(identity.clone())) => {
-                        if let Err(e) = Self::handle_incoming_message(msg, &clients_clone, &pk_to_clients_clone, &socket_clone, &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
-                            eprintln!("Error handling incoming message: {}", e);
-                            break;
+                    msg = NetworkMessage::read_from_socket(reader.clone(), Some(identity.clone())) => {
+                        match msg {
+                            Ok(msg) => {
+                                if let Err(e) = Self::handle_incoming_message(Ok(msg), &clients_clone, &pk_to_clients_clone, reader.clone(), writer.clone(), &registry_clone, &identity, node_name.clone(), identity_sk.clone(), encryption_sk.clone()).await {
+                                    eprintln!("Error handling incoming message: {}", e);
+                                    break;
+                                }
+                            }
+                            Err(NetworkMessageError::Timeout) => {
+                                sleep(std::time::Duration::from_secs(1));
+                            }
+                            Err(e) => {
+                                eprintln!("Connection lost for {}", identity);
+                                break;
+                            }
                         }
                     }
                     else => {
@@ -303,7 +326,8 @@ impl TCPProxy {
         msg: Result<NetworkMessage, NetworkMessageError>,
         clients: &TCPProxyClients,
         pk_to_clients: &TCPProxyPKtoIdentity,
-        socket: &Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         registry: &ShinkaiRegistry,
         identity: &str,
         node_name: ShinkaiName,
@@ -321,7 +345,8 @@ impl TCPProxy {
                                 parsed_message,
                                 clients,
                                 pk_to_clients,
-                                socket,
+                                reader.clone(),
+                                writer.clone(),
                                 registry,
                                 identity,
                                 node_name,
@@ -333,13 +358,14 @@ impl TCPProxy {
                         Err(e) => {
                             eprintln!("Failed to parse ShinkaiMessage: {}", e);
                             let error_message = format!("Failed to parse ShinkaiMessage: {}", e);
-                            send_message_with_length(socket, error_message).await
+                            send_message_with_length(writer.clone(), error_message).await
                         }
                     }
                 }
                 NetworkMessageType::ShinkaiMessage => {
                     Self::handle_shinkai_message(
-                        socket.clone(),
+                        reader.clone(),
+                        writer.clone(),
                         msg,
                         clients,
                         pk_to_clients,
@@ -377,7 +403,8 @@ impl TCPProxy {
         parsed_message: ShinkaiMessage,
         clients: &TCPProxyClients,
         pk_to_clients: &TCPProxyPKtoIdentity,
-        socket: &Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         registry: &ShinkaiRegistry,
         sender_identity: &str,
         node_name: ShinkaiName,
@@ -485,7 +512,7 @@ impl TCPProxy {
 
             // Send message to the client using connection
             eprintln!("Sending message to client {}", client_identity);
-            if Self::send_shinkai_message_to_proxied_identity(&connection, msg)
+            if Self::send_shinkai_message_to_proxied_identity(connection.1, msg)
                 .await
                 .is_err()
             {
@@ -512,7 +539,7 @@ impl TCPProxy {
 
             // Send message to the client using connection
             eprintln!("Sending message to client {}", recipient);
-            if Self::send_shinkai_message_to_proxied_identity(&connection, parsed_message)
+            if Self::send_shinkai_message_to_proxied_identity(connection.1, parsed_message)
                 .await
                 .is_err()
             {
@@ -571,7 +598,7 @@ impl TCPProxy {
                                 Err(e) => {
                                     eprintln!("Failed to connect to first address: {}", e);
                                     let error_message = format!("Failed to connect to first address for {}", recipient);
-                                    send_message_with_length(socket, error_message).await?;
+                                    send_message_with_length(writer.clone(), error_message).await?;
                                 }
                             }
                         }
@@ -581,7 +608,7 @@ impl TCPProxy {
                                 "Recipient {} not connected and failed to fetch first address",
                                 recipient
                             );
-                            send_message_with_length(socket, error_message).await?;
+                            send_message_with_length(writer.clone(), error_message).await?;
                         }
                     }
                 }
@@ -591,7 +618,7 @@ impl TCPProxy {
                         "Recipient {} not connected and failed to fetch onchain identity",
                         recipient
                     );
-                    send_message_with_length(socket, error_message).await?;
+                    send_message_with_length(writer.clone(), error_message).await?;
                 }
             }
             Ok(())
@@ -629,21 +656,22 @@ impl TCPProxy {
 
     async fn validate_identity(
         &self,
-        socket: Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         identity: &str,
     ) -> Result<PublicKeyHex, NetworkMessageError> {
         let identity = identity.trim_start_matches("@@");
         let validation_data = Self::generate_validation_data();
 
         // Send validation data to the client
-        send_message_with_length(&socket, validation_data.clone()).await?;
+        send_message_with_length(writer.clone(), validation_data.clone()).await?;
 
         eprintln!("Validating identity: {}", identity);
         let validation_result = if !identity.starts_with("localhost") {
-            self.validate_non_localhost_identity(socket.clone(), identity, &validation_data)
+            self.validate_non_localhost_identity(reader.clone(), identity, &validation_data)
                 .await
         } else {
-            self.validate_localhost_identity(socket.clone(), &validation_data).await
+            self.validate_localhost_identity(reader.clone(), &validation_data).await
         };
 
         // Send validation result back to the client
@@ -652,7 +680,7 @@ impl TCPProxy {
             Err(e) => format!("Validation failed: {}", e),
         };
 
-        send_message_with_length(&socket, validation_message).await?;
+        send_message_with_length(writer, validation_message).await?;
 
         validation_result
     }
@@ -670,7 +698,7 @@ impl TCPProxy {
 
     async fn validate_non_localhost_identity(
         &self,
-        socket: Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         identity: &str,
         validation_data: &str,
     ) -> Result<PublicKeyHex, NetworkMessageError> {
@@ -678,7 +706,7 @@ impl TCPProxy {
         // The client is expected to send back a message containing:
         // 1. The length of the signed validation data (4 bytes, big-endian).
         // 2. The signed validation data (hex-encoded string).
-        let buffer = Self::read_buffer_from_socket(socket.clone()).await?;
+        let buffer = Self::read_buffer_from_socket(reader.clone()).await?;
         eprintln!("Received buffer: {:?}", buffer);
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -714,7 +742,7 @@ impl TCPProxy {
 
     async fn validate_localhost_identity(
         &self,
-        socket: Arc<Mutex<TcpStream>>,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         validation_data: &str,
     ) -> Result<PublicKeyHex, NetworkMessageError> {
         // The client is expected to send back a message containing:
@@ -722,7 +750,7 @@ impl TCPProxy {
         // 2. The public key itself (hex-encoded string).
         // 3. The length of the signed validation data (4 bytes, big-endian).
         // 4. The signed validation data (hex-encoded string).
-        let buffer = Self::read_buffer_from_socket(socket.clone()).await?;
+        let buffer = Self::read_buffer_from_socket(reader.clone()).await?;
         let mut cursor = std::io::Cursor::new(buffer);
 
         let public_key = Self::read_public_key_from_cursor(&mut cursor).await?;
@@ -737,35 +765,35 @@ impl TCPProxy {
         }
     }
 
-    async fn read_response_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<String, NetworkMessageError> {
+    async fn read_response_from_socket(reader: Arc<Mutex<ReadHalf<TcpStream>>>) -> Result<String, NetworkMessageError> {
         let mut len_buffer = [0u8; 4];
         {
-            let mut socket = socket.lock().await;
-            socket.read_exact(&mut len_buffer).await?;
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut len_buffer).await?;
         }
 
         let response_len = u32::from_be_bytes(len_buffer) as usize;
         let mut buffer = vec![0u8; response_len];
         {
-            let mut socket = socket.lock().await;
-            socket.read_exact(&mut buffer).await?;
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut buffer).await?;
         }
 
         String::from_utf8(buffer).map_err(NetworkMessageError::Utf8Error)
     }
 
-    async fn read_buffer_from_socket(socket: Arc<Mutex<TcpStream>>) -> Result<Vec<u8>, NetworkMessageError> {
+    async fn read_buffer_from_socket(reader: Arc<Mutex<ReadHalf<TcpStream>>>) -> Result<Vec<u8>, NetworkMessageError> {
         let mut len_buffer = [0u8; 4];
         {
-            let mut socket = socket.lock().await;
-            socket.read_exact(&mut len_buffer).await?;
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut len_buffer).await?;
         }
 
         let total_len = u32::from_be_bytes(len_buffer) as usize;
         let mut buffer = vec![0u8; total_len];
         {
-            let mut socket = socket.lock().await;
-            socket.read_exact(&mut buffer).await?;
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut buffer).await?;
         }
 
         Ok(buffer)
@@ -903,17 +931,17 @@ impl TCPProxy {
     }
 
     async fn send_shinkai_message_to_proxied_identity(
-        sender: &Arc<tokio::sync::Mutex<tokio::net::TcpStream>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         message: ShinkaiMessage,
     ) -> Result<(), NetworkMessageError> {
         let encoded_msg = message.encode_message().unwrap();
         let identity = &message.external_metadata.recipient;
         let identity_bytes = identity.as_bytes();
         let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-
+    
         // Prepare the message with a length prefix and identity length
         let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
-
+    
         let mut data_to_send = Vec::new();
         let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
         data_to_send.extend_from_slice(&total_length);
@@ -921,31 +949,34 @@ impl TCPProxy {
         data_to_send.extend(identity_bytes);
         data_to_send.extend(header_data_to_send);
         data_to_send.extend_from_slice(&encoded_msg);
-
+    
         eprintln!("Sending message to client: beep beep boop");
-        let mut sender_lock = sender.lock().await;
-        eprintln!("sender_lock acquired");
-        sender_lock
+        let mut writer_lock = writer.lock().await;
+        eprintln!("writer_lock acquired");
+        writer_lock
             .write_all(&data_to_send)
             .await
             .map_err(|_| NetworkMessageError::SendError)?;
-        sender_lock.flush().await.map_err(|_| NetworkMessageError::SendError)?;
-
+        writer_lock.flush().await.map_err(|_| NetworkMessageError::SendError)?;
+    
         eprintln!("Sent message to client");
         Ok(())
     }
 }
 
-async fn send_message_with_length(socket: &Arc<Mutex<TcpStream>>, message: String) -> Result<(), NetworkMessageError> {
+async fn send_message_with_length(
+    writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+    message: String,
+) -> Result<(), NetworkMessageError> {
     eprintln!("send_message_with_length> Sending message: {}", message);
     let message_len = message.len() as u32;
     eprintln!("send_message_with_length> Message length: {}", message_len);
     let message_len_bytes = message_len.to_be_bytes(); // This will always be 4 bytes big-endian
     let message_bytes = message.as_bytes();
 
-    let mut socket = socket.lock().await;
-    socket.write_all(&message_len_bytes).await?;
-    socket.write_all(message_bytes).await?;
+    let mut writer = writer.lock().await;
+    writer.write_all(&message_len_bytes).await?;
+    writer.write_all(message_bytes).await?;
 
     Ok(())
 }

@@ -334,11 +334,13 @@ impl IdentityManagerTrait for IdentityManager {
     }
 
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        eprintln!("search_identity > full_identity_name: {}", full_identity_name);
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
 
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
+            eprintln!("search_identity > local node");
             self.search_local_identity(full_identity_name).await
         } else {
             // If not, query the identity network manager
@@ -357,6 +359,9 @@ impl IdentityManagerTrait for IdentityManager {
                             Ok(key) => key,
                             Err(_) => return None,
                         };
+                        
+                        eprintln!("search_identity > delete encryption_key: {:?}", encryption_key);
+
                         Some(Identity::Standard(StandardIdentity::new(
                             node_name,
                             Some(first_address),

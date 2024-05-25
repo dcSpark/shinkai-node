@@ -107,7 +107,7 @@ fn tcp_proxy_test_identity() {
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
-            node1_encryption_sk,
+            node1_encryption_sk.clone(),
             0,
             node1_commands_receiver,
             node1_db_path,
@@ -238,41 +238,6 @@ fn tcp_proxy_test_identity() {
             eprintln!("Starting interactions");
             eprintln!("Registration of Subidentities");
 
-            // start a tcp proxy node
-            // start node with proxy node ENV variable set
-            // start another node that has some files shared
-            // node 1 should be able to access the files on node 2 using the proxy
-
-            // Creates a TCPProxy instance
-            let proxy = TCPProxy::new(
-                Some(tcp_proxy_identity_sk),
-                Some(tcp_proxy_encryption_sk),
-                Some(tcp_proxy_identity_name.to_string()),
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-
-            // Setup a TCP listener
-            // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
-            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
-
-            // Spawn a task to accept connections
-            let _tcp_handle = tokio::spawn({
-                let proxy = proxy.clone();
-                async move {
-                    loop {
-                        if let Ok((socket, _)) = listener.accept().await {
-                            proxy.handle_client(socket).await;
-                        }
-                        eprintln!("handle_client new loop");
-                        sleep(Duration::from_millis(200)).await;
-                    }
-                }
-            });
-            sleep(Duration::from_secs(1)).await;
-
             // Register a Profile in Node1 and verifies it
             {
                 eprintln!("Register a Device with main profile in Node1 and verify it");
@@ -330,18 +295,48 @@ fn tcp_proxy_test_identity() {
                 node_2_testing_framework.make_folder_shareable("/shinkai_sharing").await;
 
                 // For Debugging
-                node_2_testing_framework.retrieve_file_info("/", true).await;
+                let node2_info = node_2_testing_framework.retrieve_file_info("/", true).await;
+                eprintln!("Node 2 info: {:?}", node2_info);
                 node_2_testing_framework.show_available_shared_items().await;
             }
+            // Creates a TCPProxy instance
+            let proxy = TCPProxy::new(
+                Some(tcp_proxy_identity_sk),
+                Some(tcp_proxy_encryption_sk),
+                Some(tcp_proxy_identity_name.to_string()),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+
+            // Setup a TCP listener
+            // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
+            let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
+
+            // Spawn a task to accept connections
+            let _tcp_handle = tokio::spawn({
+                let proxy = proxy.clone();
+                async move {
+                    loop {
+                        if let Ok((socket, _)) = listener.accept().await {
+                            proxy.handle_client(socket).await;
+                        }
+                        eprintln!("handle_client new loop");
+                        sleep(Duration::from_millis(200)).await;
+                    }
+                }
+            });
+            sleep(Duration::from_secs(3)).await;
             {
-                eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 1 requesting shared folders*\n");
+                eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 2 requesting shared folders*\n");
 
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
                     None,
                     node2_identity_name.to_string(),
                     node2_profile_name.to_string(),
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_identity_sk),
                     node2_encryption_pk,
                     node1_identity_name.to_string().clone(),
                     node1_profile_name.to_string().clone(),
@@ -358,13 +353,13 @@ fn tcp_proxy_test_identity() {
                     async_channel::Receiver<Result<Value, APIError>>,
                 ) = async_channel::bounded(1);
 
-                node1_commands_sender
-                    .send(NodeCommand::APIAvailableSharedItems {
-                        msg: unchanged_message,
-                        res: res_send_msg_sender,
-                    })
-                    .await
-                    .unwrap();
+                // node1_commands_sender
+                //     .send(NodeCommand::APIAvailableSharedItems {
+                //         msg: unchanged_message,
+                //         res: res_send_msg_sender,
+                //     })
+                //     .await
+                //     .unwrap();
 
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
                 eprint!("send_result: {:?}", send_result);
@@ -704,7 +699,7 @@ fn tcp_proxy_test_localhost() {
                 node_2_testing_framework.show_available_shared_items().await;
             }
             {
-                eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 1 requesting shared folders*\n");
+                eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 2 requesting shared folders*\n");
 
                 let unchanged_message = ShinkaiMessageBuilder::vecfs_available_shared_items(
                     None,

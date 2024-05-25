@@ -20,6 +20,7 @@ use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
+use async_std::task::sleep;
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
@@ -47,9 +48,10 @@ use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -2030,10 +2032,13 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("{} > TCP: Starting listen and reconnect loop.", self.listen_address),
         );
+
         loop {
             match self.listen().await {
                 Ok(_) => unreachable!(),
-                Err(_) => (),
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                },
             }
         }
     }
@@ -2041,60 +2046,75 @@ impl Node {
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
         if let Some(proxy_info) = &self.proxy_connection_info {
+            eprintln!("Proxy connection info provided: {:?}", proxy_info);
             // If proxy connection info is provided, connect to the proxy
             let proxy_addr = Node::get_address_from_identity(
                 self.identity_manager.clone(),
                 &proxy_info.proxy_identity.get_node_name_string(),
             )
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .await;
+
+            let proxy_addr = match proxy_addr {
+                Ok(addr) => addr,
+                Err(e) => {
+                    eprintln!("Failed to get proxy address: {}", e);
+                    return Err(io::Error::new(io::ErrorKind::Other, e));
+                }
+            };
 
             let network_job_manager = Arc::clone(&self.network_job_manager);
-            // let identity_manager = Arc::clone(&self.identity_manager);
-            // let proxy_connection_info = proxy_info.clone();
             let node_name = self.node_name.clone();
             let signing_sk = self.identity_secret_key.clone();
 
-            tokio::spawn(async move {
-                loop {
-                    match TcpStream::connect(proxy_addr).await {
-                        Ok(mut proxy_stream) => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Info,
-                                &format!("Connected to proxy at {}", proxy_addr),
-                            );
-                            eprintln!("Connected to proxy at {}", proxy_addr);
+            eprintln!("Calling TcpStream for proxy_addr");
+            match TcpStream::connect(proxy_addr).await {
+                Ok(proxy_stream) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Connected to proxy at {}", proxy_addr),
+                    );
+                    eprintln!("Connected to proxy at {}", proxy_addr);
 
-                            // Send the initial connection message
-                            let identity_msg = NetworkMessage {
-                                identity: node_name.to_string(),
-                                message_type: NetworkMessageType::ProxyMessage,
-                                payload: Vec::new(),
-                            };
-                            Self::send_network_message(&mut proxy_stream, &identity_msg).await;
+                    // Split the socket into reader and writer
+                    let (reader, writer) = tokio::io::split(proxy_stream);
+                    let reader = Arc::new(Mutex::new(reader));
+                    let writer = Arc::new(Mutex::new(writer));
 
-                            // Authenticate identity or localhost
-                            Self::authenticate_identity_or_localhost(&mut proxy_stream, &signing_sk).await;
+                    // Send the initial connection message
+                    let identity_msg = NetworkMessage {
+                        identity: node_name.to_string(),
+                        message_type: NetworkMessageType::ProxyMessage,
+                        payload: Vec::new(),
+                    };
+                    Self::send_network_message(writer.clone(), &identity_msg).await;
 
-                            // Handle connection through the proxy
-                            eprintln!("Handling connection through proxy at {}", proxy_addr);
-                            Self::handle_connection(&mut proxy_stream, proxy_addr, network_job_manager.clone()).await;
-                        }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
-                            );
-                            // Wait before retrying to connect to the proxy
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                        }
+                    // Authenticate identity or localhost
+                    Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
+
+                    // Handle connection through the proxy
+                    eprintln!("Handling connection through proxy at {}", proxy_addr);
+                    loop {
+                        let reader_clone = Arc::clone(&reader);
+                        let network_job_manager_clone = Arc::clone(&network_job_manager);
+                        tokio::spawn(async move {
+                            Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
+                        });
                     }
                 }
-            });
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
+                    );
+                    eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
+                    Err(e)
+                }
+            }
         } else {
             // If no proxy connection info, listen for incoming connections directly
+            eprintln!("No proxy connection info provided, listening directly");
             let listener = TcpListener::bind(&self.listen_address).await?;
 
             shinkai_log(
@@ -2129,19 +2149,17 @@ impl Node {
                     continue;
                 }
 
-                let socket = Arc::new(Mutex::new(socket));
                 let network_job_manager = Arc::clone(&self.network_job_manager);
                 let conn_limiter_clone = self.conn_limiter.clone();
 
                 tokio::spawn(async move {
-                    let mut socket = socket.lock().await;
-                    Self::handle_connection(&mut socket, addr, network_job_manager).await;
+                    let (reader, _writer) = tokio::io::split(socket);
+                    let reader = Arc::new(Mutex::new(reader));
+                    Self::handle_connection(reader, addr, network_job_manager).await;
                     conn_limiter_clone.decrement_connection(&ip).await;
                 });
             }
         }
-
-        Ok(())
     }
 
     // Static function to get the address from a ShinkaiName identity
@@ -2166,81 +2184,83 @@ impl Node {
     }
 
     async fn handle_connection(
-        socket: &mut TcpStream,
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         addr: SocketAddr,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
     ) {
         let mut length_bytes = [0u8; 4];
-        if socket.read_exact(&mut length_bytes).await.is_ok() {
-            let total_length = u32::from_be_bytes(length_bytes) as usize;
-            eprintln!("Total length: {}", total_length);
+        {
+            let mut reader = reader.lock().await;
+            if reader.read_exact(&mut length_bytes).await.is_ok() {
+                let total_length = u32::from_be_bytes(length_bytes) as usize;
+                eprintln!("Total length: {}", total_length);
 
-            // Read the identity length
-            let mut identity_length_bytes = [0u8; 4];
-            if socket.read_exact(&mut identity_length_bytes).await.is_err() {
-                return; // Exit if we fail to read identity length
-            }
-            let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
-            eprintln!("Identity length: {}", identity_length);
+                // Read the identity length
+                let mut identity_length_bytes = [0u8; 4];
+                if reader.read_exact(&mut identity_length_bytes).await.is_err() {
+                    return; // Exit if we fail to read identity length
+                }
+                let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
+                eprintln!("Identity length: {}", identity_length);
 
-            // Read the identity bytes
-            let mut identity_bytes = vec![0u8; identity_length];
-            if socket.read_exact(&mut identity_bytes).await.is_err() {
-                eprintln!("Failed to read identity bytes");
-                return; // Exit if we fail to read identity
-            }
+                // Read the identity bytes
+                let mut identity_bytes = vec![0u8; identity_length];
+                if reader.read_exact(&mut identity_bytes).await.is_err() {
+                    eprintln!("Failed to read identity bytes");
+                    return; // Exit if we fail to read identity
+                }
 
-            // Calculate the message length excluding the identity length and the identity itself
-            let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
+                // Calculate the message length excluding the identity length and the identity itself
+                let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
 
-            // Initialize buffer to fit the message
-            let mut buffer = vec![0u8; msg_length];
+                // Initialize buffer to fit the message
+                let mut buffer = vec![0u8; msg_length];
 
-            // Read the header byte to determine the message type
-            let mut header_byte = [0u8; 1];
-            if socket.read_exact(&mut header_byte).await.is_ok() {
-                let message_type = match header_byte[0] {
-                    0x01 => NetworkMessageType::ShinkaiMessage,
-                    0x02 => NetworkMessageType::VRKaiPathPair,
-                    0x03 => NetworkMessageType::ProxyMessage,
-                    _ => {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            "Received message with unknown type identifier",
-                        );
-                        return; // Exit the task if the message type is unknown
-                    }
-                };
-
-                // Read the rest of the message into the buffer
-                if socket.read_exact(&mut buffer).await.is_ok() {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Received message of type {:?} from: {:?}", message_type, addr),
-                    );
-                    eprintln!("Received message of type {:?} from: {:?}", message_type, addr);
-
-                    let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                    let network_job = NetworkJobQueue {
-                        receiver_address: addr,
-                        unsafe_sender_address: destination_socket,
-                        message_type,
-                        content: buffer.clone(), // Now buffer does not include the header
-                        date_created: Utc::now(),
+                // Read the header byte to determine the message type
+                let mut header_byte = [0u8; 1];
+                if reader.read_exact(&mut header_byte).await.is_ok() {
+                    let message_type = match header_byte[0] {
+                        0x01 => NetworkMessageType::ShinkaiMessage,
+                        0x02 => NetworkMessageType::VRKaiPathPair,
+                        0x03 => NetworkMessageType::ProxyMessage,
+                        _ => {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                "Received message with unknown type identifier",
+                            );
+                            return; // Exit the task if the message type is unknown
+                        }
                     };
 
-                    let mut network_job_manager = network_job_manager.lock().await;
-                    if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                    // Read the rest of the message into the buffer
+                    if reader.read_exact(&mut buffer).await.is_ok() {
                         shinkai_log(
                             ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to add network job to queue: {}", e),
+                            ShinkaiLogLevel::Info,
+                            &format!("Received message of type {:?} from: {:?}", message_type, addr),
                         );
+                        eprintln!("Received message of type {:?} from: {:?}", message_type, addr);
+
+                        let network_job = NetworkJobQueue {
+                            receiver_address: addr, // TODO: this should be my socketaddr!
+                            unsafe_sender_address: addr,
+                            message_type,
+                            content: buffer.clone(), // Now buffer does not include the header
+                            date_created: Utc::now(),
+                        };
+
+                        let mut network_job_manager = network_job_manager.lock().await;
+                        if let Err(e) = network_job_manager.add_network_job_to_queue(&network_job).await {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to add network job to queue: {}", e),
+                            );
+                        }
+                    } else {
+                        eprintln!("Failed to read message from: {:?}", addr);
                     }
-                } else {
-                    eprintln!("Failed to read message from: {:?}", addr);
                 }
             }
         }
@@ -2597,7 +2617,7 @@ impl Node {
         Ok(())
     }
 
-    async fn send_network_message(socket: &mut tokio::net::TcpStream, msg: &NetworkMessage) {
+    async fn send_network_message(writer: Arc<Mutex<WriteHalf<TcpStream>>>, msg: &NetworkMessage) {
         eprintln!("send_network_message> Sending message: {:?}", msg);
         let encoded_msg = msg.payload.clone();
         let identity = &msg.identity;
@@ -2632,8 +2652,9 @@ impl Node {
         println!("send_network_message> Message type length: 1");
         println!("send_network_message> Payload length: {}", encoded_msg.len());
 
-        socket.write_all(&data_to_send).await.unwrap();
-        socket.flush().await.unwrap();
+        let mut writer = writer.lock().await;
+        writer.write_all(&data_to_send).await.unwrap();
+        writer.flush().await.unwrap();
     }
 
     // async fn read_auth_message_with_length(socket: &mut TcpStream) -> Result<String, io::Error> {
@@ -2652,14 +2673,24 @@ impl Node {
     //     Ok(message)
     // }
 
-    async fn authenticate_identity_or_localhost(socket: &mut tokio::net::TcpStream, signing_key: &SigningKey) {
+    async fn authenticate_identity_or_localhost(
+        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+        signing_key: &SigningKey,
+    ) {
         // Handle validation
         let mut len_buffer = [0u8; 4];
-        socket.read_exact(&mut len_buffer).await.unwrap();
+        {
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut len_buffer).await.unwrap();
+        }
         let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
 
         let mut buffer = vec![0u8; validation_data_len];
-        match socket.read_exact(&mut buffer).await {
+        match {
+            let mut reader = reader.lock().await;
+            reader.read_exact(&mut buffer).await
+        } {
             Ok(_) => {
                 let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
 
@@ -2680,32 +2711,41 @@ impl Node {
                 let total_len = public_key_len + signature_len + 8; // 8 bytes for the lengths
 
                 let total_len_bytes = (total_len as u32).to_be_bytes();
-                socket.write_all(&total_len_bytes).await.unwrap();
+                {
+                    let mut writer = writer.lock().await;
+                    writer.write_all(&total_len_bytes).await.unwrap();
 
-                // Send the length of the public key
-                let public_key_len_bytes = public_key_len.to_be_bytes();
-                socket.write_all(&public_key_len_bytes).await.unwrap();
+                    // Send the length of the public key
+                    let public_key_len_bytes = public_key_len.to_be_bytes();
+                    writer.write_all(&public_key_len_bytes).await.unwrap();
 
-                // Send the public key
-                socket.write_all(public_key_hex.as_bytes()).await.unwrap();
+                    // Send the public key
+                    writer.write_all(public_key_hex.as_bytes()).await.unwrap();
 
-                // Send the length of the signed validation data
-                let signature_len_bytes = signature_len.to_be_bytes();
-                socket.write_all(&signature_len_bytes).await.unwrap();
+                    // Send the length of the signed validation data
+                    let signature_len_bytes = signature_len.to_be_bytes();
+                    writer.write_all(&signature_len_bytes).await.unwrap();
 
-                // Send the signed validation data
-                match socket.write_all(signature_hex.as_bytes()).await {
-                    Ok(_) => eprintln!("Sent signed validation data and public key back to server"),
-                    Err(e) => eprintln!("Failed to send signed validation data: {}", e),
+                    // Send the signed validation data
+                    match writer.write_all(signature_hex.as_bytes()).await {
+                        Ok(_) => eprintln!("Sent signed validation data and public key back to server"),
+                        Err(e) => eprintln!("Failed to send signed validation data: {}", e),
+                    }
                 }
 
                 // Wait for the server to validate the signature
                 let mut len_buffer = [0u8; 4];
-                socket.read_exact(&mut len_buffer).await.unwrap();
+                {
+                    let mut reader = reader.lock().await;
+                    reader.read_exact(&mut len_buffer).await.unwrap();
+                }
                 let response_len = u32::from_be_bytes(len_buffer) as usize;
 
                 let mut response_buffer = vec![0u8; response_len];
-                socket.read_exact(&mut response_buffer).await.unwrap();
+                {
+                    let mut reader = reader.lock().await;
+                    reader.read_exact(&mut response_buffer).await.unwrap();
+                }
                 let response = String::from_utf8(response_buffer).unwrap();
                 eprintln!("Received validation response: {}", response);
 
