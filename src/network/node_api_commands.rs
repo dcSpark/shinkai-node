@@ -2734,7 +2734,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted

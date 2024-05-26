@@ -57,7 +57,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     unsafe_sender_address: SocketAddr,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
@@ -242,7 +242,7 @@ pub async fn handle_ping(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     ping_pong(
@@ -275,7 +275,7 @@ pub async fn handle_default_encryption(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
@@ -361,7 +361,7 @@ pub async fn handle_network_message_cases(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     eprintln!(
         "{} > Got message from {:?}. Processing and sending ACK",
@@ -1022,7 +1022,7 @@ pub async fn send_ack(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     _: Arc<Mutex<MySubscriptionsManager>>,
     _: Arc<Mutex<ExternalSubscriberManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -1065,7 +1065,7 @@ pub async fn ping_pong(
     receiver: ShinkaiNameString,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",

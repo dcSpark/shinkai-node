@@ -26,6 +26,7 @@ pub enum SubscriberManagerError {
     OperationFailed(String),
     IdentityProfileNotFound(String),
     SerializationError(String),
+    ProxyConnectionInfoUnavailable,
 }
 
 impl fmt::Display for SubscriberManagerError {
@@ -52,6 +53,7 @@ impl fmt::Display for SubscriberManagerError {
             SubscriberManagerError::OperationFailed(e) => write!(f, "Operation failed: {}", e),
             SubscriberManagerError::IdentityProfileNotFound(e) => write!(f, "Identity profile not found: {}", e),
             SubscriberManagerError::SerializationError(e) => write!(f, "Serialization error: {}", e),
+            SubscriberManagerError::ProxyConnectionInfoUnavailable => write!(f, "Proxy Connection Info unavailable"),
         }
     }
 }

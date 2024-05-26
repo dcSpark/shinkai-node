@@ -310,7 +310,9 @@ impl IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => Err("Failed to get first address".to_string()),
+                Err(_) => {
+                    Err("Failed to get first address".to_string())
+                }
             },
             Err(_) => Err(format!(
                 "Failed to get identity network manager for profile name: {}",

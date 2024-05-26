@@ -63,7 +63,7 @@ pub struct MySubscriptionsManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     // The address of the proxy server (if any)
-    proxy_connection_info: Option<ProxyConnectionInfo>,
+    proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
 }
 
 impl MySubscriptionsManager {
@@ -74,7 +74,7 @@ impl MySubscriptionsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -755,7 +755,7 @@ impl MySubscriptionsManager {
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -789,8 +789,21 @@ impl MySubscriptionsManager {
             .upgrade()
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
+        let proxy_connection_info = proxy_connection_info
+            .upgrade()
+            .ok_or(SubscriberManagerError::ProxyConnectionInfoUnavailable)?;
+
         // Call the send function
-        Node::send(message, my_encryption_sk, peer, proxy_connection_info, db, maybe_identity_manager, false, None);
+        Node::send(
+            message,
+            my_encryption_sk,
+            peer,
+            proxy_connection_info,
+            db,
+            maybe_identity_manager,
+            false,
+            None,
+        );
 
         Ok(())
     }

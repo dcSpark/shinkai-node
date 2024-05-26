@@ -96,7 +96,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -180,7 +180,7 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                       // job to process
                 Weak<ShinkaiDB>,                       // db
@@ -191,7 +191,7 @@ impl NetworkJobManager {
                 Arc<Mutex<IdentityManager>>,           // identity_manager
                 Arc<Mutex<MySubscriptionsManager>>,    // my_subscription_manager
                 Arc<Mutex<ExternalSubscriberManager>>, // external_subscription_manager
-                Option<ProxyConnectionInfo>,           // proxy_connection_info
+                Weak<Mutex<Option<ProxyConnectionInfo>>>,           // proxy_connection_info
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
             + Send
             + Sync

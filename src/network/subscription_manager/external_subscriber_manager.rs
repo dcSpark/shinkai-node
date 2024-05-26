@@ -29,7 +29,6 @@ use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -91,7 +90,7 @@ pub struct ExternalSubscriberManager {
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
     pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
-    pub proxy_connection_info: Option<ProxyConnectionInfo>,
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
 }
 
 impl ExternalSubscriberManager {
@@ -102,7 +101,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
@@ -163,7 +162,7 @@ impl ExternalSubscriberManager {
              shared_folders_trees,
              subscription_ids_are_sync,
              shared_folders_to_ephemeral_versioning,
-             proxy_connection_info | {
+             proxy_connection_info| {
                 ExternalSubscriberManager::process_subscription_job_message_queued(
                     subscription_with_tree,
                     db,
@@ -256,7 +255,7 @@ impl ExternalSubscriberManager {
         identity_manager: Weak<Mutex<IdentityManager>>,
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) {
         let subscriptions_ids_to_process: Vec<SubscriptionId> = {
             let db = match db.upgrade() {
@@ -336,7 +335,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         _: usize, // tread_number
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -402,7 +401,7 @@ impl ExternalSubscriberManager {
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         _subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         _shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
@@ -564,13 +563,17 @@ impl ExternalSubscriberManager {
 
                     let vr_pack_plus_changes = VRPackPlusChanges { vr_pack, diff };
 
+                    let proxy_connection_info = proxy_connection_info
+                        .upgrade()
+                        .ok_or(SubscriberManagerError::ProxyConnectionInfoUnavailable)?;
+
                     let result = Self::send_vr_pack_to_peer(
                         vr_pack_plus_changes,
                         subscription_id.clone(),
                         standard_identity,
                         subscription_with_tree.symmetric_key,
                         proxy_connection_info,
-                        identity_manager_lock.clone()
+                        identity_manager_lock.clone(),
                     )
                     .await;
 
@@ -607,7 +610,7 @@ impl ExternalSubscriberManager {
         subscription_id: SubscriptionId,
         receiver_identity: StandardIdentity,
         symmetric_key: String,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
         // Extract the receiver's socket address and profile name from the StandardIdentity
@@ -655,7 +658,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         thread_number: usize,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<ShinkaiDB>,
@@ -667,7 +670,7 @@ impl ExternalSubscriberManager {
                 Arc<DashMap<String, SharedFolderInfo>>,
                 Arc<DashMap<String, (String, usize)>>,
                 Arc<DashMap<String, usize>>,
-                Option<ProxyConnectionInfo>,
+                Weak<Mutex<Option<ProxyConnectionInfo>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
             + Send
             + Sync
@@ -1274,8 +1277,12 @@ impl ExternalSubscriberManager {
                     path: path.clone(),
                     folder_subscription: folder_subscription.clone(),
                 };
-                let profile = requester_shinkai_identity.clone().get_profile_name_string().unwrap_or_default();
-                self.http_subscription_upload_manager.remove_http_support_for_subscription(subscription_with_path, &profile);
+                let profile = requester_shinkai_identity
+                    .clone()
+                    .get_profile_name_string()
+                    .unwrap_or_default();
+                self.http_subscription_upload_manager
+                    .remove_http_support_for_subscription(subscription_with_path, &profile);
 
                 db.remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -1494,7 +1501,7 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,

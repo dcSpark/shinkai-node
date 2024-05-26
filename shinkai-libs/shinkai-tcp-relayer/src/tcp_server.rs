@@ -551,10 +551,12 @@ impl TCPProxy {
             // it's meant to be proxied out of the NAT
             // Sender identity looks like: localhost.shinkai:::69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e
             // we can't use that as a subidentity because it contains "." and ":::" which are not valid characters
-            eprintln!("Sender Identity {:?}", sender_identity);
-            let stripped_sender_name = sender_identity.to_string().trim_start_matches("@@").to_string();
+            let msg_sender = parsed_message.external_metadata.clone().sender.to_string();
+            eprintln!("Sender Identity {:?}", msg_sender);
+
+            let stripped_sender_name = msg_sender.to_string().trim_start_matches("@@").to_string();
             let modified_message = if stripped_sender_name.starts_with("localhost") {
-                eprintln!("Sender is localhost, modifying ShinkaiMessage");
+                eprintln!("Sender is localhost, modifying ShinkaiMessage for sender: {}", stripped_sender_name);
                 let stripped_sender_name = stripped_sender_name.split(":::").last().unwrap_or("").to_string();
                 Self::modify_shinkai_message(
                     parsed_message,

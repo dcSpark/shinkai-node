@@ -34,6 +34,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::vector_resource::VRPath;
+use std::sync::Weak;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::io::AsyncReadExt;
@@ -526,9 +527,10 @@ impl Node {
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), NodeError> {
         info!("{} > Pinging all peers {} ", listen_address, peers.len());
+
         for (peer, _) in peers.clone() {
             let sender = node_name.get_node_name_string();
             let receiver_profile_identity = identity_manager
