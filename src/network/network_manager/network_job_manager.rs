@@ -367,7 +367,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<String, NetworkJobQueueError> {
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -385,6 +385,10 @@ impl NetworkJobManager {
                 // do nothing not supported on this context
             }
             NetworkMessageType::ShinkaiMessage => {
+                let proxy_connection_info = proxy_connection_info
+                .upgrade()
+                .ok_or(NetworkJobQueueError::ProxyConnectionInfoUpgradeFailed)?;
+
                 let _ = Self::handle_message_internode(
                     job.receiver_address,
                     job.unsafe_sender_address,
@@ -685,7 +689,7 @@ impl NetworkJobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), NetworkJobQueueError> {
         let maybe_db = shinkai_db
             .upgrade()

@@ -10,7 +10,7 @@ use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::IdentityManager;
+use crate::managers::{identity_manager, IdentityManager};
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
@@ -2046,22 +2046,12 @@ impl Node {
             let node_name = self.node_name.clone();
             let identity_secret_key = self.identity_secret_key.clone();
 
-            // let result = Node::listen(
-            //     listen_address,
-            //     identity_manager,
-            //     proxy_connection_info,
-            //     network_job_manager,
-            //     conn_limiter,
-            //     node_name,
-            //     identity_secret_key,
-            // )
-            // .await;
+            let proxy_info = {
+                let proxy_info_lock = proxy_connection_info.lock().await;
+                proxy_info_lock.clone()
+            };
 
-            // if result.is_err() {
-            //     tokio::time::sleep(Duration::from_secs(1)).await;
-            // }
-
-            if let Some(proxy_info) = proxy_connection_info.clone() {
+            if let Some(proxy_info) = proxy_info {
                 let connection_result = Node::establish_proxy_connection(
                     identity_manager.clone(),
                     &proxy_info,
@@ -2072,52 +2062,15 @@ impl Node {
 
                 match connection_result {
                     Ok(Some((reader, writer))) => {
-                        // Reset retry count on successful connection
-                        retry_count = 0;
-
-                        // Store the tcp_connection in proxy_connection_info
-                        {
-                            let mut proxy_info_lock = proxy_connection_info.lock().await;
-                            if let Some(ref mut proxy_info) = *proxy_info_lock {
-                                proxy_info.tcp_connection = Some((reader.clone(), writer.clone()));
-                            }
-                        }
-
-                        // Handle the connection
-                        loop {
-                            let reader_clone = Arc::clone(&reader);
-                            let network_job_manager_clone = Arc::clone(&network_job_manager);
-                            let proxy_info = proxy_info.clone();
-                            let identity_manager = identity_manager.clone();
-
-                            eprintln!("proxy path before spawn");
-                            let handle = tokio::spawn(async move {
-                                eprintln!("handle_connection");
-                                // If proxy connection info is provided, connect to the proxy
-                                let proxy_addr = Node::get_address_from_identity(
-                                    identity_manager.clone(),
-                                    &proxy_info.proxy_identity.get_node_name_string(),
-                                )
-                                .await;
-
-                                let proxy_addr = match proxy_addr {
-                                    Ok(addr) => addr,
-                                    Err(e) => {
-                                        eprintln!("Failed to get proxy address: {}", e);
-                                        return Err(io::Error::new(io::ErrorKind::Other, e));
-                                    }
-                                };
-                                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
-                                Ok::<(), std::io::Error>(())
-                            });
-
-                            // Await the task's completion
-                            if let Err(e) = handle.await {
-                                eprintln!("Task failed: {:?}", e);
-                                // Sleep for 50ms before retrying
-                                tokio::time::sleep(Duration::from_millis(50)).await;
-                            }
-                        }
+                        Self::handle_proxy_listen_connection(
+                            reader,
+                            writer,
+                            proxy_info.proxy_identity.clone(),
+                            proxy_connection_info.clone(),
+                            network_job_manager.clone(),
+                            identity_manager.clone(),
+                        )
+                        .await;
                     }
                     Ok(None) | Err(_) => {
                         // Increment retry count and determine sleep duration
@@ -2133,6 +2086,13 @@ impl Node {
                     }
                 };
             } else {
+                Self::handle_listen_connection(
+                    listen_address,
+                    network_job_manager.clone(),
+                    conn_limiter.clone(),
+                    node_name.clone(),
+                )
+                .await;
             }
         }
     }
@@ -2141,7 +2101,7 @@ impl Node {
     async fn listen(
         listen_address: SocketAddr,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        proxy_connection_info: Option<ProxyConnectionInfo>,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
         conn_limiter: Arc<ConnectionLimiter>,
         node_name: ShinkaiName,
@@ -2351,17 +2311,65 @@ impl Node {
         }
     }
 
-    async fn handle_proxy_listen_connection() {}
+    async fn handle_proxy_listen_connection(
+        reader: Arc<Mutex<ReadHalf<tokio::net::TcpStream>>>,
+        writer: Arc<Mutex<WriteHalf<tokio::net::TcpStream>>>,
+        proxy_identity: ShinkaiName,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> io::Result<()> {
+        // Store the tcp_connection in proxy_connection_info
+        {
+            let mut proxy_info_lock = proxy_connection_info.lock().await;
+            if let Some(ref mut proxy_info) = *proxy_info_lock {
+                proxy_info.tcp_connection = Some((reader.clone(), writer.clone()));
+            }
+        }
+
+        // Handle the connection
+        loop {
+            let reader_clone = Arc::clone(&reader);
+            let network_job_manager_clone = Arc::clone(&network_job_manager);
+            let identity_manager = identity_manager.clone();
+            let proxy_identity = proxy_identity.clone();
+
+            eprintln!("proxy path before spawn");
+            let handle = tokio::spawn(async move {
+                eprintln!("handle_connection");
+                // If proxy connection info is provided, connect to the proxy
+                let proxy_addr = Node::get_address_from_identity(
+                    identity_manager.clone(),
+                    &proxy_identity.clone().get_node_name_string(),
+                )
+                .await;
+
+                let proxy_addr = match proxy_addr {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        eprintln!("Failed to get proxy address: {}", e);
+                        return Err(io::Error::new(io::ErrorKind::Other, e));
+                    }
+                };
+                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
+                Ok::<(), std::io::Error>(())
+            });
+
+            // Await the task's completion
+            if let Err(e) = handle.await {
+                eprintln!("Task failed: {:?}", e);
+                // Sleep for 50ms before retrying
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
 
     async fn handle_listen_connection(
         listen_address: SocketAddr,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
         conn_limiter: Arc<ConnectionLimiter>,
         node_name: ShinkaiName,
-        identity_secret_key: SigningKey,
-    ) {
+    ) -> io::Result<()> {
         eprintln!(
             "No proxy connection info provided, listening directly. Node {}",
             node_name
@@ -2594,9 +2602,9 @@ impl Node {
         let message = Arc::new(message);
 
         tokio::spawn(async move {
-            let stream = Node::get_stream(address, proxy_connection_info, maybe_identity_manager.clone()).await;
+            let writer = Node::get_writer(address, proxy_connection_info, maybe_identity_manager.clone()).await;
 
-            if let Some(mut stream) = stream {
+            if let Some(writer) = writer {
                 let encoded_msg = message.encode_message().unwrap();
                 let identity = &message.external_metadata.recipient;
                 let identity_bytes = identity.as_bytes();
@@ -2612,13 +2620,13 @@ impl Node {
                 data_to_send.extend(identity_bytes);
                 data_to_send.extend(header_data_to_send);
                 data_to_send.extend_from_slice(&encoded_msg);
-                let _ = stream.write_all(&data_to_send).await;
-                let _ = stream.flush().await;
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Sent message to {}", stream.peer_addr().unwrap()),
-                );
+
+                {
+                    let mut writer = writer.lock().await;
+                    let _ = writer.write_all(&data_to_send).await;
+                    let _ = writer.flush().await;
+                }
+
                 if save_to_db_flag {
                     let _ = Node::save_to_db(
                         true,
@@ -2646,47 +2654,49 @@ impl Node {
         });
     }
 
-    /// Function to get the stream, either directly or through a proxy
-    async fn get_stream(
+    /// Function to get the writer, either directly or through a proxy
+    async fn get_writer(
         address: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> Option<TcpStream> {
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        // node_name: ShinkaiName,
+        // identity_secret_key: SigningKey,
+    ) -> Option<Arc<Mutex<WriteHalf<TcpStream>>>> {
         let proxy_connection = proxy_connection_info.lock().await;
-        if let Some(proxy_info) = proxy_connection {
-            let mut tcp_connection = proxy_info.tcp_connection.lock().await;
-            if tcp_connection.is_none() {
-                match Node::get_address_from_identity(
-                    identity_manager,
-                    &proxy_info.proxy_identity.get_node_name_string(),
-                )
-                .await
-                {
-                    Ok(proxy_addr) => match TcpStream::connect(proxy_addr).await {
-                        Ok(new_stream) => {
-                            *tcp_connection = Some(new_stream);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
-                            );
-                            return None;
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, &e);
-                        return None;
-                    }
-                }
+        if let Some(proxy_info) = proxy_connection.as_ref() {
+            if let Some((_, writer)) = &proxy_info.tcp_connection {
+                return Some(writer.clone());
+            } else {
+                return None;
+                // let proxy_info = proxy_info.clone();
+                // drop(proxy_connection); // Drop the lock before attempting to connect
+                // match Node::establish_proxy_connection(
+                //     identity_manager.clone(),
+                //     &proxy_info,
+                //     node_name.clone(),
+                //     identity_secret_key.clone(),
+                // )
+                // .await
+                // {
+                //     Ok(Some((_reader, writer))) => {
+                //         return Some(writer);
+                //     }
+                //     Ok(None) => {
+                //         eprintln!("Failed to establish proxy connection: No connection established");
+                //         None
+                //     }
+                //     Err(e) => {
+                //         eprintln!("Failed to establish proxy connection: {}", e);
+                //         None
+                //     }
+                // }
             }
-            tcp_connection.take()
         } else {
             match TcpStream::connect(address).await {
-                Ok(stream) => Some(stream),
+                Ok(stream) => {
+                    let (_, writer) = tokio::io::split(stream);
+                    Some(Arc::new(Mutex::new(writer)))
+                }
                 Err(e) => {
                     eprintln!("Failed to connect to {}: {}", address, e);
                     shinkai_log(
@@ -2757,11 +2767,12 @@ impl Node {
             data_to_send.extend_from_slice(&vr_kai_serialized);
 
             // Get the stream using the get_stream function
-            let stream = Node::get_stream(peer, proxy_connection_info, maybe_identity_manager).await;
+            let writer = Node::get_writer(peer, proxy_connection_info, maybe_identity_manager).await;
 
-            if let Some(mut stream) = stream {
-                let _ = stream.write_all(&data_to_send).await;
-                let _ = stream.flush().await;
+            if let Some(writer) = writer {
+                let mut writer = writer.lock().await;
+                let _ = writer.write_all(&data_to_send).await;
+                let _ = writer.flush().await;
                 println!("Encrypted data sent to {}", peer);
             } else {
                 eprintln!("Failed to connect to {}", peer);
