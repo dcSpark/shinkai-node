@@ -3,7 +3,7 @@ use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
 use shinkai_vector_resources::file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup};
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 pub struct PDFParser {
     ocr_engine: OcrEngine,
@@ -40,18 +40,23 @@ impl PDFParser {
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>, max_node_text_size: u64) -> anyhow::Result<Vec<TextGroup>> {
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
-        struct TextProperties {
+        struct TextPosition {
             x: f32,
             y: f32,
+        }
+
+        struct TextFont {
             font_size: f32,
             font_weight: PdfFontWeight,
         }
 
         let mut text_groups = Vec::new();
+        let mut text_depth: usize = 0;
         let mut page_text = "".to_owned();
+        let mut previous_text_font: Option<TextFont> = None;
 
         for (page_index, page) in document.pages().iter().enumerate() {
-            let mut previous_text_properties: Option<TextProperties> = None;
+            let mut previous_text_position: Option<TextPosition> = None;
 
             // Debug info
             eprintln!("=============== Page {} ===============", page_index + 1);
@@ -67,55 +72,112 @@ impl PDFParser {
                         }
 
                         let text_object = object.as_text_object().unwrap();
-                        let current_text_properties = TextProperties {
+                        let text = text_object.text();
+
+                        let current_text_position = TextPosition {
                             x: text_object.get_translation().0.value,
                             y: text_object.get_translation().1.value,
+                        };
+
+                        let current_text_font = TextFont {
                             font_size: text_object.unscaled_font_size().value,
                             font_weight: text_object.font().weight().unwrap_or(PdfFontWeight::Weight100),
                         };
 
-                        // eprintln!(
-                        //     "Text object: [({}, {}) {} {:?}] {:?}",
-                        //     current_text_properties.x,
-                        //     current_text_properties.y,
-                        //     current_text_properties.font_size,
-                        //     current_text_properties.font_weight,
-                        //     text_object.text()
-                        // );
+                        let is_bold = match current_text_font.font_weight {
+                            PdfFontWeight::Weight500
+                            | PdfFontWeight::Weight600
+                            | PdfFontWeight::Weight700Bold
+                            | PdfFontWeight::Weight800
+                            | PdfFontWeight::Weight900 => true,
+                            PdfFontWeight::Custom(weight) => weight >= 500,
+                            _ => false,
+                        };
 
-                        if let Some(previous_text_properties) = previous_text_properties {
-                            let likely_heading = previous_text_properties.font_size > current_text_properties.font_size;
-
-                            // Same line, append text
-                            if current_text_properties.y == previous_text_properties.y {
-                                page_text.push_str(&format!("{}", &text_object.text()));
-                            }
-                            // likely heading or new paragraph
-                            else if likely_heading
-                                || (current_text_properties.y < previous_text_properties.y
-                                    && (previous_text_properties.y - current_text_properties.y)
-                                        > previous_text_properties.font_size * 1.5)
-                            {
-                                // Save text from previous text objects.
-                                Self::process_text_into_text_groups(
-                                    &page_text,
-                                    &mut text_groups,
-                                    max_node_text_size,
-                                    page_index + 1,
-                                );
-                                page_text.clear();
-
-                                page_text.push_str(&format!("{}", &text_object.text()));
-                            }
-                            // add new line
-                            else {
-                                page_text.push_str(&format!("\n{}", &text_object.text()));
-                            }
+                        let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
+                            (previous_text_position.as_ref(), previous_text_font.as_ref())
+                        {
+                            current_text_position.y < previous_text_position.y
+                                && (previous_text_position.y - current_text_position.y)
+                                    > previous_text_font.font_size * 1.5
                         } else {
-                            page_text.push_str(&format!("{}", &text_object.text()));
+                            false
+                        };
+
+                        let likely_heading = (likely_paragraph || previous_text_position.is_none())
+                            && previous_text_font.is_none()
+                            || previous_text_font.is_some_and(|f| f.font_size < current_text_font.font_size)
+                                && current_text_font.font_size > 12.0
+                                && is_bold
+                                && text.len() > 1;
+
+                        // Same line, append text
+                        if previous_text_position.is_some()
+                            && current_text_position.y == previous_text_position.as_ref().unwrap().y
+                        {
+                            page_text.push_str(&format!("{}", &text));
+                        } else if likely_heading {
+                            // Save text from previous text objects.
+                            ShinkaiFileParser::push_text_group_by_depth(
+                                &mut text_groups,
+                                text_depth,
+                                page_text.clone(),
+                                max_node_text_size,
+                            );
+                            page_text.clear();
+
+                            // Add heading to the top level
+                            ShinkaiFileParser::push_text_group_by_depth(
+                                &mut text_groups,
+                                0,
+                                text.clone(),
+                                max_node_text_size,
+                            );
+
+                            text_depth = 1;
+                        }
+                        // likely heading or new paragraph
+                        else if likely_paragraph {
+                            // Save text from previous text objects.
+                            ShinkaiFileParser::push_text_group_by_depth(
+                                &mut text_groups,
+                                text_depth,
+                                page_text.clone(),
+                                max_node_text_size,
+                            );
+                            page_text.clear();
+
+                            page_text.push_str(&format!("{}", &text));
+                        }
+                        // add new line
+                        else {
+                            if page_text.is_empty() {
+                                page_text.push_str(&format!("{}", &text));
+                            } else {
+                                page_text.push_str(&format!("\n{}", &text));
+                            }
                         }
 
-                        previous_text_properties = Some(current_text_properties);
+                        // let txt_type = if likely_heading {
+                        //     "H"
+                        // } else if likely_paragraph {
+                        //     "P"
+                        // } else {
+                        //     "T"
+                        // };
+
+                        // eprintln!(
+                        //     "Text object: [{} ({}, {}) {} {:?}] {:?}",
+                        //     txt_type,
+                        //     current_text_position.x,
+                        //     current_text_position.y,
+                        //     current_text_font.font_size,
+                        //     current_text_font.font_weight,
+                        //     text
+                        // );
+
+                        previous_text_position = Some(current_text_position);
+                        previous_text_font = Some(current_text_font);
                     }
                     PdfPageObjectType::Image => {
                         if !found_image {
@@ -124,11 +186,11 @@ impl PDFParser {
                         }
 
                         // Save text from previous text objects.
-                        Self::process_text_into_text_groups(
-                            &page_text,
+                        ShinkaiFileParser::push_text_group_by_depth(
                             &mut text_groups,
+                            text_depth,
+                            page_text.clone(),
                             max_node_text_size,
-                            page_index + 1,
                         );
                         page_text.clear();
 
@@ -139,7 +201,7 @@ impl PDFParser {
                             &image_object,
                             &mut text_groups,
                             max_node_text_size,
-                            page_index + 1,
+                            text_depth,
                         ) {
                             eprintln!("Error processing image object: {:?}", err);
                             match image_object.get_raw_image() {
@@ -167,63 +229,27 @@ impl PDFParser {
                 }
             }
 
-            Self::process_text_into_text_groups(&page_text, &mut text_groups, max_node_text_size, page_index + 1);
+            // Drop parsed page numbers as text
+            if page_text != format!("{}", page_index + 1) {
+                ShinkaiFileParser::push_text_group_by_depth(
+                    &mut text_groups,
+                    text_depth,
+                    page_text.clone(),
+                    max_node_text_size,
+                );
+            }
+
             page_text.clear();
         }
 
-        Self::process_text_into_text_groups(
-            &page_text,
+        ShinkaiFileParser::push_text_group_by_depth(
             &mut text_groups,
+            text_depth,
+            page_text.clone(),
             max_node_text_size,
-            (document.pages().len()) as usize,
         );
 
         Ok(text_groups)
-    }
-
-    fn process_text_into_text_groups(
-        text: &str,
-        text_groups: &mut Vec<TextGroup>,
-        max_node_text_size: u64,
-        page_number: usize,
-    ) {
-        if text.is_empty() {
-            return;
-        }
-
-        let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
-
-        if parsed_text.len() as u64 > max_node_text_size {
-            let chunks = if parsed_any_metadata {
-                ShinkaiFileParser::split_into_chunks_with_metadata(&text, max_node_text_size as usize)
-            } else {
-                ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize)
-            };
-
-            for chunk in chunks {
-                let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-
-                let metadata: HashMap<String, String> = {
-                    let mut map = metadata.clone();
-                    map.insert(
-                        ShinkaiFileParser::page_numbers_metadata_key(),
-                        format!("[{}]", page_number),
-                    );
-                    map
-                };
-                text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
-            }
-        } else {
-            let metadata: HashMap<String, String> = {
-                let mut map = metadata.clone();
-                map.insert(
-                    ShinkaiFileParser::page_numbers_metadata_key(),
-                    format!("[{}]", page_number),
-                );
-                map
-            };
-            text_groups.push(TextGroup::new(parsed_text, metadata, vec![], None));
-        }
     }
 
     fn process_image_object(
@@ -231,7 +257,7 @@ impl PDFParser {
         image_object: &PdfPageImageObject,
         text_groups: &mut Vec<TextGroup>,
         max_node_text_size: u64,
-        page_number: usize,
+        text_depth: usize,
     ) -> anyhow::Result<()> {
         let img = image_object.get_raw_image()?;
         let img_source = ImageSource::from_bytes(img.as_bytes(), img.dimensions())?;
@@ -261,7 +287,7 @@ impl PDFParser {
             .collect::<Vec<_>>()
             .join("\n");
 
-        Self::process_text_into_text_groups(&text, text_groups, max_node_text_size, page_number);
+        ShinkaiFileParser::push_text_group_by_depth(text_groups, text_depth, text.clone(), max_node_text_size);
 
         Ok(())
     }
