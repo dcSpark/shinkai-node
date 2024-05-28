@@ -1,7 +1,7 @@
 # Build arguments go here.
 # See "gn args <out_dir> --list" for available build arguments.
 
-clang_use_chrome_plugins = false
+# clang_use_chrome_plugins = false
 is_clang = true
 is_debug = false
 is_component_build = false
@@ -14,8 +14,8 @@ pdf_use_partition_alloc = false
 pdf_use_skia = false
 symbol_level = 0
 treat_warnings_as_errors = false
-use_custom_libcxx = false
-use_goma = false
+# use_custom_libcxx = false
+# use_goma = false
 
 # target_os = "mac"
 # target_cpu = "x64"

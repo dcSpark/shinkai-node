@@ -20,6 +20,8 @@ PDFIUM_STATIC_LIB_PATH="$(pwd)/pdfium/mac-x64" cargo build --release
 
 ### Building PDFium from source
 
+[Prerequisites](https://pdfium.googlesource.com/pdfium/)
+
 Run the follow script in the `pdfium` directory passing the `target_os` (`mac|linux`) and `target_cpu` (`x64|arm64`) as parameters:
 
 ```sh
@@ -27,6 +29,17 @@ Run the follow script in the `pdfium` directory passing the `target_os` (`mac|li
 ```
 
 After the script finishes `libpdfium.a` should be available in the `$OS-$CPU` directory.
+
+### Building with dynamic linking
+
+[Dynamic library release](https://github.com/bblanchon/pdfium-binaries/releases)
+
+On Windows run the following commands:
+
+```sh
+SET PDFIUM_DYNAMIC_LIB_PATH=<path-to-DLL-directory>
+cargo build --release --no-default-features
+```
 
 ## Downloading Ocrs models
 

@@ -1,6 +1,6 @@
 #!/bin/bash -eu
 
-OS_NAMES="linux|mac"
+OS_NAMES="linux|mac|win"
 CPU_NAMES="arm64|x64"
 
 if [[ $# -lt 2 ]]
@@ -48,8 +48,10 @@ export PATH="$PATH:$(cd depot_tools; pwd)"
 
 ## Checkout
 
+PDFIUM_BRANCH=$(git ls-remote --sort version:refname --refs https://pdfium.googlesource.com/pdfium.git 'chromium/*' | tail -n 1 | cut -d/ -f3-4)
+
 gclient config --unmanaged https://pdfium.googlesource.com/pdfium.git
-gclient sync --no-history
+gclient sync -r "origin/${PDFIUM_BRANCH}" --no-history
 
 ## Install dependencies
 case "$TARGET_OS" in
@@ -73,6 +75,14 @@ cp ../../args.gn $BUILD_TARGET_DIR/args.gn
   cd $BUILD_TARGET_DIR
   echo "target_os = \"$TARGET_OS\"" >> args.gn
   echo "target_cpu = \"$TARGET_CPU\"" >> args.gn
+
+  case "$TARGET_OS" in
+    linux | mac)
+      echo "clang_use_chrome_plugins = false"
+      echo "use_custom_libcxx = false"
+      echo "use_goma = false"
+      ;;
+  esac
 )
 
 ## Run the build
@@ -80,4 +90,12 @@ ninja -C $BUILD_TARGET_DIR pdfium
 
 ## Grab the static library
 mkdir -p ../../$TARGET_OS-$TARGET_CPU
-mv -f $BUILD_TARGET_DIR/obj/libpdfium.a ../../$TARGET_OS-$TARGET_CPU/libpdfium.a
+
+case "$TARGET_OS" in
+  linux | mac)
+    mv -f $BUILD_TARGET_DIR/obj/libpdfium.a ../../$TARGET_OS-$TARGET_CPU/libpdfium.a
+    ;;
+  win)
+    mv -f $BUILD_TARGET_DIR/obj/pdfium.lib ../../$TARGET_OS-$TARGET_CPU/pdfium.lib
+    ;;
+esac

@@ -33,6 +33,17 @@ impl PDFParser {
 
         Ok(PDFParser {
             ocr_engine,
+
+            #[cfg(not(feature = "static"))]
+            pdfium: {
+                use std::env;
+                let lib_path = env::var("PDFIUM_DYNAMIC_LIB_PATH").unwrap_or("./".to_string());
+                Pdfium::new(
+                    Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap(),
+                )
+            },
+
+            #[cfg(feature = "static")]
             pdfium: Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap()),
         })
     }
