@@ -408,12 +408,15 @@ lazy_static! {
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
+type TcpReadHalf = Arc<Mutex<ReadHalf<TcpStream>>>;
+type TcpWriteHalf = Arc<Mutex<WriteHalf<TcpStream>>>;
+type TcpConnection = Option<(TcpReadHalf, TcpWriteHalf)>;
 
 // Define the ConnectionInfo struct
 #[derive(Clone, Debug)]
 pub struct ProxyConnectionInfo {
     pub proxy_identity: ShinkaiName,
-    pub tcp_connection: Option<(Arc<Mutex<ReadHalf<TcpStream>>>, Arc<Mutex<WriteHalf<TcpStream>>>)>,
+    pub tcp_connection: TcpConnection,
 }
 
 // The `Node` struct represents a single node in the network.
@@ -2062,7 +2065,7 @@ impl Node {
 
                 match connection_result {
                     Ok(Some((reader, writer))) => {
-                        Self::handle_proxy_listen_connection(
+                         let _ = Self::handle_proxy_listen_connection(
                             reader,
                             writer,
                             proxy_info.proxy_identity.clone(),
@@ -2086,156 +2089,163 @@ impl Node {
                     }
                 };
             } else {
-                Self::handle_listen_connection(
-                    listen_address,
-                    network_job_manager.clone(),
-                    conn_limiter.clone(),
-                    node_name.clone(),
-                )
-                .await;
+                break;
             }
         }
+
+        // Execute direct listening if no proxy was ever connected
+        let result = Self::handle_listen_connection(
+            self.listen_address,
+            self.network_job_manager.clone(),
+            self.conn_limiter.clone(),
+            self.node_name.clone(),
+        ).await;
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Error,
+            &format!("{} > TCP: Listening error {:?}", self.listen_address, result),
+        );
     }
 
-    // A function that listens for incoming connections.
-    async fn listen(
-        listen_address: SocketAddr,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        proxy_connection_info: Option<ProxyConnectionInfo>,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
-        conn_limiter: Arc<ConnectionLimiter>,
-        node_name: ShinkaiName,
-        identity_secret_key: SigningKey,
-    ) -> io::Result<()> {
-        if let Some(proxy_info) = &proxy_connection_info {
-            eprintln!("Proxy connection info provided: {:?}", proxy_info);
-            // If proxy connection info is provided, connect to the proxy
-            let proxy_addr = Node::get_address_from_identity(
-                identity_manager.clone(),
-                &proxy_info.proxy_identity.get_node_name_string(),
-            )
-            .await;
+    // // A function that listens for incoming connections.
+    // async fn listen(
+    //     listen_address: SocketAddr,
+    //     identity_manager: Arc<Mutex<IdentityManager>>,
+    //     proxy_connection_info: Option<ProxyConnectionInfo>,
+    //     network_job_manager: Arc<Mutex<NetworkJobManager>>,
+    //     conn_limiter: Arc<ConnectionLimiter>,
+    //     node_name: ShinkaiName,
+    //     identity_secret_key: SigningKey,
+    // ) -> io::Result<()> {
+    //     if let Some(proxy_info) = &proxy_connection_info {
+    //         eprintln!("Proxy connection info provided: {:?}", proxy_info);
+    //         // If proxy connection info is provided, connect to the proxy
+    //         let proxy_addr = Node::get_address_from_identity(
+    //             identity_manager.clone(),
+    //             &proxy_info.proxy_identity.get_node_name_string(),
+    //         )
+    //         .await;
 
-            let proxy_addr = match proxy_addr {
-                Ok(addr) => addr,
-                Err(e) => {
-                    eprintln!("Failed to get proxy address: {}", e);
-                    return Err(io::Error::new(io::ErrorKind::Other, e));
-                }
-            };
+    //         let proxy_addr = match proxy_addr {
+    //             Ok(addr) => addr,
+    //             Err(e) => {
+    //                 eprintln!("Failed to get proxy address: {}", e);
+    //                 return Err(io::Error::new(io::ErrorKind::Other, e));
+    //             }
+    //         };
 
-            let network_job_manager = Arc::clone(&network_job_manager);
-            let node_name = node_name.clone();
-            let signing_sk = identity_secret_key.clone();
+    //         let network_job_manager = Arc::clone(&network_job_manager);
+    //         let node_name = node_name.clone();
+    //         let signing_sk = identity_secret_key.clone();
 
-            eprintln!("Calling TcpStream for proxy_addr");
-            match TcpStream::connect(proxy_addr).await {
-                Ok(proxy_stream) => {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Connected to proxy at {}", proxy_addr),
-                    );
-                    eprintln!("Connected to proxy at {}", proxy_addr);
+    //         eprintln!("Calling TcpStream for proxy_addr");
+    //         match TcpStream::connect(proxy_addr).await {
+    //             Ok(proxy_stream) => {
+    //                 shinkai_log(
+    //                     ShinkaiLogOption::Node,
+    //                     ShinkaiLogLevel::Info,
+    //                     &format!("Connected to proxy at {}", proxy_addr),
+    //                 );
+    //                 eprintln!("Connected to proxy at {}", proxy_addr);
 
-                    // Split the socket into reader and writer
-                    let (reader, writer) = tokio::io::split(proxy_stream);
-                    let reader = Arc::new(Mutex::new(reader));
-                    let writer = Arc::new(Mutex::new(writer));
+    //                 // Split the socket into reader and writer
+    //                 let (reader, writer) = tokio::io::split(proxy_stream);
+    //                 let reader = Arc::new(Mutex::new(reader));
+    //                 let writer = Arc::new(Mutex::new(writer));
 
-                    // Send the initial connection message
-                    let identity_msg = NetworkMessage {
-                        identity: node_name.to_string(),
-                        message_type: NetworkMessageType::ProxyMessage,
-                        payload: Vec::new(),
-                    };
-                    Self::send_network_message(writer.clone(), &identity_msg).await;
+    //                 // Send the initial connection message
+    //                 let identity_msg = NetworkMessage {
+    //                     identity: node_name.to_string(),
+    //                     message_type: NetworkMessageType::ProxyMessage,
+    //                     payload: Vec::new(),
+    //                 };
+    //                 Self::send_network_message(writer.clone(), &identity_msg).await;
 
-                    // Authenticate identity or localhost
-                    Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
+    //                 // Authenticate identity or localhost
+    //                 Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
 
-                    // Handle connection through the proxy
-                    eprintln!("Handling connection through proxy at {}", proxy_addr);
-                    loop {
-                        let reader_clone = Arc::clone(&reader);
-                        let network_job_manager_clone = Arc::clone(&network_job_manager);
-                        eprintln!("proxy path before spawn");
-                        let handle = tokio::spawn(async move {
-                            eprintln!("handle_connection");
-                            Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
-                        });
+    //                 // Handle connection through the proxy
+    //                 eprintln!("Handling connection through proxy at {}", proxy_addr);
+    //                 loop {
+    //                     let reader_clone = Arc::clone(&reader);
+    //                     let network_job_manager_clone = Arc::clone(&network_job_manager);
+    //                     eprintln!("proxy path before spawn");
+    //                     let handle = tokio::spawn(async move {
+    //                         eprintln!("handle_connection");
+    //                         Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone).await;
+    //                     });
 
-                        // Await the task's completion
-                        if let Err(e) = handle.await {
-                            eprintln!("Task failed: {:?}", e);
-                            // Sleep for 50ms before retrying
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                        }
-                    }
-                }
-                Err(e) => {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
-                    );
-                    eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
-                    Err(e)
-                }
-            }
-        } else {
-            // If no proxy connection info, listen for incoming connections directly
-            eprintln!(
-                "No proxy connection info provided, listening directly. Node {}",
-                node_name
-            );
-            let listener = TcpListener::bind(&listen_address).await?;
+    //                     // Await the task's completion
+    //                     if let Err(e) = handle.await {
+    //                         eprintln!("Task failed: {:?}", e);
+    //                         // Sleep for 50ms before retrying
+    //                         tokio::time::sleep(Duration::from_millis(50)).await;
+    //                     }
+    //                 }
+    //             }
+    //             Err(e) => {
+    //                 shinkai_log(
+    //                     ShinkaiLogOption::Node,
+    //                     ShinkaiLogLevel::Error,
+    //                     &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
+    //                 );
+    //                 eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
+    //                 Err(e)
+    //             }
+    //         }
+    //     } else {
+    //         // If no proxy connection info, listen for incoming connections directly
+    //         eprintln!(
+    //             "No proxy connection info provided, listening directly. Node {}",
+    //             node_name
+    //         );
+    //         let listener = TcpListener::bind(&listen_address).await?;
 
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("{} > TCP: Listening on {}", listen_address, listen_address),
-            );
+    //         shinkai_log(
+    //             ShinkaiLogOption::Node,
+    //             ShinkaiLogLevel::Info,
+    //             &format!("{} > TCP: Listening on {}", listen_address, listen_address),
+    //         );
 
-            // Initialize your connection limiter
-            loop {
-                let (socket, addr) = listener.accept().await?;
+    //         // Initialize your connection limiter
+    //         loop {
+    //             let (socket, addr) = listener.accept().await?;
 
-                // Too many requests by IP protection
-                let ip = addr.ip().to_string();
-                let conn_limiter_clone = conn_limiter.clone();
+    //             // Too many requests by IP protection
+    //             let ip = addr.ip().to_string();
+    //             let conn_limiter_clone = conn_limiter.clone();
 
-                if !conn_limiter_clone.check_rate_limit(&ip).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Rate limit exceeded for IP: {}", ip),
-                    );
-                    continue;
-                }
+    //             if !conn_limiter_clone.check_rate_limit(&ip).await {
+    //                 shinkai_log(
+    //                     ShinkaiLogOption::Node,
+    //                     ShinkaiLogLevel::Info,
+    //                     &format!("Rate limit exceeded for IP: {}", ip),
+    //                 );
+    //                 continue;
+    //             }
 
-                if !conn_limiter_clone.increment_connection(&ip).await {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Too many connections from IP: {}", ip),
-                    );
-                    continue;
-                }
+    //             if !conn_limiter_clone.increment_connection(&ip).await {
+    //                 shinkai_log(
+    //                     ShinkaiLogOption::Node,
+    //                     ShinkaiLogLevel::Info,
+    //                     &format!("Too many connections from IP: {}", ip),
+    //                 );
+    //                 continue;
+    //             }
 
-                let network_job_manager = Arc::clone(&network_job_manager);
-                let conn_limiter_clone = conn_limiter.clone();
+    //             let network_job_manager = Arc::clone(&network_job_manager);
+    //             let conn_limiter_clone = conn_limiter.clone();
 
-                eprintln!("loop before spawn for normal socket");
-                tokio::spawn(async move {
-                    let (reader, _writer) = tokio::io::split(socket);
-                    let reader = Arc::new(Mutex::new(reader));
-                    Self::handle_connection(reader, addr, network_job_manager).await;
-                    conn_limiter_clone.decrement_connection(&ip).await;
-                });
-            }
-        }
-    }
+    //             eprintln!("loop before spawn for normal socket");
+    //             tokio::spawn(async move {
+    //                 let (reader, _writer) = tokio::io::split(socket);
+    //                 let reader = Arc::new(Mutex::new(reader));
+    //                 Self::handle_connection(reader, addr, network_job_manager).await;
+    //                 conn_limiter_clone.decrement_connection(&ip).await;
+    //             });
+    //         }
+    //     }
+    // }
 
     async fn establish_proxy_connection(
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -2297,7 +2307,7 @@ impl Node {
                 eprintln!("Handling connection through proxy at {}", proxy_addr);
 
                 // Return the reader and writer so they can be handled
-                return Ok(Some((reader, writer)));
+                Ok(Some((reader, writer)))
             }
             Err(e) => {
                 shinkai_log(

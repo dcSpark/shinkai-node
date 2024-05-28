@@ -24,10 +24,8 @@ use shinkai_vector_resources::utils::hash_string;
 use tokio::{net::TcpListener, runtime::Runtime, time::sleep};
 
 use crate::it::utils::{
-    node_test_api::api_registration_device_node_profile_main,
-    node_test_local::local_registration_profile_node,
-    shinkai_testing_framework::ShinkaiTestingFramework,
-    vecfs_test_utils::{fetch_last_messages, remove_timestamps_from_shared_folder_cache_response},
+    node_test_local::local_registration_profile_node, shinkai_testing_framework::ShinkaiTestingFramework,
+    vecfs_test_utils::remove_timestamps_from_shared_folder_cache_response,
 };
 
 use super::utils::db_handlers::setup;
@@ -501,8 +499,8 @@ fn tcp_proxy_test_localhost() {
         let _node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
         let _node2_subidentity_sk_clone = clone_signature_secret_key(&node2_profile_identity_sk);
 
-        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
+        let (_node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (_node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
@@ -759,7 +757,7 @@ fn tcp_proxy_test_localhost() {
                 )
                 .await;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
                 let send_result = create_and_send_message(
                     node1_commands_sender.clone(),
@@ -877,6 +875,7 @@ async fn create_and_send_message(
         node1_profile_name.to_string(),
         node1_identity_name.to_string(),
         "".to_string(),
+        None,
     )
     .unwrap();
 

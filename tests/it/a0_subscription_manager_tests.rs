@@ -478,6 +478,7 @@ fn subscription_manager_test() {
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
                     node2_profile_name.to_string().clone(),
+                    None,
                 )
                 .unwrap();
 
@@ -533,6 +534,7 @@ fn subscription_manager_test() {
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
                     node2_profile_name.to_string().clone(),
+                    None,
                 )
                 .unwrap();
 
@@ -641,6 +643,7 @@ fn subscription_manager_test() {
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
                     "".to_string(),
+                    None,
                 )
                 .unwrap();
 
@@ -1223,6 +1226,7 @@ fn subscription_manager_test() {
                     node2_profile_name.to_string().clone(),
                     node2_identity_name.to_string(),
                     "".to_string(),
+                    None,
                 )
                 .unwrap();
 

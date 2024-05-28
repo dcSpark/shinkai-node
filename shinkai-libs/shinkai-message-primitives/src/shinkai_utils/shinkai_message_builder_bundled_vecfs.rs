@@ -1,8 +1,12 @@
 use crate::{
-    schemas::shinkai_subscription_req::SubscriptionPayment,
+    schemas::{shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_subscription_req::SubscriptionPayment},
     shinkai_message::shinkai_message_schemas::{
-        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers, APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse
-    },
+        APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMySubscribers,
+        APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIVecFSRetrieveVectorResource,
+        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+        APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
+        APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse,
+    }, shinkai_utils::encryption::encryption_public_key_to_string,
 };
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
@@ -44,6 +48,54 @@ impl ShinkaiMessageBuilder {
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
             .build()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
+    fn create_vecfs_message_with_proxy(
+        payload: impl Serialize,
+        schema_type: MessageSchemaType,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SigningKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ShinkaiNameString,
+        sender_subidentity: ShinkaiNameString,
+        node_receiver: ShinkaiNameString,
+        node_receiver_subidentity: ShinkaiNameString,
+        proxy_info: Option<ShinkaiProxyBuilderInfo>,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
+
+        let effective_receiver_public_key = proxy_info
+            .as_ref()
+            .map_or(receiver_public_key, |proxy| proxy.proxy_enc_public_key);
+
+        // Convert the encryption secret key to a public key and print it
+        let my_encryption_public_key = EncryptionPublicKey::from(&my_encryption_secret_key);
+        let my_enc_string = encryption_public_key_to_string(my_encryption_public_key);
+        eprintln!("My Encryption Public Key: {:?}", my_enc_string);
+
+        // Print the effective receiver public key
+        let effective_string = encryption_public_key_to_string(effective_receiver_public_key);
+        eprintln!("Effective Receiver Public Key: {:?}", effective_string);
+
+        ShinkaiMessageBuilder::new(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            effective_receiver_public_key,
+        )
+        .message_raw_content(body)
+        .internal_metadata_with_schema(
+            sender_subidentity.clone(),
+            node_receiver_subidentity.clone(),
+            "".to_string(),
+            schema_type,
+            EncryptionMethod::None,
+            None,
+        )
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
+        .build()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -474,6 +526,7 @@ impl ShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
+        proxy_info: Option<ShinkaiProxyBuilderInfo>,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIAvailableSharedItems {
             path: path.unwrap_or_else(|| "/".to_string()),
@@ -481,7 +534,7 @@ impl ShinkaiMessageBuilder {
             streamer_profile_name,
         };
 
-        Self::create_vecfs_message(
+        Self::create_vecfs_message_with_proxy(
             payload,
             MessageSchemaType::AvailableSharedItems,
             my_encryption_secret_key,
@@ -491,6 +544,7 @@ impl ShinkaiMessageBuilder {
             sender_subidentity,
             node_receiver,
             node_receiver_subidentity,
+            proxy_info,
         )
     }
 
@@ -510,6 +564,7 @@ impl ShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
+        proxy_info: Option<ShinkaiProxyBuilderInfo>,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APISubscribeToSharedFolder {
             path: shared_folder,
@@ -520,7 +575,7 @@ impl ShinkaiMessageBuilder {
             base_folder,
         };
 
-        Self::create_vecfs_message(
+        Self::create_vecfs_message_with_proxy(
             payload,
             MessageSchemaType::SubscribeToSharedFolder,
             my_encryption_secret_key,
@@ -530,6 +585,7 @@ impl ShinkaiMessageBuilder {
             sender_subidentity,
             node_receiver,
             node_receiver_subidentity,
+            proxy_info,
         )
     }
 
@@ -546,6 +602,7 @@ impl ShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
+        proxy_info: Option<ShinkaiProxyBuilderInfo>,
     ) -> Result<ShinkaiMessage, &'static str> {
         let payload = APIUnsubscribeToSharedFolder {
             path: shared_folder,
@@ -553,7 +610,7 @@ impl ShinkaiMessageBuilder {
             streamer_profile_name: streamer_profile,
         };
 
-        Self::create_vecfs_message(
+        Self::create_vecfs_message_with_proxy(
             payload,
             MessageSchemaType::UnsubscribeToSharedFolder,
             my_encryption_secret_key,
@@ -563,6 +620,7 @@ impl ShinkaiMessageBuilder {
             sender_subidentity,
             node_receiver,
             node_receiver_subidentity,
+            proxy_info,
         )
     }
 

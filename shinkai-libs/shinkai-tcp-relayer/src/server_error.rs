@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, write};
 
 use shinkai_crypto_identities::ShinkaiRegistryError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
@@ -16,6 +16,7 @@ pub enum NetworkMessageError {
     ConnectionClosed,
     IoError(std::io::Error),
     Timeout,
+    EncryptionError(String)
 }
 
 impl fmt::Display for NetworkMessageError {
@@ -32,6 +33,7 @@ impl fmt::Display for NetworkMessageError {
             NetworkMessageError::ConnectionClosed => write!(f, "Connection closed"),
             NetworkMessageError::IoError(err) => write!(f, "I/O error: {}", err),
             NetworkMessageError::Timeout => write!(f, "Operation timed out"),
+            NetworkMessageError::EncryptionError(msg) => write!(f, "{}", msg)
         }
     }
 }
@@ -50,6 +52,7 @@ impl std::error::Error for NetworkMessageError {
             NetworkMessageError::ConnectionClosed => None,
             NetworkMessageError::IoError(err) => Some(err),
             NetworkMessageError::Timeout => None,
+            NetworkMessageError::EncryptionError(_) => None
         }
     }
 }

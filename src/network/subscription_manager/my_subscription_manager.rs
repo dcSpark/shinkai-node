@@ -12,6 +12,7 @@ use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use lru::LruCache;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
@@ -63,7 +64,7 @@ pub struct MySubscriptionsManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     // The address of the proxy server (if any)
-    proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
 }
 
 impl MySubscriptionsManager {
@@ -190,13 +191,14 @@ impl MySubscriptionsManager {
 
         // Note(Nico): this uses identity_manager, this could eventually be a bottleneck
         // if we have a lot of requests to a slow RPC endpoint (blocking).
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_full_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update the LRU cache with the current status (waiting for the network to respond)
@@ -213,6 +215,7 @@ impl MySubscriptionsManager {
                 "".to_string(),
                 streamer_full_name.get_node_name_string(),
                 streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -320,13 +323,14 @@ impl MySubscriptionsManager {
         };
 
         // Continue
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update a local cache with the current status (waiting for the network to respond)
@@ -342,6 +346,7 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 streamer_node_name.get_node_name_string(),
                 streamer_profile.clone(),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -431,13 +436,14 @@ impl MySubscriptionsManager {
         // TODO: Check if the payment is valid so we don't waste sending a message for a rejection
 
         // Continue
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update a local cache with the current status (waiting for the network to respond)
@@ -456,6 +462,7 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 streamer_node_name.get_node_name_string(),
                 "".to_string(),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -864,5 +871,29 @@ impl MySubscriptionsManager {
             // Log completion of job processing
             println!("Completed processing job: {:?}", job.subscription_id);
         })
+    }
+
+    async fn get_proxy_builder_info(
+        &self,
+        identity_manager_lock: Arc<Mutex<IdentityManager>>,
+    ) -> Option<ShinkaiProxyBuilderInfo> {
+        let identity_manager = identity_manager_lock.lock().await;
+        let proxy_connection_info = match self.proxy_connection_info.upgrade() {
+            Some(proxy_info) => proxy_info,
+            None => return None,
+        };
+    
+        let proxy_connection_info = proxy_connection_info.lock().await;
+        if let Some(proxy_connection) = proxy_connection_info.as_ref() {
+            let proxy_name = proxy_connection.proxy_identity.clone().get_node_name_string();
+            match identity_manager.external_profile_to_global_identity(&proxy_name).await {
+                Ok(proxy_identity) => Some(ShinkaiProxyBuilderInfo {
+                    proxy_enc_public_key: proxy_identity.node_encryption_public_key,
+                }),
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
     }
 }

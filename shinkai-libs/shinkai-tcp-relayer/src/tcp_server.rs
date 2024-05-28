@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
+    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -30,18 +30,8 @@ pub type TCPProxyClients =
 pub type TCPProxyPKtoIdentity = Arc<Mutex<HashMap<String, String>>>; // e.g. PK -> @@localhost.shinkai:::PK, PK -> @@nico.shinkai
 pub type PublicKeyHex = String;
 
-// TODO:
-// identify the client (only if they are not localhost)
-// otherwise give them a random id on top of localhost (per session)
-// store the client id in a dashmap
-
-// Questions:
-// What's the format of the identification?
-// Generate a random hash + timestamp for the client that needs to sign and send back
-// (do we care if the client is localhost? probably not so we can bypass the identification process for localhost)
-
 // Notes:
-// Messages redirected to someone should be checked if the client is still connected if not send an error message back to the sender
+// TODO: Messages redirected to someone should be checked if the client is still connected if not send an error message back to the sender
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
@@ -154,7 +144,7 @@ impl TCPProxy {
     /// - a Node that needs punch hole
     /// - a Node answering to a request that needs to get redirected to a Node using a punch hole
     pub async fn handle_client(&self, socket: TcpStream) {
-        eprintln!("New connection");
+        eprintln!("New incoming connection");
         let (reader, writer) = tokio::io::split(socket);
         let reader = Arc::new(Mutex::new(reader));
         let writer = Arc::new(Mutex::new(writer));
@@ -193,9 +183,7 @@ impl TCPProxy {
                 .await;
             }
             NetworkMessageType::VRKaiPathPair => {
-                eprintln!("Received a VRKaiPathPair message: {:?}", network_msg);
-                let destination = String::from_utf8(network_msg.payload.clone()).unwrap_or_default();
-                eprintln!("with destination: {}", destination);
+                eprintln!("VRKaiPathPair message not supported yet");
             }
         };
     }
@@ -224,7 +212,7 @@ impl TCPProxy {
                     reader,
                     writer,
                     registry,
-                    identity,
+                    identity.to_string(),
                     node_name,
                     identity_secret_key,
                     encryption_secret_key,
@@ -251,8 +239,7 @@ impl TCPProxy {
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         identity: String,
     ) {
-        eprintln!("Received a ProxyMessage ...");
-
+        eprintln!("Received a ProxyMessage from {}...", identity);
         let public_key_hex = match self.validate_identity(reader.clone(), writer.clone(), &identity).await {
             Ok(pk) => pk,
             Err(e) => {
@@ -301,7 +288,7 @@ impl TCPProxy {
                                 sleep(std::time::Duration::from_secs(1));
                             }
                             Err(e) => {
-                                eprintln!("Connection lost for {}", identity);
+                                eprintln!("Connection lost for {} with error: {}", identity, e);
                                 break;
                             }
                         }
@@ -313,6 +300,16 @@ impl TCPProxy {
                 }
             }
 
+            {
+                let mut pk_to_clients_lock = pk_to_clients_clone.lock().await;
+                if let Some(public_key_hex) =
+                    pk_to_clients_lock
+                        .iter()
+                        .find_map(|(k, v)| if v == &identity { Some(k.clone()) } else { None })
+                {
+                    pk_to_clients_lock.remove(&public_key_hex);
+                }
+            }
             {
                 let mut clients_lock = clients_clone.lock().await;
                 clients_lock.remove(&identity);
@@ -348,7 +345,7 @@ impl TCPProxy {
                                 reader.clone(),
                                 writer.clone(),
                                 registry,
-                                identity,
+                                identity.to_string(),
                                 node_name,
                                 identity_secret_key,
                                 encryption_secret_key,
@@ -379,15 +376,7 @@ impl TCPProxy {
                     Ok(())
                 }
                 NetworkMessageType::VRKaiPathPair => {
-                    eprintln!("Received a VRKaiPathPair message: {:?}", msg);
-                    let destination = String::from_utf8(msg.payload.clone()).unwrap_or_default();
-                    eprintln!("with destination: {}", destination);
-                    if let Some(tx) = clients.lock().await.get(&destination) {
-                        println!("sending: {} -> {}", identity, &destination);
-                        // if tx.send(msg.payload).await.is_err() {
-                        //     eprintln!("Failed to send data to {}", destination);
-                        // }
-                    }
+                    eprintln!("VRKaiPathPair not supported yet");
                     Ok(())
                 }
             },
@@ -403,10 +392,10 @@ impl TCPProxy {
         parsed_message: ShinkaiMessage,
         clients: &TCPProxyClients,
         pk_to_clients: &TCPProxyPKtoIdentity,
-        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+        _reader: Arc<Mutex<ReadHalf<TcpStream>>>,
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         registry: &ShinkaiRegistry,
-        sender_identity: &str,
+        client_identity: String,
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
@@ -556,14 +545,17 @@ impl TCPProxy {
 
             let stripped_sender_name = msg_sender.to_string().trim_start_matches("@@").to_string();
             let modified_message = if stripped_sender_name.starts_with("localhost") {
-                eprintln!("Sender is localhost, modifying ShinkaiMessage for sender: {}", stripped_sender_name);
-                let stripped_sender_name = stripped_sender_name.split(":::").last().unwrap_or("").to_string();
+                eprintln!(
+                    "Sender is localhost, modifying ShinkaiMessage for sender: {}",
+                    client_identity
+                );
+                let client_identity_pk = client_identity.split(":::").last().unwrap_or("").to_string();
                 Self::modify_shinkai_message(
                     parsed_message,
                     node_name,
                     identity_secret_key,
                     encryption_secret_key,
-                    stripped_sender_name,
+                    client_identity_pk,
                 )
                 .await?
             } else {
@@ -631,14 +623,28 @@ impl TCPProxy {
         message: ShinkaiMessage,
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
-        _encryption_secret_key: EncryptionStaticKey,
+        encryption_secret_key: EncryptionStaticKey,
         subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
-        eprintln!("Modifying ShinkaiMessage");
+        eprintln!("Modifying ShinkaiMessage from subidentity: {}", subidentity);
 
         let mut modified_message = message;
+        if modified_message.is_body_currently_encrypted() {
+            let sender_encryption_pk = string_to_encryption_public_key(&subidentity)?;
+            eprintln!("Sender Encryption Public Key: {:?}", subidentity);
+
+            
+            let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
+            let enc_pk_string = encryption_public_key_to_string(encryption_public_key);
+            eprintln!("My Encryption Public Key: {:?}", enc_pk_string);
+            // Attempt to decrypt the message
+            modified_message = modified_message
+                .decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk)
+                .map_err(|e| NetworkMessageError::EncryptionError(format!("Failed to decrypt message: {}", e)))?;
+        }
+
         modified_message.external_metadata.sender = node_name.to_string();
-        modified_message.external_metadata.intra_sender = node_name.to_string();
+        modified_message.external_metadata.intra_sender = subidentity.to_string();
         modified_message.body = match modified_message.body {
             MessageBody::Unencrypted(mut body) => {
                 body.internal_metadata.sender_subidentity = subidentity;
@@ -649,6 +655,8 @@ impl TCPProxy {
 
         // Re-sign the inner layer
         modified_message.sign_inner_layer(&identity_secret_key)?;
+
+        // TODO: re-encrypt the outer layer using the target's pk
 
         // Re-sign the outer layer
         let signed_message = modified_message.sign_outer_layer(&identity_secret_key)?;
@@ -940,10 +948,10 @@ impl TCPProxy {
         let identity = &message.external_metadata.recipient;
         let identity_bytes = identity.as_bytes();
         let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-    
+
         // Prepare the message with a length prefix and identity length
         let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
-    
+
         let mut data_to_send = Vec::new();
         let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
         data_to_send.extend_from_slice(&total_length);
@@ -951,7 +959,7 @@ impl TCPProxy {
         data_to_send.extend(identity_bytes);
         data_to_send.extend(header_data_to_send);
         data_to_send.extend_from_slice(&encoded_msg);
-    
+
         eprintln!("Sending message to client: beep beep boop");
         let mut writer_lock = writer.lock().await;
         eprintln!("writer_lock acquired");
@@ -960,7 +968,7 @@ impl TCPProxy {
             .await
             .map_err(|_| NetworkMessageError::SendError)?;
         writer_lock.flush().await.map_err(|_| NetworkMessageError::SendError)?;
-    
+
         eprintln!("Sent message to client");
         Ok(())
     }
