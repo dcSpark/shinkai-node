@@ -9,7 +9,8 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
+    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
+    string_to_encryption_static_key,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -58,7 +59,7 @@ impl TCPProxy {
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
-            .unwrap_or("https://sepolia.drpc.org".to_string());
+            .unwrap_or("https://sepolia.infura.io/v3/0153fa7ada9046f9acee3842cdb28082".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
@@ -403,11 +404,11 @@ impl TCPProxy {
         /*
          For Proxy Message we have multiple cases
 
-         1) From external source
+         1) From external node
             1.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
             1.b) If the recipient is not the same as the node_name but the recipient's address is this node's address, then we handle the message locally
 
-         2) From internal source
+         2) From proxied node
             2.a) If the recipient is the same as the node_name, then we handle the message locally (means that the node is localhost)
             2.b) If the recipient is not the same as the node_name, then we need to proxy the message to the recipient
         */
@@ -442,6 +443,7 @@ impl TCPProxy {
 
         // check if it matches the tcp relayer's node name
         if recipient == stripped_node_name {
+            eprintln!("> Outside Node Message to Proxy");
             eprintln!("Recipient is the same as the node name, handling message locally");
 
             // Fetch the public keys from the registry
@@ -455,20 +457,42 @@ impl TCPProxy {
             parsed_message.verify_outer_layer_signature(&sender_signature_pk)?;
             eprintln!("Signature verified");
 
-            // decrypt message if required
-            let msg =
-                Self::decrypt_message_if_needed(parsed_message.clone(), encryption_secret_key, sender_encryption_pk)
-                    .await?;
-            eprintln!("Decrypted ShinkaiMessage: {:?}", msg);
+            let mut unencrypted_msg = parsed_message.clone();
+            // Decrypt message if encrypted
+            if parsed_message.is_body_currently_encrypted() {
+                unencrypted_msg = Self::decrypt_message_if_needed(
+                    unencrypted_msg.clone(),
+                    encryption_secret_key.clone(),
+                    sender_encryption_pk,
+                )
+                .await?;
+            }
+
+            let updated_message = match Self::modify_shinkai_message_external_to_proxied_localhost(
+                unencrypted_msg.clone(),
+                node_name,
+                identity_secret_key,
+                encryption_secret_key,
+                sender_encryption_pk,
+                "main".to_string(),
+            )
+            .await
+            {
+                Ok(message) => message,
+                Err(e) => {
+                    eprintln!("Error modifying Shinkai message: {}", e);
+                    return Ok(());
+                }
+            };
+            eprintln!("Updated ShinkaiMessage: {:?}", updated_message);
 
             // TODO: check if we also need to decrypt inner layer
-
-            let subidentity = match msg.get_recipient_subidentity() {
+            let subidentity = match unencrypted_msg.get_recipient_subidentity() {
                 Some(subidentity) => subidentity,
                 None => {
                     eprintln!(
                         "Error: No subidentity found for the recipient. Subidentity: {:?}",
-                        parsed_message.external_metadata.recipient
+                        updated_message.external_metadata.recipient
                     );
                     return Ok(());
                 }
@@ -501,7 +525,7 @@ impl TCPProxy {
 
             // Send message to the client using connection
             eprintln!("Sending message to client {}", client_identity);
-            if Self::send_shinkai_message_to_proxied_identity(connection.1, msg)
+            if Self::send_shinkai_message_to_proxied_identity(connection.1, updated_message)
                 .await
                 .is_err()
             {
@@ -537,6 +561,7 @@ impl TCPProxy {
 
             Ok(())
         } else {
+            eprintln!("Proxying message out. Sender is behind NAT & localhost");
             // it's meant to be proxied out of the NAT
             // Sender identity looks like: localhost.shinkai:::69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e
             // we can't use that as a subidentity because it contains "." and ":::" which are not valid characters
@@ -550,7 +575,7 @@ impl TCPProxy {
                     client_identity
                 );
                 let client_identity_pk = client_identity.split(":::").last().unwrap_or("").to_string();
-                Self::modify_shinkai_message(
+                Self::modify_shinkai_message_proxied_localhost_to_external(
                     parsed_message,
                     node_name,
                     identity_secret_key,
@@ -619,28 +644,40 @@ impl TCPProxy {
         }
     }
 
-    async fn modify_shinkai_message(
+    async fn modify_shinkai_message_proxied_localhost_to_external(
         message: ShinkaiMessage,
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
-        eprintln!("Modifying ShinkaiMessage from subidentity: {}", subidentity);
+        eprintln!(
+            "modify_shinkai_message_proxied_to_external> Modifying ShinkaiMessage from subidentity: {}",
+            subidentity
+        );
 
         let mut modified_message = message;
         if modified_message.is_body_currently_encrypted() {
-            let sender_encryption_pk = string_to_encryption_public_key(&subidentity)?;
-            eprintln!("Sender Encryption Public Key: {:?}", subidentity);
+            if !modified_message.external_metadata.other.is_empty() {
+                let intra_sender = modified_message.external_metadata.other.clone();
+                eprintln!("Intra Sender: {:?}", intra_sender);
+                let sender_encryption_pk = string_to_encryption_public_key(&intra_sender)?;
+                eprintln!("Sender Encryption Public Key: {:?}", subidentity);
 
-            
-            let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-            let enc_pk_string = encryption_public_key_to_string(encryption_public_key);
-            eprintln!("My Encryption Public Key: {:?}", enc_pk_string);
-            // Attempt to decrypt the message
-            modified_message = modified_message
-                .decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk)
-                .map_err(|e| NetworkMessageError::EncryptionError(format!("Failed to decrypt message: {}", e)))?;
+                let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
+                let enc_pk_string = encryption_public_key_to_string(encryption_public_key);
+                eprintln!("My Encryption Public Key: {:?}", enc_pk_string);
+                // Attempt to decrypt the message
+                modified_message = modified_message
+                    .decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk)
+                    .map_err(|e| NetworkMessageError::EncryptionError(format!("Failed to decrypt message: {}", e)))?;
+            } else {
+                eprintln!(
+                    "Error: No intra_sender found for the recipient. Identity: {:?}",
+                    subidentity
+                );
+                // print error
+            }
         }
 
         modified_message.external_metadata.sender = node_name.to_string();
@@ -660,6 +697,47 @@ impl TCPProxy {
 
         // Re-sign the outer layer
         let signed_message = modified_message.sign_outer_layer(&identity_secret_key)?;
+
+        Ok(signed_message)
+    }
+
+    async fn modify_shinkai_message_external_to_proxied_localhost(
+        message: ShinkaiMessage,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
+        sender_encryption_pk: EncryptionPublicKey,
+        subidentity: String,
+    ) -> Result<ShinkaiMessage, NetworkMessageError> {
+        eprintln!(
+            "modify_shinkai_message_external_to_proxied> Modifying ShinkaiMessage from subidentity: {}",
+            subidentity
+        );
+
+        let mut modified_message = message;
+        modified_message.external_metadata.sender = node_name.to_string();
+        modified_message.external_metadata.recipient = "@@locahost.sepolia-shinkai".to_string();
+        modified_message.external_metadata.intra_sender = "".to_string();
+        modified_message.body = match modified_message.body {
+            MessageBody::Unencrypted(mut body) => {
+                body.internal_metadata.recipient_subidentity = "main".to_string(); // TODO: eventually update this to be flexible
+                MessageBody::Unencrypted(body)
+            }
+            encrypted => encrypted,
+        };
+
+        // Re-sign the inner layer
+        modified_message.sign_inner_layer(&identity_secret_key)?;
+
+        // TODO: re-encrypt the outer layer using the target's pk
+
+        // Re-sign the outer layer
+        let signed_message = modified_message.sign_outer_layer(&identity_secret_key)?;
+
+        eprintln!(
+            "modify_shinkai_message_external_to_proxied_localhost> Modified ShinkaiMessage: {:?}",
+            signed_message
+        );
 
         Ok(signed_message)
     }
@@ -960,16 +1038,15 @@ impl TCPProxy {
         data_to_send.extend(header_data_to_send);
         data_to_send.extend_from_slice(&encoded_msg);
 
-        eprintln!("Sending message to client: beep beep boop");
+        println!("Sending message to client: beep beep boop");
         let mut writer_lock = writer.lock().await;
-        eprintln!("writer_lock acquired");
         writer_lock
             .write_all(&data_to_send)
             .await
             .map_err(|_| NetworkMessageError::SendError)?;
         writer_lock.flush().await.map_err(|_| NetworkMessageError::SendError)?;
 
-        eprintln!("Sent message to client");
+        println!("Message sent to client");
         Ok(())
     }
 }

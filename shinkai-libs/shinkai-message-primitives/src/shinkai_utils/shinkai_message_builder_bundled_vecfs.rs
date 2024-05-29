@@ -66,6 +66,10 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
 
+        if proxy_info.is_some() {
+            eprintln!("Proxy info is not None");
+        }
+
         let effective_receiver_public_key = proxy_info
             .as_ref()
             .map_or(receiver_public_key, |proxy| proxy.proxy_enc_public_key);
@@ -94,7 +98,7 @@ impl ShinkaiMessageBuilder {
             None,
         )
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
+        .external_metadata_with_other_and_intra_sender(node_receiver, sender, my_enc_string, sender_subidentity)
         .build()
     }
 
