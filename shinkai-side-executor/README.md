@@ -66,7 +66,7 @@ cargo run --release -- --address <ADDRESS>
 
 ## PDF parsing
 
-## Using the server
+### Using the server
 
 To test the PDF parser make an HTTP multipart/form-data POST request to the `/v1/extract_json_to_text_groups/:max_node_text_size` endpoint with a PDF file in the body such as:
 
@@ -74,8 +74,14 @@ To test the PDF parser make an HTTP multipart/form-data POST request to the `/v1
 curl -F "file=@/shinkai-node/files/shinkai_intro.pdf;filename=shinkai_intro.pdf" 127.0.0.1:8090/v1/extract_json_to_text_groups/400
 ```
 
-## Using the CLI
+### Using the CLI
 
 ```sh
 cargo run --release -- --parse-pdf=<PDF_FILE> --max-node-text-size=<SIZE> > result.json
+```
+
+## Running tests
+
+```sh
+PDFIUM_STATIC_LIB_PATH="path-to/pdfium-lib-directory" cargo test
 ```

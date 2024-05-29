@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", serde_json::to_string_pretty(&text_groups)?);
     } else {
         let address = SocketAddr::from_str(&args.address).unwrap();
-        api::api_handlers::run_api(address).await?;
+        api::run_api(address).await?;
     }
 
     Ok(())

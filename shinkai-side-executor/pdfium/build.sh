@@ -43,12 +43,17 @@ case "$TARGET_OS" in
 esac
 
 # Clone depot tools, standard tools used for building Chromium and associated projects.
-git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+if [ ! -d "depot_tools" ]; then
+  git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+fi
+
 export PATH="$PATH:$(cd depot_tools; pwd)"
 
 ## Checkout
 
 PDFIUM_BRANCH=$(git ls-remote --sort version:refname --refs https://pdfium.googlesource.com/pdfium.git 'chromium/*' | tail -n 1 | cut -d/ -f3-4)
+
+echo "Checking out branch $PDFIUM_BRANCH"
 
 gclient config --unmanaged https://pdfium.googlesource.com/pdfium.git
 gclient sync -r "origin/${PDFIUM_BRANCH}" --no-history
@@ -78,9 +83,9 @@ cp ../../args.gn $BUILD_TARGET_DIR/args.gn
 
   case "$TARGET_OS" in
     linux | mac)
-      echo "clang_use_chrome_plugins = false"
-      echo "use_custom_libcxx = false"
-      echo "use_goma = false"
+      echo "clang_use_chrome_plugins = false" >> args.gn
+      echo "use_custom_libcxx = false" >> args.gn
+      echo "use_goma = false" >> args.gn
       ;;
   esac
 )

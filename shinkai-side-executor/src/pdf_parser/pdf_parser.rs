@@ -38,9 +38,7 @@ impl PDFParser {
             pdfium: {
                 use std::env;
                 let lib_path = env::var("PDFIUM_DYNAMIC_LIB_PATH").unwrap_or("./".to_string());
-                Pdfium::new(
-                    Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap(),
-                )
+                Pdfium::new(Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap())
             },
 
             #[cfg(feature = "static")]
@@ -52,6 +50,7 @@ impl PDFParser {
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
         struct TextPosition {
+            #[allow(dead_code)]
             x: f32,
             y: f32,
         }
@@ -168,24 +167,6 @@ impl PDFParser {
                                 page_text.push_str(&format!("\n{}", &text));
                             }
                         }
-
-                        // let txt_type = if likely_heading {
-                        //     "H"
-                        // } else if likely_paragraph {
-                        //     "P"
-                        // } else {
-                        //     "T"
-                        // };
-
-                        // eprintln!(
-                        //     "Text object: [{} ({}, {}) {} {:?}] {:?}",
-                        //     txt_type,
-                        //     current_text_position.x,
-                        //     current_text_position.y,
-                        //     current_text_font.font_size,
-                        //     current_text_font.font_weight,
-                        //     text
-                        // );
 
                         previous_text_position = Some(current_text_position);
                         previous_text_font = Some(current_text_font);
