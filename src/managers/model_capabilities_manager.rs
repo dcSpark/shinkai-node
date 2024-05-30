@@ -9,7 +9,6 @@ use crate::{
     },
     db::ShinkaiDB,
 };
-use regex::Regex;
 use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
@@ -159,6 +158,8 @@ impl ModelCapabilitiesManager {
                 model_type if model_type.starts_with("starling-lm") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("orca2") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("yi") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("aya") => vec![ModelCapability::TextInference],
+                model_type if model_type.starts_with("codestral") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("yarn-mistral") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("llava") => {
@@ -294,6 +295,8 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("command-r-plus")
                     || ollama.model_type.starts_with("wizardlm2")
                     || ollama.model_type.starts_with("phi3")
+                    || ollama.model_type.starts_with("aya")
+                    || ollama.model_type.starts_with("codestral")
                     || ollama.model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
                 {
                     let total_tokens = Self::get_max_tokens(model);
@@ -381,20 +384,15 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("llava-phi3") => 4_000,
                     model_type if model_type.starts_with("dolphin-llama3") => 8_000,
                     model_type if model_type.starts_with("command-r-plus") => 128_000,
+                    model_type if model_type.starts_with("codestral") => 32_000,
+                    model_type if model_type.starts_with("aya") => 32_000,
                     model_type if model_type.starts_with("wizardlm2") => 8_000,
                     model_type if model_type.starts_with("phi2") => 4_000,
                     model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
                     model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
                     _ => 4096, // Default token count if no specific model type matches
                 };
-
-                // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
-                let re = Regex::new(r"(\d+)k").unwrap();
-                match re.captures(&ollama.model_type) {
-                    Some(caps) => caps.get(1).map_or(4096, |m| m.as_str().parse().unwrap_or(4096)),
-                    None => 4096,
-                }
-            }
+           }
         }
     }
 
