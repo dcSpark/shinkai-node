@@ -289,12 +289,18 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("neural-chat")
                     || ollama.model_type.starts_with("vicuna")
                     || ollama.model_type.starts_with("mixtral")
+                    || ollama.model_type.starts_with("falcon2")
+                    || ollama.model_type.starts_with("dolphin-llama3")
+                    || ollama.model_type.starts_with("command-r-plus")
+                    || ollama.model_type.starts_with("wizardlm2")
+                    || ollama.model_type.starts_with("phi3")
+                    || ollama.model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
-                } else if ollama.model_type.starts_with("llava") || ollama.model_type.starts_with("bakllava") {
+                } else if ollama.model_type.starts_with("llava") || ollama.model_type.starts_with("bakllava") || ollama.model_type.starts_with("llava-phi3") {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llava_prepare_messages(model, ollama.clone().model_type.clone(), prompt, total_tokens)?;
@@ -315,7 +321,7 @@ impl ModelCapabilitiesManager {
     pub fn get_max_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
-                if openai.model_type == "gpt-4-1106-preview" || openai.model_type == "gpt-4-vision-preview" {
+                if openai.model_type == "gpt-4o" || openai.model_type == "gpt-4-1106-preview" || openai.model_type == "gpt-4-vision-preview" {
                     128_000
                 } else {
                     let normalized_model = Self::normalize_model(&model.clone());
@@ -370,6 +376,14 @@ impl ModelCapabilitiesManager {
                         eprintln!("llama3-gradient detected");
                         return 256_000;
                     }
+                    model_type if model_type.starts_with("falcon2") => 8_000,
+                    model_type if model_type.starts_with("llama3-chatqa") => 8_000,
+                    model_type if model_type.starts_with("llava-phi3") => 4_000,
+                    model_type if model_type.starts_with("dolphin-llama3") => 8_000,
+                    model_type if model_type.starts_with("command-r-plus") => 128_000,
+                    model_type if model_type.starts_with("wizardlm2") => 8_000,
+                    model_type if model_type.starts_with("phi2") => 4_000,
+                    model_type if model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b") => 8_000,
                     model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
                     _ => 4096, // Default token count if no specific model type matches
                 };

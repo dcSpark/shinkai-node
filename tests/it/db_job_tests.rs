@@ -21,7 +21,7 @@ fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: J
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn generate_message_with_text(
@@ -39,7 +39,7 @@ fn generate_message_with_text(
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -56,8 +56,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[cfg(test)]
@@ -102,7 +101,7 @@ mod tests {
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.parent_agent_id, agent_id);
-        assert_eq!(job.is_finished, false);
+        assert!(!job.is_finished);
     }
 
     #[test]
@@ -136,6 +135,38 @@ mod tests {
     }
 
     #[test]
+    fn test_change_job_agent() {
+        init_default_tracing();
+        setup();
+        let job_id = "job_to_change_agent".to_string();
+        let initial_agent_id = "initial_agent".to_string();
+        let new_agent_id = "new_agent".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&initial_agent_id.clone()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create a new job with the initial agent
+        create_new_job(&mut shinkai_db, job_id.clone(), initial_agent_id.clone(), scope);
+
+        // Change the agent of the job
+        shinkai_db.change_job_agent(&job_id, &new_agent_id).unwrap();
+
+        // Retrieve the job and check that the agent has been updated
+        let job = shinkai_db.get_job(&job_id).unwrap();
+        assert_eq!(job.parent_agent_id, new_agent_id);
+
+        // Check that the job is listed under the new agent
+        let new_agent_jobs = shinkai_db.get_agent_jobs(new_agent_id.clone()).unwrap();
+        let job_ids: Vec<String> = new_agent_jobs.iter().map(|job| job.job_id().to_string()).collect();
+        assert!(job_ids.contains(&job_id));
+
+        // Check that the job is no longer listed under the initial agent
+        let initial_agent_jobs = shinkai_db.get_agent_jobs(initial_agent_id.clone()).unwrap();
+        let initial_job_ids: Vec<String> = initial_agent_jobs.iter().map(|job| job.job_id().to_string()).collect();
+        assert!(!initial_job_ids.contains(&job_id));
+    }
+
+    #[test]
     fn test_update_job_to_finished() {
         init_default_tracing();
         setup();
@@ -156,7 +187,7 @@ mod tests {
 
         // Retrieve the job and check that is_finished is set to true
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.is_finished, true);
+        assert!(job.is_finished);
     }
 
     #[tokio::test]
@@ -180,13 +211,13 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         let message = generate_message_with_text(
-            format!("Hello World"),
+            "Hello World".to_string(),
             node1_encryption_sk.clone(),
             clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_pk,
             node1_subidentity_name.to_string(),
             node1_identity_name.to_string(),
-            format!("2023-07-02T20:53:34.810Z"),
+            "2023-07-02T20:53:34.810Z".to_string(),
         );
 
         // Insert the ShinkaiMessage into the database
@@ -613,7 +644,7 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
 
-        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(db_path).unwrap();
 
         create_new_job(&mut shinkai_db, job_id.to_string(), agent_id.clone(), scope);
 
