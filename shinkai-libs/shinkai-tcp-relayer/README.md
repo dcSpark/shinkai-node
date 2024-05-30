@@ -19,88 +19,21 @@ cargo build --release
 To run the server, use the following command:
 
 ```sh
-cargo run --release --bin server -- --address <ADDRESS>
+cargo run --release --bin server -- --address <ADDRESS> --rpc-url <RPC_URL> --contract-address <CONTRACT_ADDRESS> --identity-secret-key <IDENTITY_SECRET_KEY> --encryption-secret-key <ENCRYPTION_SECRET_KEY> --node-name <NODE_NAME> --open-to-all <OPEN_TO_ALL>
 ```
 
 ### Arguments
 
 - `--address`: The address the server will bind to. Default is `0.0.0.0:8080`.
+- `--rpc-url`: RPC URL for the registry.
+- `--contract-address`: Contract address for the registry.
+- `--identity-secret-key`: Identity secret key (required).
+- `--encryption-secret-key`: Encryption secret key (required).
+- `--node-name`: Node name (required).
+- `--open-to-all`: Open to all clients (true/false). Default is `true`.
 
 ### Example
 
 ```sh
-cargo run --release --bin server -- --address 127.0.0.1:8080
+cargo run --release --bin server -- --address 127.0.0.1:8080 --rpc-url "http://example.com/rpc" --contract-address "0x123..." --identity-secret-key "secret1" --encryption-secret-key "secret2" --node-name "MyNode" --open-to-all true
 ```
-
-<!-- ## Running the Client
-
-To run the client, use the following command:
-
-```sh
-cargo run --release --bin client -- --server-address <ADDRESS> --src-identity <IDENTITY> --dst-identity <IDENTITY>
-``` -->
-<!-- 
-### Arguments
-
-- `--server-address`: The address of the server to connect to. Default is `127.0.0.1:8080`.
-- `--src-identity`: The identity of the client. Default is `client1`.
-- `--dst-identity`: The identity of the destinationclient. Default is `client2`.
-
-### Example
-
-```sh
-cargo run --release --bin client -- --server-address 127.0.0.1:8080 --src-identity client1 --dst-identity client2
-
-cargo run --release --bin client -- --server-address 127.0.0.1:8080 --src-identity client2 --dst-identity client1
-```
-
-## Communication Protocol
-
-- Upon connection, the client sends an identity message to the server.
-- When sending data, the client specifies the destination identity and the payload.
-- The server routes the traffic to the appropriate client based on the destination identity.
-
-### Message Format
-
-Messages are JSON-encoded and prefixed with their length (4 bytes).
-
-#### Identity Message
-
-```json
-{
-  "Identity": "client1"
-}
-```
-
-#### Data Message
-
-```json
-{
-  "Data": {
-    "destination": "client2",
-    "payload": "Hello, client2!"
-  }
-}
-```
-
-## Example Usage
-
-1. Start the server:
-
-```sh
-cargo run --release --bin server -- --address 127.0.0.1:8080
-```
-
-2. Start the first client:
-
-```sh
-cargo run --release --bin client -- --server-address 127.0.0.1:8080 --src-identity client1
-```
-
-3. Start the second client:
-
-```sh
-cargo run --release --bin client -- --server-address 127.0.0.1:8080 --src-identity client2 --dst-identity client1
-```
-
-4. Clients will send default data and the receiving side will exit. -->

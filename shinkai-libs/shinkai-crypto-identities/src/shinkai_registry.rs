@@ -231,7 +231,6 @@ impl ShinkaiRegistry {
                 let cache_clone = self.cache.clone();
                 task::spawn(async move {
                     if let Err(e) = Self::update_cache(&contract_clone, &cache_clone, identity_clone).await {
-                        eprintln!("Error updating cache: {}", e);
                         // Log the error
                         shinkai_log(
                             ShinkaiLogOption::CryptoIdentity,

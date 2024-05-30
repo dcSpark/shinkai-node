@@ -1,6 +1,5 @@
 use super::{
     node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
     node_api::{APIError, SendResponseBodyData},
     node_api_handlers::APIUseRegistrationCodeSuccessResponse,
     node_error::NodeError,
@@ -53,7 +52,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use std::{convert::TryInto, net::SocketAddr, sync::Arc};
+use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 

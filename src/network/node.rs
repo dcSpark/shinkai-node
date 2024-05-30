@@ -2088,7 +2088,7 @@ impl Node {
 
                 match connection_result {
                     Ok(Some((reader, writer))) => {
-                         let _ = Self::handle_proxy_listen_connection(
+                        let _ = Self::handle_proxy_listen_connection(
                             reader,
                             writer,
                             proxy_info.proxy_identity.clone(),
@@ -2122,7 +2122,8 @@ impl Node {
             self.network_job_manager.clone(),
             self.conn_limiter.clone(),
             self.node_name.clone(),
-        ).await;
+        )
+        .await;
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Error,
@@ -2141,7 +2142,6 @@ impl Node {
             Arc<Mutex<WriteHalf<tokio::net::TcpStream>>>,
         )>,
     > {
-        eprintln!("Proxy connection info provided: {:?}", proxy_info);
         // If proxy connection info is provided, connect to the proxy
         let proxy_addr = Node::get_address_from_identity(
             identity_manager.clone(),
@@ -2152,7 +2152,11 @@ impl Node {
         let proxy_addr = match proxy_addr {
             Ok(addr) => addr,
             Err(e) => {
-                eprintln!("Failed to get proxy address: {}", e);
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to get proxy address: {}", e),
+                );
                 return Err(io::Error::new(io::ErrorKind::Other, e));
             }
         };
@@ -2160,7 +2164,6 @@ impl Node {
         let node_name = node_name.clone();
         let signing_sk = identity_secret_key.clone();
 
-        eprintln!("Calling TcpStream for proxy_addr");
         match TcpStream::connect(proxy_addr).await {
             Ok(proxy_stream) => {
                 shinkai_log(
@@ -2168,7 +2171,6 @@ impl Node {
                     ShinkaiLogLevel::Info,
                     &format!("Connected to proxy at {}", proxy_addr),
                 );
-                eprintln!("Connected to proxy at {}", proxy_addr);
 
                 // Split the socket into reader and writer
                 let (reader, writer) = tokio::io::split(proxy_stream);
@@ -2186,8 +2188,11 @@ impl Node {
                 // Authenticate identity or localhost
                 Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
 
-                // Handle connection through the proxy
-                eprintln!("Handling connection through proxy at {}", proxy_addr);
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Authenticated identity or localhost at {}", proxy_addr),
+                );
 
                 // Return the reader and writer so they can be handled
                 Ok(Some((reader, writer)))
@@ -2198,7 +2203,6 @@ impl Node {
                     ShinkaiLogLevel::Error,
                     &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
                 );
-                eprintln!("Failed to connect to proxy {}: {}", proxy_addr, e);
                 Err(e)
             }
         }
@@ -2227,9 +2231,7 @@ impl Node {
             let identity_manager = identity_manager.clone();
             let proxy_identity = proxy_identity.clone();
 
-            eprintln!("proxy path before spawn");
             let handle = tokio::spawn(async move {
-                eprintln!("handle_connection");
                 // If proxy connection info is provided, connect to the proxy
                 let proxy_addr = Node::get_address_from_identity(
                     identity_manager.clone(),
@@ -2263,16 +2265,12 @@ impl Node {
         conn_limiter: Arc<ConnectionLimiter>,
         node_name: ShinkaiName,
     ) -> io::Result<()> {
-        eprintln!(
-            "No proxy connection info provided, listening directly. Node {}",
-            node_name
-        );
         let listener = TcpListener::bind(&listen_address).await?;
 
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} > TCP: Listening on {}", listen_address, listen_address),
+            &format!("{} > TCP: Listening on {} (Direct)", listen_address, listen_address),
         );
 
         // Initialize your connection limiter
@@ -2345,7 +2343,6 @@ impl Node {
             let mut reader = reader.lock().await;
             if reader.read_exact(&mut length_bytes).await.is_ok() {
                 let total_length = u32::from_be_bytes(length_bytes) as usize;
-                eprintln!("Total length: {}", total_length);
 
                 // Read the identity length
                 let mut identity_length_bytes = [0u8; 4];
@@ -2353,12 +2350,10 @@ impl Node {
                     return; // Exit if we fail to read identity length
                 }
                 let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
-                eprintln!("Identity length: {}", identity_length);
 
                 // Read the identity bytes
                 let mut identity_bytes = vec![0u8; identity_length];
                 if reader.read_exact(&mut identity_bytes).await.is_err() {
-                    eprintln!("Failed to read identity bytes");
                     return; // Exit if we fail to read identity
                 }
 
@@ -2392,7 +2387,6 @@ impl Node {
                             ShinkaiLogLevel::Info,
                             &format!("Received message of type {:?} from: {:?}", message_type, addr),
                         );
-                        eprintln!("Received message of type {:?} from: {:?}", message_type, addr);
 
                         let network_job = NetworkJobQueue {
                             receiver_address: addr, // TODO: this should be my socketaddr!
@@ -2411,11 +2405,19 @@ impl Node {
                             );
                         }
                     } else {
-                        eprintln!("Failed to read message from: {:?}", addr);
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to read message from: {:?}", addr),
+                        );
                     }
                 }
             } else {
-                eprintln!("read_exact not ok");
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to read message length from: {:?}", addr),
+                );
             }
         }
     }
@@ -2561,28 +2563,6 @@ impl Node {
                 return Some(writer.clone());
             } else {
                 return None;
-                // let proxy_info = proxy_info.clone();
-                // drop(proxy_connection); // Drop the lock before attempting to connect
-                // match Node::establish_proxy_connection(
-                //     identity_manager.clone(),
-                //     &proxy_info,
-                //     node_name.clone(),
-                //     identity_secret_key.clone(),
-                // )
-                // .await
-                // {
-                //     Ok(Some((_reader, writer))) => {
-                //         return Some(writer);
-                //     }
-                //     Ok(None) => {
-                //         eprintln!("Failed to establish proxy connection: No connection established");
-                //         None
-                //     }
-                //     Err(e) => {
-                //         eprintln!("Failed to establish proxy connection: {}", e);
-                //         None
-                //     }
-                // }
             }
         } else {
             match TcpStream::connect(address).await {
@@ -2591,7 +2571,6 @@ impl Node {
                     Some(Arc::new(Mutex::new(writer)))
                 }
                 Err(e) => {
-                    eprintln!("Failed to connect to {}: {}", address, e);
                     shinkai_log(
                         ShinkaiLogOption::Node,
                         ShinkaiLogLevel::Error,
@@ -2666,9 +2645,12 @@ impl Node {
                 let mut writer = writer.lock().await;
                 let _ = writer.write_all(&data_to_send).await;
                 let _ = writer.flush().await;
-                println!("Encrypted data sent to {}", peer);
             } else {
-                eprintln!("Failed to connect to {}", peer);
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to connect to {}", peer),
+                );
             }
         });
     }
@@ -2798,38 +2780,10 @@ impl Node {
         data_to_send.extend_from_slice(&encoded_msg);
 
         // Print the name and length of each component
-        println!(
-            "send_network_message> Total length: {}",
-            u32::from_be_bytes(total_length)
-        );
-        println!(
-            "send_network_message> Identity length: {}",
-            u32::from_be_bytes(identity_length)
-        );
-        println!("send_network_message> Identity bytes length: {}", identity_bytes.len());
-        println!("send_network_message> Message type length: 1");
-        println!("send_network_message> Payload length: {}", encoded_msg.len());
-
         let mut writer = writer.lock().await;
         writer.write_all(&data_to_send).await.unwrap();
         writer.flush().await.unwrap();
     }
-
-    // async fn read_auth_message_with_length(socket: &mut TcpStream) -> Result<String, io::Error> {
-    //     // Read the length of the message
-    //     let mut length_bytes = [0u8; 4];
-    //     socket.read_exact(&mut length_bytes).await?;
-    //     let message_length = u32::from_be_bytes(length_bytes) as usize;
-    //     eprintln!("read_auth_message_with_length> Message length: {}", message_length);
-
-    //     // Read the message itself
-    //     let mut message_bytes = vec![0u8; message_length];
-    //     socket.read_exact(&mut message_bytes).await?;
-    //     let message = String::from_utf8(message_bytes).expect("Invalid UTF-8 message");
-    //     eprintln!("read_auth_message_with_length> Received message: {}", message);
-
-    //     Ok(message)
-    // }
 
     async fn authenticate_identity_or_localhost(
         reader: Arc<Mutex<ReadHalf<TcpStream>>>,
@@ -2851,8 +2805,6 @@ impl Node {
         } {
             Ok(_) => {
                 let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
-
-                eprintln!("Received validation data: {}", validation_data);
 
                 // Sign the validation data
                 let signature = signing_key.sign(validation_data.as_bytes());
@@ -2905,10 +2857,15 @@ impl Node {
                     reader.read_exact(&mut response_buffer).await.unwrap();
                 }
                 let response = String::from_utf8(response_buffer).unwrap();
-                eprintln!("Received validation response: {}", response);
 
                 // Assert the validation response
-                assert_eq!(response, "Validation successful");
+                if response != "Validation successful" {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to validate the identity: {}", response),
+                    );
+                }
             }
             Err(e) => eprintln!("Failed to read validation data: {}", e),
         }

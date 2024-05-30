@@ -6,7 +6,8 @@ use crate::{
         APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
         APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
         APIVecFsRetrieveVectorSearchSimplifiedJson, SubscriptionGenericResponse,
-    }, shinkai_utils::encryption::encryption_public_key_to_string,
+    },
+    shinkai_utils::encryption::encryption_public_key_to_string,
 };
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
@@ -66,10 +67,6 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
 
-        if proxy_info.is_some() {
-            eprintln!("Proxy info is not None");
-        }
-
         let effective_receiver_public_key = proxy_info
             .as_ref()
             .map_or(receiver_public_key, |proxy| proxy.proxy_enc_public_key);
@@ -77,11 +74,6 @@ impl ShinkaiMessageBuilder {
         // Convert the encryption secret key to a public key and print it
         let my_encryption_public_key = EncryptionPublicKey::from(&my_encryption_secret_key);
         let my_enc_string = encryption_public_key_to_string(my_encryption_public_key);
-        eprintln!("My Encryption Public Key: {:?}", my_enc_string);
-
-        // Print the effective receiver public key
-        let effective_string = encryption_public_key_to_string(effective_receiver_public_key);
-        eprintln!("Effective Receiver Public Key: {:?}", effective_string);
 
         ShinkaiMessageBuilder::new(
             my_encryption_secret_key,

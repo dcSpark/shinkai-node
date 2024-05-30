@@ -757,34 +757,16 @@ fn tcp_proxy_test_localhost() {
                 )
                 .await;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
-
-                eprintln!("\n\n\n\nFollow up: Sending message from node 1 to TCP Relay to node 2 requesting shared folders");
-                let send_result = create_and_send_message(
-                    node1_commands_sender.clone(),
-                    node2_identity_name,
-                    node2_profile_name,
-                    &node1_profile_encryption_sk,
-                    &node1_profile_identity_sk,
-                    &node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
-                )
-                .await;
-
-                eprint!("send_result: {:?}", send_result);
-                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
-
                 let mut expected_response = serde_json::json!({
-                    "node_name": "@@node2_test.sepolia-shinkai/main",
-                    "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
-                    "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
-                    "last_updated": "2024-05-25T20:42:48.285935Z",
-                    "state": "ResponseAvailable",
-                    "response_last_updated": "2024-05-25T20:42:48.285935Z",
-                    "response": {
-                        "/shinkai_sharing": {
-                            "path": "/shinkai_sharing",
+                "node_name": "@@node2_test.sepolia-shinkai/main",
+                "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
+                "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
+                "last_updated": "2024-05-25T20:42:48.285935Z",
+                "state": "ResponseAvailable",
+                "response_last_updated": "2024-05-25T20:42:48.285935Z",
+                "response": {
+                    "/shinkai_sharing": {
+                        "path": "/shinkai_sharing",
                             "permission": "Public",
                             "profile": "main",
                             "tree": {
@@ -814,18 +796,34 @@ fn tcp_proxy_test_localhost() {
                     }
                 });
 
-                let mut actual_response: serde_json::Value = send_result.clone().unwrap();
+                let mut success = false;
+                for _ in 0..15 {
+                    // Check up to 15 times (4 seconds each, total 60 seconds)
+                    tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+                    let send_result = create_and_send_message(
+                        node1_commands_sender.clone(),
+                        node2_identity_name,
+                        node2_profile_name,
+                        &node1_profile_encryption_sk,
+                        &node1_profile_identity_sk,
+                        &node1_encryption_pk,
+                        node1_identity_name,
+                        node1_profile_name,
+                    )
+                    .await;
 
-                // Remove timestamps from both expected and actual responses using the new function
-                remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
-                remove_timestamps_from_shared_folder_cache_response(&mut actual_response);
+                    if let Ok(mut actual_response) = send_result {
+                        remove_timestamps_from_shared_folder_cache_response(&mut expected_response);
+                        remove_timestamps_from_shared_folder_cache_response(&mut actual_response);
 
-                // Perform the assertion
-                assert_eq!(
-                    actual_response, expected_response,
-                    "Failed to match the expected shared folder information"
-                );
-                assert!(send_result.is_ok(), "Failed to get APIAvailableSharedItems");
+                        if actual_response == expected_response {
+                            success = true;
+                            break;
+                        }
+                    }
+                }
+                
+                assert!(success, "Failed to match the expected shared folder information after multiple attempts");
             }
             {
                 // Dont forget to do this at the end

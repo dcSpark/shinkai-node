@@ -2,11 +2,13 @@ use crate::{
     db::ShinkaiDB,
     managers::IdentityManager,
     network::{
-        node::ProxyConnectionInfo, subscription_manager::{
+        node::ProxyConnectionInfo,
+        subscription_manager::{
             external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
             fs_entry_tree::FSEntryTree,
             my_subscription_manager::MySubscriptionsManager,
-        }, Node
+        },
+        Node,
     },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -20,7 +22,8 @@ use shinkai_message_primitives::{
         shinkai_message_error::ShinkaiMessageError,
         shinkai_message_extension::EncryptionStatus,
         shinkai_message_schemas::{
-            APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus
+            APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse,
+            SubscriptionResponseStatus,
         },
     },
     shinkai_utils::{
@@ -220,8 +223,8 @@ pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &Shi
             ))
         }
         Err(_) => {
-            println!("Failed to verify signature. Message: {:?}", message);
-            println!(
+            eprintln!("Failed to verify signature. Message: {:?}", message);
+            eprintln!(
                 "Sender signature pk: {:?}",
                 signature_public_key_to_string(sender_signature_pk)
             );
@@ -280,7 +283,7 @@ pub async fn handle_default_encryption(
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            eprintln!(
+            println!(
                 "{} {} > Successfully decrypted message outer layer",
                 my_node_profile_name, receiver_address
             );
@@ -363,7 +366,7 @@ pub async fn handle_network_message_cases(
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
-    eprintln!(
+    println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
         my_node_full_name, receiver_address, unsafe_sender_address
     );
@@ -376,14 +379,14 @@ pub async fn handle_network_message_cases(
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = &*proxy_connection {
             if message.external_metadata.sender == proxy_info.proxy_identity.get_node_name_string() {
-                println!("Modified message metadata: {:?}", message.external_metadata.other);
                 match ShinkaiName::new(message.external_metadata.other.clone()) {
                     Ok(origin_identity) => {
                         message.external_metadata.sender = origin_identity.get_node_name_string();
                         if let MessageBody::Unencrypted(ref mut body) = message.body {
-                            body.internal_metadata.sender_subidentity = origin_identity.get_profile_name_string().unwrap_or("".to_string());
+                            body.internal_metadata.sender_subidentity =
+                                origin_identity.get_profile_name_string().unwrap_or("".to_string());
                         }
-                    },
+                    }
                     Err(e) => {
                         eprintln!("Error creating ShinkaiName: {}", e);
                     }
@@ -487,7 +490,6 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::AvailableSharedItemsResponse => {
-                    eprintln!("AvailableSharedItemsResponse");
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
@@ -500,7 +502,6 @@ pub async fn handle_network_message_cases(
 
                     // 2.- extract response from the message
                     let content = message.get_message_content().unwrap_or("".to_string());
-                    eprintln!("AvailableSharedItemsResponse content: {}", content);
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
@@ -517,15 +518,12 @@ pub async fn handle_network_message_cases(
                             match serde_json::from_str::<Vec<SharedFolderInfo>>(&json_string) {
                                 Ok(shared_folder_infos) => {
                                     // Successfully converted, you can now use shared_folder_infos
-                                    eprintln!("AvailableSharedItemsResponse shared_folder_infos: {:?}", shared_folder_infos);
-                                    eprintln!("requester: {:?}", requester);
                                     let mut my_subscription_manager = my_subscription_manager.lock().await;
                                     let _ = my_subscription_manager
                                         .insert_shared_folder(requester, shared_folder_infos)
                                         .await;
                                 }
                                 Err(e) => {
-                                    eprintln!("AvailableSharedItemsResponse Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
                                     shinkai_log(
                                         ShinkaiLogOption::Network,
                                         ShinkaiLogLevel::Error,
