@@ -60,6 +60,7 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
+    eprintln!("API Error: {:?}", err);
     if let Some(api_error) = err.find::<APIError>() {
         let json = warp::reply::json(api_error);
         Ok(warp::reply::with_status(

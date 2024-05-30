@@ -1,9 +1,13 @@
 use assert_cmd::prelude::*;
-use shinkai_vector_resources::file_parser::file_parser_types::TextGroup; // Add methods on commands
+use reqwest::multipart;
+use shinkai_side_executor::api;
+use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
 use std::{
     io::Cursor,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     process::{Child, Command},
 };
+use tokio::runtime::Runtime;
 
 #[test]
 fn pdf_parser_cli_test() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,35 +25,36 @@ fn pdf_parser_cli_test() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// struct Server {
-//     process: Child,
-// }
+#[test]
+fn pdf_parser_api_test() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
 
-// impl Drop for Server {
-//     fn drop(&mut self) {
-//         let _ = self.process.kill();
-//     }
-// }
+        let abort_handler = server_handle.abort_handle();
 
-// #[test]
-// fn pdf_parser_api_test() -> Result<(), Box<dyn std::error::Error>> {
-//     let _server = Server {
-//         process: Command::cargo_bin("shinkai-side-executor")?
-//             .arg("--address=0.0.0.0:8090")
-//             .spawn()?,
-//     };
+        let file = std::fs::read("../files/shinkai_intro.pdf").unwrap();
+        let form_file = multipart::Part::bytes(file).file_name("shinkai_intro.pdf");
+        let form = multipart::Form::new().part("file", form_file);
 
-//     let file = std::fs::File::open("../files/shinkai_intro.pdf")?;
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/extract_json_to_text_groups/400")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+        let response = response.json::<Vec<TextGroup>>().await.unwrap();
 
-//     let client = reqwest::blocking::Client::new();
-//     let response = client
-//         .post("http://0.0.0.0:8090/v1/extract_json_to_text_groups/400")
-//         .body(file)
-//         .send()?
-//         .json::<Vec<TextGroup>>()?;
+        assert!(response.len() > 0);
+        assert!(response[0].text.contains("Shinkai Network Manifesto"));
 
-//     assert!(response.len() > 0);
-//     assert!(response[0].text.contains("Shinkai Network Manifesto"));
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
 
-//     Ok(())
-// }
+    Ok(())
+}

@@ -7,8 +7,6 @@ pub async fn post_extract_json_to_text_groups_handler(
     max_node_text_size: u64,
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    // TODO: Add custom errors
-
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
             println!("Received file: {:?}", part);
