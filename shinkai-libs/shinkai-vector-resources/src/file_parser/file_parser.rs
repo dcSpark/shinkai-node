@@ -206,7 +206,7 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
@@ -243,7 +243,7 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
