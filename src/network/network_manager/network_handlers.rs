@@ -2,6 +2,7 @@ use crate::{
     db::ShinkaiDB,
     managers::IdentityManager,
     network::{
+        node::ProxyConnectionInfo,
         subscription_manager::{
             external_subscriber_manager::{ExternalSubscriberManager, SharedFolderInfo},
             fs_entry_tree::FSEntryTree,
@@ -21,7 +22,8 @@ use shinkai_message_primitives::{
         shinkai_message_error::ShinkaiMessageError,
         shinkai_message_extension::EncryptionStatus,
         shinkai_message_schemas::{
-            APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse, SubscriptionResponseStatus
+            APISubscribeToSharedFolder, APIUnsubscribeToSharedFolder, MessageSchemaType, SubscriptionGenericResponse,
+            SubscriptionResponseStatus,
         },
     },
     shinkai_utils::{
@@ -58,6 +60,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     unsafe_sender_address: SocketAddr,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
@@ -99,6 +102,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 maybe_identity_manager,
                 my_subscription_manager,
                 external_subscription_manager,
+                proxy_connection_info,
             )
             .await
         }
@@ -122,6 +126,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 maybe_identity_manager,
                 my_subscription_manager,
                 external_subscription_manager,
+                proxy_connection_info,
             )
             .await
         }
@@ -137,6 +142,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 unsafe_sender_address,
                 maybe_db,
                 maybe_identity_manager,
+                proxy_connection_info,
             )
             .await
         }
@@ -175,6 +181,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 maybe_identity_manager,
                 my_subscription_manager,
                 external_subscription_manager,
+                proxy_connection_info,
             )
             .await
         }
@@ -216,8 +223,8 @@ pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &Shi
             ))
         }
         Err(_) => {
-            println!("Failed to verify signature. Message: {:?}", message);
-            println!(
+            eprintln!("Failed to verify signature. Message: {:?}", message);
+            eprintln!(
                 "Sender signature pk: {:?}",
                 signature_public_key_to_string(sender_signature_pk)
             );
@@ -238,6 +245,7 @@ pub async fn handle_ping(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     ping_pong(
@@ -250,6 +258,7 @@ pub async fn handle_ping(
         sender_profile_name,
         maybe_db,
         maybe_identity_manager,
+        proxy_connection_info,
     )
     .await
 }
@@ -269,11 +278,12 @@ pub async fn handle_default_encryption(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            eprintln!(
+            println!(
                 "{} {} > Successfully decrypted message outer layer",
                 my_node_profile_name, receiver_address
             );
@@ -296,6 +306,7 @@ pub async fn handle_default_encryption(
                             maybe_identity_manager,
                             my_subscription_manager,
                             external_subscription_manager,
+                            proxy_connection_info,
                         )
                         .await?;
                     }
@@ -323,13 +334,16 @@ pub async fn handle_default_encryption(
                         maybe_identity_manager,
                         my_subscription_manager,
                         external_subscription_manager,
+                        proxy_connection_info,
                     )
                     .await;
                 }
             }
             Ok(())
         }
-        Err(_) => {
+        Err(e) => {
+            eprintln!("Failed to decrypt message: {:?}", e);
+            eprintln!("Message: {:?}", message);
             println!("handle_default_encryption > Failed to decrypt message.");
             // TODO: send error back?
             Ok(())
@@ -345,18 +359,43 @@ pub async fn handle_network_message_cases(
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
-    my_node_profile_name: &str,
+    my_node_full_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
-    eprintln!(
-        "{} > Got message from {:?}. Processing and sending ACK",
-        receiver_address, unsafe_sender_address
+    println!(
+        "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
+        my_node_full_name, receiver_address, unsafe_sender_address
     );
+
+    let mut message = message.clone();
+
+    // Check if the message is coming from a relay proxy and update it
+    // ONLY if our identity is localhost (tradeoff for not having an identity)
+    if my_node_full_name.starts_with("@@localhost.") {
+        let proxy_connection = proxy_connection_info.lock().await;
+        if let Some(proxy_info) = &*proxy_connection {
+            if message.external_metadata.sender == proxy_info.proxy_identity.get_node_name_string() {
+                match ShinkaiName::new(message.external_metadata.other.clone()) {
+                    Ok(origin_identity) => {
+                        message.external_metadata.sender = origin_identity.get_node_name_string();
+                        if let MessageBody::Unencrypted(ref mut body) = message.body {
+                            body.internal_metadata.sender_subidentity =
+                                origin_identity.get_profile_name_string().unwrap_or("".to_string());
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error creating ShinkaiName: {}", e);
+                    }
+                }
+            }
+        }
+    }
 
     // Logic to handle if messages needs to be saved to disk
     let schema_result = message.get_message_content_schema();
@@ -381,6 +420,7 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
+    eprintln!("before get_message_content_schema");
     // Check the schema of the message and decide what to do
     match message.get_message_content_schema() {
         Ok(schema) => {
@@ -431,7 +471,7 @@ pub async fn handle_network_message_cases(
                         clone_static_secret_key(my_encryption_secret_key),
                         clone_signature_secret_key(my_signature_secret_key),
                         sender_encryption_pk,
-                        my_node_profile_name.to_string(),
+                        my_node_full_name.to_string(),
                         receiver.get_profile_name_string().unwrap_or("".to_string()),
                         request_node_name.clone(),
                         request_profile_name,
@@ -443,6 +483,7 @@ pub async fn handle_network_message_cases(
                         msg,
                         Arc::new(clone_static_secret_key(my_encryption_secret_key)),
                         (sender_address, request_node_name),
+                        proxy_connection_info,
                         maybe_db,
                         maybe_identity_manager,
                         false,
@@ -468,7 +509,7 @@ pub async fn handle_network_message_cases(
                         ShinkaiLogLevel::Debug,
                         &format!(
                             "{} AvailableSharedItemsResponse Node {}. Received response: {}",
-                            receiver_address, my_node_profile_name, content
+                            receiver_address, my_node_full_name, content
                         ),
                     );
 
@@ -557,7 +598,7 @@ pub async fn handle_network_message_cases(
                                         clone_static_secret_key(my_encryption_secret_key),
                                         clone_signature_secret_key(my_signature_secret_key),
                                         sender_encryption_pk,
-                                        my_node_profile_name.to_string(),
+                                        my_node_full_name.to_string(),
                                         subscription_request.streamer_profile_name,
                                         requester.get_node_name_string(),
                                         request_profile,
@@ -568,6 +609,7 @@ pub async fn handle_network_message_cases(
                                         msg,
                                         Arc::new(clone_static_secret_key(my_encryption_secret_key)),
                                         (sender_address, requester.get_node_name_string()),
+                                        proxy_connection_info,
                                         maybe_db,
                                         maybe_identity_manager,
                                         false,
@@ -637,7 +679,7 @@ pub async fn handle_network_message_cases(
                                         ShinkaiLogLevel::Debug,
                                         &format!(
                                             "SubscribeToSharedFolderResponse Node {}: Successfully updated subscription status",
-                                            my_node_profile_name
+                                            my_node_full_name
                                         ),
                                     );
                                 }
@@ -694,7 +736,7 @@ pub async fn handle_network_message_cases(
                         .to_string();
                     println!(
                         "SubscribeToSharedFolderResponse Node {}. Received response: {}",
-                        my_node_profile_name, content
+                        my_node_full_name, content
                     );
 
                     let shared_folder = content.clone();
@@ -724,7 +766,7 @@ pub async fn handle_network_message_cases(
                                 ShinkaiLogLevel::Debug,
                                 &format!(
                                     "SubscriptionRequiresTreeUpdate Node {}: Successfully updated subscription status",
-                                    my_node_profile_name
+                                    my_node_full_name
                                 ),
                             );
                         }
@@ -771,7 +813,7 @@ pub async fn handle_network_message_cases(
                                 ShinkaiLogLevel::Debug,
                                 &format!(
                                     "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                                    my_node_profile_name, requester_node_with_profile.get_node_name_string()
+                                    my_node_full_name, requester_node_with_profile.get_node_name_string()
                                 ),
                             );
                             // Attempt to deserialize the inner JSON string into FSEntryTree
@@ -812,7 +854,7 @@ pub async fn handle_network_message_cases(
                                                 ShinkaiLogLevel::Debug,
                                                 &format!(
                                                     "SubscriptionRequiresTreeUpdateResponse Node {}: Successfully updated subscription status",
-                                                    my_node_profile_name
+                                                    my_node_full_name
                                                 ),
                                             );
                                         }
@@ -919,7 +961,7 @@ pub async fn handle_network_message_cases(
                                         clone_static_secret_key(my_encryption_secret_key),
                                         clone_signature_secret_key(my_signature_secret_key),
                                         sender_encryption_pk,
-                                        my_node_profile_name.to_string(),
+                                        my_node_full_name.to_string(),
                                         streamer_node_with_profile
                                             .get_profile_name_string()
                                             .unwrap_or("".to_string()),
@@ -934,6 +976,7 @@ pub async fn handle_network_message_cases(
                                         msg,
                                         Arc::new(clone_static_secret_key(my_encryption_secret_key)),
                                         (sender_address, requester_node_with_profile.get_node_name_string()),
+                                        proxy_connection_info.clone(),
                                         maybe_db.clone(),
                                         maybe_identity_manager.clone(),
                                         false,
@@ -986,12 +1029,13 @@ pub async fn handle_network_message_cases(
         clone_static_secret_key(my_encryption_secret_key),
         clone_signature_secret_key(my_signature_secret_key),
         sender_encryption_pk,
-        my_node_profile_name.to_string(),
+        my_node_full_name.to_string(),
         sender_profile_name,
         maybe_db,
         maybe_identity_manager,
         my_subscription_manager,
         external_subscription_manager,
+        proxy_connection_info,
     )
     .await
 }
@@ -1008,6 +1052,7 @@ pub async fn send_ack(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     _: Arc<Mutex<MySubscriptionsManager>>,
     _: Arc<Mutex<ExternalSubscriberManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -1022,6 +1067,7 @@ pub async fn send_ack(
         msg,
         Arc::new(clone_static_secret_key(&encryption_secret_key)),
         peer,
+        proxy_connection_info,
         maybe_db,
         maybe_identity_manager,
         false,
@@ -1049,6 +1095,7 @@ pub async fn ping_pong(
     receiver: ShinkaiNameString,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
@@ -1068,6 +1115,7 @@ pub async fn ping_pong(
         msg,
         Arc::new(clone_static_secret_key(&encryption_secret_key)),
         peer,
+        proxy_connection_info,
         maybe_db,
         maybe_identity_manager,
         false,

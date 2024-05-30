@@ -1,7 +1,6 @@
 #![recursion_limit = "256"]
 pub mod agent;
 pub mod cron_tasks;
-pub mod crypto_identities;
 pub mod db;
 pub mod managers;
 pub mod network;
@@ -14,4 +13,4 @@ pub mod utils;
 pub mod vector_fs;
 pub mod welcome_files;
 
-pub use runner::{initialize_node, run_node_tasks, tauri_initialize_node, tauri_run_node_tasks};
+pub use runner::{initialize_node, run_node_tasks};

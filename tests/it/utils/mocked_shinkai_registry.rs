@@ -1,8 +1,7 @@
 use chrono::{DateTime, Utc};
-use shinkai_node::crypto_identities::shinkai_registry::ShinkaiRegistryError;
-use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistryTrait};
 use dashmap::DashMap;
 use ethers::prelude::*;
+use shinkai_crypto_identities::{OnchainIdentity, ShinkaiRegistryError, ShinkaiRegistryTrait};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -12,7 +11,7 @@ pub struct MockedShinkaiRegistry {
 
 impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
     fn new(_url: &str, _contract_address: &str, _abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        let mut cache = DashMap::new();
+        let cache = DashMap::new();
 
         let identities = vec![
             OnchainIdentity {
@@ -81,7 +80,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
         })
     }
 
-    fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         match self.cache.get(&identity) {
             Some(value) => Ok(value.value().1.clone()),
             None => Err(ShinkaiRegistryError::CustomError("Identity not found in mock".to_string())),
