@@ -341,7 +341,9 @@ pub async fn handle_default_encryption(
             }
             Ok(())
         }
-        Err(_) => {
+        Err(e) => {
+            eprintln!("Failed to decrypt message: {:?}", e);
+            eprintln!("Message: {:?}", message);
             println!("handle_default_encryption > Failed to decrypt message.");
             // TODO: send error back?
             Ok(())

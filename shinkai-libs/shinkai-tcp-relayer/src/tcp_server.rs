@@ -58,7 +58,7 @@ impl TCPProxy {
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
-            .unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
+            .unwrap_or("https://sepolia.infura.io/v3/0153fa7ada9046f9acee3842cdb28082".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
@@ -628,10 +628,10 @@ impl TCPProxy {
             Ok(onchain_identity) => {
                 match onchain_identity.first_address().await {
                     Ok(first_address) => {
-                        eprintln!("Connecting to first address: {}", first_address);
+                        println!("Connecting to first address: {}", first_address);
                         match TcpStream::connect(first_address).await {
                             Ok(mut stream) => {
-                                eprintln!("Connected successfully. Streaming...");
+                                println!("Connected successfully. Streaming...");
                                 let payload = modified_message.encode_message().unwrap();
 
                                 let identity_bytes = msg_recipient.as_bytes();
@@ -648,7 +648,7 @@ impl TCPProxy {
 
                                 stream.write_all(&data_to_send).await?;
                                 stream.flush().await?;
-                                eprintln!("Sent message to {}", stream.peer_addr().unwrap());
+                                println!("Sent message to {}", stream.peer_addr().unwrap());
                             }
                             Err(e) => {
                                 eprintln!("Failed to connect to first address: {}", e);
