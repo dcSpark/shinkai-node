@@ -699,7 +699,7 @@ impl NetworkJobManager {
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
             &format!(
-                "{} {} > Got message from {:?}",
+                "{} {} > Network Job Got message from {:?}",
                 my_node_profile_name, receiver_address, unsafe_sender_address
             ),
         );

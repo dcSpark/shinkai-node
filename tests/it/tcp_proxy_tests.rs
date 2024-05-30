@@ -757,8 +757,9 @@ fn tcp_proxy_test_localhost() {
                 )
                 .await;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(20)).await;
 
+                eprintln!("\n\n\n\nFollow up: Sending message from node 1 to TCP Relay to node 2 requesting shared folders");
                 let send_result = create_and_send_message(
                     node1_commands_sender.clone(),
                     node2_identity_name,

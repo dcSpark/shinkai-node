@@ -25,10 +25,6 @@ pub async fn validate_message_main_logic(
     potentially_encrypted_msg: ShinkaiMessage,
     schema_type: Option<MessageSchemaType>,
 ) -> Result<(ShinkaiMessage, Identity), APIError> {
-    eprintln!(
-        "\n\nvalidate_message_main_logic> potentially_encrypted_msg: {:?}",
-        potentially_encrypted_msg
-    );
     let msg: ShinkaiMessage;
     {
         // check if the message is encrypted
@@ -42,17 +38,9 @@ pub async fn validate_message_main_logic(
             For other cases, we can find it in the identity manager.
             */
             let sender_encryption_pk_string = potentially_encrypted_msg.external_metadata.clone().other;
-            eprintln!(
-                "\n\nvalidate_message_main_logic> sender_encryption_pk_string: {:?}",
-                sender_encryption_pk_string
-            );
             let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).ok();
 
             if sender_encryption_pk.is_some() {
-                eprintln!(
-                    "\n\nvalidate_message_main_logic> sender_encryption_pk is some: {:?}",
-                    sender_encryption_pk
-                );
                 msg = match potentially_encrypted_msg
                     .clone()
                     .decrypt_outer_layer(encryption_secret_key, &sender_encryption_pk.unwrap())

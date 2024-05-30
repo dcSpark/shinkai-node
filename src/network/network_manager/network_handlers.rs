@@ -354,7 +354,7 @@ pub async fn handle_network_message_cases(
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
-    my_node_profile_name: &str,
+    my_node_full_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<ShinkaiDB>,
@@ -364,9 +364,33 @@ pub async fn handle_network_message_cases(
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
 ) -> Result<(), NetworkJobQueueError> {
     eprintln!(
-        "{} > Got message from {:?}. Processing and sending ACK",
-        receiver_address, unsafe_sender_address
+        "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
+        my_node_full_name, receiver_address, unsafe_sender_address
     );
+
+    let mut message = message.clone();
+
+    // Check if the message is coming from a relay proxy and update it
+    // ONLY if our identity is localhost (tradeoff for not having an identity)
+    if my_node_full_name.starts_with("@@localhost.") {
+        let proxy_connection = proxy_connection_info.lock().await;
+        if let Some(proxy_info) = &*proxy_connection {
+            if message.external_metadata.sender == proxy_info.proxy_identity.get_node_name_string() {
+                println!("Modified message metadata: {:?}", message.external_metadata.other);
+                match ShinkaiName::new(message.external_metadata.other.clone()) {
+                    Ok(origin_identity) => {
+                        message.external_metadata.sender = origin_identity.get_node_name_string();
+                        if let MessageBody::Unencrypted(ref mut body) = message.body {
+                            body.internal_metadata.sender_subidentity = origin_identity.get_profile_name_string().unwrap_or("".to_string());
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Error creating ShinkaiName: {}", e);
+                    }
+                }
+            }
+        }
+    }
 
     // Logic to handle if messages needs to be saved to disk
     let schema_result = message.get_message_content_schema();
@@ -391,6 +415,7 @@ pub async fn handle_network_message_cases(
         .await?;
     }
 
+    eprintln!("before get_message_content_schema");
     // Check the schema of the message and decide what to do
     match message.get_message_content_schema() {
         Ok(schema) => {
@@ -441,7 +466,7 @@ pub async fn handle_network_message_cases(
                         clone_static_secret_key(my_encryption_secret_key),
                         clone_signature_secret_key(my_signature_secret_key),
                         sender_encryption_pk,
-                        my_node_profile_name.to_string(),
+                        my_node_full_name.to_string(),
                         receiver.get_profile_name_string().unwrap_or("".to_string()),
                         request_node_name.clone(),
                         request_profile_name,
@@ -462,6 +487,7 @@ pub async fn handle_network_message_cases(
                     return Ok(());
                 }
                 MessageSchemaType::AvailableSharedItemsResponse => {
+                    eprintln!("AvailableSharedItemsResponse");
                     let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
                     shinkai_log(
                         ShinkaiLogOption::Network,
@@ -474,12 +500,13 @@ pub async fn handle_network_message_cases(
 
                     // 2.- extract response from the message
                     let content = message.get_message_content().unwrap_or("".to_string());
+                    eprintln!("AvailableSharedItemsResponse content: {}", content);
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
                         &format!(
                             "{} AvailableSharedItemsResponse Node {}. Received response: {}",
-                            receiver_address, my_node_profile_name, content
+                            receiver_address, my_node_full_name, content
                         ),
                     );
 
@@ -490,12 +517,15 @@ pub async fn handle_network_message_cases(
                             match serde_json::from_str::<Vec<SharedFolderInfo>>(&json_string) {
                                 Ok(shared_folder_infos) => {
                                     // Successfully converted, you can now use shared_folder_infos
+                                    eprintln!("AvailableSharedItemsResponse shared_folder_infos: {:?}", shared_folder_infos);
+                                    eprintln!("requester: {:?}", requester);
                                     let mut my_subscription_manager = my_subscription_manager.lock().await;
                                     let _ = my_subscription_manager
                                         .insert_shared_folder(requester, shared_folder_infos)
                                         .await;
                                 }
                                 Err(e) => {
+                                    eprintln!("AvailableSharedItemsResponse Failed to deserialize JSON to Vec<SharedFolderInfo>: {}", e);
                                     shinkai_log(
                                         ShinkaiLogOption::Network,
                                         ShinkaiLogLevel::Error,
@@ -568,7 +598,7 @@ pub async fn handle_network_message_cases(
                                         clone_static_secret_key(my_encryption_secret_key),
                                         clone_signature_secret_key(my_signature_secret_key),
                                         sender_encryption_pk,
-                                        my_node_profile_name.to_string(),
+                                        my_node_full_name.to_string(),
                                         subscription_request.streamer_profile_name,
                                         requester.get_node_name_string(),
                                         request_profile,
@@ -649,7 +679,7 @@ pub async fn handle_network_message_cases(
                                         ShinkaiLogLevel::Debug,
                                         &format!(
                                             "SubscribeToSharedFolderResponse Node {}: Successfully updated subscription status",
-                                            my_node_profile_name
+                                            my_node_full_name
                                         ),
                                     );
                                 }
@@ -706,7 +736,7 @@ pub async fn handle_network_message_cases(
                         .to_string();
                     println!(
                         "SubscribeToSharedFolderResponse Node {}. Received response: {}",
-                        my_node_profile_name, content
+                        my_node_full_name, content
                     );
 
                     let shared_folder = content.clone();
@@ -736,7 +766,7 @@ pub async fn handle_network_message_cases(
                                 ShinkaiLogLevel::Debug,
                                 &format!(
                                     "SubscriptionRequiresTreeUpdate Node {}: Successfully updated subscription status",
-                                    my_node_profile_name
+                                    my_node_full_name
                                 ),
                             );
                         }
@@ -783,7 +813,7 @@ pub async fn handle_network_message_cases(
                                 ShinkaiLogLevel::Debug,
                                 &format!(
                                     "SubscriptionRequiresTreeUpdateResponse Node {}: Handling SubscribeToSharedFolderResponse from: {}",
-                                    my_node_profile_name, requester_node_with_profile.get_node_name_string()
+                                    my_node_full_name, requester_node_with_profile.get_node_name_string()
                                 ),
                             );
                             // Attempt to deserialize the inner JSON string into FSEntryTree
@@ -824,7 +854,7 @@ pub async fn handle_network_message_cases(
                                                 ShinkaiLogLevel::Debug,
                                                 &format!(
                                                     "SubscriptionRequiresTreeUpdateResponse Node {}: Successfully updated subscription status",
-                                                    my_node_profile_name
+                                                    my_node_full_name
                                                 ),
                                             );
                                         }
@@ -931,7 +961,7 @@ pub async fn handle_network_message_cases(
                                         clone_static_secret_key(my_encryption_secret_key),
                                         clone_signature_secret_key(my_signature_secret_key),
                                         sender_encryption_pk,
-                                        my_node_profile_name.to_string(),
+                                        my_node_full_name.to_string(),
                                         streamer_node_with_profile
                                             .get_profile_name_string()
                                             .unwrap_or("".to_string()),
@@ -999,7 +1029,7 @@ pub async fn handle_network_message_cases(
         clone_static_secret_key(my_encryption_secret_key),
         clone_signature_secret_key(my_signature_secret_key),
         sender_encryption_pk,
-        my_node_profile_name.to_string(),
+        my_node_full_name.to_string(),
         sender_profile_name,
         maybe_db,
         maybe_identity_manager,

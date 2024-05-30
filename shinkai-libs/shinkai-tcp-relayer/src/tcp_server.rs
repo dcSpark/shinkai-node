@@ -397,7 +397,7 @@ impl TCPProxy {
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         registry: &ShinkaiRegistry,
         client_identity: String,
-        node_name: ShinkaiName,
+        tcp_node_name: ShinkaiName,
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
     ) -> Result<(), NetworkMessageError> {
@@ -415,233 +415,285 @@ impl TCPProxy {
         eprintln!("Parsed ShinkaiMessage: {:?}", parsed_message);
 
         // Check if the message needs to be proxied or if it's meant for one of the connected nodes behind NAT
-        let recipient = parsed_message
+        let msg_recipient = parsed_message
             .clone()
             .external_metadata
             .recipient
             .trim_start_matches("@@")
             .to_string();
 
+        let msg_sender = parsed_message
+            .clone()
+            .external_metadata
+            .sender
+            .trim_start_matches("@@")
+            .to_string();
+
         // Strip out @@ from node_name before comparing recipient and node_name
-        let stripped_node_name = node_name.to_string().trim_start_matches("@@").to_string();
+        let tcp_node_name_string = tcp_node_name.to_string().trim_start_matches("@@").to_string();
 
-        eprintln!("Recipient: {}", recipient);
-        eprintln!("Node Name: {}", node_name);
+        println!("TCP Node Name: {}", tcp_node_name_string);
+        println!("MSG Recipient: {}", msg_recipient);
+        println!("MSG Sender: {}", msg_sender);
 
-        let recipient_matches = recipient == stripped_node_name
-            || recipient.starts_with("localhost")
-            || recipient.starts_with("@@localhost");
+        // Case A
+        // If Message Recipient is TCP Node Name
+        // We proxied a message from a localhost identity and we are getting the response
+        if msg_recipient == tcp_node_name_string {
+            eprintln!("Recipient is the same as the node name, handling message locally");
+            Self::handle_ext_node_to_proxy_msg(
+                parsed_message,
+                clients,
+                pk_to_clients,
+                encryption_secret_key,
+                identity_secret_key,
+                registry,
+                tcp_node_name,
+                msg_sender,
+            )
+            .await?;
+            return Ok(());
+        }
+
+        // Case B
+        // If Message Recipient is a Shinkai Identity (exclude localhost ofc)
+        // We check if we it's being proxied through us
+        let recipient_matches = msg_recipient == tcp_node_name_string
+            || msg_recipient.starts_with("localhost")
+            || msg_recipient.starts_with("@@localhost");
 
         let recipient_addresses = if !recipient_matches {
             // Fetch the public keys from the registry
-            let registry_identity = registry.get_identity_record(recipient.clone()).await.unwrap();
-            eprintln!("Registry Identity (recipient_addresses): {:?}", registry_identity);
+            let registry_identity = registry.get_identity_record(msg_recipient.clone()).await.unwrap();
             registry_identity.address_or_proxy_nodes
         } else {
             vec![]
         };
 
-        // check if it matches the tcp relayer's node name
-        if recipient == stripped_node_name {
-            eprintln!("> Outside Node Message to Proxy");
-            eprintln!("Recipient is the same as the node name, handling message locally");
-
-            // Fetch the public keys from the registry
-            let msg_sender = parsed_message.clone().external_metadata.sender;
-            let registry_identity = registry.get_identity_record(msg_sender).await.unwrap();
-            eprintln!("Registry Identity: {:?}", registry_identity);
-            let sender_encryption_pk = registry_identity.encryption_public_key()?;
-            let sender_signature_pk = registry_identity.signature_verifying_key()?;
-
-            // validate that's signed by the sender
-            parsed_message.verify_outer_layer_signature(&sender_signature_pk)?;
-            eprintln!("Signature verified");
-
-            let mut unencrypted_msg = parsed_message.clone();
-            // Decrypt message if encrypted
-            if parsed_message.is_body_currently_encrypted() {
-                unencrypted_msg = Self::decrypt_message_if_needed(
-                    unencrypted_msg.clone(),
-                    encryption_secret_key.clone(),
-                    sender_encryption_pk,
-                )
-                .await?;
-            }
-
-            let updated_message = match Self::modify_shinkai_message_external_to_proxied_localhost(
-                unencrypted_msg.clone(),
-                node_name,
-                identity_secret_key,
-                encryption_secret_key,
-                sender_encryption_pk,
-                "main".to_string(),
-            )
-            .await
-            {
-                Ok(message) => message,
-                Err(e) => {
-                    eprintln!("Error modifying Shinkai message: {}", e);
-                    return Ok(());
-                }
-            };
-            eprintln!("Updated ShinkaiMessage: {:?}", updated_message);
-
-            // TODO: check if we also need to decrypt inner layer
-            let subidentity = match unencrypted_msg.get_recipient_subidentity() {
-                Some(subidentity) => subidentity,
-                None => {
-                    eprintln!(
-                        "Error: No subidentity found for the recipient. Subidentity: {:?}",
-                        updated_message.external_metadata.recipient
-                    );
-                    return Ok(());
-                }
-            };
-            eprintln!("Recipient Subidentity: {}", subidentity);
-
-            // Find the client that needs to receive the message
-            let client_identity = {
-                let pk_to_clients_guard = pk_to_clients.lock().await;
-                match pk_to_clients_guard.get(&subidentity) {
-                    Some(client_identity) => client_identity.clone(),
-                    None => {
-                        eprintln!("Error: Client not found for recipient {}", recipient);
-                        return Ok(());
-                    }
-                }
-            };
-            eprintln!("Client Identity: {}", client_identity);
-
-            let connection = {
-                let clients_guard = clients.lock().await;
-                match clients_guard.get(&client_identity) {
-                    Some(connection) => connection.clone(),
-                    None => {
-                        eprintln!("Error: Connection not found for recipient {}", recipient);
-                        return Ok(());
-                    }
-                }
-            };
-
-            // Send message to the client using connection
-            eprintln!("Sending message to client {}", client_identity);
-            if Self::send_shinkai_message_to_proxied_identity(connection.1, updated_message)
-                .await
-                .is_err()
-            {
-                eprintln!("Failed to send message to client {}", client_identity);
-            }
-
-            Ok(())
-        } else if recipient_addresses.iter().any(|addr| addr == &stripped_node_name) {
+        // if the node is using the proxy as a relay then it will be in the recipient_addresses
+        if recipient_addresses.iter().any(|addr| addr == &tcp_node_name_string) {
             eprintln!(
                 "Recipient is {} and uses this node as proxy, handling message locally",
-                recipient
+                msg_recipient
             );
 
             let connection = {
                 let clients_guard = clients.lock().await;
-                match clients_guard.get(&recipient) {
+                match clients_guard.get(&msg_recipient) {
                     Some(connection) => connection.clone(),
                     None => {
-                        eprintln!("Error: Connection not found for recipient {}", recipient);
+                        eprintln!("Error: Connection not found for recipient {}", msg_recipient);
                         return Ok(());
                     }
                 }
             };
 
             // Send message to the client using connection
-            eprintln!("Sending message to client {}", recipient);
+            eprintln!(
+                "handle_ext_node_to_identity_proxy_msg Sending message to client {}",
+                msg_recipient
+            );
             if Self::send_shinkai_message_to_proxied_identity(connection.1, parsed_message)
                 .await
                 .is_err()
             {
-                eprintln!("Failed to send message to client {}", recipient);
+                eprintln!("Failed to send message to client {}", msg_recipient);
             }
 
-            Ok(())
-        } else {
+            return Ok(());
+        }
+
+        // Case C
+        // Proxying message out. Sender is behind NAT & localhost
+        if msg_sender.starts_with("localhost") || msg_sender.starts_with("@@localhost") {
             eprintln!("Proxying message out. Sender is behind NAT & localhost");
-            // it's meant to be proxied out of the NAT
-            // Sender identity looks like: localhost.shinkai:::69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e
-            // we can't use that as a subidentity because it contains "." and ":::" which are not valid characters
-            let msg_sender = parsed_message.external_metadata.clone().sender.to_string();
-            eprintln!("Sender Identity {:?}", msg_sender);
+            let client_identity_pk = client_identity.split(":::").last().unwrap_or("").to_string();
+            let modified_message = Self::modify_shinkai_message_proxied_localhost_to_external(
+                parsed_message,
+                tcp_node_name,
+                identity_secret_key,
+                encryption_secret_key,
+                client_identity_pk,
+            )
+            .await?;
 
-            let stripped_sender_name = msg_sender.to_string().trim_start_matches("@@").to_string();
-            let modified_message = if stripped_sender_name.starts_with("localhost") {
+            Self::handle_proxy_out_to_ext_node(registry, msg_recipient, modified_message, writer.clone()).await?;
+
+            return Ok(());
+        }
+
+        // Case D
+        // Proxying message out. Sender is not localhost but a well defined identity
+        // We need to proxy the message to the recipient
+        eprintln!("Proxying message out. Sender is not localhost but a well defined identity");
+        Self::handle_proxy_out_to_ext_node(registry, msg_recipient, parsed_message, writer.clone()).await?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_ext_node_to_proxy_msg(
+        parsed_message: ShinkaiMessage,
+        clients: &TCPProxyClients,
+        pk_to_clients: &TCPProxyPKtoIdentity,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_secret_key: SigningKey,
+        registry: &ShinkaiRegistry,
+        tcp_node_name: ShinkaiName,
+        msg_sender: String,
+    ) -> Result<(), NetworkMessageError> {
+        eprintln!("> Outside Node Message to Proxy");
+        eprintln!("Recipient is the same as the node name, handling message locally");
+
+        // Fetch the public keys from the registry
+        let registry_identity = registry.get_identity_record(msg_sender.clone()).await.unwrap();
+        eprintln!("Registry Identity: {:?}", registry_identity);
+        let sender_encryption_pk = registry_identity.encryption_public_key()?;
+        let sender_signature_pk = registry_identity.signature_verifying_key()?;
+
+        // validate that's signed by the sender
+        parsed_message.verify_outer_layer_signature(&sender_signature_pk)?;
+        eprintln!("Signature verified");
+
+        let mut unencrypted_msg = parsed_message.clone();
+        // Decrypt message if encrypted
+        if parsed_message.is_body_currently_encrypted() {
+            unencrypted_msg = Self::decrypt_message_if_needed(
+                unencrypted_msg.clone(),
+                encryption_secret_key.clone(),
+                sender_encryption_pk,
+            )
+            .await?;
+        }
+
+        let updated_message = match Self::modify_shinkai_message_external_to_proxied_localhost(
+            unencrypted_msg.clone(),
+            tcp_node_name,
+            identity_secret_key,
+            encryption_secret_key,
+            sender_encryption_pk,
+            "main".to_string(),
+        )
+        .await
+        {
+            Ok(message) => message,
+            Err(e) => {
+                eprintln!("Error modifying Shinkai message: {}", e);
+                return Ok(());
+            }
+        };
+        eprintln!("Updated ShinkaiMessage: {:?}", updated_message);
+
+        // TODO: check if we also need to decrypt inner layer
+        let subidentity = match unencrypted_msg.get_recipient_subidentity() {
+            Some(subidentity) => subidentity,
+            None => {
                 eprintln!(
-                    "Sender is localhost, modifying ShinkaiMessage for sender: {}",
-                    client_identity
+                    "Error: No subidentity found for the recipient. Subidentity: {:?}",
+                    updated_message.external_metadata.recipient
                 );
-                let client_identity_pk = client_identity.split(":::").last().unwrap_or("").to_string();
-                Self::modify_shinkai_message_proxied_localhost_to_external(
-                    parsed_message,
-                    node_name,
-                    identity_secret_key,
-                    encryption_secret_key,
-                    client_identity_pk,
-                )
-                .await?
-            } else {
-                parsed_message
-            };
-            eprintln!("\n\nModified ShinkaiMessage: {:?}", modified_message);
+                return Ok(());
+            }
+        };
+        eprintln!("Recipient Subidentity: {}", subidentity);
 
-            match registry.get_identity_record(recipient.clone()).await {
-                Ok(onchain_identity) => {
-                    match onchain_identity.first_address().await {
-                        Ok(first_address) => {
-                            eprintln!("Connecting to first address: {}", first_address);
-                            match TcpStream::connect(first_address).await {
-                                Ok(mut stream) => {
-                                    eprintln!("Connected successfully. Streaming...");
-                                    let payload = modified_message.encode_message().unwrap();
+        // Find the client that needs to receive the message
+        let client_identity = {
+            let pk_to_clients_guard = pk_to_clients.lock().await;
+            match pk_to_clients_guard.get(&subidentity) {
+                Some(client_identity) => client_identity.clone(),
+                None => {
+                    eprintln!("Error: Client not found for recipient {}", msg_sender);
+                    return Ok(());
+                }
+            }
+        };
+        eprintln!("Client Identity: {}", client_identity);
 
-                                    let identity_bytes = recipient.as_bytes();
-                                    let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-                                    let total_length =
-                                        (payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
+        let connection = {
+            let clients_guard = clients.lock().await;
+            match clients_guard.get(&client_identity) {
+                Some(connection) => connection.clone(),
+                None => {
+                    eprintln!("Error: Connection not found for recipient {}", msg_sender);
+                    return Ok(());
+                }
+            }
+        };
 
-                                    let mut data_to_send = Vec::new();
-                                    data_to_send.extend_from_slice(&total_length);
-                                    data_to_send.extend_from_slice(&identity_length);
-                                    data_to_send.extend(identity_bytes);
-                                    data_to_send.push(0x01); // Message type identifier for ShinkaiMessage
-                                    data_to_send.extend_from_slice(&payload);
+        // Send message to the client using connection
+        eprintln!(
+            "handle_ext_node_to_proxy_msg> Sending message to client {}",
+            client_identity
+        );
+        if Self::send_shinkai_message_to_proxied_identity(connection.1, updated_message)
+            .await
+            .is_err()
+        {
+            eprintln!("Failed to send message to client {}", client_identity);
+        }
 
-                                    stream.write_all(&data_to_send).await?;
-                                    stream.flush().await?;
-                                    eprintln!("Sent message to {}", stream.peer_addr().unwrap());
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to connect to first address: {}", e);
-                                    let error_message = format!("Failed to connect to first address for {}", recipient);
-                                    send_message_with_length(writer.clone(), error_message).await?;
-                                }
+        Ok(())
+    }
+
+    async fn handle_proxy_out_to_ext_node(
+        registry: &ShinkaiRegistry,
+        msg_recipient: String,
+        modified_message: ShinkaiMessage,
+        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
+    ) -> Result<(), NetworkMessageError> {
+        match registry.get_identity_record(msg_recipient.clone()).await {
+            Ok(onchain_identity) => {
+                match onchain_identity.first_address().await {
+                    Ok(first_address) => {
+                        eprintln!("Connecting to first address: {}", first_address);
+                        match TcpStream::connect(first_address).await {
+                            Ok(mut stream) => {
+                                eprintln!("Connected successfully. Streaming...");
+                                let payload = modified_message.encode_message().unwrap();
+
+                                let identity_bytes = msg_recipient.as_bytes();
+                                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+                                let total_length =
+                                    (payload.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
+
+                                let mut data_to_send = Vec::new();
+                                data_to_send.extend_from_slice(&total_length);
+                                data_to_send.extend_from_slice(&identity_length);
+                                data_to_send.extend(identity_bytes);
+                                data_to_send.push(0x01); // Message type identifier for ShinkaiMessage
+                                data_to_send.extend_from_slice(&payload);
+
+                                stream.write_all(&data_to_send).await?;
+                                stream.flush().await?;
+                                eprintln!("Sent message to {}", stream.peer_addr().unwrap());
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to connect to first address: {}", e);
+                                let error_message = format!("Failed to connect to first address for {}", msg_recipient);
+                                send_message_with_length(writer.clone(), error_message).await?;
                             }
                         }
-                        Err(e) => {
-                            eprintln!("Failed to fetch first address for {}: {}", recipient, e);
-                            let error_message = format!(
-                                "Recipient {} not connected and failed to fetch first address",
-                                recipient
-                            );
-                            send_message_with_length(writer.clone(), error_message).await?;
-                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch first address for {}: {}", msg_recipient, e);
+                        let error_message = format!(
+                            "Recipient {} not connected and failed to fetch first address",
+                            msg_recipient
+                        );
+                        send_message_with_length(writer.clone(), error_message).await?;
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to fetch onchain identity for {}: {}", recipient, e);
-                    let error_message = format!(
-                        "Recipient {} not connected and failed to fetch onchain identity",
-                        recipient
-                    );
-                    send_message_with_length(writer.clone(), error_message).await?;
-                }
             }
-            Ok(())
+            Err(e) => {
+                eprintln!("Failed to fetch onchain identity for {}: {}", msg_recipient, e);
+                let error_message = format!(
+                    "Recipient {} not connected and failed to fetch onchain identity",
+                    msg_recipient
+                );
+                send_message_with_length(writer.clone(), error_message).await?;
+            }
         }
+        Ok(())
     }
 
     async fn modify_shinkai_message_proxied_localhost_to_external(
@@ -705,26 +757,37 @@ impl TCPProxy {
         message: ShinkaiMessage,
         node_name: ShinkaiName,
         identity_secret_key: SigningKey,
-        encryption_secret_key: EncryptionStaticKey,
-        sender_encryption_pk: EncryptionPublicKey,
+        _encryption_secret_key: EncryptionStaticKey,
+        _sender_encryption_pk: EncryptionPublicKey,
         subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
         eprintln!(
             "modify_shinkai_message_external_to_proxied> Modifying ShinkaiMessage from subidentity: {}",
             subidentity
         );
+        eprintln!(
+            "modify_shinkai_message_external_to_proxied_localhost> Message: {:?}",
+            message
+        );
 
         let mut modified_message = message;
-        modified_message.external_metadata.sender = node_name.to_string();
         modified_message.external_metadata.recipient = "@@locahost.sepolia-shinkai".to_string();
         modified_message.external_metadata.intra_sender = "".to_string();
         modified_message.body = match modified_message.body {
             MessageBody::Unencrypted(mut body) => {
+                let sender_identity = ShinkaiName::from_node_and_profile_names(
+                    modified_message.external_metadata.sender.clone(),
+                    body.internal_metadata.sender_subidentity,
+                )?;
+                modified_message.external_metadata.other = sender_identity.to_string();
+
                 body.internal_metadata.recipient_subidentity = "main".to_string(); // TODO: eventually update this to be flexible
+                body.internal_metadata.sender_subidentity = "".to_string();
                 MessageBody::Unencrypted(body)
             }
             encrypted => encrypted,
         };
+        modified_message.external_metadata.sender = node_name.to_string();
 
         // Re-sign the inner layer
         modified_message.sign_inner_layer(&identity_secret_key)?;
@@ -1057,7 +1120,6 @@ async fn send_message_with_length(
 ) -> Result<(), NetworkMessageError> {
     eprintln!("send_message_with_length> Sending message: {}", message);
     let message_len = message.len() as u32;
-    eprintln!("send_message_with_length> Message length: {}", message_len);
     let message_len_bytes = message_len.to_be_bytes(); // This will always be 4 bytes big-endian
     let message_bytes = message.as_bytes();
 

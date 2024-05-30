@@ -138,8 +138,10 @@ impl MySubscriptionsManager {
             format!("Inserting shared folder: {}", name.get_node_name_string()).as_str(),
         );
         let shared_folder_sm = SharedFoldersExternalNodeSM::new_with_folders_info(name.clone(), folders);
+        eprintln!("Shared folder SM: {:?}", shared_folder_sm);
         let mut external_node_shared_folders = self.external_node_shared_folders.lock().await;
         external_node_shared_folders.put(name, shared_folder_sm);
+        eprintln!("External node shared folders: {:?}", external_node_shared_folders);
         Ok(())
     }
 
