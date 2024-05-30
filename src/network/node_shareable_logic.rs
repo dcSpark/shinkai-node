@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use tokio::sync::Mutex;
 
 use super::node_api::APIError;
@@ -14,7 +15,7 @@ use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
     shinkai_utils::encryption::string_to_encryption_public_key,
 };
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,
@@ -42,7 +43,7 @@ pub async fn validate_message_main_logic(
             if sender_encryption_pk.is_some() {
                 msg = match potentially_encrypted_msg
                     .clone()
-                    .decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk.unwrap())
+                    .decrypt_outer_layer(encryption_secret_key, &sender_encryption_pk.unwrap())
                 {
                     Ok(msg) => msg,
                     Err(e) => {
@@ -69,7 +70,7 @@ pub async fn validate_message_main_logic(
                             StandardIdentityType::Global => std_identity.node_encryption_public_key,
                             StandardIdentityType::Profile => std_identity
                                 .profile_encryption_public_key
-                                .unwrap_or_else(|| std_identity.node_encryption_public_key),
+                                .unwrap_or(std_identity.node_encryption_public_key),
                         },
                         Identity::Device(device) => device.device_encryption_public_key,
                         Identity::Agent(_) => {
@@ -90,9 +91,13 @@ pub async fn validate_message_main_logic(
                         })
                     }
                 };
+                eprintln!(
+                    "\n\nvalidate_message_main_logic> sender_encryption_pk: {:?}",
+                    encryption_public_key_to_string(sender_encryption_pk)
+                );
                 msg = match potentially_encrypted_msg
                     .clone()
-                    .decrypt_outer_layer(&encryption_secret_key, &sender_encryption_pk)
+                    .decrypt_outer_layer(encryption_secret_key, &sender_encryption_pk)
                 {
                     Ok(msg) => msg,
                     Err(e) => {

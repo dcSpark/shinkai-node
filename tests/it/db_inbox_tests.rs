@@ -1,6 +1,5 @@
 use shinkai_message_primitives::schemas::inbox_name::{InboxName, InboxNameError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
 };
@@ -26,7 +25,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 fn generate_message_with_text(
@@ -51,7 +50,7 @@ fn generate_message_with_text(
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -68,8 +67,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 #[tokio::test]
@@ -83,7 +81,7 @@ async fn test_insert_single_message_and_retrieve() {
     let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
-    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
 
     // Insert a single message
     let message = generate_message_with_text(
@@ -126,7 +124,7 @@ async fn test_insert_two_messages_and_check_order_and_parent() {
     let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
     let node_db_path = format!("db_tests/{}", hash_string(node_identity_name));
-    let mut shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node_db_path).unwrap();
 
     // Insert first message
     let message1 = generate_message_with_text(
@@ -234,7 +232,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 
@@ -354,7 +352,7 @@ async fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 
@@ -557,7 +555,7 @@ async fn test_insert_messages_with_tree_structure() {
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
 

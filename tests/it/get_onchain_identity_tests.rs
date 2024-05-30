@@ -4,8 +4,8 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use ethers::types::U256;
+    use shinkai_crypto_identities::{OnchainIdentity, ShinkaiRegistry};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-    use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
     #[test]
@@ -16,7 +16,7 @@ mod tests {
             let mut registry = ShinkaiRegistry::new(
                 "https://rpc.sepolia.org",
                 "0xDCbBd3364a98E2078e8238508255dD4a2015DD3E",
-                "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
+                None, // "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )
             .await
             .unwrap();

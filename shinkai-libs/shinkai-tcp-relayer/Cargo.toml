@@ -1,0 +1,26 @@
+[package]
+name = "shinkai_tcp_relayer"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.6"
+bytes = "1"
+serde_json = "1.0.105"
+clap = { version = "3", features = ["derive"] }
+shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+shinkai_crypto_identities = { path = "../shinkai-crypto-identities" }
+x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
+ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
+rand = "0.8"
+hex = "=0.4.3"
+chrono = "0.4"
+dotenv = "0.15.0"
+derivative = "2.2"
+
+[dependencies.serde]
+version = "1.0.188"
+features = ["derive"]

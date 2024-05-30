@@ -1,11 +1,11 @@
 use super::identity_network_manager::IdentityNetworkManager;
-use crate::crypto_identities::shinkai_registry::ShinkaiRegistryError;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::network::network_manager::network_handlers::verify_message_signature;
 use crate::network::node_error::NodeError;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use async_trait::async_trait;
+use shinkai_crypto_identities::ShinkaiRegistryError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -310,7 +310,9 @@ impl IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => Err("Failed to get first address".to_string()),
+                Err(_) => {
+                    Err("Failed to get first address".to_string())
+                }
             },
             Err(_) => Err(format!(
                 "Failed to get identity network manager for profile name: {}",
@@ -357,6 +359,7 @@ impl IdentityManagerTrait for IdentityManager {
                             Ok(key) => key,
                             Err(_) => return None,
                         };
+                        
                         Some(Identity::Standard(StandardIdentity::new(
                             node_name,
                             Some(first_address),

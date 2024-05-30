@@ -145,6 +145,7 @@ fn node_agent_registration() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
+            None,
             true,
             vec![agent],
             None,

@@ -1,5 +1,5 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
     node_api::{APIError, SendResponseBodyData},
     node_api_handlers::APIUseRegistrationCodeSuccessResponse,
     node_error::NodeError,
@@ -632,6 +632,7 @@ impl Node {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        eprintln!("api_handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str());
 
@@ -2873,6 +2874,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -3026,6 +3028,7 @@ impl Node {
             encrypted_msg,
             Arc::new(clone_static_secret_key(&encryption_secret_key)),
             (node_addr, recipient_node_name_string),
+            proxy_connection_info,
             db.clone(),
             identity_manager.clone(),
             true,
