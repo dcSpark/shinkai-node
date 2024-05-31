@@ -1,3 +1,3 @@
 pub mod api;
 pub mod cli;
-pub mod pdf_parser;
+pub mod file_parser;

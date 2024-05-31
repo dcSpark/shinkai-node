@@ -5,6 +5,8 @@ use warp::{http::StatusCode, Filter};
 
 use crate::api::api_handlers;
 
+const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 200; // 200MB
+
 #[derive(Serialize, Debug, Clone)]
 pub struct APIError {
     pub code: u16,
@@ -39,15 +41,23 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let try_bind = TcpListener::bind(&address).await;
 
-    let extract_json_to_text_groups = warp::path!("v1" / "extract_json_to_text_groups" / u64)
+    let extract_json_to_text_groups = warp::path!("v1" / "extract-json-to-text-groups" / u64)
         .and(warp::post())
-        .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
-        .and(warp::multipart::form().max_length(1024 * 1024 * 200))
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |max_node_text_size: u64, form: warp::multipart::FormData| {
             api_handlers::post_extract_json_to_text_groups_handler(max_node_text_size, form)
         });
 
-    let routes = extract_json_to_text_groups.recover(handle_rejection);
+    let vrkai_process_file_into_resource = warp::path!("v1" / "vrkai" / "process-file-into-resource")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_process_file_into_resource_handler(form));
+
+    let routes = extract_json_to_text_groups
+        .or(vrkai_process_file_into_resource)
+        .recover(handle_rejection);
 
     match try_bind {
         Ok(_) => {

@@ -15,7 +15,7 @@ ocrs = "0.7.0"
 pdfium-render = { version = "=0.8.20" }
 rten = { version = "0.9.0" }
 serde_json = "1.0.117"
-shinkai_vector_resources = { path = "../shinkai-libs/shinkai-vector-resources", default-features = false }
+shinkai_vector_resources = { path = "../shinkai-libs/shinkai-vector-resources" }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3.7"
 

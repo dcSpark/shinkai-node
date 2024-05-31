@@ -73,7 +73,7 @@ impl ShinkaiFileParser {
         let mut text_groups = text_groups.clone();
 
         // Collect all texts from the text groups and their subgroups
-        let (mut texts, mut indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
+        let (texts, indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
