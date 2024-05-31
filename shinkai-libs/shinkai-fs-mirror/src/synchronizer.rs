@@ -483,7 +483,11 @@ impl FilesystemSynchronizer {
         shinkai_manager_for_sync: &ShinkaiManagerForSync,
     ) -> Result<(), ShinkaiMirrorDBError> {
         let destination_path_str = destination_path.to_string_lossy();
-        let folder_check_path = format!("/{}", destination_path_str.trim_start_matches("./"));
+        let folder_check_path = if destination_path_str == "/" {
+            String::from(destination_path_str.clone())
+        } else {
+            format!("/{}", destination_path_str.trim_start_matches("./"))
+        };
 
         // Attempt to retrieve the folder from the node to ensure it exists
         match shinkai_manager_for_sync.get_node_folder(&folder_check_path).await {
