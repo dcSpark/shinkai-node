@@ -40,9 +40,9 @@ impl JobPromptGenerator {
     pub fn basic_instant_response_prompt(user_message: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();
 
-        // Add up to previous 10 step results from history
+        // Add up to previous step results from history
         if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 10, 98);
+            prompt.add_step_history(step_history, 10, 98, 4000);
         }
 
         prompt.add_content(
@@ -63,56 +63,50 @@ impl JobPromptGenerator {
         SubPromptType::System,
         100
     );
-        prompt.add_ebnf(
-            String::from(r#"# Search"#),
-            SubPromptType::System,
-            100,
-        );
+        prompt.add_ebnf(String::from(r#"# Search"#), SubPromptType::System, 100);
 
         prompt
     }
 
-    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse, according to one of the EBNFs from the original prompt, and an optional json_key_to_correct.
-    pub fn basic_json_retry_response_prompt(
-        invalid_json_answer: String,
+    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a markdown that has the proper key
+    pub fn basic_fix_markdown_to_include_proper_key(
+        invalid_markdown: String,
         original_prompt: Prompt,
-        json_key_to_correct: Option<String>,
+        key_to_correct: String,
     ) -> Prompt {
         let mut prompt = Prompt::new();
-
-        // Iterate through the original prompt and only keep the EBNF subprompts
-        for sub_prompt in original_prompt.sub_prompts {
-            if let SubPrompt::EBNF(prompt_type, ebnf, _, _) = sub_prompt {
-                prompt.add_retry_ebnf(ebnf, prompt_type, 99);
-            }
-        }
+        /// TODO: Make the markdown subprompts unique like EBNF was
+        let markdown_definitions: Vec<String> = original_prompt
+            .sub_prompts
+            .iter()
+            .filter(|subprompt| {
+                subprompt.get_content().to_lowercase().contains("md")
+                    && subprompt.get_content().to_lowercase().contains(&key_to_correct)
+            })
+            .map(|subprompt| subprompt.get_content())
+            .collect();
 
         prompt.add_content(
-            format!("Here is the answer to your request: `{}`", invalid_json_answer),
-            SubPromptType::System,
+            format!("Here is the answer to your request: `{}`", invalid_markdown),
+            SubPromptType::Assistant,
             100,
         );
 
-        // Final content to be added with the specific instructions
-        let mut final_content =
-            r#"No, I need it to be properly formatted as a markdown with the correct section names. "#.to_string();
+        let mut wrong_string =
+            r#"No that is wrong. I need it to be properly formatted as a markdown with the correct section names. "#
+                .to_string();
 
-        if let Some(key) = json_key_to_correct {
-            final_content += &format!(
-                "Make sure to not forget to include the `{}` section as specified in the markdown response",
-                key
-            );
-        } else {
-            final_content += &format!(
-                "Look at the markdown sections provided earlier and respond exactly the same but formatted using the best matching one",
+        if let Some(md_def) = markdown_definitions.iter().next() {
+            wrong_string += &format!(
+                " You must fix the previous answer by outputting markdown that follows this schema: \n{}",
+                md_def
             );
         }
+        prompt.add_content(wrong_string, SubPromptType::User, 100);
 
         prompt.add_content(
             format!(
-                r#"{}. Remember to escape `\"` any quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: "#,
-                final_content
+                r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n"#,
             ),
             SubPromptType::User,
             100,
@@ -135,12 +129,14 @@ impl JobPromptGenerator {
             prompt.add_content(format!("{}", node), SubPromptType::User, 98);
         }
         prompt.add_content(
-            format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
+            String::from(
+                "Summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum. Respond using the follow markdown template and nothing else:",
+            ),
             SubPromptType::User,
-            100
+            100,
         );
         prompt.add_ebnf(
-            String::from(r#"'{' 'summary' ':' string '}'"#),
+            String::from(r#"# Summary\n{{summary}}\n"#),
             SubPromptType::System,
             100,
         );
@@ -154,7 +150,7 @@ impl JobPromptGenerator {
     pub fn image_to_text_analysis(description: String, image: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -171,13 +167,11 @@ impl JobPromptGenerator {
             100,
         );
 
-        // TODO(Nico): Add later when Vision allows for json formatting
-        // prompt.add_content(
-        //         format!(
-        //             "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-        //         ),
-        //         SubPromptType::User,
-        //         100);
+        prompt.add_content(
+            "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Start your response with # Answer".to_string(),
+            SubPromptType::System,
+            98
+        );
 
         prompt
     }
@@ -304,7 +298,7 @@ Respond using the following EBNF and absolutely nothing else:
 
     Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.
 
-    If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
+  Respond using the follow markdown template and nothing else:   If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
 
     "{" ("prepared" ":" true) "}"
     

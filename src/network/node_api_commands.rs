@@ -1,6 +1,7 @@
 use super::{
-    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
-    node_api::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData},
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
+    node_api::{APIError, SendResponseBodyData},
+    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
     node_error::NodeError,
     node_shareable_logic::validate_message_main_logic,
     Node,
@@ -37,8 +38,9 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -81,7 +83,7 @@ impl Node {
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
         let has_permission = db
-            .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
+            .has_permission(&inbox_name.to_string(), std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
@@ -112,16 +114,12 @@ impl Node {
         }
 
         match sender_subidentity {
-            Identity::Standard(std_identity) => {
-                return Self::has_standard_identity_access(db, inbox_name, std_identity).await;
-            }
-            Identity::Device(std_device) => {
-                return Self::has_device_identity_access(db, inbox_name, std_device).await;
-            }
+            Identity::Standard(std_identity) => Self::has_standard_identity_access(db, inbox_name, std_identity).await,
+            Identity::Device(std_device) => Self::has_device_identity_access(db, inbox_name, std_device).await,
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.to_string()
+                    inbox_name
                 ),
             }),
         }
@@ -211,7 +209,7 @@ impl Node {
                             .await;
                     let processed_response = response_handler(response);
                     let _ = res.send(Ok(processed_response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -219,12 +217,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -239,7 +237,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -345,7 +343,7 @@ impl Node {
         // TODO(Discuss): can local admin read any messages from any device or profile?
         match Self::has_inbox_access(db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
-                if value == true {
+                if value {
                     let response = Self::internal_get_last_unread_messages_from_inbox(
                         db.clone(),
                         inbox_name.to_string(),
@@ -354,7 +352,7 @@ impl Node {
                     )
                     .await;
                     let _ = res.send(Ok(response)).await;
-                    return Ok(());
+                    Ok(())
                 } else {
                     let _ = res
                         .send(Err(APIError {
@@ -362,12 +360,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -382,7 +380,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -578,7 +576,7 @@ impl Node {
                                     error: "Don't have access".to_string(),
                                     message: format!(
                                         "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                        inbox_name.to_string()
+                                        inbox_name
                                     ),
                                 }))
                                 .await;
@@ -592,12 +590,12 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.to_string()
+                                inbox_name
                             ),
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -612,7 +610,7 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -634,6 +632,7 @@ impl Node {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        eprintln!("api_handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str());
 
@@ -791,8 +790,7 @@ impl Node {
 
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
-        let mut profile_list = vec![];
-        profile_list = match db.get_all_profiles(node_name.clone()) {
+        let profile_list = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -1286,16 +1284,12 @@ impl Node {
         };
 
         let profile_requested_str: String = msg.get_message_content()?;
-        let profile_requested: ShinkaiName;
-        if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
-            profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
+        let profile_requested: ShinkaiName = if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
+            ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?
         } else {
-            profile_requested = ShinkaiName::from_node_and_profile_names(
-                node_name.get_node_name_string(),
-                profile_requested_str.clone(),
-            )
-            .map_err(|err| err.to_string())?;
-        }
+            ShinkaiName::from_node_and_profile_names(node_name.get_node_name_string(), profile_requested_str.clone())
+                .map_err(|err| err.to_string())?
+        };
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
@@ -1352,7 +1346,7 @@ impl Node {
                         }))
                         .await;
 
-                    return Ok(());
+                    Ok(())
                 }
             }
             Identity::Device(std_device) => {
@@ -1391,7 +1385,7 @@ impl Node {
                             ),
                         }))
                         .await;
-                    return Ok(());
+                    Ok(())
                 }
             }
             _ => {
@@ -1406,11 +1400,12 @@ impl Node {
                         .to_string(),
                     }))
                     .await;
-                return Ok(());
+                Ok(())
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_toolkit(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -1626,7 +1621,7 @@ impl Node {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
-                message: format!("{}", err),
+                message: err.to_string(),
             };
             let _ = res.send(Err(api_error)).await;
             return Ok(());
@@ -1887,7 +1882,7 @@ impl Node {
                     message: format!("{}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                Ok(())
             }
         }
     }
@@ -2014,6 +2009,7 @@ impl Node {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_ollama_models(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2108,6 +2104,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_add_agent(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2374,6 +2371,147 @@ impl Node {
         }
     }
 
+    pub async fn api_change_job_agent(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg.clone(),
+            Some(MessageSchemaType::ChangeJobAgentRequest),
+        )
+        .await;
+        let (validated_msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract job ID and new agent ID from the message content
+        let content = match validated_msg.get_message_content() {
+            Ok(content) => content,
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to get message content: {}", e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let change_request: APIChangeJobAgentRequest = match serde_json::from_str(&content) {
+            Ok(request) => request,
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to parse APIChangeJobAgentRequest: {}", e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = match InboxName::get_job_inbox_name_from_params(change_request.job_id.clone()) {
+            Ok(name) => name.to_string(),
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::FORBIDDEN.as_u16(),
+                        error: "Don't have access".to_string(),
+                        message: "Permission denied. You don't have enough permissions to change this job agent."
+                            .to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Check if the sender has the right permissions to change the job agent
+        match sender_subidentity {
+            Identity::Standard(std_identity) => {
+                if std_identity.permission_type == IdentityPermissions::Admin {
+                    // Attempt to change the job agent in the job manager
+                    match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                        Ok(_) => {
+                            let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
+                            Ok(())
+                        }
+                        Err(err) => {
+                            let api_error = APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to change job agent: {}", err),
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                            Ok(())
+                        }
+                    }
+                } else {
+                    let has_permission = db
+                        .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
+                        .map_err(|e| NodeError {
+                            message: format!("Failed to check permissions: {}", e),
+                        })?;
+                    if has_permission {
+                        match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                            Ok(_) => {
+                                let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
+                                Ok(())
+                            }
+                            Err(err) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to change job agent: {}", err),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                Ok(())
+                            }
+                        }
+                    } else {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Don't have access".to_string(),
+                                message:
+                                    "Permission denied. You don't have enough permissions to change this job agent."
+                                        .to_string(),
+                            }))
+                            .await;
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender_subidentity
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn api_create_files_inbox_with_symmetric_key(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2626,6 +2764,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_change_nodes_name(
         secret_file_path: &str,
         node_name: ShinkaiName,
@@ -2735,6 +2874,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -2888,6 +3028,7 @@ impl Node {
             encrypted_msg,
             Arc::new(clone_static_secret_key(&encryption_secret_key)),
             (node_addr, recipient_node_name_string),
+            proxy_connection_info,
             db.clone(),
             identity_manager.clone(),
             true,

@@ -1,3 +1,4 @@
+use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
@@ -36,7 +37,7 @@ impl LLMProvider for Ollama {
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<LLMInferenceResponse, AgentError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/generate");
             let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
@@ -105,7 +106,7 @@ impl LLMProvider for Ollama {
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Failed to parse line: {:?}", e);
+                                // eprintln!("Failed to parse line: {:?}", e);
                                 previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }
@@ -135,7 +136,7 @@ impl LLMProvider for Ollama {
                         ShinkaiLogLevel::Debug,
                         format!("Parsed JSON from Markdown: {:?}", json).as_str(),
                     );
-                    Ok(json)
+                    Ok(LLMInferenceResponse::new(response_text, json))
                 }
                 Err(e) => {
                     shinkai_log(

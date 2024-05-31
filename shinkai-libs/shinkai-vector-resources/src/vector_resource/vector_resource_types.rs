@@ -185,20 +185,14 @@ impl RetrievedNode {
         let position_string = self.format_position_string();
         let datetime_string = self.get_datetime_default_string();
 
-        let base_length = source_string.len() + position_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
-
-        if base_length > max_characters {
-            return None;
+        // If the text is too long, cut it
+        let mut data_string = self.node.get_text_content().ok()?.to_string();
+        if data_string.len() > max_characters {
+            let amount_over = data_string.len() - max_characters;
+            let amount_to_add = source_string.len() + position_string.len() + datetime_string.len() + amount_over;
+            let amount_to_cut = amount_over + amount_to_add + 25;
+            data_string = data_string.chars().take(amount_to_cut).collect::<String>();
         }
-
-        let data_string = self.node.get_text_content().ok()?.to_string();
-        let data_length = max_characters - base_length;
-
-        let data_string = if data_string.len() > data_length {
-            data_string[..data_length].to_string()
-        } else {
-            data_string
-        };
 
         let formatted_string = if position_string.len() > 0 {
             format!(
@@ -815,8 +809,8 @@ impl VRHeader {
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     pub fn generate_resource_reference_string(name: String, resource_id: String) -> String {
-        let name = name.replace(" ", "_").replace(":", "_");
-        let resource_id = resource_id.replace(" ", "_").replace(":", "_");
+        let name = VRPath::clean_string(&name);
+        let resource_id = VRPath::clean_string(&resource_id);
         format!("{}:::{}", name, resource_id)
     }
 
@@ -995,7 +989,7 @@ impl VRPath {
     /// Adds an id to the end of the VRPath's path_ids. Automatically cleans the id String
     /// to remove unsupported characters that would break the path.
     pub fn push(&mut self, id: String) {
-        self.path_ids.push(id);
+        self.path_ids.push(VRPath::clean_string(&id));
     }
 
     /// Removes an element from the end of the path_ids
@@ -1121,9 +1115,9 @@ impl VRPath {
     }
 
     /// Cleans an input string to ensure that it does not have any
-    /// characters which would break a VRPath.
+    /// characters which would break a VRPath, or cause issues generally for the VectorFS.
     pub fn clean_string(s: &str) -> String {
-        s.replace(" ", "_").replace("/", "-")
+        s.replace("/", "-").replace(":", "_")
     }
 }
 

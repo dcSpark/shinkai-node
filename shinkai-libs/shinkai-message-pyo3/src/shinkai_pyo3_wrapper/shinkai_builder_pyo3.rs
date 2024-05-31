@@ -1,5 +1,7 @@
 use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
 use crate::shinkai_pyo3_utils::pyo3_subscription::PyPaymentOption;
+use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 
 use super::{
     encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
@@ -1845,6 +1847,7 @@ impl PyShinkaiMessageBuilder {
     path,
     folder_description,
     is_free,
+    has_web_alternative,
     sender,
     sender_subidentity,
     receiver,
@@ -1852,7 +1855,7 @@ impl PyShinkaiMessageBuilder {
     minimum_token_delegation = None,
     minimum_time_delegated_hours = None,
     monthly_payment_usd = None,
-    monthly_payment_kai_tokens = None
+    monthly_payment_kai_tokens = None,
 ))]
     pub fn subscriptions_create_share_folder(
         my_encryption_secret_key: String,
@@ -1861,6 +1864,7 @@ impl PyShinkaiMessageBuilder {
         path: String,
         folder_description: String,
         is_free: bool,
+        has_web_alternative: bool,
         sender: String,
         sender_subidentity: ShinkaiNameString,
         receiver: String,
@@ -1877,8 +1881,14 @@ impl PyShinkaiMessageBuilder {
                     minimum_token_delegation,
                     minimum_time_delegated_hours,
                     monthly_payment: match (monthly_payment_usd, monthly_payment_kai_tokens) {
-                        (Some(usd), None) => Some(PaymentOption::USD(usd)),
-                        (None, Some(tokens)) => Some(PaymentOption::KAITokens(tokens)),
+                        (Some(usd), None) => {
+                            Some(PaymentOption::USD(Decimal::from_f64(usd).ok_or_else(|| {
+                                PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid USD value")
+                            })?))
+                        }
+                        (None, Some(tokens)) => Some(PaymentOption::KAITokens(Decimal::from_u64(tokens).ok_or_else(
+                            || PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid KAI Tokens value"),
+                        )?)),
                         (None, None) => None,
                         _ => {
                             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -1886,9 +1896,11 @@ impl PyShinkaiMessageBuilder {
                             ))
                         }
                     },
+                    has_web_alternative: Some(has_web_alternative),
                     is_free,
                     folder_description,
                 },
+                credentials: None,
             };
 
             let body = serde_json::to_string(&payload)
@@ -2039,6 +2051,8 @@ impl PyShinkaiMessageBuilder {
         node_receiver: String,
         node_receiver_subidentity: String,
         requirements_direct_delegation: bool,
+        http_preferred: Option<bool>,
+        base_folder: Option<String>,
         requirements_payment: Option<String>,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
@@ -2059,6 +2073,8 @@ impl PyShinkaiMessageBuilder {
                 streamer_node_name: streamer_node,
                 streamer_profile_name: streamer_profile,
                 payment: requirements,
+                http_preferred,
+                base_folder,
             };
 
             let body = match serde_json::to_string(&payload) {

@@ -3,6 +3,7 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
+use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
@@ -19,6 +20,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
 use shinkai_message_primitives::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FileDestinationCredentials;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -34,6 +36,7 @@ use std::sync::Weak;
 use tokio::sync::{Mutex, Semaphore};
 
 use super::fs_entry_tree::FSEntryTree;
+use super::http_manager::http_upload_manager::{FileLink, FolderSubscriptionWithPath, HttpSubscriptionUploadManager};
 use super::my_subscription_manager::MySubscriptionsManager;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -76,7 +79,7 @@ pub struct ExternalSubscriberManager {
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
     pub identity_manager: Weak<Mutex<IdentityManager>>,
-    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (profile, shared_folder)
+    pub shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>, // (streamer_profile:::path, shared_folder)
     pub last_refresh: Arc<Mutex<DateTime<Utc>>>,
     /// Maps subscription IDs to their sync status, where the `String` represents the folder path
     /// and the `usize` is the last sync version of the folder. The version is a counter that increments
@@ -86,6 +89,8 @@ pub struct ExternalSubscriberManager {
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<SubscriptionWithTree>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
+    pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
 }
 
 impl ExternalSubscriberManager {
@@ -96,6 +101,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
@@ -129,6 +135,7 @@ impl ExternalSubscriberManager {
                 subscription_ids_are_sync.clone(),
                 shared_folders_to_ephemeral_versioning.clone(),
                 thread_number,
+                proxy_connection_info.clone(),
             )
             .await;
 
@@ -144,6 +151,7 @@ impl ExternalSubscriberManager {
             subscription_ids_are_sync.clone(),
             shared_folders_to_ephemeral_versioning.clone(),
             thread_number,
+            proxy_connection_info.clone(),
             |subscription_with_tree,
              db,
              vector_fs,
@@ -153,7 +161,8 @@ impl ExternalSubscriberManager {
              identity_manager,
              shared_folders_trees,
              subscription_ids_are_sync,
-             shared_folders_to_ephemeral_versioning| {
+             shared_folders_to_ephemeral_versioning,
+             proxy_connection_info| {
                 ExternalSubscriberManager::process_subscription_job_message_queued(
                     subscription_with_tree,
                     db,
@@ -165,8 +174,17 @@ impl ExternalSubscriberManager {
                     shared_folders_trees,
                     subscription_ids_are_sync,
                     shared_folders_to_ephemeral_versioning,
+                    proxy_connection_info,
                 )
             },
+        )
+        .await;
+
+        let http_subscription_upload_manager = HttpSubscriptionUploadManager::new(
+            db.clone(),
+            vector_fs.clone(),
+            node_name.clone(),
+            shared_folders_trees.clone(),
         )
         .await;
 
@@ -184,6 +202,8 @@ impl ExternalSubscriberManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            http_subscription_upload_manager,
+            proxy_connection_info,
         };
 
         let result = manager.update_shared_folders().await;
@@ -235,6 +255,7 @@ impl ExternalSubscriberManager {
         identity_manager: Weak<Mutex<IdentityManager>>,
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) {
         let subscriptions_ids_to_process: Vec<SubscriptionId> = {
             let db = match db.upgrade() {
@@ -295,6 +316,7 @@ impl ExternalSubscriberManager {
                 my_signature_secret_key.clone(),
                 node_name.clone(),
                 identity_manager.clone(),
+                proxy_connection_info.clone(),
             )
             .await;
         }
@@ -313,6 +335,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         _: usize, // tread_number
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -349,6 +372,7 @@ impl ExternalSubscriberManager {
                     identity_manager.clone(),
                     subscription_ids_are_sync.clone(),
                     shared_folders_to_ephemeral_versioning.clone(),
+                    proxy_connection_info.clone(),
                 )
                 .await;
 
@@ -377,6 +401,7 @@ impl ExternalSubscriberManager {
         shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
         _subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         _shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<String, SubscriberManagerError>> + Send + 'static>> {
         Box::pin(async move {
             let shared_folder = subscription_with_tree.subscription.shared_folder.clone();
@@ -491,6 +516,7 @@ impl ExternalSubscriberManager {
                             continue; // Skip to the next iteration
                         }
                     };
+
                     // Attempt to create a new reader and continue to the next iteration if it fails
                     let reader = match vector_fs_inst
                         .new_reader(subscriber.clone(), path.clone(), streamer.clone())
@@ -501,6 +527,7 @@ impl ExternalSubscriberManager {
                             continue; // Skip to the next iteration
                         }
                     };
+
                     // Attempt to retrieve vrkai and continue to the next iteration if it fails
                     let vrkai = match vector_fs_inst.retrieve_vrkai(&reader).await {
                         Ok(vrkai) => vrkai,
@@ -515,6 +542,7 @@ impl ExternalSubscriberManager {
                     };
                     let parent_path = path.parent_path();
                     let is_last_element = index == diff_paths.len() - 1;
+
                     // Attempt to insert vrkai into vr_pack and log error if it fails
                     if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
                         continue; // Skip to the next iteration
@@ -535,11 +563,17 @@ impl ExternalSubscriberManager {
 
                     let vr_pack_plus_changes = VRPackPlusChanges { vr_pack, diff };
 
+                    let proxy_connection_info = proxy_connection_info
+                        .upgrade()
+                        .ok_or(SubscriberManagerError::ProxyConnectionInfoUnavailable)?;
+
                     let result = Self::send_vr_pack_to_peer(
                         vr_pack_plus_changes,
                         subscription_id.clone(),
                         standard_identity,
                         subscription_with_tree.symmetric_key,
+                        proxy_connection_info,
+                        identity_manager_lock.clone(),
                     )
                     .await;
 
@@ -576,6 +610,8 @@ impl ExternalSubscriberManager {
         subscription_id: SubscriptionId,
         receiver_identity: StandardIdentity,
         symmetric_key: String,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), SubscriberManagerError> {
         // Extract the receiver's socket address and profile name from the StandardIdentity
         let receiver_socket_addr = receiver_identity.addr.ok_or_else(|| {
@@ -601,6 +637,8 @@ impl ExternalSubscriberManager {
             subscription_id,
             symmetric_key,
             receiver_socket_addr,
+            proxy_connection_info,
+            identity_manager,
             receiver_name,
         )
         .await;
@@ -620,6 +658,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         thread_number: usize,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         process_job: impl Fn(
                 SubscriptionWithTree,
                 Weak<ShinkaiDB>,
@@ -631,6 +670,7 @@ impl ExternalSubscriberManager {
                 Arc<DashMap<String, SharedFolderInfo>>,
                 Arc<DashMap<String, (String, usize)>>,
                 Arc<DashMap<String, usize>>,
+                Weak<Mutex<Option<ProxyConnectionInfo>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, SubscriberManagerError>> + Send>>
             + Send
             + Sync
@@ -702,6 +742,7 @@ impl ExternalSubscriberManager {
                     let subscription_ids_are_sync = subscription_ids_are_sync.clone();
                     let shared_folders_to_ephemeral_versioning_clone = shared_folders_to_ephemeral_versioning.clone();
                     let process_job = process_job.clone();
+                    let proxy_connection_info = proxy_connection_info.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
@@ -727,6 +768,7 @@ impl ExternalSubscriberManager {
                                         shared_folders_trees.clone(),
                                         subscription_ids_are_sync.clone(),
                                         shared_folders_to_ephemeral_versioning_clone.clone(),
+                                        proxy_connection_info.clone(),
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager
@@ -945,14 +987,24 @@ impl ExternalSubscriberManager {
                 let permission_str = format!("{:?}", permission);
                 let subscription_requirement = match db.get_folder_requirements(&path_str) {
                     Ok(req) => Some(req),
-                    Err(_) => None, // Instead of erroring out, we return None for folders without requirements
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::ExtSubscriptions,
+                            ShinkaiLogLevel::Error,
+                            format!("Error getting folder requirements: {:?}", e).as_str(),
+                        );
+                        return Err(SubscriberManagerError::DatabaseError(e.to_string()));
+                        // Return an error instead of None
+                    }
                 };
                 let tree = match FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
-                ).await {
+                )
+                .await
+                {
                     Ok(tree) => tree,
                     Err(_) => continue,
                 };
@@ -1062,6 +1114,7 @@ impl ExternalSubscriberManager {
         path: String,
         requester_shinkai_identity: ShinkaiName,
         subscription_requirement: FolderSubscription,
+        upload_credentials: Option<FileDestinationCredentials>,
     ) -> Result<bool, SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1072,6 +1125,12 @@ impl ExternalSubscriberManager {
             )
             .as_str(),
         );
+        // Check for web alternative requirement and upload credentials
+        if subscription_requirement.has_web_alternative.unwrap_or(false) && upload_credentials.is_none() {
+            return Err(SubscriberManagerError::InvalidRequest(
+                "Upload credentials must be provided when a web alternative is available.".to_string(),
+            ));
+        }
         {
             let vector_fs = self
                 .vector_fs
@@ -1130,24 +1189,28 @@ impl ExternalSubscriberManager {
                 "Database instance is not available".to_string(),
             ))?;
 
-            db.set_folder_requirements(&path, subscription_requirement)
+            db.set_folder_requirements(&path, subscription_requirement.clone())
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+            // Set upload credentials if provided
+            let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+                SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+            )?;
+
+            if upload_credentials.is_some() {
+                db.set_upload_credentials(&path, &requester_profile, upload_credentials.clone().unwrap())
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+
+                let folder_subscription_with_path = FolderSubscriptionWithPath {
+                    path: path.clone(),
+                    folder_subscription: subscription_requirement,
+                };
+                self.http_subscription_upload_manager
+                    .update_subscription_status_to_not_started(&folder_subscription_with_path);
+            }
         }
 
-        // Trigger a refresh of the shareable folders cache
-        let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
-            SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
-        )?;
-
-        let _ = self
-            .available_shared_folders(
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                requester_shinkai_identity.clone(),
-                requester_profile.clone(),
-                "/".to_string(),
-            )
-            .await;
+        let _ = self.update_shared_folders().await;
 
         Ok(true)
     }
@@ -1202,6 +1265,29 @@ impl ExternalSubscriberManager {
             let db = self.db.upgrade().ok_or(SubscriberManagerError::DatabaseNotAvailable(
                 "Database instance is not available".to_string(),
             ))?;
+
+            // Remove upload credentials if the folder had a web alternative
+            let folder_subscription = db.get_folder_requirements(&path)?;
+            if folder_subscription.has_web_alternative.unwrap_or(false) {
+                let requester_profile = requester_shinkai_identity.get_profile_name_string().ok_or(
+                    SubscriberManagerError::IdentityProfileNotFound("Profile name not found".to_string()),
+                )?;
+
+                let subscription_with_path = FolderSubscriptionWithPath {
+                    path: path.clone(),
+                    folder_subscription: folder_subscription.clone(),
+                };
+                let profile = requester_shinkai_identity
+                    .clone()
+                    .get_profile_name_string()
+                    .unwrap_or_default();
+                self.http_subscription_upload_manager
+                    .remove_http_support_for_subscription(subscription_with_path, &profile);
+
+                db.remove_upload_credentials(&path, &requester_profile)
+                    .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
+            }
+
             db.remove_folder_requirements(&path)
                 .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
         }
@@ -1301,6 +1387,8 @@ impl ExternalSubscriberManager {
             requester_profile,
             ShinkaiSubscriptionStatus::SubscriptionConfirmed,
             Some(subscription_requirement),
+            None,
+            None,
         );
 
         db.add_subscriber_subscription(subscription)
@@ -1413,6 +1501,7 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         node_name: ShinkaiName,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1468,6 +1557,7 @@ impl ExternalSubscriberManager {
                 standard_identity,
                 my_encryption_secret_key.clone(),
                 maybe_identity_manager.clone(),
+                proxy_connection_info,
             )
             .await?;
         } else {
@@ -1583,6 +1673,16 @@ impl ExternalSubscriberManager {
         Ok(())
     }
 
+    /// Get cached subscription files links (already filtered if there is anything expired)
+    #[allow(dead_code)]
+    pub fn get_cached_subscription_files_links(
+        &self,
+        folder_subs_with_path: &FolderSubscriptionWithPath,
+    ) -> Vec<FileLink> {
+        self.http_subscription_upload_manager
+            .get_cached_subscription_files_links(folder_subs_with_path)
+    }
+
     pub async fn test_process_subscription_updates(&self) {
         Self::process_subscription_updates(
             self.subscriptions_queue_manager.clone(),
@@ -1593,6 +1693,7 @@ impl ExternalSubscriberManager {
             self.identity_manager.clone(),
             self.subscription_ids_are_sync.clone(),
             self.shared_folders_to_ephemeral_versioning.clone(),
+            self.proxy_connection_info.clone(),
         )
         .await;
     }
@@ -1601,6 +1702,7 @@ impl ExternalSubscriberManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal::Decimal;
     use serde_json::from_str;
     use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 
@@ -1624,7 +1726,7 @@ mod tests {
                 Some(PaymentOption::USD(amount)) => Some(amount),
                 _ => None,
             },
-            Some(10.0)
+            Some(Decimal::new(1000, 2)) // Represents $10.00
         );
         assert!(!subscription_requirement.is_free);
         assert_eq!(

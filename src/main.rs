@@ -2,7 +2,6 @@
 #![recursion_limit = "256"]
 mod agent;
 mod cron_tasks;
-mod crypto_identities;
 mod db;
 mod managers;
 mod network;

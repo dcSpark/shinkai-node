@@ -333,7 +333,7 @@ pub async fn api_agent_registration(
             })
             .await
             .unwrap();
-        let node_agent_registration = res_agent_registration_receiver.recv().await.unwrap();
+        let _node_agent_registration = res_agent_registration_receiver.recv().await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -349,7 +349,6 @@ pub async fn api_agent_registration(
             .await
             .unwrap();
         let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
-        eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
 
         // Search in node2_all_subidentities for the agent
         let agent_identity = node2_all_subidentities.iter().find(|identity| {
@@ -515,8 +514,6 @@ pub async fn api_initial_registration_with_no_code_for_device(
     )
     .unwrap();
 
-    eprintln!("message_result: {:?}", message_result);
-
     let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);
 
     node_commands_sender
@@ -527,7 +524,6 @@ pub async fn api_initial_registration_with_no_code_for_device(
         .await
         .unwrap();
     let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
-    eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
     match node2_use_registration_code {
         Ok(code) => {
             assert_eq!(
@@ -558,14 +554,8 @@ pub async fn api_initial_registration_with_no_code_for_device(
         .await
         .unwrap();
     let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
-    eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
 
     assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
-    eprintln!(
-        "{} subidentity: {:?}",
-        node_profile_name,
-        node2_all_subidentities[0].get_full_identity_name()
-    );
     assert_eq!(
         node2_all_subidentities[1].get_full_identity_name(),
         format!("{}/main/device/{}", node_identity_name, device_name_for_profile),

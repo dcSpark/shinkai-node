@@ -24,6 +24,7 @@ pub enum MessageSchemaType {
     APIRemoveAgentRequest,
     APIModifyAgentRequest,
     APIFinishJob,
+    ChangeJobAgentRequest,
     TextContent,
     ChangeNodesName,
     WSMessage,
@@ -76,6 +77,7 @@ impl MessageSchemaType {
             "APIAddOllamaModels" => Some(Self::APIAddOllamaModels),
             "APIRemoveAgentRequest" => Some(Self::APIRemoveAgentRequest),
             "APIModifyAgentRequest" => Some(Self::APIModifyAgentRequest),
+            "ChangeJobAgentRequest" => Some(Self::ChangeJobAgentRequest),
             "TextContent" => Some(Self::TextContent),
             "ChangeNodesName" => Some(Self::ChangeNodesName),
             "WSMessage" => Some(Self::WSMessage),
@@ -130,6 +132,7 @@ impl MessageSchemaType {
             Self::APIAddOllamaModels => "APIAddOllamaModels",
             Self::APIRemoveAgentRequest => "APIRemoveAgentRequest",
             Self::APIModifyAgentRequest => "APIModifyAgentRequest",
+            Self::ChangeJobAgentRequest => "ChangeJobAgentRequest",
             Self::TextContent => "TextContent",
             Self::ChangeNodesName => "ChangeNodesName",
             Self::WSMessage => "WSMessage",
@@ -275,6 +278,44 @@ impl JobRecipient {
     pub fn to_json_str(&self) -> Result<String> {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FileDestinationSourceType {
+    S3,
+    R2,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct FileDestinationCredentials {
+    pub source: FileDestinationSourceType,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub endpoint_uri: String,
+    pub bucket: String,
+}
+
+impl FileDestinationCredentials {
+    pub fn new(
+        source: String,
+        access_key_id: String,
+        secret_access_key: String,
+        endpoint_uri: String,
+        bucket: String,
+    ) -> Self {
+        let source_type = match source.as_str() {
+            "S3" => FileDestinationSourceType::S3,
+            "R2" => FileDestinationSourceType::R2,
+            _ => panic!("Unsupported source type"),
+        };
+        FileDestinationCredentials {
+            source: source_type,
+            access_key_id,
+            secret_access_key,
+            endpoint_uri,
+            bucket,
+        }
     }
 }
 
@@ -432,6 +473,8 @@ pub struct APISubscribeToSharedFolder {
     pub streamer_node_name: String,
     pub streamer_profile_name: String,
     pub payment: SubscriptionPayment,
+    pub base_folder: Option<String>,
+    pub http_preferred: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -445,6 +488,7 @@ pub struct APIUnsubscribeToSharedFolder {
 pub struct APICreateShareableFolder {
     pub path: String,
     pub subscription_req: FolderSubscription,
+    pub credentials: Option<FileDestinationCredentials>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -466,6 +510,12 @@ pub struct APIAddOllamaModels {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMySubscribers {
     pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIChangeJobAgentRequest {
+    pub job_id: String,
+    pub new_agent_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

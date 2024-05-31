@@ -1,15 +1,22 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_node::db::ShinkaiDB;
+use shinkai_node::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use shinkai_node::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use shinkai_node::vector_fs::vector_fs::VectorFS;
+use tokio::sync::Mutex;
 
 use core::panic;
+use std::env;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
+use std::sync::Arc;
 
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node::{NodeCommand, ProxyConnectionInfo};
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
@@ -37,6 +44,10 @@ pub struct TestEnvironment {
     pub node1_device_identity_pk: VerifyingKey,
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
+    pub node1_vecfs: Arc<VectorFS>,
+    pub node1_db: Arc<ShinkaiDB>,
+    pub node1_ext_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
+    pub node1_my_subscriptions_manager: Arc<Mutex<MySubscriptionsManager>>,
     pub node1_abort_handler: AbortHandle,
 }
 
@@ -68,6 +79,9 @@ where
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
         let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
+        // Fetch the PROXY_ADDRESS environment variable
+        let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
+
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -79,19 +93,28 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             "".to_string(),
+            proxy_identity,
             false,
             vec![],
             None,
             node1_fs_db_path,
             None,
             None,
-        );
+        )
+        .await;
+
+        let node1_locked = node1.lock().await;
+        let node1_vecfs = node1_locked.vector_fs.clone();
+        let node1_db = node1_locked.db.clone();
+        let node1_ext_subscription_manager = node1_locked.ext_subscription_manager.clone();
+        let node1_my_subscriptions_manager = node1_locked.my_subscription_manager.clone();
+        drop(node1_locked);
 
         eprintln!("Starting Node");
         let node1_handler = tokio::spawn(async move {
             eprintln!("\n\n");
             eprintln!("Starting node 1");
-            let _ = node1.await.lock().await.start().await;
+            let _ = node1.lock().await.start().await;
         });
 
         let node1_abort_handler = node1_handler.abort_handle();
@@ -115,6 +138,10 @@ where
             node1_device_identity_pk,
             node1_device_encryption_sk,
             node1_device_encryption_pk,
+            node1_vecfs,
+            node1_db,
+            node1_ext_subscription_manager,
+            node1_my_subscriptions_manager,
             node1_abort_handler,
         };
 

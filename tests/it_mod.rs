@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 
 mod it {
+    mod a0_subscription_manager_tests;
     mod agent_integration_tests;
     mod cron_job_tests;
     mod crypto_payment_tests;
@@ -31,8 +32,10 @@ mod it {
     mod utils;
     mod vector_fs_api_tests;
     mod vector_fs_tests;
+    mod subscription_http_upload_tests;
     // mod websocket_tests;
-    mod a0_subscription_manager_tests;
-    mod shinkai_mirror_tests;
+    
+    mod z_shinkai_mirror_tests;
+    mod tcp_proxy_tests;
     mod change_nodes_name_tests;
 }

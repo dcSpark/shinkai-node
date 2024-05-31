@@ -651,7 +651,6 @@ impl VectorFS {
     }
 
     /// Automatically creates new FSFolders along the given path that do not exist, including the final path id (aka. don't supply an FSItem's path, use its parent path).
-
     /// Returns a Vec<VRPath> containing the paths of the newly created folders.
     pub async fn create_new_folder_auto(&self, writer: &VFSWriter, path: VRPath) -> Result<Vec<VRPath>, VectorFSError> {
         let mut current_path = VRPath::root();

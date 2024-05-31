@@ -2,6 +2,7 @@ use crate::agent::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::network::Node;
@@ -11,6 +12,7 @@ use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use lru::LruCache;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo;
 use shinkai_message_primitives::schemas::shinkai_subscription::{
     ShinkaiSubscription, ShinkaiSubscriptionStatus, SubscriptionId,
 };
@@ -35,8 +37,9 @@ use tokio::sync::Mutex;
 
 use super::external_subscriber_manager::SharedFolderInfo;
 use super::fs_entry_tree::FSEntryTree;
+use super::http_manager::http_download_manager::HttpDownloadManager;
 use super::shared_folder_sm::{ExternalNodeState, SharedFoldersExternalNodeSM};
-use x25519_dalek::{StaticSecret as EncryptionStaticKey};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 const NUM_THREADS: usize = 2;
 const LRU_CAPACITY: usize = 100;
@@ -49,6 +52,7 @@ pub struct MySubscriptionsManager {
     pub identity_manager: Weak<Mutex<IdentityManager>>,
     pub subscriptions_queue_manager: Arc<Mutex<JobQueueManager<ShinkaiSubscription>>>,
     pub subscription_processing_task: Option<tokio::task::JoinHandle<()>>, // Is it really needed?
+    pub http_download_manager: HttpDownloadManager,
 
     // Cache for shared folders including the ones that you are not subscribed to
     pub external_node_shared_folders: Arc<Mutex<LruCache<ShinkaiName, SharedFoldersExternalNodeSM>>>,
@@ -59,6 +63,8 @@ pub struct MySubscriptionsManager {
     pub my_signature_secret_key: SigningKey,
     // The secret key used for encryption and decryption.
     pub my_encryption_secret_key: EncryptionStaticKey,
+    // The address of the proxy server (if any)
+    pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
 }
 
 impl MySubscriptionsManager {
@@ -69,6 +75,7 @@ impl MySubscriptionsManager {
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -102,6 +109,9 @@ impl MySubscriptionsManager {
 
         let external_node_shared_folders = Arc::new(Mutex::new(LruCache::new(cache_capacity)));
 
+        // Instantiate HttpDownloadManager
+        let http_download_manager = HttpDownloadManager::new(db.clone(), vector_fs.clone(), node_name.clone()).await;
+
         MySubscriptionsManager {
             db,
             vector_fs,
@@ -112,6 +122,8 @@ impl MySubscriptionsManager {
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,
+            http_download_manager,
+            proxy_connection_info,
         }
     }
 
@@ -131,6 +143,7 @@ impl MySubscriptionsManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn insert_shared_folder_sm(
         &mut self,
         name: ShinkaiName,
@@ -155,7 +168,7 @@ impl MySubscriptionsManager {
                     .response_last_updated
                     .map(|last_updated| current_time.signed_duration_since(last_updated))
                     // If response_last_updated is None, consider the duration since last update to be maximum to force a refresh
-                    .unwrap_or_else(|| chrono::Duration::max_value());
+                    .unwrap_or_else(chrono::Duration::max_value);
                 // Determine if the folder is up-to-date
                 let is_up_to_date =
                     duration_since_last_update < chrono::Duration::minutes(REFRESH_THRESHOLD_MINUTES as i64);
@@ -178,13 +191,14 @@ impl MySubscriptionsManager {
 
         // Note(Nico): this uses identity_manager, this could eventually be a bottleneck
         // if we have a lot of requests to a slow RPC endpoint (blocking).
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_full_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update the LRU cache with the current status (waiting for the network to respond)
@@ -201,6 +215,7 @@ impl MySubscriptionsManager {
                 "".to_string(),
                 streamer_full_name.get_node_name_string(),
                 streamer_full_name.get_profile_name_string().unwrap_or("".to_string()),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -223,6 +238,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
+                        self.proxy_connection_info.clone(),
                     )
                     .await?;
 
@@ -244,6 +260,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -306,13 +323,14 @@ impl MySubscriptionsManager {
         };
 
         // Continue
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update a local cache with the current status (waiting for the network to respond)
@@ -328,6 +346,7 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 streamer_node_name.get_node_name_string(),
                 streamer_profile.clone(),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
@@ -345,6 +364,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -360,6 +380,12 @@ impl MySubscriptionsManager {
         }
     }
 
+    // TODO: add new fn to create a scheduler for an HTTP API
+    // it needs to be able to ping the API and check if the folder has been updated
+    // probably we can expand the api endpoint to return some versioning (timestamp / merkle tree root hash)
+    // here or in download_manager we should be checking every X time
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn subscribe_to_shared_folder(
         &self,
         streamer_node_name: ShinkaiName,
@@ -367,6 +393,8 @@ impl MySubscriptionsManager {
         my_profile: String,
         folder_name: String,
         payment: SubscriptionPayment,
+        base_folder: Option<String>,
+        http_preferred: Option<bool>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -408,13 +436,14 @@ impl MySubscriptionsManager {
         // TODO: Check if the payment is valid so we don't waste sending a message for a rejection
 
         // Continue
-        if let Some(identity_manager_lock) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_lock.lock().await;
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&streamer_node_name.get_node_name_string())
                 .await?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
+            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // If folder doesn't exist it should create a shinkai message and send it to the network queue
             // then it should create and update a local cache with the current status (waiting for the network to respond)
@@ -422,6 +451,8 @@ impl MySubscriptionsManager {
             let msg_request_subscription = ShinkaiMessageBuilder::vecfs_subscribe_to_shared_folder(
                 folder_name.clone(),
                 payment.clone(),
+                http_preferred,
+                None,
                 streamer_node_name.clone().get_node_name_string(),
                 streamer_profile.clone(),
                 clone_static_secret_key(&self.my_encryption_secret_key),
@@ -431,11 +462,12 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 streamer_node_name.get_node_name_string(),
                 "".to_string(),
+                proxy_builder_info,
             )
             .map_err(|e| SubscriberManagerError::MessageProcessingError(e.to_string()))?;
 
             // Update local status
-            let new_subscription = ShinkaiSubscription::new(
+            let mut new_subscription = ShinkaiSubscription::new(
                 folder_name.clone(),
                 streamer_node_name,
                 streamer_profile,
@@ -443,7 +475,11 @@ impl MySubscriptionsManager {
                 my_profile.clone(),
                 ShinkaiSubscriptionStatus::SubscriptionRequested,
                 Some(payment),
+                base_folder,
+                None,
             );
+
+            new_subscription.update_http_preferred(http_preferred);
 
             if let Some(db_lock) = self.db.upgrade() {
                 db_lock.add_my_subscription(new_subscription)?;
@@ -459,6 +495,7 @@ impl MySubscriptionsManager {
                 standard_identity,
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
             )
             .await?;
 
@@ -693,6 +730,7 @@ impl MySubscriptionsManager {
                         standard_identity,
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
+                        self.proxy_connection_info.clone(),
                     )
                     .await?;
                 }
@@ -724,6 +762,7 @@ impl MySubscriptionsManager {
         receiver_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
+        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -757,8 +796,21 @@ impl MySubscriptionsManager {
             .upgrade()
             .ok_or(SubscriberManagerError::IdentityManagerUnavailable)?;
 
+        let proxy_connection_info = proxy_connection_info
+            .upgrade()
+            .ok_or(SubscriberManagerError::ProxyConnectionInfoUnavailable)?;
+
         // Call the send function
-        Node::send(message, my_encryption_sk, peer, db, maybe_identity_manager, false, None);
+        Node::send(
+            message,
+            my_encryption_sk,
+            peer,
+            proxy_connection_info,
+            db,
+            maybe_identity_manager,
+            false,
+            None,
+        );
 
         Ok(())
     }
@@ -819,5 +871,29 @@ impl MySubscriptionsManager {
             // Log completion of job processing
             println!("Completed processing job: {:?}", job.subscription_id);
         })
+    }
+
+    async fn get_proxy_builder_info(
+        &self,
+        identity_manager_lock: Arc<Mutex<IdentityManager>>,
+    ) -> Option<ShinkaiProxyBuilderInfo> {
+        let identity_manager = identity_manager_lock.lock().await;
+        let proxy_connection_info = match self.proxy_connection_info.upgrade() {
+            Some(proxy_info) => proxy_info,
+            None => return None,
+        };
+    
+        let proxy_connection_info = proxy_connection_info.lock().await;
+        if let Some(proxy_connection) = proxy_connection_info.as_ref() {
+            let proxy_name = proxy_connection.proxy_identity.clone().get_node_name_string();
+            match identity_manager.external_profile_to_global_identity(&proxy_name).await {
+                Ok(proxy_identity) => Some(ShinkaiProxyBuilderInfo {
+                    proxy_enc_public_key: proxy_identity.node_encryption_public_key,
+                }),
+                Err(_) => None,
+            }
+        } else {
+            None
+        }
     }
 }

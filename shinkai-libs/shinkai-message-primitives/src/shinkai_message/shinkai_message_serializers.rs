@@ -1,10 +1,4 @@
-
-
-use super::{
-    shinkai_message::{
-        ShinkaiVersion,
-    },
-};
+use super::shinkai_message::ShinkaiVersion;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

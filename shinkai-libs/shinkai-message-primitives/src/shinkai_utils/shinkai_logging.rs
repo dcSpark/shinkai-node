@@ -28,6 +28,8 @@ pub enum ShinkaiLogOption {
     IdentityNetwork,
     ExtSubscriptions,
     MySubscriptions,
+    SubscriptionHTTPUploader,
+    SubscriptionHTTPDownloader,
     CryptoIdentity,
     JobExecution,
     CronExecution,
@@ -68,6 +70,8 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::IdentityNetwork,
             ShinkaiLogOption::ExtSubscriptions,
             ShinkaiLogOption::MySubscriptions,
+            ShinkaiLogOption::SubscriptionHTTPUploader,
+            ShinkaiLogOption::SubscriptionHTTPDownloader,
             ShinkaiLogOption::CryptoIdentity,
             ShinkaiLogOption::JobExecution,
             ShinkaiLogOption::CronExecution,
@@ -99,6 +103,12 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_MY_SUBSCRIPTIONS").is_ok() {
         active_options.push(ShinkaiLogOption::MySubscriptions);
+    }
+    if std::env::var("LOG_SUBSCRIPTION_HTTP_UPLOADER").is_ok() {
+        active_options.push(ShinkaiLogOption::SubscriptionHTTPUploader);
+    }
+    if std::env::var("LOG_SUBSCRIPTION_HTTP_DOWNLOADER").is_ok() {
+        active_options.push(ShinkaiLogOption::SubscriptionHTTPDownloader);
     }
     if std::env::var("LOG_CRYPTO_IDENTITY").is_ok() {
         active_options.push(ShinkaiLogOption::CryptoIdentity);

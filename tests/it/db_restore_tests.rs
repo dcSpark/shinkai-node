@@ -8,8 +8,6 @@ use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 
-use super::utils;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -52,6 +50,7 @@ mod tests {
                 node1_commands_receiver,
                 node1_db_path,
                 "".to_string(),
+                None,
                 true,
                 vec![],
                 None,

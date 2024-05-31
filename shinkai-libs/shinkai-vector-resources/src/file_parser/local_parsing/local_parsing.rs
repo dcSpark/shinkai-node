@@ -34,6 +34,9 @@ impl LocalFileParser {
                         DocumentFileType::Txt => LocalFileParser::process_txt_file(file_buffer, max_node_text_size),
                         DocumentFileType::Json => LocalFileParser::process_json_file(file_buffer, max_node_text_size),
                         DocumentFileType::Csv => LocalFileParser::process_csv_file(file_buffer, max_node_text_size),
+                        DocumentFileType::Html => {
+                            LocalFileParser::process_html_file(file_buffer, &file_name, max_node_text_size)
+                        }
 
                         #[cfg(feature = "desktop-only")]
                         DocumentFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),

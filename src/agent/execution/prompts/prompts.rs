@@ -5,7 +5,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::ChatCompletionRequestMessage;
 
@@ -107,6 +107,31 @@ impl SubPrompt {
             }
         }
     }
+    /// Gets the content of the SubPrompt (aka. updates it to the provided string)
+    pub fn get_content(&self) -> String {
+        match self {
+            SubPrompt::Content(_, content, _) => content.clone(),
+            SubPrompt::EBNF(_, ebnf, _, _) => ebnf.clone(),
+            SubPrompt::Asset(_, _, asset_content, _, _) => asset_content.clone(),
+        }
+    }
+
+    /// Sets the content of the SubPrompt (aka. updates it to the provided string)
+    pub fn set_content(&mut self, new_content: String) {
+        match self {
+            SubPrompt::Content(_, content, _) => *content = new_content,
+            SubPrompt::EBNF(_, ebnf, _, _) => *ebnf = new_content,
+            SubPrompt::Asset(_, _, asset_content, _, _) => *asset_content = new_content,
+        }
+    }
+
+    /// Trims the content inside of the subprompt to the specified length.
+    pub fn trim_content_to_length(&mut self, max_length: usize) {
+        let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
+        if content.len() > max_length {
+            self.set_content(content.chars().take(max_length).collect());
+        }
+    }
 
     /// Converts a subprompt into a ChatCompletionRequestMessage
     pub fn into_chat_completion_request_message(&self) -> ChatCompletionRequestMessage {
@@ -202,6 +227,18 @@ impl Prompt {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let sub_prompt = SubPrompt::Content(prompt_type, content, capped_priority_value as u8);
         self.add_sub_prompt(sub_prompt);
+    }
+
+    /// Adds RetrievedNode content into the prompt if it is a Text-holding node. Otherwise skips.
+    pub fn add_ret_node_content(
+        &mut self,
+        retrieved_node: RetrievedNode,
+        prompt_type: SubPromptType,
+        priority_value: u8,
+    ) {
+        if let Some(content) = retrieved_node.format_for_prompt(3500) {
+            self.add_content(content, prompt_type, priority_value);
+        }
     }
 
     /// Adds a sub-prompt that holds an Asset.
@@ -312,8 +349,15 @@ impl Prompt {
     }
 
     /// Adds previous results from step history into the Prompt, up to max_previous_history amount.
+    /// Of note does extra internal checks on max characters to make sure prompt doesn't get too big (amount returned/content length may be shortened).
     /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64, priority_value: u8) {
+    pub fn add_step_history(
+        &mut self,
+        mut history: Vec<JobStepResult>,
+        max_previous_history: u64,
+        priority_value: u8,
+        max_characters_in_prompt: usize,
+    ) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let mut count = 0;
         let mut sub_prompts_list = Vec::new();
@@ -324,9 +368,27 @@ impl Prompt {
         //     priority_value,
         // ));
 
+        // Update max previous history if the max characters is under specific limits
+        let max_previous_history = if max_characters_in_prompt < 5000 {
+            1
+        } else {
+            max_previous_history
+        };
+
+        // Set a value for maximum step history prompt content based on max characters
+        let max_step_history_prompt_content = if max_characters_in_prompt < 5000 {
+            100
+        } else if max_characters_in_prompt < 33000 {
+            400
+        } else {
+            800
+        };
+
         while let Some(step) = history.pop() {
             if let Some(prompt) = step.get_result_prompt() {
                 for sub_prompt in prompt.sub_prompts {
+                    let mut sub_prompt = sub_prompt.clone();
+                    sub_prompt.trim_content_to_length(max_step_history_prompt_content);
                     sub_prompts_list.push(sub_prompt);
                 }
                 count += 1;
@@ -438,7 +500,7 @@ impl Prompt {
         max_prompt_tokens: Option<usize>,
     ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
-        let limit = max_prompt_tokens.unwrap_or_else(|| 2700 as usize);
+        let limit = max_prompt_tokens.unwrap_or(2700_usize);
 
         // Remove sub-prompts until the total token count is under the specified limit
         let mut prompt_copy = self.clone();
@@ -453,13 +515,13 @@ impl Prompt {
     // Generates generic api messages as a single string.
     pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
-        let limit = max_input_tokens.unwrap_or(4000 as usize);
+        let limit = max_input_tokens.unwrap_or(4000_usize);
         let mut prompt_copy = self.clone();
         prompt_copy.remove_subprompts_until_under_max(limit);
 
         let mut messages: Vec<String> = Vec::new();
         // Process all sub-prompts in their original order
-        for (i, sub_prompt) in prompt_copy.sub_prompts.iter().enumerate() {
+        for sub_prompt in prompt_copy.sub_prompts.iter() {
             match sub_prompt {
                 SubPrompt::Asset(_, _, _, _, _) => {
                     // Ignore Asset
@@ -470,6 +532,8 @@ impl Prompt {
                         new_message = format!("Sys: {}\n", content.clone());
                     } else if prompt_type == &SubPromptType::User {
                         new_message = format!("User: {}\n", content.clone());
+                    } else if prompt_type == &SubPromptType::Assistant {
+                        new_message = format!("A: {}\n", content.clone());
                     }
                     messages.push(new_message);
                 }

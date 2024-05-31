@@ -112,12 +112,12 @@ fn modify_temp_dir(temp_dir: PathBuf) {
 
     // Move file2.txt to file4.txt
     if file_to_move.exists() {
-        let _ = fs::rename(&file_to_move, &file_destination);
+        let _ = fs::rename(&file_to_move, file_destination);
     }
 
     // Create a new subfolder and a new file within it
     if fs::create_dir_all(&new_sub_folder).is_ok() {
-        let _ = File::create(&new_file_in_sub_folder).map(|mut file| {
+        let _ = File::create(new_file_in_sub_folder).map(|mut file| {
             let _ = writeln!(file, "This is a new file in the subfolder.");
         });
     }
@@ -195,7 +195,7 @@ fn mirror_sync_tests() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -204,6 +204,7 @@ fn mirror_sync_tests() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
@@ -265,7 +266,7 @@ fn mirror_sync_tests() {
         let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
         let node1_commands_sender_clone = node1_commands_sender.clone();
         let api_server = tokio::spawn(async move {
-            node_api::run_api(
+            let _ = node_api::run_api(
                 node1_commands_sender_clone.clone(),
                 api_listen_address,
                 node1_identity_name.to_string(),
@@ -412,10 +413,10 @@ fn mirror_sync_tests() {
                     "Expected the modified file to be 'knowledge/test.txt'."
                 );
 
-                let result = syncing_folders.force_process_updates().await;
+                let _result = syncing_folders.force_process_updates().await;
                 // eprintln!("result: {:?}", result);
 
-                let resp = syncing_folders
+                let _resp = syncing_folders
                     .shinkai_manager_for_sync
                     .retrieve_vector_resource("/knowledge/test")
                     .await
@@ -484,6 +485,7 @@ fn mirror_sync_tests() {
             }
             api_server_handler.abort();
             node1_abort_handler.abort();
+            api_server_handler.abort();
         });
         // Wait for all tasks to complete
         let result = tokio::try_join!(node1_handler, api_server, interactions_handler);
@@ -630,6 +632,7 @@ fn generate_message_with_payload<T: ToString>(
         .unwrap()
 }
 
+#[allow(dead_code)]
 fn print_tree_simple(json_str: &str) {
     // TODO: fix there is some extra space
     // /

@@ -1,10 +1,10 @@
 [package]
 name = "shinkai_node"
-version = "0.7.3"
-edition = "2018"
+version = "0.7.6"
+edition = "2021"
 
 [features]
-default = ["telemetry"]
+default = []
 stream = ["reqwest/stream"]
 telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry", "tonic"]
 console = ["console-subscriber"]
@@ -26,11 +26,9 @@ chrono = "0.4"
 chrono-tz = "0.5"
 serde_json = "1.0.105"
 chacha20poly1305 = "0.7.1"
-sha2 = "0.9.5"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = "2.1.0"
 rand = "0.8"
-structopt = "0.3"
 tokio = { version = "1.36", features = ["full"] }
 log = "0.4.20"
 chashmap = "2.2.2"
@@ -41,17 +39,17 @@ anyhow = "1.0"
 regex = "1"
 csv = "1.1.6"
 uuid = { version = "0.8", features = ["v4"] }
-reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking"] }
+reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "stream"] }
 # llm = { git = "https://github.com/rustformers/llm", branch = "main" }
-ordered-float = "3.7.0"
 keyphrases = "0.3.3"
-byteorder = "1.4.3"
 shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives" }
 shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
+shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
+shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 bincode = "1.3.3"
 qrcode = "0.12"
 image = "0.23"
-urlencoding = "1.1.1"
+urlencoding = "2.1.0"
 hex = "=0.4.3"
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
@@ -73,6 +71,13 @@ lru = "0.7.0"
 console-subscriber = { version = "0.1", optional = true }
 quickxml_to_serde = "0.6.0"
 minidom = "0.12"
+rust_decimal = "1.17.0"
+aws-types = "1.2.0"
+aws-config = { version = "1.2.1", features = ["behavior-version-latest"] }
+
+[dependencies.aws-sdk-s3]
+version = "1.24.0"
+features = ["behavior-version-latest"]
 
 [dependencies.opentelemetry]
 version = "0.21.0"

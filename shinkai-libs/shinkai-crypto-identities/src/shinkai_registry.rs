@@ -168,7 +168,7 @@ pub trait ShinkaiRegistryTrait {
     fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError>
     where
         Self: Sized;
-    fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError>;
+    fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError>;
     fn get_cache_time(&self, identity: &str) -> Option<SystemTime>;
 }
 
@@ -179,7 +179,7 @@ pub struct ShinkaiRegistry {
 }
 
 impl ShinkaiRegistry {
-    pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
+    pub async fn new(url: &str, contract_address: &str, abi_path: Option<String>) -> Result<Self, ShinkaiRegistryError> {
         let provider =
             Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
@@ -191,16 +191,17 @@ impl ShinkaiRegistry {
             ShinkaiRegistryError::AbiError(ethers::abi::Error::InvalidData)
         })?;
 
-        let mut abi_json = include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string();
-        if !abi_path.is_empty() {
-            abi_json = fs::read_to_string(abi_path).map_err(ShinkaiRegistryError::IoError)?;
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::CryptoIdentity,
-                ShinkaiLogLevel::Info,
-                "Using default ABI",
-            );
-        }
+        let abi_json = match abi_path {
+            Some(path) => fs::read_to_string(path).map_err(ShinkaiRegistryError::IoError)?,
+            None => {
+                shinkai_log(
+                    ShinkaiLogOption::CryptoIdentity,
+                    ShinkaiLogLevel::Info,
+                    "Using default ABI",
+                );
+                include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string()
+            }
+        };
         let abi: Abi = serde_json::from_str(&abi_json).map_err(ShinkaiRegistryError::JsonError)?;
 
         let contract = Contract::new(contract_address, abi, Arc::new(provider));
@@ -210,8 +211,14 @@ impl ShinkaiRegistry {
         })
     }
 
-    pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        eprintln!("Getting identity record for: {}", identity);
+    pub async fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let identity = if identity.starts_with("@@") {
+            identity.trim_start_matches("@@").to_string()
+        } else {
+            identity
+        };
+        
+        // eprintln!("Getting identity record for: {}", identity);
         let now = SystemTime::now();
 
         // If the cache is up-to-date, return the cached value

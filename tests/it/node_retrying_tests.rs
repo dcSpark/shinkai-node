@@ -1,15 +1,12 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
@@ -95,13 +92,15 @@ fn node_retrying_test() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
             node1_fs_db_path,
             None,
             None,
-        ).await;
+        )
+        .await;
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         let mut node2 = Node::new(
@@ -113,13 +112,15 @@ fn node_retrying_test() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
+            None,
             true,
             vec![],
             None,
             node2_fs_db_path,
             None,
             None,
-        ).await;
+        )
+        .await;
 
         eprintln!("Starting nodes");
         // Start node1 and node2

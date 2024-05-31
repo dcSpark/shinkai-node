@@ -130,6 +130,16 @@ impl ParsedUserMessage {
         ParsedUserMessage::new_from_elements(filtered_elements).get_output_string()
     }
 
+    /// Returns the number of code blocks in the user message
+    pub fn num_of_code_blocks(&self) -> usize {
+        self.get_code_block_elements().len()
+    }
+
+    /// Returns the number of text elements in the user message
+    pub fn num_of_text_elements(&self) -> usize {
+        self.get_text_elements().len()
+    }
+
     /// Generates an embedding for the user message using it's entire output string, with a default empty id
     pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Embedding, VRError> {
         let embedding = generator.generate_embedding_default(&self.get_output_string()).await?;

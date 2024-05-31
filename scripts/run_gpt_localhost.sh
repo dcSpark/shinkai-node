@@ -16,7 +16,6 @@ export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
-# export EMBEDDINGS_SERVER_URL="http://localhost:9081"
 export EMBEDDINGS_SERVER_URL="https://public.shinkai.com/x-em"
 export UNSTRUCTURED_SERVER_URL="https://public.shinkai.com/x-un"
 
@@ -26,8 +25,6 @@ export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-previ
 
 export RPC_URL="https://rpc.sepolia.org"
 export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"
-export ABI_PATH="./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json"
-
 # Add these lines to enable all log options
 export LOG_ALL=1
 

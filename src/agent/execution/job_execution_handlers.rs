@@ -151,7 +151,7 @@ impl JobManager {
                         prev_execution_context.clone(),
                         Some(profile.clone()),
                         // TODO(Nico): probably the router should do the inference but we are not clear how yet
-                        InferenceChainDecision::CronExecutionChainMainTask,
+                        InferenceChainDecision::new_no_results("CronExecutionChainMainTask".to_string()),
                     )
                     .await?;
                 shinkai_log(
@@ -198,7 +198,7 @@ impl JobManager {
                                         vec![],
                                         prev_execution_context.clone(),
                                         Some(profile.clone()),
-                                        InferenceChainDecision::CronExecutionChainSubtask,
+                                        InferenceChainDecision::new_no_results("CronExecutionChainSubtask".to_string()),
                                     )
                                     .await?;
 

@@ -1,14 +1,11 @@
 use mockito::Server;
-use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 use shinkai_node::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use std::fs;
 use std::path::Path;
-use tokio::sync::mpsc;
 
 fn setup() {
     let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
+    let _ = fs::remove_dir_all(path);
 }
 
 #[cfg(test)]
@@ -20,7 +17,7 @@ mod tests {
         },
         shinkai_utils::{shinkai_logging::init_default_tracing, utils::hash_string},
     };
-    use shinkai_node::agent::{agent::Agent, error::AgentError, execution::prompts::prompts::JobPromptGenerator};
+    use shinkai_node::agent::{agent::Agent, execution::prompts::prompts::JobPromptGenerator};
 
     use super::*;
 
@@ -30,7 +27,7 @@ mod tests {
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
-        let mut db = ShinkaiDB::new(&db_path).unwrap();
+        let db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo".to_string(),
         };
@@ -100,7 +97,7 @@ mod tests {
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
-        let mut db = ShinkaiDB::new(&db_path).unwrap();
+        let db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
@@ -152,7 +149,7 @@ mod tests {
         init_default_tracing();
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
-        let mut db = ShinkaiDB::new(&db_path).unwrap();
+        let db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
@@ -190,8 +187,8 @@ mod tests {
     fn test_remove_profile_and_toolkit_from_agent_access() {
         init_default_tracing();
         setup();
-        let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
-        let mut db = ShinkaiDB::new(&db_path).unwrap();
+        let db_path = format!("db_tests/{}", hash_string("agent_test"));
+        let db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
@@ -275,14 +272,14 @@ mod tests {
         );
 
         let response = agent
-            .inference_json(JobPromptGenerator::basic_instant_response_prompt(
+            .inference_markdown(JobPromptGenerator::basic_instant_response_prompt(
                 "Hello!".to_string(),
                 None,
             ))
             .await;
         match response {
             Ok(res) => assert_eq!(
-                res["Answer"].as_str().unwrap(),
+                res.json["Answer"].as_str().unwrap(),
                 "Hello there, how may I assist you today?".to_string()
             ),
             Err(e) => panic!("Error when calling API: {}", e),
