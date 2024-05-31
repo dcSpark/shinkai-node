@@ -2,7 +2,7 @@
 mod tests {
     use shinkai_fs_mirror::shinkai::{shinkai_device_keys::ShinkaiDeviceKeys, shinkai_utils::decrypt_exported_keys};
     use std::env;
-    
+
     #[test]
     fn test_decrypt_message_with_passphrase() {
         let unencrypted_keys = ShinkaiDeviceKeys {
@@ -15,10 +15,10 @@ mod tests {
             profile_identity_pk: "0a0598c61144a10fb0a1baa32f115b0d22f3a00c93a3cc368779ea82c5ecfc41".to_string(),
             profile_identity_sk: "717eb9b4e3bb681349d2e21dace6424567261d98507696f10923930a1efc0269".to_string(),
             profile: "main".to_string(),
-            identity_type: "device".to_string(),
+            identity_type: Some("device".to_string()),
             permission_type: "".to_string(),
             shinkai_identity: "@@localhost.shinkai".to_string(),
-            registration_code: "".to_string(),
+            registration_code: Some("".to_string()),
             node_encryption_pk: "798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679".to_string(),
             node_address: "http://127.0.0.1:9550".to_string(),
             registration_name: "main_device".to_string(),

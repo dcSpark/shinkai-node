@@ -14,7 +14,7 @@ async fn main() {
     dotenv().ok(); // Load .env file if exists
 
     let matches = App::new("Shinkai Subscription Manager CLI")
-        .version("1.1")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Nico Arqueros <nico@shinkai.com>")
         .about("Manages subscriptions and other handy stuff for a Shinkai node")
         .arg(

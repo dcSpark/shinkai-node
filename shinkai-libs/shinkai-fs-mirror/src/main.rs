@@ -11,7 +11,7 @@ async fn main() {
     dotenv().ok(); // Load .env file if exists
 
     let matches = App::new("Shinkai FS Mirror")
-        .version("1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Nico Arqueros <nico@shinkai.com>")
         .about("Synchronizes filesystem changes with Shinkai")
         .arg(

@@ -59,6 +59,7 @@ pub fn decrypt_exported_keys(encrypted_body: &str, passphrase: &str) -> Result<S
 
         decrypted_data.truncate(decrypted_len as usize);
         let decrypted_str = String::from_utf8(decrypted_data).map_err(|_| "Failed to decode decrypted data")?;
+        eprintln!("Decrypted data: {}", decrypted_str);
         serde_json::from_str(&decrypted_str).map_err(|_| "Failed to parse decrypted data into DeviceKeys")
     }
 }
