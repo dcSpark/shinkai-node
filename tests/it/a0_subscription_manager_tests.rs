@@ -583,17 +583,21 @@ fn subscription_manager_test() {
                                                 "name": "shinkai_intro",
                                                 "path": "/shared test folder/crypto/shinkai_intro",
                                                 "last_modified": "2024-02-26T23:06:00.019065981+00:00",
-                                                "children": {}
+                                                "children": {},
+                                                "web_link": null
                                             }
-                                        }
+                                        },
+                                        "web_link": null
                                     },
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
                                         "path": "/shared test folder/shinkai_intro",
                                         "last_modified": "2024-02-26T23:06:00.019065981+00:00",
-                                        "children": {}
+                                        "children": {},
+                                        "web_link": null
                                     }
-                                }
+                                },
+                                "web_link": null
                             },
                             "subscription_requirement": {
                                 "minimum_token_delegation": 100,

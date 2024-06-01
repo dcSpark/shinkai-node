@@ -614,40 +614,41 @@ mod tests {
             differences
         );
 
-        // Check if 'zeko' is correctly marked as deleted
-        let zeko_diff = differences.children.get("zeko").unwrap();
-        assert_eq!(
-            zeko_diff.last_modified,
-            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-            "Expected 'zeko' last_modified date to indicate deletion"
-        );
-
-        // Check for the presence of 'paper' within 'zeko', despite 'zeko' being marked as deleted
+        // Check if the differences include the "deleted" item
         assert!(
-            zeko_diff.children.contains_key("paper"),
-            "Expected 'paper' to be present in the 'zeko' differences"
+            differences
+                .children
+                .get("shared_test_folder")
+                .unwrap()
+                .children
+                .contains_key("extra_item"),
+            "Expected 'extra_item' to be marked as deleted in the differences"
         );
 
-        // Verify the 'paper' details
-        let paper_diff = zeko_diff.children.get("paper").unwrap();
+        // Additionally, check if the last_modified date of "extra_item" in the differences matches the epoch start
+        let extra_item_diff = differences
+            .children
+            .get("shared_test_folder")
+            .unwrap()
+            .children
+            .get("extra_item")
+            .unwrap();
         assert_eq!(
-            paper_diff.last_modified,
+            extra_item_diff.last_modified,
             Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-            "Expected 'paper' last_modified date to match the expected state"
+            "Expected 'extra_item' last_modified date in differences to indicate deletion"
         );
 
-        // Check for the presence of 'shinkai_intro' within 'paper'
-        assert!(
-            paper_diff.children.contains_key("shinkai_intro"),
-            "Expected 'shinkai_intro' to be present in the 'paper' differences"
-        );
-
-        // Verify the 'shinkai_intro' details within 'paper'
-        let shinkai_intro_diff = paper_diff.children.get("shinkai_intro").unwrap();
+        // Now use find_deletions to verify it identifies the "deleted" item correctly
+        let deletions = FSEntryTreeGenerator::find_deletions(&differences);
         assert_eq!(
-            shinkai_intro_diff.last_modified,
-            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-            "Expected 'shinkai_intro' within 'paper' last_modified date to match the expected state"
+            deletions.len(),
+            1,
+            "Expected to find one deletion in the differences tree"
+        );
+        assert_eq!(
+            deletions[0], extra_item_diff.path,
+            "Expected the path of the deleted item to match"
         );
     }
 
