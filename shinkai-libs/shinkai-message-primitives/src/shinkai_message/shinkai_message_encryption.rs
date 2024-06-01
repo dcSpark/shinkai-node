@@ -139,7 +139,7 @@ impl MessageBody {
 
         let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-        let encrypted_content = format!("encrypted:{}", hex::encode(&nonce_and_ciphertext));
+        let encrypted_content = format!("encrypted:{}", hex::encode(nonce_and_ciphertext));
 
         Ok(MessageBody::Encrypted(EncryptedShinkaiBody {
             content: encrypted_content,
@@ -152,7 +152,7 @@ impl MessageBody {
         sender_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiBody, ShinkaiMessageError> {
         let parts: Vec<&str> = encrypted_body.content.split(':').collect();
-        match parts.get(0) {
+        match parts.first() {
             Some(&"encrypted") => {
                 let content = parts.get(1).unwrap_or(&"");
                 let shared_secret = self_sk.diffie_hellman(sender_pk);
@@ -247,7 +247,7 @@ impl MessageData {
         sender_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiData, ShinkaiMessageError> {
         let parts: Vec<&str> = encrypted_data.content.split(':').collect();
-        match parts.get(0) {
+        match parts.first() {
             Some(&"encrypted") => {
                 let content = parts.get(1).unwrap_or(&"");
                 let shared_secret = self_sk.diffie_hellman(sender_pk);

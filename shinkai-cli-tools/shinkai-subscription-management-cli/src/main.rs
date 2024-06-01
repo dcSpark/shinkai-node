@@ -251,7 +251,7 @@ async fn main() {
 
     let subscription_manager = SubscriptionManager::new(subscription_manager_subs).await;
 
-    if let Some(_) = matches.subcommand_matches("check_node_health") {
+    if matches.subcommand_matches("check_node_health").is_some() {
         match subscription_manager.check_node_health().await {
             Ok(status) => println!("Node health status: {:?}", status),
             Err(e) => eprintln!("Error checking node health: {}", e),
@@ -418,12 +418,12 @@ async fn main() {
             Ok(_) => println!("Subscribed to folder successfully"),
             Err(e) => eprintln!("Error subscribing to folder: {}", e),
         }
-    } else if let Some(_) = matches.subcommand_matches("my_subscriptions") {
+    } else if matches.subcommand_matches("my_subscriptions").is_some() {
         match subscription_manager.my_subscriptions().await {
             Ok(resp) => println!("List of subscriptions: {:?}", resp),
             Err(e) => eprintln!("Error listing subscriptions: {}", e),
         }
-    } else if let Some(_) = matches.subcommand_matches("my_shared_folders") {
+    } else if matches.subcommand_matches("my_shared_folders").is_some() {
         match subscription_manager.my_shared_folders().await {
             Ok(resp) => println!("List of shared folders: {:?}", resp),
             Err(e) => eprintln!("Error listing shared folders: {}", e),

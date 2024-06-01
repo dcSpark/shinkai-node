@@ -471,7 +471,7 @@ impl ShinkaiDB {
             }
         }
         shinkai_log(
-            ShinkaiLogOption::API,
+            ShinkaiLogOption::Api,
             ShinkaiLogLevel::Info,
             &format!("Inboxes: {}", inboxes.join(", ")),
         );
@@ -488,7 +488,7 @@ impl ShinkaiDB {
 
         for inbox_id in inboxes {
             shinkai_log(
-                ShinkaiLogOption::API,
+                ShinkaiLogOption::Api,
                 ShinkaiLogLevel::Info,
                 &format!("Inbox: {}", inbox_id),
             );

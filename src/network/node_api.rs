@@ -145,14 +145,14 @@ pub async fn run_api(
     node_name: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     shinkai_log(
-        ShinkaiLogOption::API,
+        ShinkaiLogOption::Api,
         ShinkaiLogLevel::Info,
         &format!("Starting Node API server at: {}", &address),
     );
 
     let log = warp::log::custom(|info| {
         shinkai_log(
-            ShinkaiLogOption::API,
+            ShinkaiLogOption::Api,
             ShinkaiLogLevel::Debug,
             &format!(
                 "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",

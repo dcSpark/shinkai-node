@@ -206,7 +206,7 @@ fn node_agent_registration() {
             {
                 // Send a Message to the Job for processing
                 shinkai_log(
-                    ShinkaiLogOption::API,
+                    ShinkaiLogOption::Api,
                     ShinkaiLogLevel::Debug,
                     &format!("Sending a message to Job {}", job_id.clone()),
                 );
