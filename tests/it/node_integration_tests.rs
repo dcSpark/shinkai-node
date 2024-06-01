@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_vector_resources::utils::hash_string;
 use core::panic;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -401,8 +402,8 @@ fn subidentity_registration() {
             // Node 1 creates a new subidentity and that subidentity sends a message to the other one in Node 1
             {
                 let node1_subidentity_name_2 = "node1_subidentity_2";
-                let (node1_subidentity_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_signature_keypair(3);
-                let (node1_subencryption_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_encryption_keypair(3);
+                let (_node1_subidentity_sk_2, _node1_subencryption_pk_2) = unsafe_deterministic_signature_keypair(3);
+                let (_node1_subencryption_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_encryption_keypair(3);
 
                 eprintln!("Register another Profile in Node1 and verifies it");
                 api_registration_profile_node(

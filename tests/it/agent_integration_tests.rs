@@ -18,6 +18,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
+use shinkai_vector_resources::utils::hash_string;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;

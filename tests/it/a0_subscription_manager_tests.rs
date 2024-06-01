@@ -2,6 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus};
+use shinkai_vector_resources::utils::hash_string;
 use core::panic;
 use std::collections::HashMap;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -18,7 +19,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;

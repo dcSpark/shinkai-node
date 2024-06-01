@@ -11,6 +11,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::{APIError, SendResponseBodyData};
 use shinkai_node::network::Node;
+use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};

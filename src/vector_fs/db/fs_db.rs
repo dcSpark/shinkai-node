@@ -239,9 +239,6 @@ impl VectorFSDB {
                     let cf_handle = self.db.cf_handle(&cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
                     txn.delete_cf(cf_handle, key.as_bytes()).map_err(VectorFSError::from)?;
                 }
-                _ => {
-                    eprintln!("Unsupported operation: {:?}", op);
-                }
             }
         }
 
