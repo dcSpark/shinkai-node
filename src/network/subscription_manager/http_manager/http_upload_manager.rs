@@ -447,7 +447,7 @@ impl HttpSubscriptionUploadManager {
         full_requester: ShinkaiName,
         path: String,
     ) -> Option<FSEntryTree> {
-        FSEntryTreeGenerator::shared_folders_to_tree(vector_fs, full_requester.clone(), full_requester, path)
+        FSEntryTreeGenerator::shared_folders_to_tree(vector_fs, full_requester.clone(), full_requester, path, vec![])
             .await
             .ok()
     }

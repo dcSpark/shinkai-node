@@ -1,9 +1,10 @@
-use super::fs_entry_tree::FSEntryTree;
+use super::fs_entry_tree::{FSEntryTree, WebLink};
+use super::http_manager::http_upload_manager::FileLink;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use chrono::{NaiveDateTime, TimeZone};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
@@ -19,6 +20,7 @@ impl FSEntryTreeGenerator {
         full_streamer_profile_subidentity: ShinkaiName,
         full_subscriber_profile_subidentity: ShinkaiName,
         path: String,
+        http_subscription_results: Vec<FileLink>,
     ) -> Result<FSEntryTree, SubscriberManagerError> {
         // Acquire VectorFS
         let vector_fs = vector_fs.upgrade().ok_or(SubscriberManagerError::VectorFSNotAvailable(
@@ -42,6 +44,23 @@ impl FSEntryTreeGenerator {
             .await?;
         let filtered_results = Self::filter_to_top_level_folders(shared_folders); // Note: do we need this?
 
+        // Convert HTTP subscription results to a HashMap
+        let http_results_map: HashMap<String, FileLink> = http_subscription_results
+            .into_iter()
+            .map(|file_link| {
+                let path = if file_link.path.ends_with(".checksum") {
+                    // Find the position to cut the last 8 characters before ".checksum"
+                    let cut_position = file_link.path.rfind(".checksum").unwrap() - 9; // 9 to account for the dot before the 8 characters
+                    let mut new_path = file_link.path[..cut_position].to_string();
+                    new_path.push_str(".checksum");
+                    new_path
+                } else {
+                    file_link.path.clone()
+                };
+                (path, file_link)
+            })
+            .collect();
+
         // Create the FSEntryTree by iterating through results, fetching the FSEntry, and then parsing/adding it into the tree
         let mut root_children: HashMap<String, Arc<FSEntryTree>> = HashMap::new();
         for (path, _permission) in filtered_results {
@@ -62,13 +81,36 @@ impl FSEntryTreeGenerator {
                         root_children.insert(fs_folder.name.clone(), Arc::new(folder_tree));
                     }
                     FSEntry::Item(fs_item) => {
-                        let item_tree = FSEntryTree {
+                        let mut item_tree = FSEntryTree {
                             name: fs_item.name.clone(),
                             path: path.clone().to_string(),
                             last_modified: fs_item.last_written_datetime,
                             web_link: None,
                             children: HashMap::new(), // Items do not have children
                         };
+
+                        // Convert VRPath to String for map lookup
+                        let path_str = path.to_string();
+
+                        // Check if there is a corresponding HTTP link
+                        if let Some(file_link) = http_results_map.get(&path_str) {
+                            let checksum_path = format!("{}.checksum", path_str); // Correctly format the checksum path
+                            item_tree.web_link = Some(WebLink {
+                                file: file_link.clone(),
+                                checksum: http_results_map
+                                    .get(&checksum_path)
+                                    .cloned()
+                                    .unwrap_or_else(|| FileLink {
+                                        link: String::new(), // Provide a default or handle this case as needed
+                                        path: checksum_path,
+                                        last_8_hash: String::new(), // Default or appropriate value
+                                        expiration: file_link.expiration, // Use the same expiration or handle appropriately
+                                    }),
+                            });
+                            item_tree.last_modified = DateTime::<Utc>::from(file_link.expiration);
+                            // Convert SystemTime to DateTime<Utc>
+                        }
+
                         root_children.insert(fs_item.name.clone(), Arc::new(item_tree));
                     }
                     _ => {} // Handle FSEntry::Root if necessary

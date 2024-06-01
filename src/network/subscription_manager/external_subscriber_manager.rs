@@ -544,7 +544,10 @@ impl ExternalSubscriberManager {
                     let is_last_element = index == diff_paths.len() - 1;
 
                     // Attempt to insert vrkai into vr_pack and log error if it fails
-                    if vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element).is_err() {
+                    if vr_pack
+                        .insert_vrkai(&vrkai, parent_path.clone(), is_last_element)
+                        .is_err()
+                    {
                         continue; // Skip to the next iteration
                     }
                 }
@@ -997,9 +1000,9 @@ impl ExternalSubscriberManager {
                         // Return an error instead of None
                     }
                 };
-                // TODO: probably here read http if enabled
-                eprintln!("subscription_req: {:?}", subscription_requirement);
-                // Some(FolderSubscription { minimum_token_delegation: None, minimum_time_delegated_hours: None, monthly_payment: None, is_free: true, has_web_alternative: Some(true), folder_description: "Default folder description" })
+
+                // Initialize http_results to an empty vector
+                let mut http_results = Vec::new();
 
                 if let Some(req) = &subscription_requirement {
                     if req.has_web_alternative.unwrap_or(false) {
@@ -1007,8 +1010,7 @@ impl ExternalSubscriberManager {
                             path: path_str.clone(),
                             folder_subscription: req.clone(),
                         };
-                        let results = self.get_cached_subscription_files_links(&folder_subs_with_path);
-                        eprintln!("results: {:?}", results);
+                        http_results = self.get_cached_subscription_files_links(&folder_subs_with_path);
                     }
                 }
 
@@ -1017,6 +1019,7 @@ impl ExternalSubscriberManager {
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
+                    http_results,
                 )
                 .await
                 {
