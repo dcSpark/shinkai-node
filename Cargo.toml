@@ -1,3 +1,13 @@
+[workspace]
+members = [
+    "shinkai-libs/shinkai-message-primitives",
+    "shinkai-libs/shinkai-vector-resources",
+    "shinkai-libs/shinkai-crypto-identities",
+    "shinkai-libs/shinkai-tcp-relayer",
+    "shinkai-libs/shinkai-fs-mirror",
+    "shinkai-cli-tools/shinkai-subscription-management-cli"
+]
+
 [package]
 name = "shinkai_node"
 version = "0.7.6"

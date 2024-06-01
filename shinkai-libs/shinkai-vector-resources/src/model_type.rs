@@ -14,15 +14,6 @@ pub enum EmbeddingModelType {
 }
 
 impl EmbeddingModelType {
-    /// Converts the embedding model type to a string
-    pub fn to_string(&self) -> String {
-        match self {
-            EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string(),
-            EmbeddingModelType::OpenAI(model) => model.to_string(),
-            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
-        }
-    }
-
     /// Parses a string into an embedding model type
     pub fn from_string(s: &str) -> Result<Self, VRError> {
         if let Ok(model) = TextEmbeddingsInference::from_string(s) {
@@ -76,8 +67,8 @@ impl EmbeddingModelType {
 impl fmt::Display for EmbeddingModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            EmbeddingModelType::TextEmbeddingsInference(model) => model.to_string().fmt(f),
-            EmbeddingModelType::OpenAI(model) => model.to_string().fmt(f),
+            EmbeddingModelType::TextEmbeddingsInference(model) => write!(f, "{}", model),
+            EmbeddingModelType::OpenAI(model) => write!(f, "{}", model),
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => write!(f, "{}", model),
         }
     }
@@ -138,32 +129,6 @@ impl TextEmbeddingsInference {
         Self::NOMIC_EMBED_TEXT_1_5,
     ];
 
-    /// Returns the model name + commit in the format of "hftei/<model>#<commit>"
-    fn to_string(&self) -> String {
-        let model_str = self.to_unprefixed_string();
-        format!("hftei/{}", model_str)
-    }
-
-    /// Returns the model name + commit without the "hftei/" prefix
-    fn to_unprefixed_string(&self) -> String {
-        match self {
-            TextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
-            TextEmbeddingsInference::AllMiniLML12v2 => Self::ALL_MINI_LML12V2.to_string(),
-            TextEmbeddingsInference::MultiQAMiniLML6 => Self::MULTI_QA_MINI_LML6.to_string(),
-            TextEmbeddingsInference::BgeLargeEnv1_5 => Self::BGE_LARGE_ENV1_5.to_string(),
-            TextEmbeddingsInference::BgeBaseEn1_5 => Self::BGE_BASE_EN1_5.to_string(),
-            TextEmbeddingsInference::BgeSmallEn1_5 => Self::BGE_SMALL_EN1_5.to_string(),
-            TextEmbeddingsInference::EmberV1 => Self::EMBER_V1.to_string(),
-            TextEmbeddingsInference::GteLarge => Self::GTE_LARGE.to_string(),
-            TextEmbeddingsInference::GteBase => Self::GTE_BASE.to_string(),
-            TextEmbeddingsInference::E5LargeV2 => Self::E5_LARGE_V2.to_string(),
-            TextEmbeddingsInference::E5BaseV2 => Self::E5_BASE_V2.to_string(),
-            TextEmbeddingsInference::MultilingualE5Large => Self::MULTILINGUAL_E5_LARGE.to_string(),
-            TextEmbeddingsInference::NomicEmbedText1_5 => Self::NOMIC_EMBED_TEXT_1_5.to_string(),
-            TextEmbeddingsInference::Other(name) => name.clone(),
-        }
-    }
-
     /// Parses a string in the format of "hftei/<model>#<commit>" into a TextEmbeddingsInference
     fn from_string(s: &str) -> Result<Self, VRError> {
         let stripped = s.strip_prefix("hftei/").ok_or(VRError::InvalidModelArchitecture)?;
@@ -188,7 +153,23 @@ impl TextEmbeddingsInference {
 
 impl fmt::Display for TextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        let model_str = match self {
+            TextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2,
+            TextEmbeddingsInference::AllMiniLML12v2 => Self::ALL_MINI_LML12V2,
+            TextEmbeddingsInference::MultiQAMiniLML6 => Self::MULTI_QA_MINI_LML6,
+            TextEmbeddingsInference::BgeLargeEnv1_5 => Self::BGE_LARGE_ENV1_5,
+            TextEmbeddingsInference::BgeBaseEn1_5 => Self::BGE_BASE_EN1_5,
+            TextEmbeddingsInference::BgeSmallEn1_5 => Self::BGE_SMALL_EN1_5,
+            TextEmbeddingsInference::EmberV1 => Self::EMBER_V1,
+            TextEmbeddingsInference::GteLarge => Self::GTE_LARGE,
+            TextEmbeddingsInference::GteBase => Self::GTE_BASE,
+            TextEmbeddingsInference::E5LargeV2 => Self::E5_LARGE_V2,
+            TextEmbeddingsInference::E5BaseV2 => Self::E5_BASE_V2,
+            TextEmbeddingsInference::MultilingualE5Large => Self::MULTILINGUAL_E5_LARGE,
+            TextEmbeddingsInference::NomicEmbedText1_5 => Self::NOMIC_EMBED_TEXT_1_5,
+            TextEmbeddingsInference::Other(name) => name,
+        };
+        write!(f, "hftei/{}", model_str)
     }
 }
 
@@ -201,12 +182,6 @@ pub enum OpenAIModelType {
 impl OpenAIModelType {
     const OPENAI_TEXT_EMBEDDING_ADA_002: &'static str = "openai/text-embedding-ada-002";
 
-    fn to_string(&self) -> String {
-        match self {
-            OpenAIModelType::OpenAITextEmbeddingAda002 => Self::OPENAI_TEXT_EMBEDDING_ADA_002.to_string(),
-        }
-    }
-
     fn from_string(s: &str) -> Result<OpenAIModelType, VRError> {
         match s {
             Self::OPENAI_TEXT_EMBEDDING_ADA_002 => Ok(OpenAIModelType::OpenAITextEmbeddingAda002),
@@ -217,7 +192,9 @@ impl OpenAIModelType {
 
 impl fmt::Display for OpenAIModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        match self {
+            OpenAIModelType::OpenAITextEmbeddingAda002 => write!(f, "{}", Self::OPENAI_TEXT_EMBEDDING_ADA_002),
+        }
     }
 }
 
@@ -234,15 +211,6 @@ impl OllamaTextEmbeddingsInference {
     const ALL_MINI_LML6V2: &'static str = "all-minilm:l6-v2";
     const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
 
-    /// Converts the OllamaTextEmbeddingsInference to a string
-    fn to_string(&self) -> String {
-        match self {
-            OllamaTextEmbeddingsInference::AllMiniLML6v2 => Self::ALL_MINI_LML6V2.to_string(),
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => Self::SNOWFLAKE_ARCTIC_EMBED_M.to_string(),
-            OllamaTextEmbeddingsInference::Other(name) => name.clone(), // Handle the Other variant
-        }
-    }
-
     /// Parses a string into an OllamaTextEmbeddingsInference
     fn from_string(s: &str) -> Result<Self, VRError> {
         match s {
@@ -255,6 +223,10 @@ impl OllamaTextEmbeddingsInference {
 
 impl fmt::Display for OllamaTextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        match self {
+            OllamaTextEmbeddingsInference::AllMiniLML6v2 => write!(f, "{}", Self::ALL_MINI_LML6V2),
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_M),
+            OllamaTextEmbeddingsInference::Other(name) => write!(f, "{}", name),
+        }
     }
 }
