@@ -721,7 +721,7 @@ fn subscription_manager_test() {
                     "subscriber_destination_path": null,
                     "subscription_description": null
                 }]"#;
-                let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
+                let expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
 
                 // Remove dates from the actual response for comparison
                 if let Some(array) = actual_resp_json.as_array_mut() {
@@ -826,8 +826,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Expected structure: {}", expected_structure.to_string());
-                        eprintln!("Actual structure: {}", actual_resp_json.to_string());
+                        eprintln!("Expected structure: {}", expected_structure);
+                        eprintln!("Actual structure: {}", actual_resp_json);
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;

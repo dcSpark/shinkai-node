@@ -620,7 +620,7 @@ async fn test_insert_messages_with_tree_structure() {
             "message hash: {} message content: {} message parent hash: {}",
             message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
-            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+            parent_hash.as_deref().unwrap_or("None")
         );
     }
 
@@ -718,7 +718,7 @@ async fn test_insert_messages_with_tree_structure() {
         "message hash: {} message content: {} message parent hash: {}",
         message.calculate_message_hash_for_pagination(),
         message.get_message_content().unwrap(),
-        parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        parent_hash.as_deref().unwrap_or("None")
     );
 
     // Get the last 5 messages from the inbox
@@ -997,7 +997,7 @@ async fn db_inbox() {
         .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let _ = shinkai_db
+    shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
 
@@ -1008,7 +1008,7 @@ async fn db_inbox() {
         .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let _ = shinkai_db
+    shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
 
@@ -1064,7 +1064,7 @@ async fn db_inbox() {
     assert_eq!(smart_inboxes.len(), 1);
 
     // Check if smart_inboxes contain the expected results
-    let expected_inbox_ids = vec!["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
+    let expected_inbox_ids = ["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
 
     for smart_inbox in smart_inboxes {
         assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
@@ -1138,8 +1138,8 @@ fn test_permission_errors() {
     shinkai_db
         .update_local_node_keys(
             ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-            node1_encryption_pk.clone(),
-            node1_identity_pk.clone(),
+            node1_encryption_pk,
+            node1_identity_pk,
         )
         .unwrap();
 
@@ -1151,8 +1151,8 @@ fn test_permission_errors() {
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -1165,8 +1165,8 @@ fn test_permission_errors() {
         ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), "nonexistent_identity".to_string())
             .unwrap(),
         None,
-        node1_encryption_pk.clone(),
-        node1_identity_pk.clone(),
+        node1_encryption_pk,
+        node1_identity_pk,
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
         StandardIdentityType::Profile,
@@ -1206,7 +1206,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::ProfileNotFound(format!("Profile not found for: nonexistent_identity"))
+        ShinkaiDBError::ProfileNotFound("Profile not found for: nonexistent_identity".to_string())
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error

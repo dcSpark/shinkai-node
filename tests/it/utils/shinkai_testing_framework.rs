@@ -204,6 +204,7 @@ impl ShinkaiTestingFramework {
         .unwrap();
 
         // Prepare the response channel
+        #[allow(clippy::type_complexity)]
         let (res_send_msg_sender, res_send_msg_receiver): (
             async_channel::Sender<Result<Value, APIError>>,
             async_channel::Receiver<Result<Value, APIError>>,
