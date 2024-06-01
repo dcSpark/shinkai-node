@@ -3,8 +3,8 @@ use crate::network::subscription_manager::subscriber_manager_error::SubscriberMa
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_permissions::ReadPermission;
 use crate::vector_fs::vector_fs_types::{FSEntry, FSFolder};
-use chrono::NaiveDateTime;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
+use chrono::{NaiveDateTime, TimeZone};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::collections::HashMap;
@@ -66,6 +66,7 @@ impl FSEntryTreeGenerator {
                             name: fs_item.name.clone(),
                             path: path.clone().to_string(),
                             last_modified: fs_item.last_written_datetime,
+                            web_link: None,
                             children: HashMap::new(), // Items do not have children
                         };
                         root_children.insert(fs_item.name.clone(), Arc::new(item_tree));
@@ -80,6 +81,7 @@ impl FSEntryTreeGenerator {
             name: "/".to_string(),
             path,
             last_modified: Utc::now(),
+            web_link: None,
             children: root_children,
         };
 
@@ -103,6 +105,7 @@ impl FSEntryTreeGenerator {
                 name: child_item.name.clone(),
                 path: child_path,
                 last_modified: child_item.last_written_datetime,
+                web_link: None,
                 children: HashMap::new(), // Items do not have children
             };
             children.insert(child_item.name.clone(), Arc::new(child_tree));
@@ -113,6 +116,7 @@ impl FSEntryTreeGenerator {
             name: fs_folder.name.clone(),
             path: parent_path.to_string(),
             last_modified: fs_folder.last_written_datetime,
+            web_link: None,
             children,
         };
 
@@ -124,6 +128,7 @@ impl FSEntryTreeGenerator {
             name: server_tree.name.clone(),
             path: server_tree.path.clone(),
             last_modified: server_tree.last_modified,
+            web_link: None,
             children: HashMap::new(),
         };
 
@@ -174,7 +179,8 @@ impl FSEntryTreeGenerator {
         FSEntryTree {
             name: entry.name.clone(),
             path: entry.path.clone(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: deleted_children,
         }
     }
@@ -184,11 +190,7 @@ impl FSEntryTreeGenerator {
         for (path, permission) in results {
             let is_subpath = filtered_results.iter().any(|(acc_path, _): &(VRPath, ReadPermission)| {
                 // Check if `path` is a subpath of `acc_path`
-                if path.path_ids.len() > acc_path.path_ids.len() && path.path_ids.starts_with(&acc_path.path_ids) {
-                    true
-                } else {
-                    false
-                }
+                path.path_ids.len() > acc_path.path_ids.len() && path.path_ids.starts_with(&acc_path.path_ids)
             });
 
             if !is_subpath {
@@ -219,6 +221,7 @@ impl FSEntryTreeGenerator {
                     name: fs_item.name.clone(),
                     path: fs_item.path.clone().format_to_string(), // Use the item's path directly
                     last_modified: fs_item.last_written_datetime,
+                    web_link: None,
                     children: HashMap::new(), // Items do not have children
                 };
                 Ok(item_tree)
@@ -240,13 +243,13 @@ impl FSEntryTreeGenerator {
     /// Recursive helper function to traverse the FSEntryTree and collect paths of deleted items.
     fn find_deletions_recursive(tree: &FSEntryTree, deletions: &mut Vec<String>) {
         // Check if the current node is marked as deleted
-        let is_deleted = tree.last_modified == DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+        let is_deleted = tree.last_modified == Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap());
 
         // Recurse into the child tree to find more deletions first before deciding on the current node
         let mut child_deletions = 0;
-        for (_, child_tree) in &tree.children {
+        for child_tree in tree.children.values() {
             Self::find_deletions_recursive(child_tree, deletions);
-            if child_tree.last_modified == DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc) {
+            if child_tree.last_modified == Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()) {
                 child_deletions += 1;
             }
         }
@@ -261,28 +264,31 @@ impl FSEntryTreeGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{DateTime, TimeZone};
     use shinkai_vector_resources::vector_resource::VRPath;
 
     fn create_test_tree() -> FSEntryTree {
         let shinkai_intro_crypto = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
-            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            last_modified: Utc.with_ymd_and_hms(2024, 2, 26, 23, 6, 0).unwrap(),
+            web_link: None,
             children: HashMap::new(),
         };
 
         let zeko_intro_crypto = FSEntryTree {
             name: "zeko_intro".to_string(),
             path: "/shared_test_folder/crypto/zeko_intro".to_string(),
-            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            last_modified: Utc.with_ymd_and_hms(2024, 2, 26, 23, 6, 0).unwrap(),
+            web_link: None,
             children: HashMap::new(),
         };
 
         let crypto_folder = FSEntryTree {
             name: "crypto".to_string(),
             path: "/shared_test_folder/crypto".to_string(),
-            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
+            last_modified: Utc.with_ymd_and_hms(2024, 3, 18, 3, 54, 25).unwrap(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(shinkai_intro_crypto.name.clone(), Arc::new(shinkai_intro_crypto));
@@ -294,14 +300,16 @@ mod tests {
         let shinkai_intro_folder = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/shinkai_intro".to_string(),
-            last_modified: Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            web_link: None,
+            last_modified: Utc.with_ymd_and_hms(2024, 2, 26, 23, 6, 0).unwrap(),
             children: HashMap::new(),
         };
 
         let shared_test_folder = FSEntryTree {
             name: "shared_test_folder".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 25),
+            web_link: None,
+            last_modified: Utc.with_ymd_and_hms(2024, 3, 18, 3, 54, 25).unwrap(),
             children: {
                 let mut children = HashMap::new();
                 children.insert(crypto_folder.name.clone(), Arc::new(crypto_folder));
@@ -310,18 +318,17 @@ mod tests {
             },
         };
 
-        let root = FSEntryTree {
+        FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
-            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
+            web_link: None,
+            last_modified: Utc.with_ymd_and_hms(2024, 3, 18, 3, 54, 27).unwrap(),
             children: {
                 let mut children = HashMap::new();
                 children.insert(shared_test_folder.name.clone(), Arc::new(shared_test_folder));
                 children
             },
-        };
-
-        root
+        }
     }
 
     // Helper function to create a client tree with an extra item
@@ -335,6 +342,7 @@ mod tests {
             let extra_item = FSEntryTree {
                 name: "extra_item".to_string(),
                 path: "/shared_test_folder/extra_item".to_string(),
+                web_link: None,
                 last_modified: Utc::now(),
                 children: HashMap::new(), // Assuming it's an item without children
             };
@@ -356,7 +364,8 @@ mod tests {
         let client_tree = FSEntryTree {
             name: "/".to_string(),
             path: "/".to_string(),
-            last_modified: Utc.ymd(2024, 3, 18).and_hms(3, 54, 27),
+            web_link: None,
+            last_modified: Utc.with_ymd_and_hms(2024, 3, 18, 3, 54, 27).unwrap(),
             children: HashMap::new(),
         };
 
@@ -445,7 +454,7 @@ mod tests {
         let client_tree = create_test_tree(); // Clone the server tree for the client
 
         // Modify the date of "zeko_intro" in the client tree to simulate an older version
-        let new_date = Utc.ymd(2024, 2, 25).and_hms(23, 6, 0); // Set to an older date
+        let new_date = Utc.with_ymd_and_hms(2024, 2, 25, 23, 6, 0).unwrap(); // Set to an older date
         let client_tree_modified = modify_zeko_intro_date(client_tree, new_date);
 
         let differences = FSEntryTreeGenerator::compare_fs_item_trees(&client_tree_modified, &server_tree);
@@ -481,7 +490,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             zeko_intro_diff.last_modified,
-            Utc.ymd(2024, 2, 26).and_hms(23, 6, 0),
+            Utc.with_ymd_and_hms(2024, 2, 26, 23, 6, 0).unwrap(),
             "Expected 'zeko_intro' last_modified date in differences to match the server's date"
         );
     }
@@ -563,41 +572,40 @@ mod tests {
             differences
         );
 
-        // Check if the differences include the "deleted" item
+        // Check if 'zeko' is correctly marked as deleted
+        let zeko_diff = differences.children.get("zeko").unwrap();
+        assert_eq!(
+            zeko_diff.last_modified,
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            "Expected 'zeko' last_modified date to indicate deletion"
+        );
+
+        // Check for the presence of 'paper' within 'zeko', despite 'zeko' being marked as deleted
         assert!(
-            differences
-                .children
-                .get("shared_test_folder")
-                .unwrap()
-                .children
-                .contains_key("extra_item"),
-            "Expected 'extra_item' to be marked as deleted in the differences"
+            zeko_diff.children.contains_key("paper"),
+            "Expected 'paper' to be present in the 'zeko' differences"
         );
 
-        // Additionally, check if the last_modified date of "extra_item" in the differences matches the epoch start
-        let extra_item_diff = differences
-            .children
-            .get("shared_test_folder")
-            .unwrap()
-            .children
-            .get("extra_item")
-            .unwrap();
+        // Verify the 'paper' details
+        let paper_diff = zeko_diff.children.get("paper").unwrap();
         assert_eq!(
-            extra_item_diff.last_modified,
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
-            "Expected 'extra_item' last_modified date in differences to indicate deletion"
+            paper_diff.last_modified,
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            "Expected 'paper' last_modified date to match the expected state"
         );
 
-        // Now use find_deletions to verify it identifies the "deleted" item correctly
-        let deletions = FSEntryTreeGenerator::find_deletions(&differences);
-        assert_eq!(
-            deletions.len(),
-            1,
-            "Expected to find one deletion in the differences tree"
+        // Check for the presence of 'shinkai_intro' within 'paper'
+        assert!(
+            paper_diff.children.contains_key("shinkai_intro"),
+            "Expected 'shinkai_intro' to be present in the 'paper' differences"
         );
+
+        // Verify the 'shinkai_intro' details within 'paper'
+        let shinkai_intro_diff = paper_diff.children.get("shinkai_intro").unwrap();
         assert_eq!(
-            deletions[0], extra_item_diff.path,
-            "Expected the path of the deleted item to match"
+            shinkai_intro_diff.last_modified,
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            "Expected 'shinkai_intro' within 'paper' last_modified date to match the expected state"
         );
     }
 
@@ -607,7 +615,8 @@ mod tests {
         let local_shared_folder_state = FSEntryTree {
             name: "/".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 13),
+            web_link: None,
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 13).unwrap(),
             children: {
                 let mut children = HashMap::new();
                 children.insert(
@@ -615,7 +624,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "crypto".to_string(),
                         path: "/shared_test_folder/crypto".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 0),
+                        web_link: None,
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 0).unwrap(),
                         children: {
                             let mut crypto_children = HashMap::new();
                             crypto_children.insert(
@@ -623,7 +633,8 @@ mod tests {
                                 Arc::new(FSEntryTree {
                                     name: "shinkai_intro".to_string(),
                                     path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
-                                    last_modified: Utc.ymd(2024, 4, 3).and_hms(2, 41, 16),
+                                    web_link: None,
+                                    last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
                                     children: HashMap::new(),
                                 }),
                             );
@@ -636,7 +647,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "shinkai_intro".to_string(),
                         path: "/shared_test_folder/shinkai_intro".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 3).and_hms(2, 41, 16),
+                        web_link: None,
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
                         children: HashMap::new(),
                     }),
                 );
@@ -648,7 +660,8 @@ mod tests {
         let subscriber_folder_state = FSEntryTree {
             name: "shared_test_folder".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 13),
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 13).unwrap(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(
@@ -656,7 +669,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "crypto".to_string(),
                         path: "/shared_test_folder/crypto".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 0),
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 0).unwrap(),
+                        web_link: None,
                         children: {
                             let mut crypto_children = HashMap::new();
                             crypto_children.insert(
@@ -664,7 +678,8 @@ mod tests {
                                 Arc::new(FSEntryTree {
                                     name: "shinkai_intro".to_string(),
                                     path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
-                                    last_modified: Utc.ymd(2024, 4, 3).and_hms(2, 41, 16),
+                                    last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
+                                    web_link: None,
                                     children: HashMap::new(),
                                 }),
                             );
@@ -677,7 +692,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "shinkai_intro".to_string(),
                         path: "/shared_test_folder/shinkai_intro".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 3).and_hms(2, 41, 16),
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 );
@@ -686,7 +702,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "zeko".to_string(),
                         path: "/shared_test_folder/zeko".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 13),
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 13).unwrap(),
+                        web_link: None,
                         children: {
                             let mut zeko_children = HashMap::new();
                             zeko_children.insert(
@@ -694,7 +711,8 @@ mod tests {
                                 Arc::new(FSEntryTree {
                                     name: "paper".to_string(),
                                     path: "/shared_test_folder/zeko/paper".to_string(),
-                                    last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 12),
+                                    last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 12).unwrap(),
+                                    web_link: None,
                                     children: {
                                         let mut paper_children = HashMap::new();
                                         paper_children.insert(
@@ -702,7 +720,8 @@ mod tests {
                                             Arc::new(FSEntryTree {
                                                 name: "shinkai_intro".to_string(),
                                                 path: "/shared_test_folder/zeko/paper/shinkai_intro".to_string(),
-                                                last_modified: Utc.ymd(2024, 4, 20).and_hms(6, 38, 43),
+                                                last_modified: Utc.with_ymd_and_hms(2024, 4, 20, 6, 38, 43).unwrap(),
+                                                web_link: None,
                                                 children: HashMap::new(),
                                             }),
                                         );
@@ -722,7 +741,8 @@ mod tests {
         let expected_diff = FSEntryTree {
             name: "/".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 21).and_hms(3, 17, 13),
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 3, 17, 13).unwrap(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(
@@ -730,7 +750,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "zeko".to_string(),
                         path: "/shared_test_folder/zeko".to_string(),
-                        last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+                        last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()), // This indicates deletion
+                        web_link: None,
                         children: {
                             let mut zeko_children = HashMap::new();
                             zeko_children.insert(
@@ -738,7 +759,9 @@ mod tests {
                                 Arc::new(FSEntryTree {
                                     name: "paper".to_string(),
                                     path: "/shared_test_folder/zeko/paper".to_string(),
-                                    last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+                                    last_modified: Utc
+                                        .from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()), // This indicates deletion
+                                    web_link: None,
                                     children: {
                                         let mut paper_children = HashMap::new();
                                         paper_children.insert(
@@ -746,10 +769,10 @@ mod tests {
                                             Arc::new(FSEntryTree {
                                                 name: "shinkai_intro".to_string(),
                                                 path: "/shared_test_folder/zeko/paper/shinkai_intro".to_string(),
-                                                last_modified: DateTime::<Utc>::from_utc(
-                                                    NaiveDateTime::from_timestamp(0, 0),
-                                                    Utc,
-                                                ),
+                                                last_modified: Utc.from_utc_datetime(
+                                                    &NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
+                                                ), // This indicates deletion
+                                                web_link: None,
                                                 children: HashMap::new(),
                                             }),
                                         );
@@ -800,7 +823,7 @@ mod tests {
         let zeko_diff = differences.children.get("zeko").unwrap();
         assert_eq!(
             zeko_diff.last_modified,
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
             "Expected 'zeko' last_modified date to indicate deletion"
         );
 
@@ -814,7 +837,7 @@ mod tests {
         let paper_diff = zeko_diff.children.get("paper").unwrap();
         assert_eq!(
             paper_diff.last_modified,
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
             "Expected 'paper' last_modified date to match the expected state"
         );
 
@@ -828,7 +851,7 @@ mod tests {
         let shinkai_intro_diff = paper_diff.children.get("shinkai_intro").unwrap();
         assert_eq!(
             shinkai_intro_diff.last_modified,
-            DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
             "Expected 'shinkai_intro' within 'paper' last_modified date to match the expected state"
         );
     }
@@ -840,6 +863,7 @@ mod tests {
             name: "root".to_string(),
             path: "/".to_string(),
             last_modified: Utc::now(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(
@@ -848,6 +872,7 @@ mod tests {
                         name: "folder1".to_string(),
                         path: "/folder1".to_string(),
                         last_modified: Utc::now(), // Not marked as deleted
+                        web_link: None,
                         children: {
                             let mut folder1_children = HashMap::new();
                             // Non-deleted item
@@ -857,6 +882,7 @@ mod tests {
                                     name: "item1".to_string(),
                                     path: "/folder1/item1".to_string(),
                                     last_modified: Utc::now(), // Not marked as deleted
+                                    web_link: None,
                                     children: HashMap::new(),
                                 }),
                             );
@@ -866,7 +892,9 @@ mod tests {
                                 Arc::new(FSEntryTree {
                                     name: "item2".to_string(),
                                     path: "/folder1/item2".to_string(),
-                                    last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc), // Marked as deleted
+                                    last_modified: Utc
+                                        .from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()), // Marked as deleted
+                                    web_link: None,
                                     children: HashMap::new(),
                                 }),
                             );
@@ -879,7 +907,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "folder2".to_string(),
                         path: "/folder2".to_string(),
-                        last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc), // Marked as deleted
+                        last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()), // Marked as deleted
+                        web_link: None,
                         children: HashMap::new(), // No children
                     }),
                 );
@@ -906,14 +935,16 @@ mod tests {
         let shinkai_intro = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/zeko/paper/shinkai_intro".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: HashMap::new(),
         };
 
         let paper = FSEntryTree {
             name: "paper".to_string(),
             path: "/shared_test_folder/zeko/paper".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(shinkai_intro.name.clone(), Arc::new(shinkai_intro));
@@ -924,7 +955,8 @@ mod tests {
         let zeko = FSEntryTree {
             name: "zeko".to_string(),
             path: "/shared_test_folder/zeko".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(paper.name.clone(), Arc::new(paper));
@@ -935,7 +967,8 @@ mod tests {
         let root = FSEntryTree {
             name: "/".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 21).and_hms(4, 10, 2),
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 4, 10, 2).unwrap(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(zeko.name.clone(), Arc::new(zeko));
@@ -957,22 +990,24 @@ mod tests {
         let shinkai_intro = FSEntryTree {
             name: "shinkai_intro".to_string(),
             path: "/shared_test_folder/zeko/paper/shinkai_intro".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: HashMap::new(),
         };
 
         let zeko_intro = FSEntryTree {
             name: "zeko_intro".to_string(),
             path: "/shared_test_folder/zeko/paper/zeko_intro".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: HashMap::new(),
         };
-
 
         let paper = FSEntryTree {
             name: "paper".to_string(),
             path: "/shared_test_folder/zeko/paper".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(shinkai_intro.name.clone(), Arc::new(shinkai_intro));
@@ -984,7 +1019,8 @@ mod tests {
         let zeko = FSEntryTree {
             name: "zeko".to_string(),
             path: "/shared_test_folder/zeko".to_string(),
-            last_modified: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc),
+            last_modified: Utc.from_utc_datetime(&NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(paper.name.clone(), Arc::new(paper));
@@ -995,7 +1031,8 @@ mod tests {
         let root = FSEntryTree {
             name: "/".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 21).and_hms(4, 10, 2),
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 21, 4, 10, 2).unwrap(),
+            web_link: None,
             children: {
                 let mut children = HashMap::new();
                 children.insert(zeko.name.clone(), Arc::new(zeko));
@@ -1006,8 +1043,14 @@ mod tests {
         let deletions = FSEntryTreeGenerator::find_deletions(&root);
         eprintln!("Deletions: {:#?}", deletions);
 
-        assert_eq!(deletions.len(), 2, "Expected to find one deletion");
-        assert!(deletions.contains(&"/shared_test_folder/zeko/paper/shinkai_intro".to_string()), "Expected deletion path to include '/shared_test_folder/zeko/paper/shinkai_intro'");
-        assert!(deletions.contains(&"/shared_test_folder/zeko/paper/zeko_intro".to_string()), "Expected deletion path to include '/shared_test_folder/zeko/paper/zeko_intro'");
+        assert_eq!(deletions.len(), 2, "Expected to find two deletions");
+        assert!(
+            deletions.contains(&"/shared_test_folder/zeko/paper/shinkai_intro".to_string()),
+            "Expected deletion path to include '/shared_test_folder/zeko/paper/shinkai_intro'"
+        );
+        assert!(
+            deletions.contains(&"/shared_test_folder/zeko/paper/zeko_intro".to_string()),
+            "Expected deletion path to include '/shared_test_folder/zeko/paper/zeko_intro'"
+        );
     }
 }
