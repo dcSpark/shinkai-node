@@ -4,7 +4,6 @@ mod tests {
     use pest::Parser;
 
     mod identifier_parser {
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
@@ -15,8 +14,6 @@ mod tests {
     }
 
     mod input_parser {
-        use super::identifier_parser::IdentifierParser;
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
@@ -29,8 +26,6 @@ mod tests {
     }
 
     mod output_parser {
-        use super::identifier_parser::IdentifierParser;
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
@@ -43,8 +38,6 @@ mod tests {
     }
 
     mod condition_parser {
-        use super::identifier_parser::IdentifierParser;
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
@@ -63,8 +56,6 @@ mod tests {
     }
 
     mod action_parser {
-        use super::identifier_parser::IdentifierParser;
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
@@ -83,28 +74,25 @@ mod tests {
     }
 
     mod step_parser {
-        use super::action_parser::ActionParser;
-        use super::condition_parser::ConditionParser;
-        use pest::Parser;
         use pest_derive::Parser;
 
         #[derive(Parser)]
         #[grammar_inline = r#"
-        step = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
-        step_body = { condition? ~ action }
-        condition = { "if" ~ expression ~ "{" }
-        action = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
-        command = { identifier }
-        param = { string | number | boolean | identifier }
-        external_fn_call = { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
-        expression = { identifier ~ comparison_operator ~ value }
-        comparison_operator = { "==" | "!=" | ">" | "<" | ">=" | "<=" }
-        value = { string | number | boolean | identifier }
-        identifier = _{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-        string = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
-        number = _{ ASCII_DIGIT+ }
-        boolean = { "true" | "false" }
-        WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+        step                =  { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
+        step_body           =  { condition ~ action ~ "}" | action }
+        condition           =  { "if" ~ expression ~ "{" }
+        action              =  { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+        command             =  { identifier }
+        param               =  { string | number | boolean | identifier }
+        external_fn_call    =  { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+        expression          =  { identifier ~ comparison_operator ~ value }
+        comparison_operator =  { "==" | "!=" | ">" | "<" | ">=" | "<=" }
+        value               =  { string | number | boolean | identifier }
+        identifier          = _{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+        string              = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+        number              = _{ ASCII_DIGIT+ }
+        boolean             =  { "true" | "false" }
+        WHITESPACE          = _{ " " | "\t" | "\n" | "\r" }
         "#]
         pub struct StepParser;
     }
@@ -168,7 +156,16 @@ mod tests {
             } 
         }"#;
         let parse_result = StepParser::parse(Rule::step, step_str);
-        eprintln!("{:?}", parse_result);
+        assert!(parse_result.is_ok());
+    }
+
+    #[test]
+    fn test_action_command() {
+        use action_parser::ActionParser;
+        use action_parser::Rule;
+
+        let action_str = "update_data(\"new_data\", 123, true)";
+        let parse_result = ActionParser::parse(Rule::action, action_str);
         assert!(parse_result.is_ok());
     }
 }
