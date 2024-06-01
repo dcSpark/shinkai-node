@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use pest::Parser;
     use identifier_parser::Rule;
+    use pest::Parser;
 
     mod identifier_parser {
         use pest::Parser;
@@ -21,8 +21,9 @@ mod tests {
 
         #[derive(Parser)]
         #[grammar_inline = r#"
-        input = { "input" ~ identifier ~ ":" ~ identifier }
-        identifier = _{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+        input      =  { "input" ~ identifier ~ ":" ~ identifier }
+        identifier = { (ASCII_ALPHA | "_")+ ~ (ASCII_ALPHANUMERIC | "_")* }
+        WHITESPACE = _{ " " | "\t" }
         "#]
         pub struct InputParser;
     }
@@ -35,7 +36,8 @@ mod tests {
         #[derive(Parser)]
         #[grammar_inline = r#"
         output = { "output" ~ identifier ~ ":" ~ identifier }
-        identifier = _{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+        identifier = { (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+        WHITESPACE = _{ " " | "\t" }
         "#]
         pub struct OutputParser;
     }
@@ -55,6 +57,7 @@ mod tests {
         string = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
         number = _{ ASCII_DIGIT+ }
         boolean = { "true" | "false" }
+        WHITESPACE = _{ " " | "\t" }
         "#]
         pub struct ConditionParser;
     }
@@ -74,6 +77,7 @@ mod tests {
         string = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
         number = _{ ASCII_DIGIT+ }
         boolean = { "true" | "false" }
+        WHITESPACE = _{ " " | "\t" }
         "#]
         pub struct ActionParser;
     }
@@ -88,8 +92,8 @@ mod tests {
         #[grammar_inline = r#"
         step = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
         step_body = { condition? ~ action }
-        condition = { "if" ~ expression }
-        action = { command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" | external_fn_call }
+        condition = { "if" ~ expression ~ "{" }
+        action = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
         command = { identifier }
         param = { string | number | boolean | identifier }
         external_fn_call = { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
@@ -100,6 +104,7 @@ mod tests {
         string = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
         number = _{ ASCII_DIGIT+ }
         boolean = { "true" | "false" }
+        WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
         "#]
         pub struct StepParser;
     }
@@ -126,7 +131,7 @@ mod tests {
     fn test_output() {
         use output_parser::OutputParser;
         use output_parser::Rule;
-    
+
         let output_str = "output perspectives: List<String>";
         let parse_result = OutputParser::parse(Rule::output, output_str);
         assert!(parse_result.is_ok());
@@ -154,17 +159,16 @@ mod tests {
 
     #[test]
     fn test_step() {
-        use step_parser::StepParser;
         use step_parser::Rule;
+        use step_parser::StepParser;
 
-        let step_str = r#"
-        step GenerateQuestions {
-            if perspectives != "" {
-                generate_questions(perspectives)
-            }
-        }
-        "#;
+        let step_str = r#"step GenerateQuestions { 
+            if perspectives != "" { 
+                call generate_questions(perspectives) 
+            } 
+        }"#;
         let parse_result = StepParser::parse(Rule::step, step_str);
+        eprintln!("{:?}", parse_result);
         assert!(parse_result.is_ok());
     }
 }
