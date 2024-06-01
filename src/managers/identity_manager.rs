@@ -450,7 +450,7 @@ impl IdentityManager {
         }
 
         match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {
-            Ok(_) => Ok({}),
+            Ok(_) => Ok(()),
             Err(e) => {
                 shinkai_log(
                     ShinkaiLogOption::Identity,

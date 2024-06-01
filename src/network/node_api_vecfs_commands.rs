@@ -1141,7 +1141,7 @@ impl Node {
 
         let mut dist_files = vec![];
         for file in other_files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime.clone());
+            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime);
             dist_files.push((file.0, file.1, distribution_info));
         }
 

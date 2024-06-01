@@ -90,6 +90,12 @@ pub struct JobStepResult {
     pub step_revisions: Vec<Prompt>,
 }
 
+impl Default for JobStepResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl JobStepResult {
     /// Create a new JobStepResult
     pub fn new() -> Self {
@@ -113,7 +119,7 @@ impl JobStepResult {
     /// Returns the latest user message if one exists
     pub fn get_latest_user_message_parsed(&self) -> Option<ParsedUserMessage> {
         self.get_latest_user_message_string()
-            .map(|message| ParsedUserMessage::new(message))
+            .map(ParsedUserMessage::new)
     }
 
     /// Returns the latest user message if one exists

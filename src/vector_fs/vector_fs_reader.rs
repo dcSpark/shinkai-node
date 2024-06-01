@@ -183,7 +183,7 @@ impl VectorFS {
     pub async fn retrieve_vrpack(&self, reader: &VFSReader) -> Result<VRPack, VectorFSError> {
         let fs_entry = self.retrieve_fs_entry(reader).await?;
         let vec_fs_base_path_parent = reader.path.pop_cloned();
-        let default_root_name = format!("{}-root", reader.profile.to_string());
+        let default_root_name = format!("{}-root", reader.profile);
         let folder_name = &reader.path.last_path_id().unwrap_or(default_root_name);
         let mut vrpack = VRPack::new_empty(folder_name);
         let mut folder_merkle_hash_map = std::collections::HashMap::new();
@@ -382,7 +382,7 @@ impl VectorFS {
         &self,
         reader: &VFSReader,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
-        let vr = self.retrieve_vector_resource(&reader).await?;
+        let vr = self.retrieve_vector_resource(reader).await?;
         Ok(vr.as_trait_object().generate_intro_ret_nodes()?)
     }
 

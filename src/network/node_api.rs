@@ -874,28 +874,28 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             "Please check your URL.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND))
-    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+    } else if err.find::<warp::filters::body::BodyDeserializeError>().is_some() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::BAD_REQUEST,
             "Invalid Body",
             "Please check your JSON body.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST))
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::METHOD_NOT_ALLOWED,
             "Method Not Allowed",
             "Please check your request method.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::METHOD_NOT_ALLOWED))
-    } else if let Some(_) = err.find::<warp::reject::PayloadTooLarge>() {
+    } else if err.find::<warp::reject::PayloadTooLarge>().is_some() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::PAYLOAD_TOO_LARGE,
             "Payload Too Large",
             "The request payload is too large.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::PAYLOAD_TOO_LARGE))
-    } else if let Some(_) = err.find::<warp::reject::InvalidQuery>() {
+    } else if err.find::<warp::reject::InvalidQuery>().is_some() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::BAD_REQUEST,
             "Invalid Query",

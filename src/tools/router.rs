@@ -245,7 +245,7 @@ impl ShinkaiTool {
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
         // We replace any `/` in order to not have the names break VRPaths
-        format!("{}:::{}", toolkit_name, name).replace("/", "|")
+        format!("{}:::{}", toolkit_name, name).replace('/', "|")
     }
 
     /// Convert to json
@@ -278,6 +278,12 @@ pub struct ToolRouter {
     pub routing_resource: MapVectorResource,
 }
 
+impl Default for ToolRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolRouter {
     /// Create a new ToolRouter instance from scratch.
     pub fn new() -> Self {
@@ -302,7 +308,7 @@ impl ToolRouter {
         }
 
         ToolRouter {
-            routing_resource: routing_resource,
+            routing_resource,
         }
     }
 
@@ -323,7 +329,7 @@ impl ToolRouter {
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         let node = self.routing_resource.get_root_node(key)?;
-        Ok(ShinkaiTool::from_json(&node.get_text_content()?)?)
+        ShinkaiTool::from_json(node.get_text_content()?)
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
@@ -359,7 +365,7 @@ impl ToolRouter {
         for ret_node in ret_nodes {
             // Ignores tools added to the router which are invalid by matching on the Ok()
             if let Ok(data_string) = ret_node.node.get_text_content() {
-                if let Ok(shinkai_tool) = ShinkaiTool::from_json(&data_string) {
+                if let Ok(shinkai_tool) = ShinkaiTool::from_json(data_string) {
                     shinkai_tools.push(shinkai_tool);
                 }
             }

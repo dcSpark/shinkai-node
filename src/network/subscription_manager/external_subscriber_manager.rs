@@ -544,7 +544,7 @@ impl ExternalSubscriberManager {
                     let is_last_element = index == diff_paths.len() - 1;
 
                     // Attempt to insert vrkai into vr_pack and log error if it fails
-                    if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
+                    if vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element).is_err() {
                         continue; // Skip to the next iteration
                     }
                 }

@@ -61,17 +61,17 @@ impl ShinkaiDB {
             &agent_id_for_db_hash,
             profile.get_profile_name_string().unwrap_or_default()
         );
-        batch.put_cf(cf_node_and_users, profile_key.as_bytes(), &[]);
+        batch.put_cf(cf_node_and_users, profile_key.as_bytes(), []);
 
         // Additionally, for each allowed message sender and toolkit permission,
         // you can store them with a specific prefix to indicate their relationship to the agent.
         for profile in &agent.allowed_message_senders {
             let profile_key = format!("agent_{}_profile_{}", &agent_id_for_db_hash, profile);
-            batch.put_cf(cf_node_and_users, profile_key.as_bytes(), &[]);
+            batch.put_cf(cf_node_and_users, profile_key.as_bytes(), []);
         }
         for toolkit in &agent.toolkit_permissions {
             let toolkit_key = format!("agent_{}_toolkit_{}", &agent_id_for_db_hash, toolkit);
-            batch.put_cf(cf_node_and_users, toolkit_key.as_bytes(), &[]);
+            batch.put_cf(cf_node_and_users, toolkit_key.as_bytes(), []);
         }
 
         // Write the batch
@@ -134,7 +134,7 @@ impl ShinkaiDB {
         // Get handle to the NodeAndUsers topic
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
 
-        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
         let agent_key = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
 
         // Check if the agent exists
@@ -189,7 +189,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
-        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
 
         // Fetch the agent's bytes by their prefixed id from the NodeAndUsers topic
         let prefixed_id = format!("agent_placeholder_value_to_match_prefix_abcdef_{}", agent_id_for_db);
@@ -211,7 +211,7 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
         let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
 
         let prefix = format!("agent_{}_profile_", agent_id_for_db_hash);
@@ -226,7 +226,7 @@ impl ShinkaiDB {
                         .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
                     // Ensure the key follows the prefix convention before extracting the profile name
                     if key_str.starts_with(&prefix) {
-                        if let Some(profile_name) = key_str.split("_").last() {
+                        if let Some(profile_name) = key_str.split('_').last() {
                             profiles_with_access.push(profile_name.to_string());
                         }
                     }
@@ -244,7 +244,7 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        let agent_id_for_db = Self::db_agent_id(&agent_id, profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
         let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
         let prefix = format!("agent_{}_toolkit_", agent_id_for_db_hash);
         let mut toolkits_accessible = Vec::new();
@@ -258,7 +258,7 @@ impl ShinkaiDB {
                         .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
                     // Ensure the key follows the prefix convention before extracting the toolkit name
                     if key_str.starts_with(&prefix) {
-                        if let Some(toolkit_name) = key_str.split("_").last() {
+                        if let Some(toolkit_name) = key_str.split('_').last() {
                             toolkits_accessible.push(toolkit_name.to_string());
                         }
                     }
@@ -277,7 +277,7 @@ impl ShinkaiDB {
         bounded_profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        let agent_id_for_db = Self::db_agent_id(&agent_id, bounded_profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, bounded_profile)?;
         let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
         let profile_key = format!("agent_{}_profile_{}", agent_id_for_db_hash, profile);
 
@@ -294,7 +294,7 @@ impl ShinkaiDB {
         bounded_profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let cf_node_and_users = self.cf_handle(Topic::NodeAndUsers.as_str())?;
-        let agent_id_for_db = Self::db_agent_id(&agent_id, bounded_profile)?;
+        let agent_id_for_db = Self::db_agent_id(agent_id, bounded_profile)?;
         let agent_id_for_db_hash = Self::agent_id_to_hash(&agent_id_for_db);
         let toolkit_key = format!("agent_{}_toolkit_{}", agent_id_for_db_hash, toolkit);
 

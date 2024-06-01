@@ -66,14 +66,14 @@ impl LLMProvider for Groq {
                     }
                 };
 
-                let mut payload = json!({
+                let payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
 
-                let mut payload_log = payload.clone();
+                let payload_log = payload.clone();
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,

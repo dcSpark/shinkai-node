@@ -1,7 +1,6 @@
 use super::error::AgentError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use super::execution::chains::tool_execution_chain;
-use super::execution::prompts::prompts::{JobPromptGenerator, Prompt};
+use super::execution::prompts::prompts::{JobPromptGenerator};
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use regex::Regex;
@@ -65,7 +64,7 @@ impl ParsingHelper {
             );
 
             let desc = ShinkaiFileParser::process_groups_into_description(
-                &text_groups,
+                text_groups,
                 max_node_text_size as usize,
                 max_node_text_size.checked_div(2).unwrap_or(100) as usize,
             );

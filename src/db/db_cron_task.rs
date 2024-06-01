@@ -75,7 +75,7 @@ impl ShinkaiDB {
         batch.put_cf(
             cf_cron_queues,
             format!("{}_crawl_links", prefix).as_bytes(),
-            &crawl_links.to_string().as_bytes(),
+            crawl_links.to_string().as_bytes(),
         );
 
         let created_at = Utc::now().to_rfc3339();
@@ -216,7 +216,7 @@ impl ShinkaiDB {
                             if let Some((task_id, attribute)) = task_id_attribute.rsplit_once('_') {
                                 task_attributes
                                     .entry(task_id.to_string())
-                                    .or_insert_with(HashMap::new)
+                                    .or_default()
                                     .insert(attribute.to_string(), value.to_vec());
                             }
                         }
@@ -267,7 +267,7 @@ impl ShinkaiDB {
                         if let Some((task_id, attribute)) = task_id_attribute.rsplit_once('_') {
                             task_attributes
                                 .entry(task_id.to_string())
-                                .or_insert_with(HashMap::new)
+                                .or_default()
                                 .insert(attribute.to_string(), value.to_vec());
                         }
                     }

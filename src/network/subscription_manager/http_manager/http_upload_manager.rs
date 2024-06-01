@@ -58,7 +58,7 @@ fn serialize_system_time<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S
 where
     S: Serializer,
 {
-    let datetime: DateTime<Utc> = time.clone().into();
+    let datetime: DateTime<Utc> = (*time).into();
     serializer.serialize_str(&datetime.to_rfc3339())
 }
 

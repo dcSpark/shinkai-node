@@ -1,6 +1,5 @@
 use regex::Regex;
 use serde_json;
-use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::agents::serialized_agent::AgentLLMInterface,
@@ -105,6 +104,8 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]

@@ -10,7 +10,7 @@ use crate::agent::execution::chains::inference_chain_trait::{
 use crate::agent::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
 use crate::agent::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
 use crate::agent::execution::user_message_parser::ParsedUserMessage;
-use crate::agent::job::{Job, JobId, JobLike, JobStepResult};
+use crate::agent::job::{Job, JobLike, JobStepResult};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -183,7 +183,7 @@ impl SummaryInferenceChain {
 
         // Get a stream that retrieves all resources in the job scope automatically, and chunk it in groups of 5 (same as stream buffer size)
         let resource_stream =
-            JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, &user_profile).await;
+            JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), scope, &user_profile).await;
         let mut chunks = resource_stream.chunks(5);
 
         // For each chunk parallelize creating a detailed summary for each
@@ -243,7 +243,7 @@ impl SummaryInferenceChain {
         max_tokens_in_prompt: usize,
         attempt_count: u64,
     ) -> Result<String, AgentError> {
-        let mut resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+        let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
         // TODO: Make sure the whole document gets parsed into chunks that fit the LLMs max tokens minus some front buffer for the actual prompt
         // Split the list of resource_sub_prompts into chunks that fit in the max tokens in prompt
@@ -282,11 +282,11 @@ impl SummaryInferenceChain {
         }
         let filtered_answer = if chunks.len() == 3 {
             let mut title = chunks[0].replace("Title:", "");
-            let mut intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
+            let intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
             let mut list = chunks[2].replace("List:", "");
 
             // Add the title tag if it doesnt exist
-            if !title.is_empty() && !title.trim().starts_with("#") {
+            if !title.is_empty() && !title.trim().starts_with('#') {
                 title = format!("## {}", title);
             }
 
@@ -359,7 +359,7 @@ impl SummaryInferenceChain {
             "overew",
             "overbiew",
         ];
-        let direct_other_substrings = vec!["explain", "what is", "what do", "what does", "detail", "rundown"];
+        let direct_other_substrings = ["explain", "what is", "what do", "what does", "detail", "rundown"];
 
         // Check if any of the direct substrings are in the user message
         let user_message_no_code_blocks = user_message.get_output_string_without_codeblocks();
@@ -378,7 +378,7 @@ impl SummaryInferenceChain {
                     .contains(&substring.to_lowercase())
             });
             if other_substring_result {
-                if let Ok(other_check_result) = other_check(&generator, &user_message, &job_scope).await {
+                if let Ok(other_check_result) = other_check(&generator, &user_message, job_scope).await {
                     if other_check_result.passed_scoring {
                         return true;
                     }
@@ -402,7 +402,7 @@ impl SummaryInferenceChain {
 
         // Do the quick first pass check
         let first_pass_result =
-            Self::validate_user_message_first_pass(user_message.clone(), generator.clone(), &job_scope, &step_history)
+            Self::validate_user_message_first_pass(user_message.clone(), generator.clone(), job_scope, step_history)
                 .await;
         if !first_pass_result {
             return None;

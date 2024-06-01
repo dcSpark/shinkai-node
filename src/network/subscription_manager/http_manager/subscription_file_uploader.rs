@@ -17,13 +17,10 @@
 
 use std::env;
 
-use aws_config::credential_process;
-use aws_config::meta::region::RegionProviderChain;
-use aws_config::profile::credentials;
 use aws_config::timeout::TimeoutConfig;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::EncodingType;
-use aws_sdk_s3::{Client as S3Client, Error as S3Error};
+use aws_sdk_s3::{Client as S3Client};
 use reqwest::{Client, Error as ReqwestError};
 use serde::{Deserialize, Serialize};
 
@@ -505,7 +502,7 @@ pub async fn generate_temporary_shareable_link(
 
             Ok(presigned_req.uri().to_string())
         }
-        FileDestination::Http { url, .. } => {
+        FileDestination::Http {  .. } => {
             // For HTTP, we might need to handle this differently as HTTP servers do not typically support presigned URLs
             // This would depend on the specific server's capabilities or additional server-side logic to handle temporary links
             Err(FileTransferError::Other(

@@ -2,7 +2,6 @@ use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
 use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -50,15 +49,13 @@ impl JobManager {
         .await?;
         // Insert the contents of intro_hashmap into master_intro_hashmap
         for (key, value) in intro_hashmap {
-            if !master_intro_hashmap.contains_key(&key) {
-                master_intro_hashmap.insert(key, value);
-            }
+            master_intro_hashmap.entry(key).or_insert(value);
         }
 
         // Initialize included_vrs vector with the resource header id of the first node from each ret_node_group, if it exists
         let mut included_vrs: Vec<String> = Vec::new();
         for ret_node_group in ret_groups.iter() {
-            if let Some(first_node) = ret_node_group.get(0) {
+            if let Some(first_node) = ret_node_group.first() {
                 included_vrs.push(first_node.resource_header.reference_string());
             }
         }
@@ -86,16 +83,14 @@ impl JobManager {
 
             // Insert the contents into master_intro_hashmap
             for (key, value) in keyword_intro_hashmap {
-                if !master_intro_hashmap.contains_key(&key) {
-                    master_intro_hashmap.insert(key, value);
-                }
+                master_intro_hashmap.entry(key).or_insert(value);
             }
 
             // Start looping through the vector search results for this keyword
             let mut keyword_node_inserted = false;
             let mut from_unique_vr = false;
             for group in keyword_ret_nodes_groups.iter() {
-                if let Some(first_group_node) = group.get(0) {
+                if let Some(first_group_node) = group.first() {
                     if !ret_groups.iter().any(|ret_group| group == ret_group) {
                         // If the node is unique and we haven't inserted any keyword node yet
                         if !keyword_node_inserted {
@@ -153,7 +148,7 @@ impl JobManager {
                         }
                     }
                     if first_intro_text.is_none() {
-                        if let Some(intro_text_node) = intro_text_nodes.get(0) {
+                        if let Some(intro_text_node) = intro_text_nodes.first() {
                             if let Ok(intro_text) = intro_text_node.node.get_text_content() {
                                 first_intro_text = Some(intro_text.to_string());
                             }
@@ -298,9 +293,9 @@ impl JobManager {
             let mut bare_results = vec![];
             for (ret_node, path) in vr_pack_results {
                 let ref_string = ret_node.resource_header.reference_string();
-                if !intro_hashmap.contains_key(&ref_string) {
+                if let std::collections::hash_map::Entry::Vacant(e) = intro_hashmap.entry(ref_string) {
                     if let Ok(intro_nodes) = entry.vrpack.get_vrkai_intro_ret_nodes(path.clone()) {
-                        intro_hashmap.insert(ref_string, intro_nodes);
+                        e.insert(intro_nodes);
                     }
                 }
                 bare_results.push(ret_node);
@@ -333,12 +328,12 @@ impl JobManager {
                 for result in results {
                     let ret_node = result.resource_retrieved_node.clone();
                     let ref_string = ret_node.resource_header.reference_string();
-                    if !intro_hashmap.contains_key(&ref_string) {
+                    if let std::collections::hash_map::Entry::Vacant(e) = intro_hashmap.entry(ref_string) {
                         let result_reader = reader
                             .new_reader_copied_data(result.fs_item_path().clone(), &vector_fs)
                             .await?;
                         if let Ok(intro_nodes) = vector_fs._internal_get_vr_intro_ret_nodes(&result_reader).await {
-                            intro_hashmap.insert(ref_string, intro_nodes);
+                            e.insert(intro_nodes);
                         }
                     }
                     bare_results.push(ret_node);
@@ -362,7 +357,7 @@ impl JobManager {
         for resource in &resources {
             // First get the resource embedding, and score vs the query
             let resource_embedding = resource.as_trait_object().resource_embedding();
-            let resource_score = query.score_similarity(&resource_embedding);
+            let resource_score = query.score_similarity(resource_embedding);
 
             // Do the search
             let mut results = resource.as_trait_object().vector_search_customized(
@@ -382,10 +377,10 @@ impl JobManager {
                         resource
                             .as_trait_object()
                             .description()
-                            .unwrap_or_else(|| "")
+                            .unwrap_or("")
                             .to_string(),
                         ret_node.score,
-                        ret_node.node.get_text_content().unwrap_or_else(|_| "").to_string(),
+                        ret_node.node.get_text_content().unwrap_or("").to_string(),
                     );
                 }
             }
@@ -394,9 +389,9 @@ impl JobManager {
             let mut bare_results = vec![];
             for ret_node in results {
                 let ref_string = ret_node.resource_header.reference_string();
-                if !intro_hashmap.contains_key(&ref_string) {
+                if let std::collections::hash_map::Entry::Vacant(e) = intro_hashmap.entry(ref_string) {
                     if let Ok(intro_nodes) = resource.as_trait_object().generate_intro_ret_nodes() {
-                        intro_hashmap.insert(ref_string, intro_nodes);
+                        e.insert(intro_nodes);
                     }
                 }
                 bare_results.push(ret_node);
@@ -451,7 +446,7 @@ impl JobManager {
                     if let Some(description) = resource.as_trait_object().description() {
                         let description_node = RetrievedNode::new(
                             Node::new_text(String::new(), description.to_string(), None, &vec![]),
-                            1.0 as f32,
+                            1.0_f32,
                             resource_header,
                             top_node.retrieval_path.clone(),
                         );

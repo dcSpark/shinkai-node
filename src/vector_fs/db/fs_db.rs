@@ -182,7 +182,7 @@ impl VectorFSDB {
         K: AsRef<[u8]>,
         V: AsRef<[u8]>,
     {
-        let cf_handle = self.db.cf_handle(&cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
+        let cf_handle = self.db.cf_handle(cf_name).ok_or(VectorFSError::FailedFetchingCF)?;
         let txn = self.db.transaction();
         // Use the column family reference directly
         txn.put_cf(cf_handle, key.as_ref(), value.as_ref())
@@ -198,7 +198,7 @@ impl VectorFSDB {
         V: AsRef<[u8]>,
     {
         let new_key = Self::generate_profile_bound_key(key, profile)?;
-        self.put_cf(cf_name, &new_key, value) // Ensure new_key is passed as a reference if required
+        self.put_cf(cf_name, new_key, value) // Ensure new_key is passed as a reference if required
     }
 
     /// Deletes the key from the provided column family

@@ -10,7 +10,7 @@ use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::{identity_manager, IdentityManager};
+use crate::managers::{IdentityManager};
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
@@ -20,7 +20,6 @@ use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{Receiver, Sender};
-use async_std::task::sleep;
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
@@ -2560,9 +2559,9 @@ impl Node {
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = proxy_connection.as_ref() {
             if let Some((_, writer)) = &proxy_info.tcp_connection {
-                return Some(writer.clone());
+                Some(writer.clone())
             } else {
-                return None;
+                None
             }
         } else {
             match TcpStream::connect(address).await {
@@ -2799,10 +2798,10 @@ impl Node {
         let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
 
         let mut buffer = vec![0u8; validation_data_len];
-        match {
+        let res = {
             let mut reader = reader.lock().await;
             reader.read_exact(&mut buffer).await
-        } {
+        }; match res {
             Ok(_) => {
                 let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
 
