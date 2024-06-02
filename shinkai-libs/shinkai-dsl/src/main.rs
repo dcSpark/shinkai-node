@@ -1,72 +1,32 @@
 extern crate pest;
-#[macro_use]
 extern crate pest_derive;
 extern crate serde;
 extern crate serde_json;
 
-use pest::Parser;
-use shinkai_dsl::structs::{Rule, Workflow};
-use shinkai_dsl::{parser::workflow_to_dsl, structs::WorkflowParser};
+use crate::pest::Parser;
+use shinkai_dsl::{
+    dsl_schemas::{Rule, WorkflowParser},
+    parser::parse_workflow,
+};
 
 fn main() {
-    let json_input = r#"
-    {
-        "workflow": "example_workflow",
-        "tasks": [
-            {
-                "name": "task1",
-                "dependencies": []
-            },
-            {
-                "name": "task2",
-                "dependencies": ["task1"]
-            },
-            {
-                "name": "task3",
-                "dependencies": ["task1", "task2"]
+    let dsl_input = r#"workflow MyProcess v1.0 {
+        step Initialize {
+            $R1 = 5
+            $R2 = 10
+        }
+        step Compute {
+            if $R1 < $R2 {
+                call compute_difference($R2, $R1)
             }
-        ],
-        "functions": [
-            {
-                "name": "example_function",
-                "params": ["param1", "param2"],
-                "statements": [
-                    {
-                        "type": "task",
-                        "name": "task4",
-                        "dependencies": ["task1"]
-                    },
-                    {
-                        "type": "task",
-                        "name": "task5",
-                        "dependencies": ["task4"]
-                    }
-                ]
-            }
-        ],
-        "function_calls": [
-            {
-                "name": "example_function",
-                "args": ["arg1", "arg2"]
-            }
-        ]
-    }
-    "#;
-
-    let workflow: Workflow = serde_json::from_str(json_input).expect("Failed to parse JSON");
-    eprintln!("{:?}", workflow);
-
-    // Convert JSON to DSL
-    let dsl = workflow_to_dsl(&workflow);
-    println!("DSL:\n{}", dsl);
-
-    // Print the first character of the DSL
-    if let Some(first_char) = dsl.chars().next() {
-        println!("First character of DSL: {}", first_char);
-    }
+        }
+        step Finalize {
+            call finalize_process($R1, $R2)
+        }
+    }"#;
 
     // Parse DSL using Pest
-    let parse_result = WorkflowParser::parse(Rule::workflow, &dsl);
+    let parse_result = WorkflowParser::parse(Rule::workflow, dsl_input);
     match parse_result {
         Ok(pairs) => {
             for pair in pairs {
@@ -75,4 +35,9 @@ fn main() {
         }
         Err(e) => eprintln!("Failed to parse DSL: {}", e),
     }
+
+    eprintln!("\n\n\n");
+    
+    let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+    println!("{:?}", workflow);
 }

@@ -1,2 +1,2 @@
 pub mod parser;
-pub mod structs;
+pub mod dsl_schemas;

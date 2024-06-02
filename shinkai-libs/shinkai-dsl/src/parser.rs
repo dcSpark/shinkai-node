@@ -1,210 +1,332 @@
-use crate::structs::{Function, FunctionCall, Rule, Statement, Task, Workflow, WorkflowParser};
 use pest::Parser;
 
-pub fn workflow_to_dsl(workflow: &Workflow) -> String {
-    let mut dsl = String::new();
-    dsl.push_str(&format!("workflow {} {{\n", workflow.workflow));
+use crate::dsl_schemas::{
+    Action, ComparisonOperator, Expression, FunctionCall, Param, Rule, Step, StepBody, Workflow, WorkflowParser,
+    WorkflowValue,
+};
 
-    for task in &workflow.tasks {
-        dsl.push_str(&format!("    task \"{}\" {{\n", task.name));
-        if !task.dependencies.is_empty() {
-            dsl.push_str("        depends_on [");
-            dsl.push_str(
-                &task
-                    .dependencies
-                    .iter()
-                    .map(|d| format!("\"{}\"", d))
-                    .collect::<Vec<String>>()
-                    .join(", "),
-            );
-            dsl.push_str("]\n");
-        }
-        dsl.push_str("    }\n");
-    }
+pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
+    println!("Current rule: {:?}", pair.as_rule());
+    match pair.as_rule() {
+        Rule::step_body => {
+            let mut bodies = Vec::new();
+            let mut inner_pairs = pair.into_inner().peekable();
+            while let Some(inner_pair) = inner_pairs.next() {
+                println!("Processing inner rule: {:?}", inner_pair.as_rule()); // Debug output for each inner rule
+                match inner_pair.as_rule() {
+                    Rule::action => {
+                        println!("Parsing action");
+                        bodies.push(StepBody::Action(parse_action(inner_pair)));
+                    },
+                    Rule::condition => {
+                        println!("Parsing condition");
+                        let condition = parse_expression(inner_pair.into_inner().next().expect("Expected expression in condition"));
 
-    for function in &workflow.functions {
-        dsl.push_str(&format!("    function {}(", function.name));
-        dsl.push_str(&function.params.join(", "));
-        dsl.push_str(") {\n");
-        for statement in &function.statements {
-            match statement {
-                Statement::Task(task) => {
-                    dsl.push_str(&format!("        task \"{}\" {{\n", task.name));
-                    if !task.dependencies.is_empty() {
-                        dsl.push_str("            depends_on [");
-                        dsl.push_str(
-                            &task
-                                .dependencies
-                                .iter()
-                                .map(|d| format!("\"{}\"", d))
-                                .collect::<Vec<String>>()
-                                .join(", "),
-                        );
-                        dsl.push_str("]\n");
-                    }
-                    dsl.push_str("        }\n");
-                }
-                Statement::FunctionCall(call) => {
-                    dsl.push_str(&format!("        {}(", call.name));
-                    dsl.push_str(
-                        &call
-                            .args
-                            .iter()
-                            .map(|a| format!("\"{}\"", a))
-                            .collect::<Vec<String>>()
-                            .join(", "),
-                    );
-                    dsl.push_str(")\n");
+                        // Peek to check if the next rule is an action
+                        if let Some(next_pair) = inner_pairs.peek() {
+                            if next_pair.as_rule() == Rule::action {
+                                println!("Found action after condition");
+                                let action_pair = inner_pairs.next().unwrap(); // Safe unwrap because we just peeked
+                                bodies.push(StepBody::Condition {
+                                    condition,
+                                    action: Box::new(StepBody::Action(parse_action(action_pair))),
+                                });
+                            } else {
+                                panic!("Expected action after condition, found {:?}", next_pair.as_rule());
+                            }
+                        } else {
+                            panic!("Expected action after condition but found none");
+                        }
+                    },
+                    Rule::for_loop => {
+                        println!("Parsing for loop");
+                        let mut loop_inner_pairs = inner_pair.into_inner();
+                        let var_pair = loop_inner_pairs.next().expect("Expected variable in for loop");
+                        let in_expr_pair = loop_inner_pairs.next().expect("Expected expression in for loop");
+                        let action_pair = loop_inner_pairs.next().expect("Expected action in for loop");
+                        bodies.push(StepBody::ForLoop {
+                            var: var_pair.as_str().to_string(),
+                            in_expr: parse_expression(in_expr_pair),
+                            action: Box::new(parse_step_body(action_pair)),
+                        });
+                    },
+                    Rule::register_operation => {
+                        println!("Parsing register operation");
+                        let mut register_inner_pairs = inner_pair.into_inner();
+                        let register_pair = register_inner_pairs.next().expect("Expected register in register operation");
+                        let value_pair = register_inner_pairs.next().expect("Expected value in register operation");
+                        bodies.push(StepBody::RegisterOperation {
+                            register: register_pair.as_str().to_string(),
+                            value: parse_workflow_value(value_pair),
+                        });
+                    },
+                    _ => panic!("Unexpected rule in step body: {:?}", inner_pair.as_rule()),
                 }
             }
-        }
-        dsl.push_str("    }\n");
+            if bodies.len() == 1 {
+                bodies.remove(0)
+            } else {
+                panic!("Step body must contain exactly one element, found {}", bodies.len());
+            }
+        },
+        _ => panic!("Unexpected rule at top level of parse_step_body: {:?}", pair.as_rule()),
     }
-
-    for call in &workflow.function_calls {
-        dsl.push_str(&format!("    {}(", call.name));
-        dsl.push_str(
-            &call
-                .args
-                .iter()
-                .map(|a| format!("\"{}\"", a))
-                .collect::<Vec<String>>()
-                .join(", "),
-        );
-        dsl.push_str(")\n");
-    }
-
-    dsl.push_str("}\n");
-    dsl
 }
 
-pub fn parse_dsl(dsl: &str) -> Result<Workflow, pest::error::Error<Rule>> {
-    let pairs = WorkflowParser::parse(Rule::workflow, dsl)?;
-    let mut workflow = Workflow {
-        workflow: String::new(),
-        tasks: Vec::new(),
-        functions: Vec::new(),
-        function_calls: Vec::new(),
-    };
+pub fn parse_action(pair: pest::iterators::Pair<Rule>) -> Action {
+    eprintln!("Current rule: {:?}", pair.as_rule());
+    let mut inner_pairs = pair.into_inner();
+    let first_pair = inner_pairs.next().expect("Expected content in action");
+    eprintln!("First pair: {:?}", first_pair.as_rule());
+
+    match first_pair.as_rule() {
+        Rule::external_fn_call => {
+            let mut fn_call_inner_pairs = first_pair.into_inner();
+            let name_pair = fn_call_inner_pairs
+                .next()
+                .expect("Expected function name in external function call");
+            let args = fn_call_inner_pairs.map(parse_param).collect();
+
+            Action::ExternalFnCall(FunctionCall {
+                name: name_pair.as_str().to_string(),
+                args,
+            })
+        }
+        Rule::command => {
+            let command = first_pair.as_str().to_string();
+            eprintln!("Command: {:?}", command);
+            eprintln!("Inner pairs: {:?}", inner_pairs);
+            let params = inner_pairs
+                .map(|p| {
+                    eprintln!("Param p: {:?}", p.as_rule());
+                    // Assuming each 'param' pair directly contains the parameter as its only inner pair
+                    // let actual_param = p.into_inner().next().expect("Expected parameter content");
+                    // eprintln!("Actual param: {:?}", actual_param.as_rule());
+                    parse_param(p)
+                })
+                .collect::<Vec<_>>();
+            eprintln!("Params: {:?}", params);
+
+            Action::Command { command, params }
+        }
+        _ => panic!("Unexpected rule in action: {:?}", first_pair.as_rule()),
+    }
+}
+
+pub fn parse_expression(pair: pest::iterators::Pair<Rule>) -> Expression {
+    println!("Parsing expression with rule: {:?}", pair.as_rule());
+
+    match pair.as_rule() {
+        Rule::range_expression => {
+            println!("Range expression: {:?}", pair);
+            let mut inner_pairs = pair.into_inner();
+            let start = parse_param(inner_pairs.next().expect("Expected start of range"));
+            let end = parse_param(inner_pairs.next().expect("Expected end of range"));
+            Expression::Range {
+                start: Box::new(start),
+                end: Box::new(end),
+            }
+        }
+        Rule::expression => {
+            eprintln!("Expression: {:?}", pair);
+            let mut inner_pairs = pair.into_inner();
+            let first_expr = parse_param(
+                inner_pairs
+                    .next()
+                    .expect("Expected first expression in simple expression"),
+            );
+
+            if let Some(operator_pair) = inner_pairs.next() {
+                let operator = parse_comparison_operator(operator_pair);
+                let second_expr = parse_param(
+                    inner_pairs
+                        .next()
+                        .expect("Expected second expression in simple expression"),
+                );
+                Expression::Binary {
+                    left: Box::new(first_expr),
+                    operator,
+                    right: Box::new(second_expr),
+                }
+            } else {
+                // If there's no operator, it means the expression is just a simple expression
+                // Assuming `first_expr` can be directly used as an Expression
+                println!("First expr: {:?}", first_expr);
+                Expression::Simple(Box::new(first_expr))
+            }
+        }
+        _ => panic!("Unexpected expression type: {:?}", pair.as_rule()),
+    }
+}
+
+pub fn parse_param(pair: pest::iterators::Pair<Rule>) -> Param {
+    println!("Parsing param with rule: {:?}", pair.as_rule());
+    println!("Parsing param with content: {:?}", pair.as_str());
+
+    let input = pair.as_str();
+
+    match identify_param_type(input) {
+        "string" => {
+            // Remove the surrounding quotes from the string value
+            let stripped_string = input.trim_matches('"').to_string();
+            Param::String(stripped_string)
+        }
+        "number" => {
+            // Parse the string as a number, assuming it's valid since it matched the number rule
+            let number = input.parse().expect("Failed to parse number");
+            Param::Number(number)
+        }
+        "boolean" => {
+            // Parse the string as a boolean, assuming it's valid since it matched the boolean rule
+            let boolean = input.parse().expect("Failed to parse boolean");
+            Param::Boolean(boolean)
+        }
+        "register" => {
+            // Directly use the string as a register
+            Param::Register(input.to_string())
+        }
+        "identifier" => {
+            // Directly use the string as an identifier
+            Param::Identifier(input.to_string())
+        }
+        "range" => {
+            let parts: Vec<&str> = input.split("..").collect();
+            if parts.len() == 2 {
+                let start = parts[0].parse().expect("Failed to parse start of range");
+                let end = parts[1].parse().expect("Failed to parse end of range");
+                Param::Range(start, end)
+            } else {
+                panic!("Invalid range expression: {}", input);
+            }
+        }
+        _ => panic!("Unexpected parameter type: {}", input),
+    }
+}
+
+fn identify_param_type(input: &str) -> &str {
+    if input.starts_with("\"") && input.ends_with("\"") {
+        "string"
+    } else if input.contains("..") {
+        "range"
+    } else if input.parse::<f64>().is_ok() {
+        "number"
+    } else if input == "true" || input == "false" {
+        "boolean"
+    } else if input.starts_with("$R") && input[2..].chars().all(|c| char::is_ascii_digit(&c)) {
+        "register"
+    } else if input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        "identifier"
+    } else {
+        "unknown"
+    }
+}
+
+pub fn parse_comparison_operator(pair: pest::iterators::Pair<Rule>) -> ComparisonOperator {
+    match pair.as_str() {
+        "==" => ComparisonOperator::Equal,
+        "!=" => ComparisonOperator::NotEqual,
+        ">" => ComparisonOperator::Greater,
+        "<" => ComparisonOperator::Less,
+        ">=" => ComparisonOperator::GreaterEqual,
+        "<=" => ComparisonOperator::LessEqual,
+        _ => panic!("Unexpected comparison operator: {}", pair.as_str()),
+    }
+}
+
+pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
+    println!("Parsing workflow value with rule: {:?}", pair.as_rule());
+    let input = pair.as_str();
+
+    match identify_value_type(input) {
+        "string" => {
+            let stripped_string = input.trim_matches('"').to_string();
+            WorkflowValue::String(stripped_string)
+        }
+        "number" => {
+            let number = input.parse::<i64>().expect("Failed to parse number");
+            WorkflowValue::Number(number)
+        }
+        "boolean" => {
+            let boolean = input.parse::<bool>().expect("Failed to parse boolean");
+            WorkflowValue::Boolean(boolean)
+        }
+        "register" => WorkflowValue::Register(input.to_string()),
+        "identifier" => WorkflowValue::Identifier(input.to_string()),
+        _ => panic!("Unexpected value type: {}", input),
+    }
+}
+
+fn identify_value_type(input: &str) -> &str {
+    if input.starts_with("\"") && input.ends_with("\"") {
+        "string"
+    } else if input.parse::<f64>().is_ok() {
+        "number"
+    } else if input == "true" || input == "false" {
+        "boolean"
+    } else if input.starts_with("$R") && input[2..].chars().all(|c| char::is_ascii_digit(&c)) {
+        "register"
+    } else if input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        "identifier"
+    } else {
+        "unknown"
+    }
+}
+
+pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
+    let pairs = WorkflowParser::parse(Rule::workflow, dsl_input).map_err(|e| e.to_string())?;
+
+    let mut workflow_name = String::new();
+    let mut version = String::new();
+    let mut steps = Vec::new();
 
     for pair in pairs {
         match pair.as_rule() {
             Rule::workflow => {
                 for inner_pair in pair.into_inner() {
                     match inner_pair.as_rule() {
-                        Rule::string => {
-                            workflow.workflow = inner_pair.as_str().trim_matches('"').to_string();
+                        Rule::identifier => {
+                            workflow_name = inner_pair.as_str().to_string();
                         }
-                        Rule::task => {
-                            let mut task = Task {
-                                name: String::new(),
-                                dependencies: Vec::new(),
-                            };
-                            for task_pair in inner_pair.into_inner() {
-                                match task_pair.as_rule() {
-                                    Rule::string => {
-                                        task.name = task_pair.as_str().trim_matches('"').to_string();
-                                    }
-                                    Rule::depends_on => {
-                                        for dep in task_pair.into_inner() {
-                                            task.dependencies.push(dep.as_str().trim_matches('"').to_string());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            workflow.tasks.push(task);
+                        Rule::version => {
+                            version = inner_pair.as_str().trim().to_string();
                         }
-                        Rule::function => {
-                            let mut function = Function {
-                                name: String::new(),
-                                params: Vec::new(),
-                                statements: Vec::new(),
-                            };
-                            for func_pair in inner_pair.into_inner() {
-                                match func_pair.as_rule() {
-                                    Rule::ident => {
-                                        function.name = func_pair.as_str().to_string();
-                                    }
-                                    Rule::statement => {
-                                        for stmt_pair in func_pair.into_inner() {
-                                            match stmt_pair.as_rule() {
-                                                Rule::task => {
-                                                    let mut task = Task {
-                                                        name: String::new(),
-                                                        dependencies: Vec::new(),
-                                                    };
-                                                    for task_pair in stmt_pair.into_inner() {
-                                                        match task_pair.as_rule() {
-                                                            Rule::string => {
-                                                                task.name =
-                                                                    task_pair.as_str().trim_matches('"').to_string();
-                                                            }
-                                                            Rule::depends_on => {
-                                                                for dep in task_pair.into_inner() {
-                                                                    task.dependencies.push(
-                                                                        dep.as_str().trim_matches('"').to_string(),
-                                                                    );
-                                                                }
-                                                            }
-                                                            _ => {}
-                                                        }
-                                                    }
-                                                    function.statements.push(Statement::Task(task));
-                                                }
-                                                Rule::function_call => {
-                                                    let mut call = FunctionCall {
-                                                        name: String::new(),
-                                                        args: Vec::new(),
-                                                    };
-                                                    for call_pair in stmt_pair.into_inner() {
-                                                        match call_pair.as_rule() {
-                                                            Rule::ident => {
-                                                                call.name = call_pair.as_str().to_string();
-                                                            }
-                                                            Rule::string => {
-                                                                call.args.push(
-                                                                    call_pair.as_str().trim_matches('"').to_string(),
-                                                                );
-                                                            }
-                                                            _ => {}
-                                                        }
-                                                    }
-                                                    function.statements.push(Statement::FunctionCall(call));
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            workflow.functions.push(function);
+                        Rule::step => {
+                            steps.push(parse_step(inner_pair)?);
                         }
-                        Rule::function_call => {
-                            let mut call = FunctionCall {
-                                name: String::new(),
-                                args: Vec::new(),
-                            };
-                            for call_pair in inner_pair.into_inner() {
-                                match call_pair.as_rule() {
-                                    Rule::ident => {
-                                        call.name = call_pair.as_str().to_string();
-                                    }
-                                    Rule::string => {
-                                        call.args.push(call_pair.as_str().trim_matches('"').to_string());
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            workflow.function_calls.push(call);
-                        }
-                        _ => {}
+                        _ => return Err("Unexpected rule in workflow parsing".to_string()),
                     }
                 }
             }
-            _ => {}
+            _ => return Err("Top level rule must be workflow".to_string()),
         }
     }
-    Ok(workflow)
+
+    Ok(Workflow {
+        name: workflow_name,
+        version: version,
+        steps: steps,
+    })
+}
+
+pub fn parse_step(pair: pest::iterators::Pair<Rule>) -> Result<Step, String> {
+    let mut step_name = String::new();
+    let mut bodies = Vec::new();
+
+    for inner_pair in pair.into_inner() {
+        match inner_pair.as_rule() {
+            Rule::identifier => {
+                step_name = inner_pair.as_str().to_string();
+            }
+            Rule::step_body => {
+                // Assuming step_body can directly contain action, condition, etc.
+                bodies.push(parse_step_body(inner_pair));
+            }
+            _ => return Err("Unexpected rule in step parsing".to_string()),
+        }
+    }
+
+    Ok(Step {
+        name: step_name,
+        body: bodies,
+    })
 }

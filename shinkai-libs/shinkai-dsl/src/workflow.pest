@@ -1,9 +1,24 @@
-WHITESPACE = _{ " " | "\t" | NEWLINE }
-workflow = { "workflow" ~ WHITESPACE ~ ident ~ WHITESPACE? ~ "{" ~ WHITESPACE? ~ task* ~ function* ~ function_call* ~ WHITESPACE? ~ "}" }
-task = { "task" ~ WHITESPACE ~ string ~ WHITESPACE? ~ "{" ~ WHITESPACE? ~ ("depends_on" ~ WHITESPACE? ~ "[" ~ WHITESPACE? ~ string* ~ WHITESPACE? ~ "]")? ~ WHITESPACE? ~ "}" }
-depends_on = { "depends_on" ~ WHITESPACE? ~ "[" ~ WHITESPACE? ~ string* ~ WHITESPACE? ~ "]" }
-function = { "function" ~ WHITESPACE ~ ident ~ WHITESPACE? ~ "(" ~ WHITESPACE? ~ ident* ~ WHITESPACE? ~ ")" ~ WHITESPACE? ~ "{" ~ WHITESPACE? ~ statement* ~ WHITESPACE? ~ "}" }
-function_call = { ident ~ WHITESPACE? ~ "(" ~ WHITESPACE? ~ string* ~ WHITESPACE? ~ ")" }
-statement = { task | function_call }
-string = { "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
-ident = { (ASCII_ALPHANUMERIC | "_")+ }
+workflow  = { "workflow" ~ identifier ~ version ~ "{" ~ step+ ~ "}" }
+step      = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
+step_body = { (condition ~ action ~ "}" | action | for_loop | register_operation)+ }
+condition = { "if" ~ expression ~ "{" }
+for_loop  = { "for" ~ identifier ~ "in" ~ expression ~ "{" ~ action ~ "}" }
+action    = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+command   = { identifier }
+param     = { string | number | boolean | identifier | register }
+register  = { "$" ~ "R" ~ ASCII_DIGIT }
+// New rule for registers
+external_fn_call   = { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
+expression         = { range_expression | simple_expression ~ (comparison_operator ~ simple_expression)? }
+simple_expression  = { identifier | number | boolean | string | register }
+range_expression   = { identifier ~ ".." ~ identifier }
+register_operation = { register ~ "=" ~ value }
+// New rule for register operations
+comparison_operator =  { "==" | "!=" | ">" | "<" | ">=" | "<=" }
+value               =  { string | number | boolean | identifier | register }
+version             =  { "v" ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)* }
+identifier          = @{ (ASCII_ALPHANUMERIC | "_")+ }
+string              = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+number              = _{ ASCII_DIGIT+ }
+boolean             =  { "true" | "false" }
+WHITESPACE          = _{ " " | "\t" | "\n" | "\r" }
