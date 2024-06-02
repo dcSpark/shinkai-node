@@ -3,7 +3,7 @@ mod tests {
     use pest::Parser;
     use shinkai_dsl::{
         dsl_schemas::{Action, ComparisonOperator, Expression, Param, Rule, StepBody, WorkflowParser, WorkflowValue},
-        parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_workflow},
+        parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_step_body_item, parse_workflow},
     };
 
     #[test]
@@ -38,7 +38,11 @@ mod tests {
         assert_eq!(step.name, "myStep");
         assert_eq!(step.body.len(), 1);
         match step.body.first().unwrap() {
-            StepBody::ForLoop { var, in_expr: _, action } => {
+            StepBody::ForLoop {
+                var,
+                in_expr: _,
+                action,
+            } => {
                 assert_eq!(var, "var");
                 // Assuming parse_expression is correctly implemented to handle range expressions
                 match **action {
@@ -133,13 +137,19 @@ mod tests {
         println!("{:?}", step_body);
         match step_body {
             StepBody::Condition { condition, action } => {
-                if let Expression::Binary { left: _, operator, right: _ } = condition {
-                    match operator {
-                        ComparisonOperator::Greater => (),
-                        _ => panic!("Expected Greater operator"),
+                match condition {
+                    Expression::Binary { left, operator, right } => {
+                        assert_eq!(operator, ComparisonOperator::Greater);
+                        match *left {
+                            Param::Identifier(ref id) => assert_eq!(id, "param1"),
+                            _ => panic!("Expected Identifier on left side"),
+                        }
+                        match *right {
+                            Param::Number(num) => assert_eq!(num, 10),
+                            _ => panic!("Expected Number on right side"),
+                        }
                     }
-                } else {
-                    panic!("Expected Binary Expression with an operator");
+                    _ => panic!("Expected Binary Expression with an operator"),
                 }
                 match *action {
                     StepBody::Action(_) => (),
@@ -157,7 +167,7 @@ mod tests {
             .unwrap()
             .next()
             .unwrap();
-        let step_body = parse_step_body(pair);
+        let step_body = parse_step_body_item(pair);
         match step_body {
             StepBody::RegisterOperation { register, value } => {
                 assert_eq!(register, "$R1");
@@ -167,6 +177,74 @@ mod tests {
                 }
             }
             _ => panic!("Expected RegisterOperation"),
+        }
+    }
+
+    #[test]
+    fn test_parse_workflow_multiple_steps() {
+        let input = r#"workflow complexWorkflow v2.0 {
+            step stepOne { command("paramA", "paramB") }
+            step stepTwo { for i in 1..5 { command("loopCommand") } }
+            step stepThree { if paramX > 10 { command("conditionalCommand") } }
+        }
+    "#;
+        let result = parse_workflow(input);
+        assert!(result.is_ok());
+        let workflow = result.unwrap();
+        assert_eq!(workflow.name, "complexWorkflow");
+        assert_eq!(workflow.version, "v2.0");
+        assert_eq!(workflow.steps.len(), 3);
+
+        // Check first step
+        let step_one = &workflow.steps[0];
+        assert_eq!(step_one.name, "stepOne");
+        assert_eq!(step_one.body.len(), 1);
+
+        // Check second step
+        let step_two = &workflow.steps[1];
+        assert_eq!(step_two.name, "stepTwo");
+        assert_eq!(step_two.body.len(), 1);
+        match step_two.body.first().unwrap() {
+            StepBody::ForLoop {
+                var,
+                in_expr: _,
+                action,
+            } => {
+                assert_eq!(var, "i");
+                match **action {
+                    StepBody::Action(_) => (),
+                    _ => panic!("Expected Action within ForLoop"),
+                }
+            }
+            _ => panic!("Expected ForLoop"),
+        }
+
+        // Check third step
+        let step_three = &workflow.steps[2];
+        assert_eq!(step_three.name, "stepThree");
+        assert_eq!(step_three.body.len(), 1);
+        match step_three.body.first().unwrap() {
+            StepBody::Condition { condition, action } => {
+                match condition {
+                    Expression::Binary { left, operator, right } => {
+                        assert_eq!(*operator, ComparisonOperator::Greater);
+                        match **left {
+                            Param::Identifier(ref id) => assert_eq!(id, "paramX"),
+                            _ => panic!("Expected Identifier on left side"),
+                        }
+                        match **right {
+                            Param::Number(num) => assert_eq!(num, 10),
+                            _ => panic!("Expected Number on right side"),
+                        }
+                    }
+                    _ => panic!("Expected Binary Expression with an operator"),
+                }
+                match **action {
+                    StepBody::Action(_) => (),
+                    _ => panic!("Expected Action within Condition"),
+                }
+            }
+            _ => panic!("Expected Condition"),
         }
     }
 }

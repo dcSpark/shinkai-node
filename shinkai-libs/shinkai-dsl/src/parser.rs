@@ -7,69 +7,96 @@ use crate::dsl_schemas::{
 
 pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
     println!("Current rule: {:?}", pair.as_rule());
-    match pair.as_rule() {
-        Rule::step_body => {
-            let mut bodies = Vec::new();
-            let mut inner_pairs = pair.into_inner().peekable();
-            while let Some(inner_pair) = inner_pairs.next() {
-                println!("Processing inner rule: {:?}", inner_pair.as_rule()); // Debug output for each inner rule
-                match inner_pair.as_rule() {
-                    Rule::action => {
-                        println!("Parsing action");
-                        bodies.push(StepBody::Action(parse_action(inner_pair)));
-                    },
-                    Rule::condition => {
-                        println!("Parsing condition");
-                        let condition = parse_expression(inner_pair.into_inner().next().expect("Expected expression in condition"));
+    if pair.as_rule() != Rule::step_body {
+        panic!("Expected 'step_body' rule, found {:?}", pair.as_rule());
+    }
 
-                        // Peek to check if the next rule is an action
-                        if let Some(next_pair) = inner_pairs.peek() {
-                            if next_pair.as_rule() == Rule::action {
-                                println!("Found action after condition");
-                                let action_pair = inner_pairs.next().unwrap(); // Safe unwrap because we just peeked
-                                bodies.push(StepBody::Condition {
-                                    condition,
-                                    action: Box::new(StepBody::Action(parse_action(action_pair))),
-                                });
-                            } else {
-                                panic!("Expected action after condition, found {:?}", next_pair.as_rule());
-                            }
-                        } else {
-                            panic!("Expected action after condition but found none");
-                        }
-                    },
-                    Rule::for_loop => {
-                        println!("Parsing for loop");
-                        let mut loop_inner_pairs = inner_pair.into_inner();
-                        let var_pair = loop_inner_pairs.next().expect("Expected variable in for loop");
-                        let in_expr_pair = loop_inner_pairs.next().expect("Expected expression in for loop");
-                        let action_pair = loop_inner_pairs.next().expect("Expected action in for loop");
-                        bodies.push(StepBody::ForLoop {
-                            var: var_pair.as_str().to_string(),
-                            in_expr: parse_expression(in_expr_pair),
-                            action: Box::new(parse_step_body(action_pair)),
+    let mut inner_pairs = pair.into_inner().peekable();
+    let mut bodies = Vec::new();
+
+    while let Some(inner_pair) = inner_pairs.next() {
+        println!("Processing inner rule: {:?}", inner_pair.as_rule()); // Debug output for each inner rule
+        match inner_pair.as_rule() {
+            Rule::condition => {
+                let expression = parse_expression(inner_pair.into_inner().next().expect("Expected expression in condition"));
+                println!("Expression: {:?}", expression);
+
+                // Check if the next rule is an action
+                if let Some(action_pair) = inner_pairs.peek() {
+                    if action_pair.as_rule() == Rule::action {
+                        // Move the iterator forward and parse the action
+                        let action_pair = inner_pairs.next().unwrap();
+                        let action = parse_step_body_item(action_pair);
+                        bodies.push(StepBody::Condition {
+                            condition: expression,
+                            action: Box::new(action),
                         });
-                    },
-                    Rule::register_operation => {
-                        println!("Parsing register operation");
-                        let mut register_inner_pairs = inner_pair.into_inner();
-                        let register_pair = register_inner_pairs.next().expect("Expected register in register operation");
-                        let value_pair = register_inner_pairs.next().expect("Expected value in register operation");
-                        bodies.push(StepBody::RegisterOperation {
-                            register: register_pair.as_str().to_string(),
-                            value: parse_workflow_value(value_pair),
-                        });
-                    },
-                    _ => panic!("Unexpected rule in step body: {:?}", inner_pair.as_rule()),
+                    } else {
+                        panic!("Expected action after condition, found {:?}", action_pair.as_rule());
+                    }
+                } else {
+                    panic!("Expected action after condition but found none");
                 }
+            },
+            _ => {
+                bodies.push(parse_step_body_item(inner_pair));
             }
-            if bodies.len() == 1 {
-                bodies.remove(0)
-            } else {
-                panic!("Step body must contain exactly one element, found {}", bodies.len());
+        }
+    }
+
+    if bodies.len() == 1 {
+        bodies.remove(0)
+    } else {
+        panic!("Step body must contain exactly one element, found {}", bodies.len());
+    }
+}
+
+pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
+    println!("Current rule: {:?}", pair.as_rule());
+    match pair.as_rule() {
+        Rule::action => {
+            println!("Parsing action");
+            StepBody::Action(parse_action(pair))
+        },
+        Rule::condition => {
+            println!("Parsing condition");
+            let mut inner_pairs = pair.into_inner();
+            let expression_pair = inner_pairs.next().expect("Expected expression in condition");
+            let expression = parse_expression(expression_pair);
+            println!("Expression: {:?}", expression);
+
+            let action_pair = inner_pairs.next().expect("Expected action in condition");
+            let action = parse_action(action_pair);
+            println!("Action: {:?}", action);
+
+            StepBody::Condition {
+                condition: expression,
+                action: Box::new(StepBody::Action(action)),
             }
         },
-        _ => panic!("Unexpected rule at top level of parse_step_body: {:?}", pair.as_rule()),
+        Rule::for_loop => {
+            println!("Parsing for loop");
+            let mut loop_inner_pairs = pair.into_inner();
+            let var_pair = loop_inner_pairs.next().expect("Expected variable in for loop");
+            let in_expr_pair = loop_inner_pairs.next().expect("Expected expression in for loop");
+            let action_pair = loop_inner_pairs.next().expect("Expected action in for loop");
+            StepBody::ForLoop {
+                var: var_pair.as_str().to_string(),
+                in_expr: parse_expression(in_expr_pair),
+                action: Box::new(parse_step_body_item(action_pair)),
+            }
+        },
+        Rule::register_operation => {
+            println!("Parsing register operation");
+            let mut register_inner_pairs = pair.into_inner();
+            let register_pair = register_inner_pairs.next().expect("Expected register in register operation");
+            let value_pair = register_inner_pairs.next().expect("Expected value in register operation");
+            StepBody::RegisterOperation {
+                register: register_pair.as_str().to_string(),
+                value: parse_workflow_value(value_pair),
+            }
+        },
+        _ => panic!("Unexpected rule in step body item: {:?}", pair.as_rule()),
     }
 }
 
