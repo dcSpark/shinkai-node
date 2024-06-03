@@ -145,7 +145,7 @@ pub async fn vrkai_generate_from_file_handler(
         embedding_gen_key,
     );
 
-    match FileStreamParser::generate_resource(
+    match FileStreamParser::generate_vrkai(
         &filename,
         file_buffer,
         generator.model_type().max_input_token_count() as u64,
@@ -153,9 +153,8 @@ pub async fn vrkai_generate_from_file_handler(
     )
     .await
     {
-        Ok(resource) => {
-            let encoded_vrkai = resource
-                .to_vrkai()
+        Ok(vrkai) => {
+            let encoded_vrkai = vrkai
                 .encode_as_base64()
                 .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
 

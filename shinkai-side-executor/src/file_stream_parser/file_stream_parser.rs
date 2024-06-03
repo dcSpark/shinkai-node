@@ -2,7 +2,7 @@ use shinkai_vector_resources::{
     embedding_generator::EmbeddingGenerator,
     file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup, unstructured_api::UnstructuredAPI},
     source::{DistributionInfo, TextChunkingStrategy, VRSourceReference},
-    vector_resource::BaseVectorResource,
+    vector_resource::VRKai,
 };
 
 use super::PDFParser;
@@ -38,18 +38,18 @@ impl FileStreamParser {
         }
     }
 
-    pub async fn generate_resource(
+    pub async fn generate_vrkai(
         filename: &str,
         file_buffer: Vec<u8>,
         max_node_text_size: u64,
         generator: &dyn EmbeddingGenerator,
-    ) -> anyhow::Result<BaseVectorResource> {
+    ) -> anyhow::Result<VRKai> {
         let text_groups = Self::generate_text_groups(filename, file_buffer, max_node_text_size).await?;
 
         let cleaned_name = ShinkaiFileParser::clean_name(&filename);
         let source = VRSourceReference::from_file(&filename, TextChunkingStrategy::V1)?;
 
-        ShinkaiFileParser::process_groups_into_resource(
+        let resource = ShinkaiFileParser::process_groups_into_resource(
             text_groups,
             generator,
             cleaned_name,
@@ -60,6 +60,11 @@ impl FileStreamParser {
             DistributionInfo::new_empty(),
         )
         .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
+        .map_err(|e| anyhow::anyhow!(e.to_string()));
+
+        match resource {
+            Ok(resource) => Ok(resource.to_vrkai()),
+            Err(e) => Err(e),
+        }
     }
 }

@@ -12,10 +12,12 @@ use std::{
 use tokio::runtime::Runtime;
 
 #[test]
-fn pdf_parser_cli_test() -> Result<(), Box<dyn std::error::Error>> {
+fn cli_pdf_extract_to_text_groups() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
 
-    cmd.arg("--parse-pdf=../files/shinkai_intro.pdf");
+    cmd.arg("pdf")
+        .arg("extract-to-text-groups")
+        .arg("--file=../files/shinkai_intro.pdf");
 
     assert!(cmd.output().unwrap().status.success());
 
@@ -28,7 +30,27 @@ fn pdf_parser_cli_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn pdf_extract_to_text_groups_api_test() -> Result<(), Box<dyn std::error::Error>> {
+fn cli_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrkai")
+        .arg("generate-from-file")
+        .arg("--file=../files/shinkai_intro.pdf");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let output = cmd.output().unwrap().stdout;
+    let output = String::from_utf8(output).unwrap();
+    let trimmed_output = output.trim();
+
+    assert!(trimmed_output.len() > 0);
+    assert!(VRKai::from_base64(&trimmed_output).is_ok());
+
+    Ok(())
+}
+
+#[test]
+fn api_pdf_extract_to_text_groups() -> Result<(), Box<dyn std::error::Error>> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let server_handle = tokio::spawn(async {
@@ -62,7 +84,7 @@ fn pdf_extract_to_text_groups_api_test() -> Result<(), Box<dyn std::error::Error
 }
 
 #[test]
-fn vrkai_generate_from_file_api_test() -> Result<(), Box<dyn std::error::Error>> {
+fn api_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let server_handle = tokio::spawn(async {

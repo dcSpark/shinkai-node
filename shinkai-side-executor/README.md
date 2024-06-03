@@ -77,7 +77,7 @@ curl -F "file=@/shinkai-node/files/shinkai_intro.pdf;filename=shinkai_intro.pdf"
 ### Using the CLI
 
 ```sh
-cargo run --release -- --parse-pdf=<PDF_FILE> --max-node-text-size=<SIZE> > result.json
+cargo run --release -- pdf extract-to-text-groups --file=<PDF_FILE> --max-node-text-size=<SIZE> > result.json
 ```
 
 ## Running tests
