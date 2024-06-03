@@ -1,6 +1,13 @@
 #[cfg(test)]
 mod tests {
-    use shinkai_dsl::{dsl_schemas::{ComparisonOperator, Expression, StepBody, WorkflowValue}, parser::parse_workflow, sm_executor::WorkflowExecutor};
+    use std::collections::HashMap;
+    use std::any::Any;
+
+    use shinkai_dsl::{
+        dsl_schemas::{ComparisonOperator, Expression, StepBody, WorkflowValue},
+        parser::parse_workflow,
+        sm_executor::WorkflowExecutor,
+    };
 
     #[test]
     fn test_workflow_executor() {
@@ -48,34 +55,28 @@ mod tests {
             matches!(workflow.steps[2].body[0], StepBody::RegisterOperation { ref register, ref value } if register == "$R3" && matches!(value, WorkflowValue::FunctionCall(ref call) if call.name == "sum"))
         );
 
-        // Create a mock compute_diff function
-        let mut diff_result = 0;
-        let compute_diff = |x: i32, y: i32| {
-            diff_result = x - y;
-        };
+        // Create function mappings
+        let mut functions = HashMap::new();
+        functions.insert(
+            "sum".to_string(),
+            Box::new(|args: Vec<Box<dyn Any>>| -> Box<dyn Any> {
+                let x = *args[0].downcast_ref::<i32>().unwrap();
+                let y = *args[1].downcast_ref::<i32>().unwrap();
+                Box::new(x + y)
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any>>,
+        );
 
-        // Create a mock finalize_proc function
-        let mut finalized_value = 0;
-        let finalize_proc = |x: i32, y: i32| {
-            finalized_value = x + y;
-        };
-
-        // Create the WorkflowExecutor
-        let mut executor = WorkflowExecutor::new(workflow, compute_diff, finalize_proc);
-
-        // Set the initial values of the registers
-        executor.registers.insert("R1".to_string(), 5);
-        executor.registers.insert("R2".to_string(), 10);
-        executor.registers.insert("R3".to_string(), 0);
+        eprintln!("\n\n\nStarting workflow execution");
+        // Create the WorkflowExecutor with the function mappings
+        let executor = WorkflowExecutor::new(functions);
 
         // Execute the workflow
-        executor.execute();
+        let registers = executor.execute_workflow(&workflow);
+        eprintln!("Registers: {:?}", registers);
 
         // Check the results
-        assert_eq!(executor.registers["R1"], 5);
-        assert_eq!(executor.registers["R2"], 10);
-        assert_eq!(executor.registers["R3"], 20);
-        assert_eq!(diff_result, 0); // compute_diff is not called in this example
-        assert_eq!(finalized_value, 0); // finalize_proc is not called in this example
+        assert_eq!(*registers.get("$R1").unwrap(), 5);
+        assert_eq!(*registers.get("$R2").unwrap(), 10);
+        assert_eq!(*registers.get("$R3").unwrap(), 20);
     }
 }

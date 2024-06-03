@@ -1,80 +1,92 @@
 use std::collections::HashMap;
+use std::any::Any;
 
-use crate::dsl_schemas::Action;
-use crate::dsl_schemas::ComparisonOperator;
-use crate::dsl_schemas::Expression;
-use crate::dsl_schemas::FunctionCall;
-use crate::dsl_schemas::Param;
-use crate::dsl_schemas::StepBody;
-use crate::dsl_schemas::Workflow;
+use crate::dsl_schemas::{Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, Workflow, WorkflowValue};
 
-pub struct WorkflowExecutor<F, G>
-where
-    F: FnMut(i32, i32),
-    G: FnMut(i32, i32),
-{
-    pub registers: HashMap<String, i32>,
-    pub workflow: Workflow,
-    pub compute_diff: Option<F>,
-    pub finalize_proc: G,
+pub struct WorkflowExecutor {
+    functions: HashMap<String, Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any>>>,
 }
 
-impl<F, G> WorkflowExecutor<F, G>
-where
-    F: FnMut(i32, i32),
-    G: FnMut(i32, i32),
-{
-    pub fn new(workflow: Workflow, compute_diff: F, finalize_proc: G) -> Self {
+impl WorkflowExecutor {
+    pub fn new(functions: HashMap<String, Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any>>>) -> Self {
         WorkflowExecutor {
-            registers: HashMap::new(),
-            workflow,
-            compute_diff: Some(compute_diff),
-            finalize_proc,
+            functions,
         }
     }
 
-    pub fn execute(&mut self) {
-        let actions_to_execute = self.collect_actions();
-
-        let mut compute_diff = self.compute_diff.take().expect("compute_diff was not set");
-
-        for action in actions_to_execute {
-            WorkflowExecutor::<F, G>::execute_action(&action, &mut compute_diff, &self.registers);
-        }
-
-        self.compute_diff = Some(compute_diff);
-    }
-
-    fn collect_actions(&self) -> Vec<Action> {
-        let mut actions = Vec::new();
-        for step in &self.workflow.steps {
+    pub fn execute_workflow(&self, workflow: &Workflow) -> HashMap<String, i32> {
+        let mut registers = HashMap::new();
+        for step in &workflow.steps {
             for body in &step.body {
-                match body {
-                    StepBody::Action(action) => {
-                        actions.push((*action).clone());
-                    },
-                    StepBody::Condition { condition, body: action } => {
-                        if self.evaluate_condition(condition) {
-                            match **action {
-                                StepBody::Action(ref action) => {
-                                    actions.push((*action).clone());
-                                },
-                                _ => {}
-                            }
-                        }
-                    },
-                    _ => {}
-                }
+                self.execute_step_body(body, &mut registers);
             }
         }
-        actions
+        registers
     }
 
-    fn evaluate_condition(&self, expression: &Expression) -> bool {
+    fn execute_step_body(&self, step_body: &StepBody, registers: &mut HashMap<String, i32>) {
+        match step_body {
+            StepBody::Action(action) => {
+
+                self.execute_action(action, registers);
+            },
+            StepBody::Condition { condition, body } => {
+                if self.evaluate_condition(condition, registers) {
+                    self.execute_step_body(body, registers);
+                }
+            },
+            StepBody::ForLoop { var, in_expr, action } => {
+                if let Expression::Range { start, end } = in_expr {
+                    let start = self.evaluate_param(start.as_ref(), registers);
+                    let end = self.evaluate_param(end.as_ref(), registers);
+                    for i in start..=end {
+                        registers.insert(var.clone(), i);
+                        self.execute_step_body(action, registers);
+                    }
+                }
+            },
+            StepBody::RegisterOperation { register, value } => {
+                println!("Setting register {} to {:?}", register, value);
+                let value = self.evaluate_workflow_value(value, registers);
+                println!("Value: {}", value);
+                registers.insert(register.clone(), value);
+            },
+            StepBody::Composite(bodies) => {
+                for body in bodies {
+                    self.execute_step_body(body, registers);
+                }
+            },
+        }
+    }
+
+    fn execute_action(&self, action: &Action, registers: &mut HashMap<String, i32>) {
+        println!("Executing action: {:?}", action);
+        match action {
+            Action::ExternalFnCall(FunctionCall { name, args }) => {
+                if let Some(func) = self.functions.get(name) {
+                    let arg_values = args.iter().map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any>).collect();
+                    let result = func(arg_values);
+                    if let Ok(result) = result.downcast::<i32>() {
+                        // Assuming the result should be stored in a specific register, which should be defined in your DSL or function call semantics
+                        // For example, if the result register is always the first argument:
+                        if let Some(Param::Identifier(register_name)) = args.first() {
+                            registers.insert(register_name.clone(), *result);
+                        }
+                    }
+                }
+            },
+            _ => {
+                // Handle other action types
+                println!("Unhandled action: {:?}", action);
+            }
+        }
+    }
+
+    fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, i32>) -> bool {
         match expression {
             Expression::Binary { left, operator, right } => {
-                let left_val = self.evaluate_param(left);
-                let right_val = self.evaluate_param(right);
+                let left_val = self.evaluate_param(left, registers);
+                let right_val = self.evaluate_param(right, registers);
                 match operator {
                     ComparisonOperator::Less => left_val < right_val,
                     ComparisonOperator::Greater => left_val > right_val,
@@ -88,37 +100,45 @@ where
         }
     }
 
-    fn evaluate_param(&self, param: &Param) -> i32 {
+    fn evaluate_param(&self, param: &Param, registers: &HashMap<String, i32>) -> i32 {
         match param {
             Param::Number(n) => *n as i32,
-            Param::Identifier(id) => *self.registers.get(id).unwrap_or(&0),
-            _ => 0,
+            Param::Identifier(id) | Param::Register(id) => {
+                registers.get(id).copied().unwrap_or_else(|| {
+                    eprintln!("Warning: Identifier/Register '{}' not found in registers, defaulting to 0", id);
+                    0
+                })
+            },
+            _ => {
+                eprintln!("Warning: Unsupported parameter type, defaulting to 0");
+                0
+            },
         }
     }
 
-    // Now a static method
-    fn execute_action(action: &Action, func: &mut F, registers: &HashMap<String, i32>) {
-        match action {
-            Action::ExternalFnCall(FunctionCall { name, args }) => {
-                if args.len() == 2 {
-                    let arg1 = WorkflowExecutor::<F, G>::evaluate_param_static(&args[0], registers);
-                    let arg2 = WorkflowExecutor::<F, G>::evaluate_param_static(&args[1], registers);
-                    func(arg1, arg2);
+    fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, i32>) -> i32 {
+        match value {
+            WorkflowValue::Number(n) => *n as i32,
+            WorkflowValue::Identifier(id) => *registers.get(id).unwrap_or(&0),
+            WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
+                if let Some(func) = self.functions.get(name) {
+                    let arg_values = args.iter().map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any>).collect();
+                    let result = func(arg_values);
+                    if let Ok(result) = result.downcast::<i32>() {
+                        *result
+                    } else {
+                        eprintln!("Function call to '{}' did not return an i32.", name);
+                        0
+                    }
+                } else {
+                    eprintln!("Function '{}' not found.", name);
+                    0
                 }
             },
-            Action::Command { command, params } => {
-                println!("Executing command: {}, with params: {:?}", command, params);
+            _ => {
+                eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
+                0
             },
-            _ => {}
-        }
-    }
-
-    // Helper static method for parameter evaluation
-    fn evaluate_param_static(param: &Param, registers: &HashMap<String, i32>) -> i32 {
-        match param {
-            Param::Number(n) => *n as i32,
-            Param::Identifier(id) => *registers.get(id).unwrap_or(&0),
-            _ => 0,
         }
     }
 }
