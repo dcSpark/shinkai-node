@@ -282,7 +282,7 @@ impl SummaryInferenceChain {
         }
         let filtered_answer = if chunks.len() == 3 {
             let mut title = chunks[0].replace("Title:", "");
-            let mut intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
+            let intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
             let mut list = chunks[2].replace("List:", "");
 
             // Add the title tag if it doesnt exist
@@ -323,7 +323,7 @@ impl SummaryInferenceChain {
         job_scope: &JobScope,
         step_history: &Vec<JobStepResult>,
     ) -> bool {
-        /// Temporary english-only approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
+        // Temporary english-only approach, later use a few key embedding strings and a lower threshold as a 1st pass if relevant at all.
         let direct_substrings = vec![
             "summary",
             "sumry",
