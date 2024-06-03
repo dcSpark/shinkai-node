@@ -24,10 +24,9 @@ impl WorkflowExecutor {
         registers
     }
 
-    fn execute_step_body(&self, step_body: &StepBody, registers: &mut HashMap<String, i32>) {
+    pub fn execute_step_body(&self, step_body: &StepBody, registers: &mut HashMap<String, i32>) {
         match step_body {
             StepBody::Action(action) => {
-
                 self.execute_action(action, registers);
             },
             StepBody::Condition { condition, body } => {
@@ -59,7 +58,7 @@ impl WorkflowExecutor {
         }
     }
 
-    fn execute_action(&self, action: &Action, registers: &mut HashMap<String, i32>) {
+    pub fn execute_action(&self, action: &Action, registers: &mut HashMap<String, i32>) {
         println!("Executing action: {:?}", action);
         match action {
             Action::ExternalFnCall(FunctionCall { name, args }) => {
@@ -82,7 +81,7 @@ impl WorkflowExecutor {
         }
     }
 
-    fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, i32>) -> bool {
+    pub fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, i32>) -> bool {
         match expression {
             Expression::Binary { left, operator, right } => {
                 let left_val = self.evaluate_param(left, registers);
@@ -100,7 +99,7 @@ impl WorkflowExecutor {
         }
     }
 
-    fn evaluate_param(&self, param: &Param, registers: &HashMap<String, i32>) -> i32 {
+    pub fn evaluate_param(&self, param: &Param, registers: &HashMap<String, i32>) -> i32 {
         match param {
             Param::Number(n) => *n as i32,
             Param::Identifier(id) | Param::Register(id) => {
@@ -116,7 +115,7 @@ impl WorkflowExecutor {
         }
     }
 
-    fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, i32>) -> i32 {
+    pub fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, i32>) -> i32 {
         match value {
             WorkflowValue::Number(n) => *n as i32,
             WorkflowValue::Identifier(id) => *registers.get(id).unwrap_or(&0),
