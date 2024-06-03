@@ -28,7 +28,7 @@ fn pdf_parser_cli_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn pdf_parser_api_test() -> Result<(), Box<dyn std::error::Error>> {
+fn pdf_extract_to_text_groups_api_test() -> Result<(), Box<dyn std::error::Error>> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let server_handle = tokio::spawn(async {
@@ -44,7 +44,7 @@ fn pdf_parser_api_test() -> Result<(), Box<dyn std::error::Error>> {
 
         let client = reqwest::Client::new();
         let response = client
-            .post("http://127.0.0.1:8090/v1/extract-json-to-text-groups/400")
+            .post("http://127.0.0.1:8090/v1/pdf/extract-to-text-groups")
             .multipart(form)
             .send()
             .await
@@ -62,7 +62,7 @@ fn pdf_parser_api_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn vrkai_process_file_into_resource_api_test() -> Result<(), Box<dyn std::error::Error>> {
+fn vrkai_generate_from_file_api_test() -> Result<(), Box<dyn std::error::Error>> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let server_handle = tokio::spawn(async {
@@ -73,24 +73,28 @@ fn vrkai_process_file_into_resource_api_test() -> Result<(), Box<dyn std::error:
         let abort_handler = server_handle.abort_handle();
 
         let generator = RemoteEmbeddingGenerator::new_default();
-        let generator_part = multipart::Part::text(serde_json::to_string(&generator).unwrap());
 
         let file = std::fs::read("../files/shinkai_intro.pdf").unwrap();
         let form_file = multipart::Part::bytes(file).file_name("shinkai_intro.pdf");
 
         let form = multipart::Form::new()
             .part("file", form_file)
-            .part("generator", generator_part);
+            .part(
+                "embedding_model",
+                multipart::Part::text(generator.model_type.to_string()),
+            )
+            .part("embedding_gen_url", multipart::Part::text(generator.api_url));
 
         let client = reqwest::Client::new();
         let response = client
-            .post("http://127.0.0.1:8090/v1/vrkai/process-file-into-resource")
+            .post("http://127.0.0.1:8090/v1/vrkai/generate-from-file")
             .multipart(form)
             .send()
             .await
             .unwrap();
 
-        let _vrkai = response.json::<VRKai>().await.unwrap();
+        let response = response.text().await.unwrap();
+        let _vrkai = VRKai::from_base64(&response).unwrap();
 
         abort_handler.abort();
     });

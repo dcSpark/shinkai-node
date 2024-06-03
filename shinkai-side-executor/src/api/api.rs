@@ -41,22 +41,20 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let try_bind = TcpListener::bind(&address).await;
 
-    let extract_json_to_text_groups = warp::path!("v1" / "extract-json-to-text-groups" / u64)
+    let extract_to_text_groups = warp::path!("v1" / "pdf" / "extract-to-text-groups")
         .and(warp::post())
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
-        .and_then(move |max_node_text_size: u64, form: warp::multipart::FormData| {
-            api_handlers::post_extract_json_to_text_groups_handler(max_node_text_size, form)
-        });
+        .and_then(move |form: warp::multipart::FormData| api_handlers::pdf_extract_to_text_groups_handler(form));
 
-    let vrkai_process_file_into_resource = warp::path!("v1" / "vrkai" / "process-file-into-resource")
+    let vrkai_generate_from_file = warp::path!("v1" / "vrkai" / "generate-from-file")
         .and(warp::post())
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
-        .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_process_file_into_resource_handler(form));
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_generate_from_file_handler(form));
 
-    let routes = extract_json_to_text_groups
-        .or(vrkai_process_file_into_resource)
+    let routes = extract_to_text_groups
+        .or(vrkai_generate_from_file)
         .recover(handle_rejection);
 
     match try_bind {

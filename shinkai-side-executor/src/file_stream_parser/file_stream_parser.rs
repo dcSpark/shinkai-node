@@ -7,10 +7,10 @@ use shinkai_vector_resources::{
 
 use super::PDFParser;
 
-pub struct FileParser {}
+pub struct FileStreamParser {}
 
-impl FileParser {
-    pub async fn process_into_text_groups(
+impl FileStreamParser {
+    pub async fn generate_text_groups(
         filename: &str,
         file_buffer: Vec<u8>,
         max_node_text_size: u64,
@@ -38,13 +38,13 @@ impl FileParser {
         }
     }
 
-    pub async fn process_into_resource(
+    pub async fn generate_resource(
         filename: &str,
         file_buffer: Vec<u8>,
         max_node_text_size: u64,
         generator: &dyn EmbeddingGenerator,
     ) -> anyhow::Result<BaseVectorResource> {
-        let text_groups = Self::process_into_text_groups(filename, file_buffer, max_node_text_size).await?;
+        let text_groups = Self::generate_text_groups(filename, file_buffer, max_node_text_size).await?;
 
         let cleaned_name = ShinkaiFileParser::clean_name(&filename);
         let source = VRSourceReference::from_file(&filename, TextChunkingStrategy::V1)?;
