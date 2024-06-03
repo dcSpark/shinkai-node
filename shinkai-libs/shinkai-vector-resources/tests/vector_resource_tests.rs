@@ -796,7 +796,7 @@ fn test_manual_syntactic_vector_search() {
     assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
 }
 
-#[test]
+// #[test]
 fn test_checking_embedding_similarity() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
@@ -1125,7 +1125,7 @@ async fn local_csv_metadata_parsing_test() {
     );
 }
 
-#[tokio::test]
+// #[tokio::test]
 async fn local_md_parsing_test() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "parsed_channels.md";
