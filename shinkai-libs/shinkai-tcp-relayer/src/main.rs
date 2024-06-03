@@ -12,7 +12,7 @@ async fn main() -> Result<(), NetworkMessageError> {
     dotenv().ok();
 
     let matches = App::new("Shinkai TCP Relayer")
-        .version("1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Nico Arqueros <nico@shinkai.com>")
         .about("Relays TCP connections for Shinkai")
         .arg(

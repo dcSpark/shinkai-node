@@ -36,6 +36,7 @@ impl ShinkaiDB {
     }
 
     /// Updates a subscriber's subscription.
+    #[allow(dead_code)]
     pub fn update_subscriber_subscription(&self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
         let sub_node_name_str = subscription.subscriber_node.get_node_name_string();
         let sub_profile_name_str = subscription.subscriber_profile.clone();
@@ -74,7 +75,7 @@ impl ShinkaiDB {
         let iterator = self.db.prefix_iterator_cf(cf_node, prefix_search_key.as_bytes());
 
         for item in iterator {
-            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let subscription: ShinkaiSubscription =
                 bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
@@ -98,7 +99,7 @@ impl ShinkaiDB {
         let value = self
             .db
             .get_cf(cf_node, prefix_search_key.as_bytes())
-            .map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            .map_err(ShinkaiDBError::RocksDBError)?;
 
         match value {
             Some(subscription_bytes) => {
@@ -153,7 +154,7 @@ impl ShinkaiDB {
         let iterator = self.db.prefix_iterator_cf(cf_node, prefix_search_key);
 
         for item in iterator {
-            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let subscription: ShinkaiSubscription =
                 bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
 
