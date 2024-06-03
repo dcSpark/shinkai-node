@@ -10,8 +10,8 @@ mod workflow_tests {
         #[grammar_inline = r#"
         workflow  = { "workflow" ~ identifier ~ version ~ "{" ~ step+ ~ "}" }
         step      = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
-        step_body = { (condition ~ action ~ "}" | action | for_loop | register_operation)+ }
-        condition = { "if" ~ expression ~ "{" }
+        step_body = { (condition | register_operation | action | for_loop )+ }
+        condition = { "if" ~ expression ~ "{" ~ step_body ~ "}" }
         for_loop  = { "for" ~ identifier ~ "in" ~ expression ~ "{" ~ action ~ "}" }
         action    = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
         command   = { identifier }
@@ -19,10 +19,10 @@ mod workflow_tests {
         register  = { "$" ~ "R" ~ ASCII_DIGIT }
         // New rule for registers
         external_fn_call   = { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
-        expression          =  { simple_expression ~ comparison_operator ~ simple_expression }
-        simple_expression   =  { identifier | number | boolean | string | register }
+        expression         = { range_expression | simple_expression ~ (comparison_operator ~ simple_expression)? }
+        simple_expression  = { identifier | number | boolean | string | register }
         range_expression   = { identifier ~ ".." ~ identifier }
-        register_operation = { register ~ "=" ~ value }
+        register_operation = { register ~ "=" ~ (value | external_fn_call) }
         // New rule for register operations
         comparison_operator =  { "==" | "!=" | ">" | "<" | ">=" | "<=" }
         value               =  { string | number | boolean | identifier | register }

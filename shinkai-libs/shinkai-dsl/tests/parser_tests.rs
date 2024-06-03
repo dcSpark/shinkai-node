@@ -136,7 +136,7 @@ mod tests {
         let step_body = parse_step_body(pair);
         println!("{:?}", step_body);
         match step_body {
-            StepBody::Condition { condition, action } => {
+            StepBody::Condition { condition, body: action } => {
                 match condition {
                     Expression::Binary { left, operator, right } => {
                         assert_eq!(operator, ComparisonOperator::Greater);
@@ -224,7 +224,7 @@ mod tests {
         assert_eq!(step_three.name, "stepThree");
         assert_eq!(step_three.body.len(), 1);
         match step_three.body.first().unwrap() {
-            StepBody::Condition { condition, action } => {
+            StepBody::Condition { condition, body: action } => {
                 match condition {
                     Expression::Binary { left, operator, right } => {
                         assert_eq!(*operator, ComparisonOperator::Greater);

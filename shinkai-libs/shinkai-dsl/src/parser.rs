@@ -15,39 +15,14 @@ pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
     let mut bodies = Vec::new();
 
     while let Some(inner_pair) = inner_pairs.next() {
-        println!("Processing inner rule: {:?}", inner_pair.as_rule()); // Debug output for each inner rule
-        match inner_pair.as_rule() {
-            Rule::condition => {
-                let expression = parse_expression(inner_pair.into_inner().next().expect("Expected expression in condition"));
-                println!("Expression: {:?}", expression);
-
-                // Check if the next rule is an action
-                if let Some(action_pair) = inner_pairs.peek() {
-                    if action_pair.as_rule() == Rule::action {
-                        // Move the iterator forward and parse the action
-                        let action_pair = inner_pairs.next().unwrap();
-                        let action = parse_step_body_item(action_pair);
-                        bodies.push(StepBody::Condition {
-                            condition: expression,
-                            action: Box::new(action),
-                        });
-                    } else {
-                        panic!("Expected action after condition, found {:?}", action_pair.as_rule());
-                    }
-                } else {
-                    panic!("Expected action after condition but found none");
-                }
-            },
-            _ => {
-                bodies.push(parse_step_body_item(inner_pair));
-            }
-        }
+        println!("Processing inner rule: {:?}", inner_pair.as_rule());
+        bodies.push(parse_step_body_item(inner_pair));
     }
 
     if bodies.len() == 1 {
         bodies.remove(0)
     } else {
-        panic!("Step body must contain exactly one element, found {}", bodies.len());
+        StepBody::Composite(bodies) // Assuming there is a Composite variant to handle multiple bodies
     }
 }
 
@@ -61,17 +36,12 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
         Rule::condition => {
             println!("Parsing condition");
             let mut inner_pairs = pair.into_inner();
-            let expression_pair = inner_pairs.next().expect("Expected expression in condition");
-            let expression = parse_expression(expression_pair);
-            println!("Expression: {:?}", expression);
-
-            let action_pair = inner_pairs.next().expect("Expected action in condition");
-            let action = parse_action(action_pair);
-            println!("Action: {:?}", action);
+            let expression = parse_expression(inner_pairs.next().expect("Expected expression in condition"));
+            let body = parse_step_body(inner_pairs.next().expect("Expected step body in condition"));
 
             StepBody::Condition {
                 condition: expression,
-                action: Box::new(StepBody::Action(action)),
+                body: Box::new(body),
             }
         },
         Rule::for_loop => {
@@ -97,6 +67,26 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
             }
         },
         _ => panic!("Unexpected rule in step body item: {:?}", pair.as_rule()),
+    }
+}
+
+pub fn parse_value_or_call(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
+    match pair.as_rule() {
+        Rule::value => parse_workflow_value(pair),
+        Rule::external_fn_call => WorkflowValue::FunctionCall(parse_external_fn_call(pair)),
+        _ => panic!("Expected value or external function call, found {:?}", pair.as_rule()),
+    }
+}
+
+pub fn parse_external_fn_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall {
+    println!("Parsing external function call");
+    let mut inner_pairs = pair.into_inner();
+    let name_pair = inner_pairs.next().expect("Expected function name in external function call");
+    let args = inner_pairs.map(parse_param).collect();
+
+    FunctionCall {
+        name: name_pair.as_str().to_string(),
+        args,
     }
 }
 
@@ -262,45 +252,36 @@ pub fn parse_comparison_operator(pair: pest::iterators::Pair<Rule>) -> Compariso
 
 pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
     println!("Parsing workflow value with rule: {:?}", pair.as_rule());
-    let input = pair.as_str();
+    let input = pair.as_str().trim(); // Trim leading and trailing spaces
 
-    match identify_value_type(input) {
-        "string" => {
-            let stripped_string = input.trim_matches('"').to_string();
-            WorkflowValue::String(stripped_string)
-        }
-        "number" => {
-            let number = input.parse::<i64>().expect("Failed to parse number");
-            WorkflowValue::Number(number)
-        }
-        "boolean" => {
-            let boolean = input.parse::<bool>().expect("Failed to parse boolean");
-            WorkflowValue::Boolean(boolean)
-        }
-        "register" => WorkflowValue::Register(input.to_string()),
-        "identifier" => WorkflowValue::Identifier(input.to_string()),
-        _ => panic!("Unexpected value type: {}", input),
-    }
-}
-
-fn identify_value_type(input: &str) -> &str {
-    if input.starts_with("\"") && input.ends_with("\"") {
-        "string"
-    } else if input.parse::<f64>().is_ok() {
-        "number"
-    } else if input == "true" || input == "false" {
-        "boolean"
-    } else if input.starts_with("$R") && input[2..].chars().all(|c| char::is_ascii_digit(&c)) {
-        "register"
-    } else if input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        "identifier"
-    } else {
-        "unknown"
+    match pair.as_rule() {
+        Rule::value => {
+            // Directly parse the value based on its content
+            if input.starts_with("\"") && input.ends_with("\"") {
+                let stripped_string = input.trim_matches('"').to_string();
+                WorkflowValue::String(stripped_string)
+            } else if input.parse::<i64>().is_ok() {
+                let number = input.parse::<i64>().expect("Failed to parse number");
+                WorkflowValue::Number(number)
+            } else if input == "true" || input == "false" {
+                let boolean = input.parse::<bool>().expect("Failed to parse boolean");
+                WorkflowValue::Boolean(boolean)
+            } else if input.starts_with("$R") {
+                WorkflowValue::Register(input.to_string())
+            } else {
+                WorkflowValue::Identifier(input.to_string())
+            }
+        },
+        Rule::external_fn_call => {
+            WorkflowValue::FunctionCall(parse_external_fn_call(pair))
+        },
+        _ => panic!("Unexpected rule in parse_workflow_value: {:?}", pair.as_rule()),
     }
 }
 
 pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
-    let pairs = WorkflowParser::parse(Rule::workflow, dsl_input).map_err(|e| e.to_string())?;
+    let trimmed_input = dsl_input.trim_start(); // Remove leading spaces and newlines
+    let pairs = WorkflowParser::parse(Rule::workflow, trimmed_input).map_err(|e| e.to_string())?;
 
     let mut workflow_name = String::new();
     let mut version = String::new();

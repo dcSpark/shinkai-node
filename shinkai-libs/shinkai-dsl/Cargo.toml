@@ -1,5 +1,5 @@
 [package]
-name = "shinkai-dsl"
+name = "shinkai_dsl"
 version = "0.1.0"
 edition = "2021"
 
