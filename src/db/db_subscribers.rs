@@ -36,6 +36,7 @@ impl ShinkaiDB {
     }
 
     /// Updates a subscriber's subscription.
+    #[allow(dead_code)]
     pub fn update_subscriber_subscription(&self, subscription: ShinkaiSubscription) -> Result<(), ShinkaiDBError> {
         let sub_node_name_str = subscription.subscriber_node.get_node_name_string();
         let sub_profile_name_str = subscription.subscriber_profile.clone();
