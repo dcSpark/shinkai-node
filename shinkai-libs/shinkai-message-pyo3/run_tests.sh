@@ -18,7 +18,7 @@ output=$(maturin build -i python3)
 # If maturin develop is successful, extract the path of the built wheel file
 if [ $? -eq 0 ]; then
     # Find the wheel file that starts with "shinkai_message_pyo3" in the "./target/wheels/" directory
-    wheel_file=$(find ./target/wheels/ -name 'shinkai_message_pyo3*.whl' -print -quit)
+    wheel_file=$(find ../../target/wheels/ -name 'shinkai_message_pyo3*.whl' -print -quit)
      
     # Update the installed package using the built wheel file
     pip install --upgrade --force-reinstall "$wheel_file"
