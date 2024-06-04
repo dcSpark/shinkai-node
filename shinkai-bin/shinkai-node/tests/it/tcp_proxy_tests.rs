@@ -39,8 +39,8 @@ fn tcp_proxy_test_identity() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test_with_proxy.sepolia-shinkai";
-        let node2_identity_name = "@@node2_test.sepolia-shinkai";
+        let node1_identity_name = "@@node1_test_with_proxy2.arb-sep-shinkai";
+        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node2_profile_name = "main";
 
@@ -53,7 +53,7 @@ fn tcp_proxy_test_identity() {
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
 
-        let tcp_proxy_identity_name = "@@tcp_tests_proxy.sepolia-shinkai";
+        let tcp_proxy_identity_name = "@@tcp_tests_proxy.arb-sep-shinkai";
         let (tcp_proxy_identity_sk, tcp_proxy_identity_pk) = unsafe_deterministic_signature_keypair(2);
         let (tcp_proxy_encryption_sk, tcp_proxy_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
@@ -216,7 +216,7 @@ fn tcp_proxy_test_identity() {
         eprintln!("Starting nodes");
 
         // Setup a TCP listener
-        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
+        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.arb-sep-shinkai
 
         // Spawn a task to accept connections
         let tcp_handle = tokio::spawn({
@@ -331,7 +331,7 @@ fn tcp_proxy_test_identity() {
                 eprintln!("\n\n### Sending message from node 1 to TCP Relay to node 2 requesting shared folders*\n");
 
                 let mut expected_response = serde_json::json!({
-                    "node_name": "@@node2_test.sepolia-shinkai/main",
+                    "node_name": "@@node2_test.arb-sep-shinkai/main",
                     "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
                     "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
                     "last_updated": "2024-05-25T20:42:48.285935Z",
@@ -437,8 +437,8 @@ fn tcp_proxy_test_localhost() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@localhost.sepolia-shinkai";
-        let node2_identity_name = "@@node2_test.sepolia-shinkai";
+        let node1_identity_name = "@@localhost.arb-sep-shinkai";
+        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node2_profile_name = "main";
 
@@ -451,7 +451,7 @@ fn tcp_proxy_test_localhost() {
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
 
-        let tcp_proxy_identity_name = "@@tcp_tests_proxy.sepolia-shinkai";
+        let tcp_proxy_identity_name = "@@tcp_tests_proxy.arb-sep-shinkai";
         let (tcp_proxy_identity_sk, tcp_proxy_identity_pk) = unsafe_deterministic_signature_keypair(2);
         let (tcp_proxy_encryption_sk, tcp_proxy_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
@@ -617,7 +617,7 @@ fn tcp_proxy_test_localhost() {
         eprintln!("Starting nodes");
 
         // Setup a TCP listener
-        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.sepolia-shinkai
+        // Info from: https://shinkai-contracts.pages.dev/identity/tcp_tests_proxy.arb-sep-shinkai
 
         // Spawn a task to accept connections
         let tcp_handle = tokio::spawn({
@@ -746,7 +746,7 @@ fn tcp_proxy_test_localhost() {
                 .await;
 
                 let mut expected_response = serde_json::json!({
-                "node_name": "@@node2_test.sepolia-shinkai/main",
+                "node_name": "@@node2_test.arb-sep-shinkai/main",
                 "last_ext_node_response": "2024-05-25T20:42:48.285935Z",
                 "last_request_to_ext_node": "2024-05-25T20:42:48.285935Z",
                 "last_updated": "2024-05-25T20:42:48.285935Z",

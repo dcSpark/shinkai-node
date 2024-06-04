@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     async fn test_payment_manager() {
         init_default_tracing(); 
-        let sepolia_rpc = "https://ethereum-sepolia-rpc.publicnode.com";
+        let sepolia_rpc = "https://public.stackup.sh/api/v1/node/arbitrum-sepolia";
         #[allow(clippy::complexity)]
         let execute_transaction_evm: fn(
             CryptoWallet,

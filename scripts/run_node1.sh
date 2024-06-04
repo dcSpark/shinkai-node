@@ -30,7 +30,7 @@ export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com,https:/
 export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview,groq:llama3-8b-8192,ollama:llama3-gradient:8b-instruct-1048k-q3_K_M,ollama:llama3:8b-instruct-q4_1,genericapi:meta-llama/Llama-3-8b-chat-hf"
 
 export RPC_URL="https://rpc.sepolia.org"
-export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"
+export CONTRACT_ADDRESS="0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

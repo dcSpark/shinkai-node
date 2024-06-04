@@ -227,7 +227,7 @@ mod tests {
         let valid_names = vec![
             "inbox::@@node.shinkai::true",
             "inbox::@@node1.shinkai/subidentity::false",
-            "inbox::@@node.sepolia-shinkai/subidentity::true",
+            "inbox::@@node.arb-sep-shinkai/subidentity::true",
             "inbox::@@alice.shinkai/profileName/agent/myChatGPTAgent::true",
             "inbox::@@alice.shinkai/profileName/device/myPhone::true",
             "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::false",

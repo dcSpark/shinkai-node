@@ -275,7 +275,7 @@ fn subscription_http_upload() {
                 {
                     // Add the subscription to my_subscriptions
                     let new_subscription = SubscriptionId {
-                        unique_id: "@@node1_test.sepolia-shinkai:::main:::shinkai_sharing:::@@node1_test.sepolia-shinkai:::main"
+                        unique_id: "@@node1_test.arb-sep-shinkai:::main:::shinkai_sharing:::@@node1_test.arb-sep-shinkai:::main"
                             .to_string(),
                         include_folders: None,
                         exclude_folders: None,
@@ -284,11 +284,11 @@ fn subscription_http_upload() {
                     let subscription = ShinkaiSubscription {
                         subscription_id: new_subscription,
                         shared_folder: "/shinkai_sharing".to_string(),
-                        streaming_node: ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                        streaming_node: ShinkaiName::new("@@node1_test.arb-sep-shinkai".to_string()).unwrap(),
                         streaming_profile: "main".to_string(),
                         subscription_description: None,
                         subscriber_destination_path: None,
-                        subscriber_node: ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                        subscriber_node: ShinkaiName::new("@@node1_test.arb-sep-shinkai".to_string()).unwrap(),
                         subscriber_profile: "main".to_string(),
                         payment: None,
                         state: ShinkaiSubscriptionStatus::UnsubscribeConfirmed,

@@ -10,9 +10,9 @@ pub struct IdentityNetworkManager {
 impl IdentityNetworkManager {
     pub async fn new() -> Self {
         // TODO: Update with mainnet values (eventually)
-        let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
+        let rpc_url = env::var("RPC_URL").unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
         let contract_address =
-            env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
+            env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
         let abi_path = env::var("ABI_PATH").ok();
         shinkai_log(
             ShinkaiLogOption::IdentityNetwork,
@@ -42,11 +42,11 @@ impl IdentityNetworkManager {
             }
         };
 
-        // Check if any of the address_or_proxy_nodes ends with .sepolia-shinkai
+        // Check if any of the address_or_proxy_nodes ends with .arb-sep-shinkai
         if record
             .address_or_proxy_nodes
             .iter()
-            .any(|node| node.ends_with(".sepolia-shinkai"))
+            .any(|node| node.ends_with(".arb-sep-shinkai"))
         {
             // Call the proxy node to get the actual data
             let proxy_identity = record.address_or_proxy_nodes.clone();
