@@ -250,10 +250,10 @@ impl FSFolder {
             path,
             child_folders,
             child_items,
-            now.clone(),
-            now.clone(),
-            now.clone(),
-            now.clone(),
+            now,
+            now,
+            now,
+            now,
             merkle_hash,
         )
     }
@@ -294,7 +294,7 @@ impl FSFolder {
                 // If it's a Resource, then create a FSFolder by recursing, and push it to child_folders
                 NodeContent::Resource(inner_resource) => {
                     // Process datetimes from node
-                    let lm_datetime = Self::process_datetimes_from_node(&node)?;
+                    let lm_datetime = Self::process_datetimes_from_node(node)?;
                     let new_path = resource_fs_path.push_cloned(inner_resource.as_trait_object().name().to_string());
                     child_folders.push(Self::from_vector_resource(
                         inner_resource.clone(),
@@ -722,6 +722,6 @@ impl LastReadIndex {
     pub fn get_last_read_datetime_or_now(&self, path: &VRPath) -> DateTime<Utc> {
         self.get_last_read_datetime(path)
             .cloned()
-            .unwrap_or_else(|| ShinkaiTime::generate_time_now())
+            .unwrap_or_else(ShinkaiTime::generate_time_now)
     }
 }

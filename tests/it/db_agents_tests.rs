@@ -15,9 +15,10 @@ mod tests {
             agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             shinkai_name::ShinkaiName,
         },
-        shinkai_utils::{shinkai_logging::init_default_tracing, utils::hash_string},
+        shinkai_utils::shinkai_logging::init_default_tracing,
     };
     use shinkai_node::agent::{agent::Agent, execution::prompts::prompts::JobPromptGenerator};
+    use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
 

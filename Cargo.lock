@@ -7219,6 +7219,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_subscription_management_cli"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "async-channel",
+ "base64 0.22.0",
+ "chrono",
+ "chrono-tz",
+ "clap 3.2.25",
+ "dotenv",
+ "ed25519-dalek",
+ "hex",
+ "libsodium-sys-stable",
+ "multipart",
+ "rand 0.8.5",
+ "reqwest",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "shinkai_message_primitives",
+ "tokio",
+ "warp",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "shinkai_tcp_relayer"
 version = "0.1.0"
 dependencies = [

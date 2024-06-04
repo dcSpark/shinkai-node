@@ -1,6 +1,5 @@
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::agent::job_manager::JobManager;
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::managers::model_capabilities_manager::{PromptResultEnum};
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
@@ -11,7 +10,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
@@ -74,7 +73,7 @@ impl LLMProvider for ShinkaiBackend {
                 };
                 // eprintln!("Messages JSON: {:?}", messages_json);
 
-                let mut payload = json!({
+                let payload = json!({
                     "model": self.model_type(),
                     "messages": messages_json,
                     "temperature": 0.7,

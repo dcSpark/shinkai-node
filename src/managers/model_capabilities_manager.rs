@@ -123,6 +123,7 @@ impl ModelCapabilitiesManager {
     pub fn get_agent_capabilities(model: &AgentLLMInterface) -> Vec<ModelCapability> {
         match model {
             AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -168,6 +169,9 @@ impl ModelCapabilitiesManager {
                 model_type if model_type.starts_with("bakllava") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 }
+                model_type if model_type.contains("minicpm_llama3") => {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
                 model_type if model_type.starts_with("yarn-llama2") => vec![ModelCapability::TextInference],
                 _ => vec![],
             },
@@ -181,6 +185,7 @@ impl ModelCapabilitiesManager {
     pub fn get_agent_cost(model: &AgentLLMInterface) -> ModelCost {
         match model {
             AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
+                "gpt-4o" => ModelCost::Cheap,
                 "gpt-3.5-turbo-1106" => ModelCost::Cheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
@@ -195,7 +200,7 @@ impl ModelCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
+                "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
                 "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
                     ModelCost::GoodValue
                 }
@@ -255,7 +260,7 @@ impl ModelCapabilitiesManager {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
-                    let tiktoken_messages = openai_prepare_messages(&model, prompt)?;
+                    let tiktoken_messages = openai_prepare_messages(model, prompt)?;
                     Ok(tiktoken_messages)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
@@ -297,13 +302,19 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("phi3")
                     || ollama.model_type.starts_with("aya")
                     || ollama.model_type.starts_with("codestral")
-                    || ollama.model_type.starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
+                    || ollama
+                        .model_type
+                        .starts_with("adrienbrault/nous-hermes2theta-llama3-8b")
+                    || ollama.model_type.contains("minicpm_llama3")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
-                } else if ollama.model_type.starts_with("llava") || ollama.model_type.starts_with("bakllava") || ollama.model_type.starts_with("llava-phi3") {
+                } else if ollama.model_type.starts_with("llava")
+                    || ollama.model_type.starts_with("bakllava")
+                    || ollama.model_type.starts_with("llava-phi3")
+                {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llava_prepare_messages(model, ollama.clone().model_type.clone(), prompt, total_tokens)?;
@@ -324,7 +335,10 @@ impl ModelCapabilitiesManager {
     pub fn get_max_tokens(model: &AgentLLMInterface) -> usize {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
-                if openai.model_type == "gpt-4o" || openai.model_type == "gpt-4-1106-preview" || openai.model_type == "gpt-4-vision-preview" {
+                if openai.model_type == "gpt-4o"
+                    || openai.model_type == "gpt-4-1106-preview"
+                    || openai.model_type == "gpt-4-vision-preview"
+                {
                     128_000
                 } else {
                     let normalized_model = Self::normalize_model(&model.clone());
@@ -382,6 +396,7 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("falcon2") => 8_000,
                     model_type if model_type.starts_with("llama3-chatqa") => 8_000,
                     model_type if model_type.starts_with("llava-phi3") => 4_000,
+                    model_type if model_type.contains("minicpm_llama3") => 4_000,
                     model_type if model_type.starts_with("dolphin-llama3") => 8_000,
                     model_type if model_type.starts_with("command-r-plus") => 128_000,
                     model_type if model_type.starts_with("codestral") => 32_000,
@@ -392,7 +407,7 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
                     _ => 4096, // Default token count if no specific model type matches
                 };
-           }
+            }
         }
     }
 
@@ -493,9 +508,9 @@ impl ModelCapabilitiesManager {
         let buffer_percentage = 0.1;
         let char_count = text.chars().count();
         let estimated_tokens = (char_count as f64 / average_token_size as f64).ceil() as usize;
-        let buffered_token_count = (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize;
+        
 
-        buffered_token_count
+        (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize
     }
 
     /// Counts the number of tokens from the list of messages

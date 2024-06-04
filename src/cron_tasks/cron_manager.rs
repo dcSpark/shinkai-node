@@ -183,7 +183,7 @@ impl CronManager {
                     let db_arc = db_arc.unwrap();
                     db_arc
                         .get_all_cron_tasks_from_all_profiles(node_profile_name.clone())
-                        .unwrap_or(HashMap::new())
+                        .unwrap_or_default()
                 };
                 if !jobs_to_process.is_empty() {
                     shinkai_log(

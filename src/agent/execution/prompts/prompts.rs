@@ -1,15 +1,12 @@
 use crate::{
     agent::{error::AgentError, job::JobStepResult},
-    managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult},
-    tools::router::ShinkaiTool,
+    managers::model_capabilities_manager::{ModelCapabilitiesManager},
 };
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap};
 use tiktoken_rs::ChatCompletionRequestMessage;
 
-use super::general_prompts::do_not_mention_prompt;
 
 pub struct JobPromptGenerator {}
 
@@ -164,8 +161,8 @@ impl SubPrompt {
             return 0;
         }
 
-        let new_message_tokens = ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()]);
-        new_message_tokens
+        
+        ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()])
     }
 
     /// Converts a vector resource into a series of subprompts to be used in a prompt
@@ -202,6 +199,12 @@ pub struct Prompt {
     pub lowest_priority: u8,
     /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
     pub highest_priority: u8,
+}
+
+impl Default for Prompt {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Prompt {

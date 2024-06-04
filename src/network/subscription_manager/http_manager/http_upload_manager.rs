@@ -58,7 +58,7 @@ fn serialize_system_time<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S
 where
     S: Serializer,
 {
-    let datetime: DateTime<Utc> = time.clone().into();
+    let datetime: DateTime<Utc> = (*time).into();
     serializer.serialize_str(&datetime.to_rfc3339())
 }
 
@@ -447,7 +447,7 @@ impl HttpSubscriptionUploadManager {
         full_requester: ShinkaiName,
         path: String,
     ) -> Option<FSEntryTree> {
-        FSEntryTreeGenerator::shared_folders_to_tree(vector_fs, full_requester.clone(), full_requester, path)
+        FSEntryTreeGenerator::shared_folders_to_tree(vector_fs, full_requester.clone(), full_requester, path, vec![])
             .await
             .ok()
     }

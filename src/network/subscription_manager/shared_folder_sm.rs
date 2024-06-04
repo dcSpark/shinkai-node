@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 
 use serde::de::Error as SerdeError;
-use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::collections::HashMap;
@@ -172,14 +171,16 @@ mod tests {
         let child_item_tree_1 = FSEntryTree {
             name: "child1.txt".to_string(),
             path: "/path/to/file1/child1.txt".to_string(),
-            last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 30, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 6, 9, 10, 30, 0).unwrap(),
+            web_link: None,
             children: HashMap::new(),
         };
 
         let child_item_tree_2 = FSEntryTree {
             name: "child2.txt".to_string(),
             path: "/path/to/file1/child2.txt".to_string(),
-            last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 45, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 6, 9, 10, 45, 0).unwrap(),
+            web_link: None,
             children: HashMap::new(),
         };
 
@@ -190,14 +191,16 @@ mod tests {
         let item_tree_1 = FSEntryTree {
             name: "file1".to_string(),
             path: "/path/to/file1".to_string(),
-            last_modified: Utc.ymd(2023, 6, 9).and_hms(10, 0, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 6, 9, 10, 0, 0).unwrap(),
+            web_link: None,
             children,
         };
-
+        
         let item_tree_2 = FSEntryTree {
             name: "file2".to_string(),
             path: "/path/to/file2".to_string(),
-            last_modified: Utc.ymd(2023, 6, 9).and_hms(11, 0, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 6, 9, 11, 0, 0).unwrap(),
+            web_link: None,
             children: HashMap::new(),
         };
 
@@ -225,11 +228,11 @@ mod tests {
 
         let external_node_sm = SharedFoldersExternalNodeSM {
             node_name: ShinkaiName::new("@@node1.shinkai".to_string()).unwrap(),
-            last_ext_node_response: Some(Utc.ymd(2023, 6, 9).and_hms(12, 0, 0)),
-            last_request_to_ext_node: Some(Utc.ymd(2023, 6, 9).and_hms(11, 30, 0)),
-            last_updated: Utc.ymd(2023, 6, 9).and_hms(12, 0, 0),
+            last_ext_node_response: Some(Utc.with_ymd_and_hms(2023, 6, 9, 12, 0, 0).unwrap()),
+            last_request_to_ext_node: Some(Utc.with_ymd_and_hms(2023, 6, 9, 11, 30, 0).unwrap()),
+            last_updated: Utc.with_ymd_and_hms(2023, 6, 9, 12, 0, 0).unwrap(),
             state: ExternalNodeState::ResponseAvailable,
-            response_last_updated: Some(Utc.ymd(2023, 6, 9).and_hms(12, 0, 0)),
+            response_last_updated: Some(Utc.with_ymd_and_hms(2023, 6, 9, 12, 0, 0).unwrap()),
             response, // Correctly using the HashMap with SharedFolderInfo
         };
 

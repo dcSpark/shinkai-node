@@ -248,10 +248,10 @@ impl QAInferenceChain {
                         new_search_text = search_str;
                     }
                     // If extracting fails, use summary to make the new search text likely different compared to last iteration
-                    Err(_) => new_search_text = summary.clone(),
+                    Err(_) => new_search_text.clone_from(&summary),
                 }
             } else {
-                new_search_text = summary.clone();
+                new_search_text.clone_from(&summary);
             }
         }
 

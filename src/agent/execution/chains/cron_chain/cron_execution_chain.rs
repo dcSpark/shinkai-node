@@ -2,7 +2,7 @@ use crate::agent::error::AgentError;
 use crate::agent::execution::{
     chains::inference_chain_router::InferenceChainDecision, prompts::prompts::JobPromptGenerator,
 };
-use crate::agent::job::{Job, JobStepResult};
+use crate::agent::job::{Job};
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
@@ -104,7 +104,7 @@ impl JobManager {
                     state
                         .as_ref()
                         .map(|s| s.stage.clone())
-                        .unwrap_or_else(|| "".to_string()),
+                        .unwrap_or_default(),
                 ))
             }
         };
@@ -121,7 +121,7 @@ impl JobManager {
             match new_state.stage.as_str() {
                 "does_it_need_links" => {
                     new_state.needs_links = Some(answer_str.parse::<bool>().unwrap_or(false));
-                    if new_state.needs_links.unwrap() == false {
+                    if !new_state.needs_links.unwrap() {
                         return Ok(CronExecutionChainResponse {
                             summary: new_state.summary.unwrap(),
                             needs_links: new_state.needs_links.unwrap(),
@@ -181,9 +181,9 @@ impl JobManager {
         // TODO: this part is very similar to the above function so it is easier to merge them.
         let chosen_chain = InferenceChainDecision::new_no_results("cron_creation_chain".to_string());
         let mut inference_response_content = CronCreationChainResponse::default();
-        let mut new_execution_context = HashMap::new();
+        let new_execution_context = HashMap::new();
 
-        if chosen_chain.chain_id == "cron_creation_chain".to_string() {
+        if chosen_chain.chain_id == *"cron_creation_chain" {
             if let Some(agent) = agent_found {
                 inference_response_content = JobManager::start_cron_creation_chain(
                     db,
@@ -223,7 +223,7 @@ impl JobManager {
         let mut new_execution_context = HashMap::new();
 
         // Note: Faking it until you merge it
-        if chosen_chain.chain_id == "cron_execution_chain".to_string() {
+        if chosen_chain.chain_id == *"cron_execution_chain" {
             if let Some(agent) = agent_found.clone() {
                 let response = JobManager::start_cron_execution_chain_for_main_task(
                     db,
@@ -243,7 +243,7 @@ impl JobManager {
             } else {
                 return Err(AgentError::AgentNotFound);
             }
-        } else if chosen_chain.chain_id == "cron_execution_chain_subtask".to_string() {
+        } else if chosen_chain.chain_id == *"cron_execution_chain_subtask" {
             if let Some(agent) = agent_found {
                 inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
                     db,

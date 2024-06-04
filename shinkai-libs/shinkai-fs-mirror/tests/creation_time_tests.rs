@@ -76,7 +76,7 @@ mod tests {
     }
 
     fn hardcoded_current_date_provider() -> chrono::DateTime<chrono::Utc> {
-        chrono::Utc.ymd(2024, 3, 10).and_hms(0, 0, 0)
+        chrono::Utc.with_ymd_and_hms(2024, 3, 10, 0, 0, 0).unwrap()
     }
 
     #[tokio::test]

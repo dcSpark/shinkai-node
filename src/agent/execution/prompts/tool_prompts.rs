@@ -1,13 +1,9 @@
 use super::{
-    super::super::error::AgentError,
-    general_prompts::do_not_mention_prompt,
-    prompts::{JobPromptGenerator, Prompt, SubPrompt, SubPromptAssetType, SubPromptType},
+    prompts::{JobPromptGenerator, Prompt, SubPromptType},
 };
 use crate::{
-    agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager,
     tools::router::ShinkaiTool,
 };
-use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::collections::HashMap;
 
 impl JobPromptGenerator {
@@ -18,7 +14,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
             99
         );
-        prompt.add_content(format!("{}", user_message), SubPromptType::User, 100);
+        prompt.add_content(user_message.to_string(), SubPromptType::User, 100);
         prompt.add_content(
             String::from(
                 "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
@@ -111,9 +107,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!(
-                "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---"
-            ),
+            "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---".to_string(),
             SubPromptType::User,
             100
         );
@@ -137,9 +131,7 @@ impl JobPromptGenerator {
             );
         } else {
             prompt.add_content(
-                format!(
-                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
-                ),
+                "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field".to_string(),
                 SubPromptType::User, 99);
         }
 
@@ -176,9 +168,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!(
-                "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---"
-            ),
+            "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---".to_string(),
             SubPromptType::User,
             99
         );
@@ -201,9 +191,7 @@ impl JobPromptGenerator {
             );
         } else {
             prompt.add_content(
-                format!(
-                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
-                ),
+                "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field".to_string(),
                 SubPromptType::User, 99);
         }
 

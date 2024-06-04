@@ -120,11 +120,11 @@ impl WebScraper {
         if response.status().is_success() {
             let response_body: Vec<Value> = response.json().await?;
             // eprintln!("\n\n\n Response: {:?}", response_body);
-            if let Some(first_obj) = response_body.get(0) {
+            if let Some(first_obj) = response_body.first() {
                 match first_obj.get("text") {
                     Some(text) => Ok(WebScraperResult {
                         structured: text.as_str().unwrap_or("").to_string(),
-                        unfiltered: unfiltered,
+                        unfiltered,
                     }),
                     None => Err("Field 'text' not found in the response".into()),
                 }

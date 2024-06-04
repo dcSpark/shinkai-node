@@ -190,5 +190,5 @@ pub fn add_step_history_prompt(
         );
     }
 
-    return step_history_is_empty;
+    step_history_is_empty
 }

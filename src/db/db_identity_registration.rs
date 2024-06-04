@@ -45,7 +45,7 @@ impl RegistrationCodeInfo {
     pub fn from_slice(slice: &[u8]) -> Self {
         let s = std::str::from_utf8(slice).unwrap();
         let parts: Vec<&str> = s.split(':').collect();
-        let status = match parts.get(0) {
+        let status = match parts.first() {
             Some(&"unused") => RegistrationCodeStatus::Unused,
             _ => RegistrationCodeStatus::Used,
         };
@@ -127,7 +127,7 @@ impl ShinkaiDB {
         let prefixed_new_code = format!("registration_code_{}", new_code);
 
         self.db
-            .put_cf(cf, prefixed_new_code.as_bytes(), &code_info.as_bytes())?;
+            .put_cf(cf, prefixed_new_code.as_bytes(), code_info.as_bytes())?;
 
         Ok(new_code)
     }

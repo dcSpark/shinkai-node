@@ -23,8 +23,8 @@ impl ShinkaiMessage {
         let message_hash = message_clone.calculate_message_hash_with_empty_outer_signature();
 
         // Convert the hexadecimal hash back to bytes
-        let message_hash_bytes = hex::decode(&message_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
+        let message_hash_bytes = hex::decode(message_hash).map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
         })?;
 
         let signature = secret_key.sign(message_hash_bytes.as_slice());
@@ -38,8 +38,8 @@ impl ShinkaiMessage {
         let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
 
         // Convert the hexadecimal hash back to bytes
-        let shinkai_body_hash_bytes = hex::decode(&shinkai_body_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
+        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash).map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
         })?;
 
         // Sign the hash of the ShinkaiBody
@@ -68,7 +68,7 @@ impl ShinkaiMessage {
 
         // Decode the base58 signature to bytes
         let signature_bytes = hex::decode(hex_signature)
-            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e.to_string())))?;
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e)))?;
 
         // Convert the bytes to Signature
         let signature_bytes_slice = &signature_bytes[..];
@@ -78,7 +78,7 @@ impl ShinkaiMessage {
                 .map_err(|e: std::array::TryFromSliceError| {
                     ShinkaiMessageError::SigningError(format!(
                         "Failed to convert signature bytes to array: {}",
-                        e.to_string()
+                        e
                     ))
                 })?;
 
@@ -88,8 +88,8 @@ impl ShinkaiMessage {
         let message_hash = self.calculate_message_hash_with_empty_outer_signature();
 
         // Convert the hexadecimal hash back to bytes
-        let message_hash_bytes = hex::decode(&message_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
+        let message_hash_bytes = hex::decode(message_hash).map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
         })?;
 
         // Verify the signature against the hash of the message
@@ -118,7 +118,7 @@ impl ShinkaiMessage {
 
         // Decode the base58 signature to bytes
         let signature_bytes = hex::decode(signature)
-            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e.to_string())))?;
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode signature: {}", e)))?;
 
         // Convert the bytes to Signature
         let signature_bytes_slice = &signature_bytes[..];
@@ -128,7 +128,7 @@ impl ShinkaiMessage {
                 .map_err(|e: std::array::TryFromSliceError| {
                     ShinkaiMessageError::SigningError(format!(
                         "Failed to convert signature bytes to array: {}",
-                        e.to_string()
+                        e
                     ))
                 })?;
         let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
@@ -137,8 +137,8 @@ impl ShinkaiMessage {
         let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
 
         // Convert the hexadecimal hash back to bytes
-        let shinkai_body_hash_bytes = hex::decode(&shinkai_body_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
+        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash).map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
         })?;
 
         // Verify the signature against the hash of the ShinkaiBody

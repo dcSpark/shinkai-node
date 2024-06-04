@@ -1,5 +1,4 @@
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::agent::job_manager::JobManager;
 use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
@@ -11,7 +10,6 @@ use reqwest::Client;
 
 use serde_json;
 use serde_json::json;
-use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 

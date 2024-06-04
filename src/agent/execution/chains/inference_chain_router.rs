@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embedding_generator::{RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
@@ -87,12 +87,12 @@ impl JobManager {
         );
 
         // If the Summary chain was chosen
-        if chosen_chain.chain_id.to_string() == SummaryInferenceChain::chain_id() {
+        if chosen_chain.chain_id == SummaryInferenceChain::chain_id() {
             let mut summary_chain = SummaryInferenceChain::new(chain_context, chosen_chain.score_results);
             inference_result = summary_chain.run_chain().await?;
         }
         // If the QA chain was chosen
-        else if chosen_chain.chain_id.to_string() == QAInferenceChain::chain_id() {
+        else if chosen_chain.chain_id == QAInferenceChain::chain_id() {
             let qa_iteration_count = if job_scope_contains_significant_content { 3 } else { 2 };
             chain_context.update_max_iterations(qa_iteration_count);
 

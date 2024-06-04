@@ -643,7 +643,7 @@ pub trait VectorResourceCore: Send + Sync {
                     update_merkle_hashes,
                 );
             }
-            return Err(VRError::InvalidVRPath(parent_path.clone()));
+            Err(VRError::InvalidVRPath(parent_path.clone()))
         }
     }
 
@@ -659,9 +659,9 @@ pub trait VectorResourceCore: Send + Sync {
             let ord_resource = self.as_ordered_vector_resource_mut()?;
             if let Some(last_node_id) = ord_resource.last_node_id() {
                 let node_path = parent_path.push_cloned(last_node_id);
-                return self.remove_node_at_path(node_path, update_merkle_hashes);
+                self.remove_node_at_path(node_path, update_merkle_hashes)
             } else {
-                return Err(VRError::InvalidNodeId("Last node id not found".to_string()));
+                Err(VRError::InvalidNodeId("Last node id not found".to_string()))
             }
         } else {
             // Get the resource node at parent_path

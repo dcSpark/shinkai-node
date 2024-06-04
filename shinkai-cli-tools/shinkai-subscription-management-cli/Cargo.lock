@@ -2924,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.6.0"
+version = "0.7.6"
 dependencies = [
  "aes-gcm",
  "anyhow",

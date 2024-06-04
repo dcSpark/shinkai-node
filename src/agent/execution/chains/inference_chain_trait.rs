@@ -2,7 +2,6 @@ use crate::agent::execution::user_message_parser::ParsedUserMessage;
 use crate::agent::{error::AgentError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
-use async_recursion::async_recursion;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
