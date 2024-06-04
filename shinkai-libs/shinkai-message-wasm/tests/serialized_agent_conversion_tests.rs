@@ -58,7 +58,7 @@ mod tests {
         );
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_serialization_and_deserialization_of_serialized_agent_wrapper() {
         // console_log::init_with_level(log::Level::Debug).expect("error initializing log");

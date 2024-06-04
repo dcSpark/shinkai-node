@@ -63,7 +63,7 @@ pub async fn get_shinkai_intro_doc_async(
 ) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
     let source_file_name = "shinkai_intro.pdf";
-    let buffer = std::fs::read(format!("files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
+    let buffer = std::fs::read(format!("../../files/{}", source_file_name)).map_err(|_| VRError::FailedPDFParsing)?;
 
     let unstructured = UnstructuredAPI::new_default();
 
@@ -113,15 +113,15 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 //     // Without source file map
 //     let vrkai = VRKai::new(resource, None);
 //     let vrkai_bytes = vrkai.encode_as_bytes().expect("Failed to prepare VRKai bytes");
-//     std::fs::write("files/shinkai_intro.vrkai", &vrkai_bytes).expect("Failed to write VRKai bytes to file");
+//     std::fs::write("../../files/shinkai_intro.vrkai", &vrkai_bytes).expect("Failed to write VRKai bytes to file");
 
 //     let mut vrpack = VRPack::new_empty("shinkai-intro");
 //     vrpack.insert_vrkai(&vrkai, VRPath::root());
 //     let vrpack_bytes = vrpack.encode_as_bytes().expect("Failed to prepare VRPack bytes");
-//     std::fs::write("files/shinkai_intro.vrpack", &vrpack_bytes).expect("Failed to write VRPack bytes to file");
+//     std::fs::write("../../files/shinkai_intro.vrpack", &vrpack_bytes).expect("Failed to write VRPack bytes to file");
 
 //     // Read back and parse the VRKai file to verify it can be successfully decoded
-//     let vrkai_bytes_read = std::fs::read("files/shinkai_intro.vrkai").expect("Failed to read VRKai file");
+//     let vrkai_bytes_read = std::fs::read("../../files/shinkai_intro.vrkai").expect("Failed to read VRKai file");
 //     let parsed_vrkai = VRKai::from_bytes(&vrkai_bytes_read).expect("Failed to decode VRKai");
 //     assert_eq!(
 //         parsed_vrkai.encode_as_bytes().unwrap(),
@@ -130,7 +130,7 @@ pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &V
 //     );
 
 //     // Read back and parse the VRPack file to verify it can be successfully decoded
-//     let vrpack_bytes_read = std::fs::read("files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
+//     let vrpack_bytes_read = std::fs::read("../../files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
 //     let parsed_vrpack = VRPack::from_bytes(&vrpack_bytes_read).expect("Failed to decode VRPack");
 //     assert_eq!(
 //         parsed_vrpack.encode_as_bytes().unwrap(),
@@ -145,11 +145,11 @@ async fn test_vrkai_vrpack_vector_search() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Read VRKai from file as utf8 string
-    let vrkai_str = std::fs::read_to_string("files/shinkai_intro.vrkai").expect("Failed to read VRKai from file");
+    let vrkai_str = std::fs::read_to_string("../../files/shinkai_intro.vrkai").expect("Failed to read VRKai from file");
     let vrkai = VRKai::from_base64(&vrkai_str).expect("Failed to decode VRKai from string");
 
     // Read VRPack from file as utf8 string
-    let vrpack_bytes_read = std::fs::read("files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
+    let vrpack_bytes_read = std::fs::read("../../files/shinkai_intro.vrpack").expect("Failed to read VRPack file");
     let vrpack = VRPack::from_bytes(&vrpack_bytes_read).expect("Failed to decode VRPack");
 
     // Perform vector search on VRKai

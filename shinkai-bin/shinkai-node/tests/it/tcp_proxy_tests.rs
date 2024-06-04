@@ -318,7 +318,7 @@ fn tcp_proxy_test_identity() {
                 // Create /shinkai_sharing folder
                 node_2_testing_framework.create_folder("/", "shinkai_sharing").await;
                 node_2_testing_framework
-                    .upload_file("/shinkai_sharing", "files/shinkai_intro.vrkai")
+                    .upload_file("/shinkai_sharing", "../../files/shinkai_intro.vrkai")
                     .await;
                 node_2_testing_framework.make_folder_shareable("/shinkai_sharing").await;
 
@@ -719,7 +719,7 @@ fn tcp_proxy_test_localhost() {
                 // Create /shinkai_sharing folder
                 node_2_testing_framework.create_folder("/", "shinkai_sharing").await;
                 node_2_testing_framework
-                    .upload_file("/shinkai_sharing", "files/shinkai_intro.vrkai")
+                    .upload_file("/shinkai_sharing", "../../files/shinkai_intro.vrkai")
                     .await;
                 node_2_testing_framework.make_folder_shareable("/shinkai_sharing").await;
 

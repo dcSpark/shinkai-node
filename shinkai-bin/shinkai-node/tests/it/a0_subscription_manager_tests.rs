@@ -303,7 +303,7 @@ fn subscription_manager_test() {
             }
             {
                 // Upload File to /private_test_folder
-                let file_path = Path::new("files/shinkai_intro.vrkai");
+                let file_path = Path::new("../../files/shinkai_intro.vrkai");
                 upload_file(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
@@ -318,7 +318,7 @@ fn subscription_manager_test() {
                 .await;
 
                 // Upload File to /shared test folder
-                let file_path = Path::new("files/shinkai_intro.vrkai");
+                let file_path = Path::new("../../files/shinkai_intro.vrkai");
                 upload_file(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
@@ -376,7 +376,7 @@ fn subscription_manager_test() {
                 .await;
 
                 // Upload File to /shared test folder/crypto
-                let file_path = Path::new("files/shinkai_intro.vrkai");
+                let file_path = Path::new("../../files/shinkai_intro.vrkai");
                 upload_file(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),
@@ -863,7 +863,7 @@ fn subscription_manager_test() {
                 .await;
 
                 // Upload File to /shared test folder/crypto
-                let file_path = Path::new("files/zeko.vrkai");
+                let file_path = Path::new("../../files/zeko.vrkai");
                 upload_file(
                     &node1_commands_sender,
                     node1_profile_encryption_sk.clone(),

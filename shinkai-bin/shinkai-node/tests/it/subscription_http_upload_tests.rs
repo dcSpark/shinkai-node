@@ -94,10 +94,10 @@ fn subscription_http_upload() {
                 // Create folder /shared_test_folder
                 testing_framework.create_folder("/", "shinkai_sharing").await;
                 testing_framework
-                    .upload_file("/shinkai_sharing", "files/shinkai_intro.pdf")
+                    .upload_file("/shinkai_sharing", "../../files/shinkai_intro.pdf")
                     .await;
                 testing_framework
-                    .upload_file("/shinkai_sharing", "files/zeko_mini.pdf")
+                    .upload_file("/shinkai_sharing", "../../files/zeko_mini.pdf")
                     .await;
 
                 testing_framework

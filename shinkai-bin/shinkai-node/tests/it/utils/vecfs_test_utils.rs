@@ -583,6 +583,13 @@ pub async fn upload_file(
     file_path: &Path,
     symmetric_key_index: u32,
 ) {
+    eprintln!("file_path: {:?}", file_path);
+
+    // Print current directory
+    let current_dir = std::env::current_dir().unwrap();
+    println!("Current directory: {:?}", current_dir);
+
+
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
     eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
@@ -633,7 +640,7 @@ pub async fn upload_file(
     let payload = APIConvertFilesAndSaveToFolder {
         path: folder_name.to_string(),
         file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
-        file_datetime: Some(Utc.ymd(2024, 2, 1).and_hms(0, 0, 0)),
+        file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
     };
 
     let msg = generate_message_with_payload(
@@ -653,6 +660,8 @@ pub async fn upload_file(
         .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
         .await
         .unwrap();
-    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+    let resp = res_receiver.recv().await;
+    eprintln!("upload_file resp to folder: {:?}", resp);
+    let resp = resp.unwrap().expect("Failed to receive response");
     eprintln!("upload_file resp processed: {:?}", resp);
 }

@@ -738,7 +738,7 @@ mod tests {
     #[test]
     // fn test_num_tokens_from_real_prompt_success_overestimate() {
     fn test_num_tokens_from_real_prompt() {
-        let file_path = "files/for tests/token_estimation_test_prompt.txt";
+        let file_path = "../../files/for tests/token_estimation_test_prompt.txt";
         let content_result = fs::read_to_string(file_path);
         let content = match content_result {
             Ok(content) => content,
