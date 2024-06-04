@@ -12,7 +12,7 @@ impl IdentityNetworkManager {
         // TODO: Update with mainnet values (eventually)
         let rpc_url = env::var("RPC_URL").unwrap_or("https://ethereum-sepolia-rpc.publicnode.com".to_string());
         let contract_address =
-            env::var("CONTRACT_ADDRESS").unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
+            env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
         let abi_path = env::var("ABI_PATH").ok();
         shinkai_log(
             ShinkaiLogOption::IdentityNetwork,

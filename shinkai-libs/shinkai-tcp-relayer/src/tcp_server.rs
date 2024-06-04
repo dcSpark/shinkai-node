@@ -61,7 +61,7 @@ impl TCPProxy {
             .unwrap_or("https://sepolia.infura.io/v3/0153fa7ada9046f9acee3842cdb28082".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
-            .unwrap_or("0xDCbBd3364a98E2078e8238508255dD4a2015DD3E".to_string());
+            .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
 
         let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 

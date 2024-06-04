@@ -14,8 +14,8 @@ mod tests {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let mut registry = ShinkaiRegistry::new(
-                "https://rpc.sepolia.org",
-                "0xDCbBd3364a98E2078e8238508255dD4a2015DD3E",
+                "https://sepolia.infura.io/v3/0153fa7ada9046f9acee3842cdb28082",
+                "0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6",
                 None, // "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )
             .await
