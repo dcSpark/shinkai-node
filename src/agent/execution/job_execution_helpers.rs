@@ -2,21 +2,16 @@ use super::chains::inference_chain_trait::LLMInferenceResponse;
 use super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
-use crate::agent::parsing_helper::ParsingHelper;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::vector_fs::vector_fs::VectorFS;
-use crate::vector_fs::vector_fs_error::VectorFSError;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tracing::instrument;
 
 impl JobManager {
     /// Attempts to extract multiple keys from the inference response, including retry inferencing/upper + lower if necessary.
@@ -35,7 +30,7 @@ impl JobManager {
             response.clone(),
             filled_prompt.clone(),
             potential_keys_hashmap.clone(),
-            retry_attempts.clone(),
+            retry_attempts,
         )
         .await?;
 
@@ -63,13 +58,13 @@ impl JobManager {
                 response.clone(),
                 filled_prompt.clone(),
                 potential_keys.iter().map(|k| k.to_string()).collect(),
-                retry_attempts.clone(),
+                retry_attempts,
             )
             .await?;
             result_map.insert(key.to_string(), value);
             new_response = res;
         }
-        return Ok((result_map, new_response));
+        Ok((result_map, new_response))
     }
 
     /// Attempts to extract a single key from the inference response (first matched of potential_keys), including retry inferencing if necessary.
@@ -87,7 +82,7 @@ impl JobManager {
             response.clone(),
             filled_prompt.clone(),
             potential_keys.clone(),
-            retry_attempts.clone(),
+            retry_attempts,
         )
         .await?;
 
@@ -208,7 +203,7 @@ impl JobManager {
         for agent in agents {
             if agent.id == agent_id {
                 agent_found = Some(agent.clone());
-                profile_name = agent.full_identity_name.full_name.clone();
+                profile_name.clone_from(&agent.full_identity_name.full_name);
                 user_profile = Some(agent.full_identity_name.extract_profile().unwrap());
                 break;
             }

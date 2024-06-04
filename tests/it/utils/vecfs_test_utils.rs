@@ -633,7 +633,7 @@ pub async fn upload_file(
     let payload = APIConvertFilesAndSaveToFolder {
         path: folder_name.to_string(),
         file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
-        file_datetime: Some(Utc.ymd(2024, 2, 1).and_hms(0, 0, 0)),
+        file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
     };
 
     let msg = generate_message_with_payload(

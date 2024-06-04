@@ -1,13 +1,9 @@
-use crate::agent::execution::prompts::prompts::Prompt;
 use futures::Future;
 use pddl_ish_parser::models::domain::Domain;
 use pddl_ish_parser::parser::action::Action;
 use pddl_ish_parser::parser::domain_parser::parse_domain;
 use pddl_ish_parser::parser::problem_parser::parse_problem;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use std::{io::Cursor, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
 pub type ExecuteActionFn =

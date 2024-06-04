@@ -23,7 +23,6 @@ export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"
 export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com"
 export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview"
 
-export RPC_URL="https://rpc.sepolia.org"
 export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"
 # Add these lines to enable all log options
 export LOG_ALL=1

@@ -88,7 +88,7 @@ impl Embedding {
                         } else {
                             not_nan_similarity
                         };
-                        return Some((final_similarity, embedding.id.clone()));
+                        Some((final_similarity, embedding.id.clone()))
                     }
                     // If the similarity was Nan, set it to 0 to ensure sorting works properly
                     Err(_) => Some((NotNan::new(0.0).unwrap(), embedding.id.clone())), // Safe unwrap

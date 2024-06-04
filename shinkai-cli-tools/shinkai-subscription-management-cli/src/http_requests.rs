@@ -141,7 +141,7 @@ pub async fn request_post_multipart(
             }
 
             // TODO: handle 400 specifically
-            if status_code == 400 {}
+            // status_code == 400;
 
             match serde_json::from_str::<PostDataResponse>(&response_text) {
                 Ok(data) => Ok(data),

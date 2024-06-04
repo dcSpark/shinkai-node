@@ -1,23 +1,13 @@
 use super::{
-    super::super::error::AgentError,
-    general_prompts::do_not_mention_prompt,
-    prompts::{JobPromptGenerator, Prompt, SubPrompt, SubPromptAssetType, SubPromptType},
+    prompts::{JobPromptGenerator, Prompt, SubPromptType},
 };
-use crate::{
-    agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::router::ShinkaiTool,
-};
-use shinkai_vector_resources::vector_resource::RetrievedNode;
-use std::collections::HashMap;
 
 impl JobPromptGenerator {
     /// Prompt for having the description of a cron translated to a cron expression
     pub fn cron_expression_generation_prompt(description: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!(
-                "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
-            ),
+            "You are a very helpful assistant that's an expert in translating user requests to cron expressions.".to_string(),
             SubPromptType::System,
             99,
         );
@@ -39,7 +29,7 @@ impl JobPromptGenerator {
     pub fn apply_to_website_prompt(description: String, web_content: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             99,
         );
@@ -57,9 +47,7 @@ impl JobPromptGenerator {
             100
         );
         prompt.add_content(
-            format!(
-                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-            ),
+            "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
             SubPromptType::User,
             100);
 
@@ -76,7 +64,7 @@ impl JobPromptGenerator {
     pub fn cron_web_task_requires_links(description: String, summary: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -94,9 +82,7 @@ impl JobPromptGenerator {
                 100,
             );
         prompt.add_content(
-                format!(
-                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field. You can only answer true or false nothing else.",
-                ),
+                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field. You can only answer true or false nothing else.".to_string(),
                 SubPromptType::User,
                 100);
 
@@ -112,7 +98,7 @@ impl JobPromptGenerator {
     pub fn cron_web_task_match_links(task_description: String, summary: String, links: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -130,9 +116,7 @@ impl JobPromptGenerator {
                     100,
                 );
         prompt.add_content(
-                    format!(
-                        "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-                    ),
+                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
                     SubPromptType::User,
                     100);
 
@@ -149,7 +133,7 @@ impl JobPromptGenerator {
     pub fn cron_subtask(description: String, web_content: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("You are a very helpful assistant that's very good at completing a task.",),
+            "You are a very helpful assistant that's very good at completing a task.".to_string(),
             SubPromptType::System,
             100,
         );
@@ -167,9 +151,7 @@ impl JobPromptGenerator {
                 100,
             );
         prompt.add_content(
-                format!(
-                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-                ),
+                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field".to_string(),
                 SubPromptType::User,
                 100);
 

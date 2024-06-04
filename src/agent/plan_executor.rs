@@ -21,7 +21,7 @@ pub struct PlanExecutor<'a> {
 
 impl<'a> PlanExecutor<'a> {
     pub fn new(agent: &'a Agent, execution_plan: &Vec<ExecutionStep>) -> Result<Self, AgentError> {
-        match execution_plan.get(0) {
+        match execution_plan.first() {
             Some(ExecutionStep::Initial(initial_step)) => {
                 let mut execution_plan = execution_plan.to_vec();
                 let execution_context = initial_step.initial_execution_context.clone();

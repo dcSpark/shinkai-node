@@ -1,16 +1,5 @@
-use crate::{
-    agent::{
-        error::AgentError,
-        execution::prompts::prompts::{Prompt, SubPrompt},
-    },
-    managers::model_capabilities_manager::{Base64ImageString, ModelCapabilitiesManager, PromptResult, PromptResultEnum},
-};
 use serde::{Deserialize, Serialize};
 
-use shinkai_message_primitives::{
-    schemas::agents::serialized_agent::AgentLLMInterface,
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-};
 
 #[derive(Serialize, Deserialize)]
 pub struct TogetherAPIResponse {

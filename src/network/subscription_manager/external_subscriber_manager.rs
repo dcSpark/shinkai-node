@@ -544,7 +544,10 @@ impl ExternalSubscriberManager {
                     let is_last_element = index == diff_paths.len() - 1;
 
                     // Attempt to insert vrkai into vr_pack and log error if it fails
-                    if let Err(_) = vr_pack.insert_vrkai(&vrkai, parent_path.clone(), is_last_element) {
+                    if vr_pack
+                        .insert_vrkai(&vrkai, parent_path.clone(), is_last_element)
+                        .is_err()
+                    {
                         continue; // Skip to the next iteration
                     }
                 }
@@ -997,11 +1000,26 @@ impl ExternalSubscriberManager {
                         // Return an error instead of None
                     }
                 };
+
+                // Initialize http_results to an empty vector
+                let mut http_results = Vec::new();
+
+                if let Some(req) = &subscription_requirement {
+                    if req.has_web_alternative.unwrap_or(false) {
+                        let folder_subs_with_path = FolderSubscriptionWithPath {
+                            path: path_str.clone(),
+                            folder_subscription: req.clone(),
+                        };
+                        http_results = self.get_cached_subscription_files_links(&folder_subs_with_path);
+                    }
+                }
+
                 let tree = match FSEntryTreeGenerator::shared_folders_to_tree(
                     self.vector_fs.clone(),
                     full_streamer_profile_subidentity.clone(),
                     full_requester_profile_subidentity.clone(),
                     path_str.clone(),
+                    http_results,
                 )
                 .await
                 {
@@ -1281,8 +1299,10 @@ impl ExternalSubscriberManager {
                     .clone()
                     .get_profile_name_string()
                     .unwrap_or_default();
-                self.http_subscription_upload_manager
-                    .remove_http_support_for_subscription(subscription_with_path, &profile);
+                let _ = self
+                    .http_subscription_upload_manager
+                    .remove_http_support_for_subscription(subscription_with_path, &profile)
+                    .await;
 
                 db.remove_upload_credentials(&path, &requester_profile)
                     .map_err(|e| SubscriberManagerError::DatabaseError(e.to_string()))?;
@@ -1674,7 +1694,6 @@ impl ExternalSubscriberManager {
     }
 
     /// Get cached subscription files links (already filtered if there is anything expired)
-    #[allow(dead_code)]
     pub fn get_cached_subscription_files_links(
         &self,
         folder_subs_with_path: &FolderSubscriptionWithPath,

@@ -44,7 +44,7 @@ pub fn signature_public_key_to_string(public_key: VerifyingKey) -> String {
 }
 
 pub fn signature_public_key_to_string_ref(public_key: &VerifyingKey) -> String {
-    signature_public_key_to_string(public_key.clone())
+    signature_public_key_to_string(*public_key)
 }
 
 pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SigningKey, &'static str> {

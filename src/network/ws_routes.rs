@@ -22,7 +22,9 @@ pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;
 pub fn ws_route(
     manager: SharedWebSocketManager,
 ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let ws_route = {
+    
+
+    {
         let manager = Arc::clone(&manager);
         warp::path!("ws")
             .and(warp::ws())
@@ -32,9 +34,7 @@ pub fn ws_route(
                 let manager: SharedWebSocketManager = manager;
                 ws.on_upgrade(move |socket| ws_handler(socket, manager))
             })
-    };
-
-    ws_route
+    }
 }
 
 pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
@@ -115,7 +115,7 @@ async fn process_shinkai_message(
     let ws_message = serde_json::from_str::<WSMessage>(&content_str)
         .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e)))?;
 
-    let shinkai_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(&shinkai_message)
+    let shinkai_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(shinkai_message)
         .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e)))?;
 
     let mut manager_guard = manager.lock().await;

@@ -22,7 +22,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
 use shinkai_node::agent::error::AgentError;
 use shinkai_node::db::db_cron_task::CronTask;

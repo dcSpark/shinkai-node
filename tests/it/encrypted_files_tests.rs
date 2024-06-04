@@ -200,11 +200,11 @@ fn sandwich_messages_with_files_test() {
                 eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
                 // Prepare the file to be read
-                let filename = "files/Zeko_Mina_Rollup.pdf";
+                let filename = "files/zeko_mini.pdf";
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
+                let file_data = std::fs::read(file_path)
                     .map_err(|_| VRError::FailedPDFParsing)
                     .unwrap();
 
@@ -268,7 +268,7 @@ fn sandwich_messages_with_files_test() {
 
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                assert_eq!(response, vec!["files/Zeko_Mina_Rollup.pdf"]);
+                assert_eq!(response, vec!["files/zeko_mini.pdf"]);
             }
             // {
             //     let _m = server

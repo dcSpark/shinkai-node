@@ -224,8 +224,8 @@ impl JobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            let job = job_queue_manager.peek(&job_id).await;
-                            job
+                            
+                            job_queue_manager.peek(&job_id).await
                         };
 
                         match job {

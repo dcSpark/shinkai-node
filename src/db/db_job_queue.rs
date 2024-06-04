@@ -21,8 +21,8 @@ impl ShinkaiDB {
             Some(p) => format!("{}{}", p, job_id),
             None => job_id.to_string(),
         };
-        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
-        self.db.put_cf(cf_handle, full_job_id.as_bytes(), &serialized_queue)?;
+        let serialized_queue = bincode::serialize(queue).map_err(ShinkaiDBError::BincodeError)?;
+        self.db.put_cf(cf_handle, full_job_id.as_bytes(), serialized_queue)?;
         Ok(())
     }
 
@@ -44,7 +44,7 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_handle, full_job_id.as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let queue: Vec<T> = bincode::deserialize(&serialized_queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+        let queue: Vec<T> = bincode::deserialize(&serialized_queue).map_err(ShinkaiDBError::BincodeError)?;
         Ok(queue)
     }
 
@@ -66,7 +66,7 @@ impl ShinkaiDB {
         };
 
         for res in iterator {
-            let (key, value) = res.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (key, value) = res.map_err(ShinkaiDBError::RocksDBError)?;
             let mut job_id = String::from_utf8(key.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
             // If a prefix is provided, remove it from the job_id
             if let Some(p) = &prefix {
@@ -74,7 +74,7 @@ impl ShinkaiDB {
                     job_id = job_id[p.len()..].to_string();
                 }
             }
-            let queue: Vec<T> = bincode::deserialize(&value).map_err(|e| ShinkaiDBError::BincodeError(e))?;
+            let queue: Vec<T> = bincode::deserialize(&value).map_err(ShinkaiDBError::BincodeError)?;
             queues.insert(job_id, queue);
         }
 
@@ -98,8 +98,8 @@ impl ShinkaiDB {
             None => job_id.to_string(),
         };
 
-        let serialized_queue = bincode::serialize(queue).map_err(|e| ShinkaiDBError::BincodeError(e))?;
-        self.db.put_cf(cf_handle, full_job_id.as_bytes(), &serialized_queue)?;
+        let serialized_queue = bincode::serialize(queue).map_err(ShinkaiDBError::BincodeError)?;
+        self.db.put_cf(cf_handle, full_job_id.as_bytes(), serialized_queue)?;
         Ok(())
     }
 }

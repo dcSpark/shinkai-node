@@ -1,14 +1,11 @@
 use serde_json::Value;
 use shinkai_message_primitives::{
-    schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
-    },
+    schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment},
     shinkai_message::shinkai_message_schemas::FileDestinationCredentials,
 };
 
 use crate::{
-    http_requests::{PostDataResponse, PostRequestError},
+    http_requests::PostRequestError,
     shinkai::{shinkai_manager_for_subs::ShinkaiManagerForSubs, shinkai_response_types::NodeHealthStatus},
 };
 

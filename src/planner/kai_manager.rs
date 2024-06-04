@@ -1,4 +1,5 @@
-use shinkai_message_primitives::shinkai_utils::{utils::random_string, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel}};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_resources::utils::random_string;
 
 use super::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::network::Node;
@@ -49,14 +50,26 @@ impl KaiJobFileManager {
         match kai_file.schema {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
                 // Nothing to do
-                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("CronJobRequest: {:?}", cron_task_request).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("CronJobRequest: {:?}", cron_task_request).as_str(),
+                );
             }
             KaiSchemaType::CronJob(_) => {
                 // Add your logic for CronJob here, or ignore it
-                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "KaiSchemaType::CronJob variant matched but not handled");
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    "KaiSchemaType::CronJob variant matched but not handled",
+                );
             }
             KaiSchemaType::CronJobRequestResponse(cron_task_response) => {
-                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("CronJobResponse: {:?}", cron_task_response).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("CronJobResponse: {:?}", cron_task_response).as_str(),
+                );
                 // Execute code for CronJobResponse
                 // You can use cron_task_response which is of type CronTaskResponse
 
@@ -74,7 +87,15 @@ impl KaiJobFileManager {
                             Err(e) => return Err(e),
                         };
 
-                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("Cron manager found. Adding cron task for profile: {:?}", profile.clone().to_string()).as_str());
+                        shinkai_log(
+                            ShinkaiLogOption::CronExecution,
+                            ShinkaiLogLevel::Debug,
+                            format!(
+                                "Cron manager found. Adding cron task for profile: {:?}",
+                                profile.clone().to_string()
+                            )
+                            .as_str(),
+                        );
                         let cron_manager = cron_manager.lock().await;
                         cron_manager
                             .add_cron_task(
@@ -90,12 +111,20 @@ impl KaiJobFileManager {
                             .await;
                     }
                     None => {
-                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "Cron manager not found");
+                        shinkai_log(
+                            ShinkaiLogOption::CronExecution,
+                            ShinkaiLogLevel::Debug,
+                            "Cron manager not found",
+                        );
                     }
                 }
             }
         }
-        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "KaiJobFileManager::execute: Done (right before OK)");
+        shinkai_log(
+            ShinkaiLogOption::CronExecution,
+            ShinkaiLogLevel::Debug,
+            "KaiJobFileManager::execute: Done (right before OK)",
+        );
         Ok(())
     }
 }

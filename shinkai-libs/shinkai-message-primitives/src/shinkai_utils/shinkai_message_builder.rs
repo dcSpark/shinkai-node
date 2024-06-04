@@ -305,7 +305,7 @@ impl ShinkaiMessageBuilder {
         let my_signature_secret_key_clone = clone_signature_secret_key(&self.my_signature_secret_key);
         let my_encryption_public_key_clone = x25519_dalek::PublicKey::from(&my_encryption_secret_key_clone);
         let my_signature_public_key_clone = my_signature_secret_key_clone.verifying_key();
-        let receiver_public_key_clone = self.receiver_public_key.clone();
+        let receiver_public_key_clone = self.receiver_public_key;
 
         Self {
             message_raw_content: self.message_raw_content.clone(),
@@ -319,7 +319,7 @@ impl ShinkaiMessageBuilder {
             my_signature_public_key: my_signature_public_key_clone,
             receiver_public_key: receiver_public_key_clone,
             version: self.version.clone(),
-            optional_second_public_key_receiver_node: self.optional_second_public_key_receiver_node.clone(),
+            optional_second_public_key_receiver_node: self.optional_second_public_key_receiver_node,
         }
     }
 
@@ -339,7 +339,7 @@ impl ShinkaiMessageBuilder {
         if new_self.encryption != encryption_method_none
             && new_self.internal_metadata.is_some()
             && new_self.internal_metadata.as_ref().unwrap().encryption != encryption_method_none
-            && new_self.optional_second_public_key_receiver_node == None
+            && new_self.optional_second_public_key_receiver_node.is_none()
         {
             return Err("Encryption should not be set on both body and internal metadata simultaneously without optional_second_public_key_receiver_node.");
         }
@@ -378,14 +378,14 @@ impl ShinkaiMessageBuilder {
 
             // if self.internal_metadata.encryption is not None
             let new_message_data = if internal_metadata.encryption != encryption_method_none {
-                let encrypted_content = MessageData::encrypt_message_data(
+                
+
+                MessageData::encrypt_message_data(
                     &data,
                     &new_self.my_encryption_secret_key,
                     &new_self.receiver_public_key,
                 )
-                .expect("Failed to encrypt data content");
-
-                encrypted_content
+                .expect("Failed to encrypt data content")
             } else {
                 // If encryption method is None, just return body
                 MessageData::Unencrypted(data.clone())
@@ -421,14 +421,14 @@ impl ShinkaiMessageBuilder {
                     .as_ref()
                     .unwrap_or(&new_self.receiver_public_key);
 
-                let encrypted_body = MessageBody::encrypt_message_body(
+                
+
+                MessageBody::encrypt_message_body(
                     &signed_body,
                     &new_self.my_encryption_secret_key,
                     second_public_key,
                 )
-                .expect("Failed to encrypt body");
-
-                encrypted_body
+                .expect("Failed to encrypt body")
             } else {
                 // println!("No encryption");
                 // If encryption method is None, just return body

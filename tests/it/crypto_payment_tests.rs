@@ -101,6 +101,7 @@ mod tests {
     async fn test_payment_manager() {
         init_default_tracing(); 
         let sepolia_rpc = "https://ethereum-sepolia-rpc.publicnode.com";
+        #[allow(clippy::complexity)]
         let execute_transaction_evm: fn(
             CryptoWallet,
             CryptoWallet,

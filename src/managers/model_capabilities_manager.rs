@@ -260,7 +260,7 @@ impl ModelCapabilitiesManager {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
-                    let tiktoken_messages = openai_prepare_messages(&model, prompt)?;
+                    let tiktoken_messages = openai_prepare_messages(model, prompt)?;
                     Ok(tiktoken_messages)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
@@ -508,9 +508,9 @@ impl ModelCapabilitiesManager {
         let buffer_percentage = 0.1;
         let char_count = text.chars().count();
         let estimated_tokens = (char_count as f64 / average_token_size as f64).ceil() as usize;
-        let buffered_token_count = (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize;
+        
 
-        buffered_token_count
+        (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize
     }
 
     /// Counts the number of tokens from the list of messages

@@ -11,6 +11,12 @@ pub struct InstalledJSToolkitMap {
     toolkits_info: HashMap<String, JSToolkitInfo>,
 }
 
+impl Default for InstalledJSToolkitMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InstalledJSToolkitMap {
     pub fn new() -> Self {
         Self {

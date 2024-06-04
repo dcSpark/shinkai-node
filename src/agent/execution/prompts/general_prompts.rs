@@ -1,14 +1,13 @@
 use super::prompts::{JobPromptGenerator, Prompt, SubPrompt, SubPromptAssetType, SubPromptType};
 use crate::{
-    agent::job::JobStepResult, managers::model_capabilities_manager::ModelCapabilitiesManager,
-    tools::router::ShinkaiTool,
+    agent::job::JobStepResult,
 };
 use lazy_static::lazy_static;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
+use shinkai_vector_resources::vector_resource::{BaseVectorResource};
 
 impl JobPromptGenerator {
     pub fn convert_resource_into_subprompts(resource: BaseVectorResource) -> Vec<SubPrompt> {
-        let mut subprompts = vec![];
+        let subprompts = vec![];
 
         // // If it is an ordered vector resource, then we can just add each node as a subprompt
         // if let Ok(ord_res) = resource.as_ordered_vector_resource() {
@@ -96,7 +95,7 @@ impl JobPromptGenerator {
             r#"No that is wrong. I need it to be properly formatted as a markdown with the correct section names. "#
                 .to_string();
 
-        if let Some(md_def) = markdown_definitions.iter().next() {
+        if let Some(md_def) = markdown_definitions.first() {
             wrong_string += &format!(
                 " You must fix the previous answer by outputting markdown that follows this schema: \n{}",
                 md_def
@@ -105,9 +104,7 @@ impl JobPromptGenerator {
         prompt.add_content(wrong_string, SubPromptType::User, 100);
 
         prompt.add_content(
-            format!(
-                r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n"#,
-            ),
+            r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n"#.to_string(),
             SubPromptType::User,
             100,
         );
@@ -124,9 +121,9 @@ impl JobPromptGenerator {
             99
         );
 
-        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User, 99);
+        prompt.add_content("Here is content from a document:".to_string(), SubPromptType::User, 99);
         for node in nodes {
-            prompt.add_content(format!("{}", node), SubPromptType::User, 98);
+            prompt.add_content(node.to_string(), SubPromptType::User, 98);
         }
         prompt.add_content(
             String::from(

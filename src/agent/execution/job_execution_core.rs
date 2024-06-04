@@ -416,7 +416,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            format!("No .jobkai files found").as_str(),
+            "No .jobkai files found".to_string().as_str(),
         );
         Ok(false)
     }

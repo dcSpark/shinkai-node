@@ -22,7 +22,6 @@ use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::ws_manager::WSUpdateHandler;

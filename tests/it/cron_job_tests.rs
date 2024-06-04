@@ -167,9 +167,8 @@ mod tests {
         let job_queue_handler_result = tokio::time::timeout(timeout_duration, job_queue_handler).await;
 
         // Check the results of the task
-        match job_queue_handler_result {
-            Ok(_) => (),
-            Err(_) => (),
+        if job_queue_handler_result.is_err() {
+            // Handle the error case here if necessary
         }
     }
 
@@ -207,16 +206,14 @@ mod tests {
 
         let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes
 
-        assert_eq!(
+        assert!(
             CronManager::should_execute_cron_task(&cron_task_should_execute, cron_time_interval),
-            true,
             "Expected should_execute_cron_task to return true for a cron task that should execute every minute"
         );
 
-        assert_eq!(
-        CronManager::should_execute_cron_task(&cron_task_should_not_execute, cron_time_interval),
-        false,
-        "Expected should_execute_cron_task to return false for a cron task that should not execute within the next 2 minutes"
-    );
+        assert!(
+            !CronManager::should_execute_cron_task(&cron_task_should_not_execute, cron_time_interval),
+            "Expected should_execute_cron_task to return false for a cron task that should not execute within the next 2 minutes"
+        );
     }
 }
