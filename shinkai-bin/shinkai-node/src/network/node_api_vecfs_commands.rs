@@ -1133,10 +1133,12 @@ impl Node {
                 }
             }
         };
-        // eprintln!("Files: {:?}", files);
+
+        type FileData = (String, Vec<u8>);
+        type FileDataVec = Vec<FileData>;
 
         // Sort out the vrpacks from the rest
-        let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+        let (vr_packs, other_files): (FileDataVec, FileDataVec) =
             files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 
         let mut dist_files = vec![];
@@ -1247,7 +1249,6 @@ impl Node {
             let mut ext_manager = external_subscriber_manager.lock().await;
             let _ = ext_manager.update_shared_folders().await;
         }
-
         let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
         Ok(())
     }

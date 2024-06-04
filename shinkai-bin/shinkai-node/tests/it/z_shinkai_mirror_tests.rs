@@ -52,7 +52,7 @@ fn folder_setup() -> (PathBuf, TempDir) {
     let temp_dir = tempdir().expect("Failed to create temp dir");
     let temp_path = temp_dir.path();
 
-    let source_path = Path::new("./knowledge");
+    let source_path = Path::new("../../knowledge");
     dir::copy(source_path, temp_path, &CopyOptions::new()).expect("Failed to copy knowledge folder");
 
     eprintln!("Created temp dir");
@@ -160,6 +160,7 @@ fn print_dir(path: &Path, indent: usize) {
 #[test]
 fn mirror_sync_tests() {
     eprintln!("Starting sync tests");
+    std::env::set_var("WELCOME_MESSAGE", "false");
     setup();
     persistence_setup();
     let (test_folder, _temp_dir) = folder_setup();
@@ -362,6 +363,7 @@ fn mirror_sync_tests() {
                     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                     let mut parsed_resp = parse_and_extract_file_paths(resp);
                     parsed_resp.sort();
+                    // println!("parsed_resp: {:?}", parsed_resp);
 
                     let mut expected_paths = vec![
                         PathBuf::from("/knowledge/test"),

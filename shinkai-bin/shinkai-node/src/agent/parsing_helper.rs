@@ -76,6 +76,7 @@ impl ParsingHelper {
     ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
     ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
     /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_file_into_resource_gen_desc(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,

@@ -182,7 +182,7 @@ fn job_image_analysis() {
             }
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-                let file_path = "files/blue_64x64.png";
+                let file_path = "../../files/blue_64x64.png";
                 let file_data = std::fs::read(file_path).expect("Failed to read file");
 
                 // Encrypt the file using Aes256Gcm

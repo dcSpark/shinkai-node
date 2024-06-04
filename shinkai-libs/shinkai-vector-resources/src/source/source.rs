@@ -7,6 +7,7 @@ use regex::Regex;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::Path;
 use std::str::FromStr;
 
 /// What text chunking strategy was used to create this VR from the source file.
@@ -81,7 +82,7 @@ impl VRSourceReference {
         // Attempt to auto-detect, else use file extension
         let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
-            Ok(VRSourceReference::new_uri_ref(&file_name))
+            Ok(VRSourceReference::new_uri_ref(file_name))
         } else {
             let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
             Ok(VRSourceReference::new_source_file_ref(
@@ -390,45 +391,40 @@ impl SourceFileType {
     /// Given an input file_name with an extension, outputs the correct SourceFileType
     /// or an error if the extension cannot be found or is not supported yet
     pub fn detect_file_type(file_name: &str) -> Result<Self, VRError> {
-        let re = Regex::new(r"\.([a-zA-Z0-9]+)$").unwrap();
-        let extension = if file_name.starts_with('.') {
-            file_name
-        } else {
-            re.captures(file_name)
-                .and_then(|cap| cap.get(1))
-                .map(|m| m.as_str())
-                .ok_or_else(|| VRError::FileTypeNotSupported(file_name.to_string()))?
-        };
+        let path = Path::new(file_name);
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or_else(|| VRError::FileTypeNotSupported(file_name.to_string()))?;
 
-        match extension {
-            ext => {
-                if let Ok(doc_type) = DocumentFileType::from_str(ext) {
-                    return Ok(SourceFileType::Document(doc_type));
-                }
-                if let Ok(code_type) = CodeFileType::from_str(ext) {
-                    return Ok(SourceFileType::Code(code_type));
-                }
-                // Config support will be added once we implement parsers for them all
-                if let Ok(_config_type) = ConfigFileType::from_str(ext) {
-                    // return Ok(SourceFileType::ConfigFileType(config_type));
-                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
-                }
-                if let Ok(shinkai_type) = ShinkaiFileType::from_str(ext) {
-                    return Ok(SourceFileType::Shinkai(shinkai_type));
-                }
-                // Video/audio/image support will come in the future by first converting to text.
-                if let Ok(_video_type) = VideoFileType::from_str(ext) {
-                    // return Ok(SourceFileType::Video(video_type));
-                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
-                }
-                if let Ok(_audio_type) = AudioFileType::from_str(ext) {
-                    // return Ok(SourceFileType::Audio(audio_type));
-                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
-                }
-                if let Ok(_img_type) = ImageFileType::from_str(ext) {
-                    // return Ok(SourceFileType::Image(img_type));
-                    return Err(VRError::FileTypeNotSupported(file_name.to_string()));
-                }
+        let ext = extension;
+        {
+            if let Ok(doc_type) = DocumentFileType::from_str(ext) {
+                return Ok(SourceFileType::Document(doc_type));
+            }
+            if let Ok(code_type) = CodeFileType::from_str(ext) {
+                return Ok(SourceFileType::Code(code_type));
+            }
+            // Config support will be added once we implement parsers for them all
+            if let Ok(_config_type) = ConfigFileType::from_str(ext) {
+                // return Ok(SourceFileType::ConfigFileType(config_type));
+                return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+            }
+            if let Ok(shinkai_type) = ShinkaiFileType::from_str(ext) {
+                return Ok(SourceFileType::Shinkai(shinkai_type));
+            }
+            // Video/audio/image support will come in the future by first converting to text.
+            if let Ok(_video_type) = VideoFileType::from_str(ext) {
+                // return Ok(SourceFileType::Video(video_type));
+                return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+            }
+            if let Ok(_audio_type) = AudioFileType::from_str(ext) {
+                // return Ok(SourceFileType::Audio(audio_type));
+                return Err(VRError::FileTypeNotSupported(file_name.to_string()));
+            }
+            if let Ok(_img_type) = ImageFileType::from_str(ext) {
+                // return Ok(SourceFileType::Image(img_type));
+                return Err(VRError::FileTypeNotSupported(file_name.to_string()));
             }
         }
 

@@ -243,7 +243,7 @@ fn vector_fs_api_tests() {
             {
                 // Upload .vrkai file to inbox
                 // Prepare the file to be read
-                let filename = "files/shinkai_intro.vrkai";
+                let filename = "../../files/shinkai_intro.vrkai";
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
@@ -349,7 +349,7 @@ fn vector_fs_api_tests() {
             {
                 // Upload .pdf file to inbox
                 // Prepare the file to be read
-                let filename = "files/shinkai_intro.pdf";
+                let filename = "../../files/shinkai_intro.pdf";
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
