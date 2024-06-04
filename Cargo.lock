@@ -6380,7 +6380,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -6469,7 +6469,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.7.7"
+version = "0.7.8"
 dependencies = [
  "aes-gcm",
  "anyhow",
