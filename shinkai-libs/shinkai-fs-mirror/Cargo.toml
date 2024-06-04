@@ -3,6 +3,8 @@ name = "shinkai_fs_mirror"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 [dependencies]
 shinkai_message_primitives = { path = "../shinkai-message-primitives" }
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
