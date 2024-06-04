@@ -4,8 +4,6 @@ version = "0.7.6"
 edition = "2018"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
-[workspace]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 crate-type = ["cdylib"]
