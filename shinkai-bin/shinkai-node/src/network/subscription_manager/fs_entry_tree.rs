@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
 
+use super::http_manager::http_upload_manager::FileLink;
+
 // Custom serialization for the children field
 fn serialize_children<S>(children: &HashMap<String, Arc<FSEntryTree>>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -26,10 +28,17 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebLink {
+    pub file: FileLink,
+    pub checksum: FileLink,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FSEntryTree {
     pub name: String,
     pub path: String,
     pub last_modified: DateTime<Utc>,
+    pub web_link: Option<WebLink>,
     #[serde(serialize_with = "serialize_children", deserialize_with = "deserialize_children")]
     pub children: HashMap<String, Arc<FSEntryTree>>,
 }
@@ -41,6 +50,7 @@ impl FSEntryTree {
             path: "/".to_string(),
             last_modified: Utc::now(),
             children: HashMap::new(),
+            web_link: None,
         }
     }
 
@@ -49,23 +59,36 @@ impl FSEntryTree {
     }
 
     // Method to transform the tree into a visually pleasant JSON string
+    #[allow(dead_code)]
     pub fn to_pretty_json(&self) -> serde_json::Value {
         json!({
             "name": self.name,
             "path": self.path,
             "last_modified": self.last_modified.to_rfc3339(),
-            "children": self.children.iter().map(|(_, child)| child.to_pretty_json()).collect::<Vec<_>>(),
+            "web_link": self.web_link.as_ref().map(|link| json!({
+                "file": link.file,
+                "checksum": link.checksum
+            })),
+            "children": self.children.values().map(|child| child.to_pretty_json()).collect::<Vec<_>>(),
         })
     }
 
     // Optionally, if you want to print it directly in a more human-readable format
+    #[allow(dead_code)]
     pub fn pretty_print(&self, indent: usize) {
+        let web_link_str = if let Some(link) = &self.web_link {
+            format!(" [Web Link: file={:?}, checksum={:?}]", link.file, link.checksum)
+        } else {
+            String::from(" [No Web Link]")
+        };
+
         println!(
-            "{}- {} ({}) [Last Modified: {}]",
+            "{}- {} ({}) [Last Modified: {}] {}",
             " ".repeat(indent * 2),
             self.name,
             self.path,
-            self.last_modified.format("%Y-%m-%d %H:%M:%S")
+            self.last_modified.format("%Y-%m-%d %H:%M:%S"),
+            web_link_str
         );
         for child in self.children.values() {
             child.pretty_print(indent + 1);
@@ -93,14 +116,16 @@ mod tests {
         let tree = FSEntryTree {
             name: "root".to_string(),
             path: "/".to_string(),
-            last_modified: Utc.ymd(2023, 5, 20).and_hms(10, 30, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 10, 30, 0).unwrap(),
+            web_link: None,
             children: HashMap::from([
                 (
                     "child1".to_string(),
                     Arc::new(FSEntryTree {
                         name: "child1".to_string(),
                         path: "/child1".to_string(),
-                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
+                        last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 11, 0, 0).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 ),
@@ -109,7 +134,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "child2".to_string(),
                         path: "/child2".to_string(),
-                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
+                        last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 11, 30, 0).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 ),
@@ -141,14 +167,16 @@ mod tests {
         let tree = FSEntryTree {
             name: "root".to_string(),
             path: "/".to_string(),
-            last_modified: Utc.ymd(2023, 5, 20).and_hms(10, 30, 0),
+            last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 10, 30, 0).unwrap(),
+            web_link: None,
             children: HashMap::from([
                 (
                     "child1".to_string(),
                     Arc::new(FSEntryTree {
                         name: "child1".to_string(),
                         path: "/child1".to_string(),
-                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 0, 0),
+                        last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 11, 0, 0).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 ),
@@ -157,7 +185,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "child2".to_string(),
                         path: "/child2".to_string(),
-                        last_modified: Utc.ymd(2023, 5, 20).and_hms(11, 30, 0),
+                        last_modified: Utc.with_ymd_and_hms(2023, 5, 20, 11, 30, 0).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 ),
@@ -195,20 +224,23 @@ mod tests {
         let tree = FSEntryTree {
             name: "/".to_string(),
             path: "/shared_test_folder".to_string(),
-            last_modified: Utc.ymd(2024, 4, 20).and_hms_nano(4, 52, 44, 922332),
+            last_modified: Utc.with_ymd_and_hms(2024, 4, 20, 4, 52, 44).unwrap(),
+            web_link: None,
             children: HashMap::from([
                 (
                     "crypto".to_string(),
                     Arc::new(FSEntryTree {
                         name: "crypto".to_string(),
                         path: "/shared_test_folder/crypto".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 20).and_hms_nano(4, 52, 42, 845145),
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 20, 4, 52, 42).unwrap(),
+                        web_link: None,
                         children: HashMap::from([(
                             "shinkai_intro".to_string(),
                             Arc::new(FSEntryTree {
                                 name: "shinkai_intro".to_string(),
                                 path: "/shared_test_folder/crypto/shinkai_intro".to_string(),
-                                last_modified: Utc.ymd(2024, 4, 3).and_hms_nano(2, 41, 16, 443701081),
+                                last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
+                                web_link: None,
                                 children: HashMap::new(),
                             }),
                         )]),
@@ -219,7 +251,8 @@ mod tests {
                     Arc::new(FSEntryTree {
                         name: "shinkai_intro".to_string(),
                         path: "/shared_test_folder/shinkai_intro".to_string(),
-                        last_modified: Utc.ymd(2024, 4, 3).and_hms_nano(2, 41, 16, 443701081),
+                        last_modified: Utc.with_ymd_and_hms(2024, 4, 3, 2, 41, 16).unwrap(),
+                        web_link: None,
                         children: HashMap::new(),
                     }),
                 ),

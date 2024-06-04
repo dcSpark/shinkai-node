@@ -79,7 +79,7 @@ impl ShinkaiDB {
             initial_job_name.as_bytes(),
         );
         batch.put_cf(cf_inbox, job_is_hidden_key.as_bytes(), &is_hidden.to_string());
-        batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "".to_string());
+        batch.put_cf(cf_inbox, job_read_list_key.as_bytes(), "");
 
         self.db.write(batch)?;
 
@@ -261,7 +261,7 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_is_finished", job_id).as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
+        let is_finished = std::str::from_utf8(&is_finished_value)? == "true";
 
         let datetime_created_value = self
             .db
@@ -286,7 +286,7 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_jobs, format!("jobinbox_{}_is_hidden", job_id).as_bytes())?
             .unwrap_or_else(|| b"false".to_vec());
-        let is_hidden = std::str::from_utf8(&is_hidden_value)?.to_string() == "true";
+        let is_hidden = std::str::from_utf8(&is_hidden_value)? == "true";
 
         // Reads all of the step history by iterating
         let step_history = self.get_step_history(job_id, fetch_step_history)?;
@@ -317,7 +317,7 @@ impl ShinkaiDB {
         let prefix = b"all_jobs_time_keyed_placeholder_to_fit_prefix__";
         let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);
         for item in iter {
-            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             // The value is the job ID
             let job_id = std::str::from_utf8(&value)?.to_string();
             // Fetch the job using the job ID
@@ -332,7 +332,7 @@ impl ShinkaiDB {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
         let scope_bytes = scope.to_bytes()?;
         let job_scope_key = format!("jobinbox_{}_scope", &job_id);
-        self.db.put_cf(cf_jobs, job_scope_key.as_bytes(), &scope_bytes)?;
+        self.db.put_cf(cf_jobs, job_scope_key.as_bytes(), scope_bytes)?;
 
         Ok(())
     }
@@ -388,7 +388,7 @@ impl ShinkaiDB {
         })?;
 
         self.db
-            .put_cf(cf_jobs, execution_context_key.as_bytes(), &context_bytes)?;
+            .put_cf(cf_jobs, execution_context_key.as_bytes(), context_bytes)?;
 
         Ok(())
     }
@@ -404,7 +404,7 @@ impl ShinkaiDB {
         if let Some(message_path) = last_messages.first() {
             if let Some(message) = message_path.first() {
                 let message_key = message.calculate_message_hash_for_pagination();
-                let job_id_hash = Self::job_id_to_hash(&job_id);
+                let job_id_hash = Self::job_id_to_hash(job_id);
                 // Construct the key for fetching the execution context
                 let execution_context_key = format!("jobinbox_{}_ctxt_{}", job_id_hash, message_key);
 
@@ -441,7 +441,7 @@ impl ShinkaiDB {
         let iter = self.db.prefix_iterator_cf(cf_inbox, prefix.as_bytes());
         for item in iter {
             // HERE
-            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let (_key, value) = item.map_err(ShinkaiDBError::RocksDBError)?;
             let message = std::str::from_utf8(&value)?.to_string();
             unprocessed_messages.push(message);
         }
@@ -476,7 +476,7 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_inbox, job_is_finished_key.as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
-        let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
+        let is_finished = std::str::from_utf8(&is_finished_value)? == "true";
 
         if is_finished {
             return Err(ShinkaiDBError::SomeError(format!("Job {} is already finished", job_id)));

@@ -345,12 +345,14 @@ fn tcp_proxy_test_identity() {
                             "tree": {
                                 "name": "/",
                                 "path": "/shinkai_sharing",
+                                "web_link": null,
                                 "last_modified": "2024-05-25T20:42:47.557583Z",
                                 "children": {
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
                                         "path": "/shinkai_sharing/shinkai_intro",
                                         "last_modified": "2024-05-01T17:38:59.904492Z",
+                                        "web_link": null,
                                         "children": {}
                                     }
                                 }
@@ -759,10 +761,12 @@ fn tcp_proxy_test_localhost() {
                                 "name": "/",
                                 "path": "/shinkai_sharing",
                                 "last_modified": "2024-05-25T20:42:47.557583Z",
+                                "web_link": null,
                                 "children": {
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
                                         "path": "/shinkai_sharing/shinkai_intro",
+                                        "web_link": null,
                                         "last_modified": "2024-05-01T17:38:59.904492Z",
                                         "children": {}
                                     }

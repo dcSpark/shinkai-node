@@ -66,14 +66,15 @@ mod tests {
     use shinkai_message_primitives::{
         schemas::inbox_name::InboxName,
         shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_utils::signatures::clone_signature_secret_key,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope,
             shinkai_logging::init_default_tracing, shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::unsafe_deterministic_signature_keypair,
         },
-        shinkai_utils::{signatures::clone_signature_secret_key, utils::hash_string},
     };
     use shinkai_node::{agent::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
+    use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
 

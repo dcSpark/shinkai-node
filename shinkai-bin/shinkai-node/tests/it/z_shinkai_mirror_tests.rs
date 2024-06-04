@@ -10,6 +10,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::network::node_api::{self, APIError};
 use shinkai_node::schemas::identity::{Identity, IdentityType};
+use shinkai_vector_resources::utils::hash_string;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -29,7 +30,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::{IpAddr, Ipv4Addr};

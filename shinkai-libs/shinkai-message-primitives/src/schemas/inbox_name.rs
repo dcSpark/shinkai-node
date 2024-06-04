@@ -156,7 +156,7 @@ impl InboxName {
         let recipient_name = ShinkaiName::new(recipient_full.clone())
             .map_err(|_| ShinkaiNameError::InvalidNameFormat(recipient_full.to_string()))?;
 
-        let mut inbox_name_parts = vec![sender_name.to_string(), recipient_name.to_string()];
+        let mut inbox_name_parts = [sender_name.to_string(), recipient_name.to_string()];
         inbox_name_parts.sort();
 
         let inbox_name = format!(

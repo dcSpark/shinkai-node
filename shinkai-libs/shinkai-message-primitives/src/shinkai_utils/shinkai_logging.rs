@@ -33,7 +33,7 @@ pub enum ShinkaiLogOption {
     CryptoIdentity,
     JobExecution,
     CronExecution,
-    API,
+    Api,
     WsAPI,
     DetailedAPI,
     Node,
@@ -52,6 +52,7 @@ pub enum ShinkaiLogLevel {
 impl ShinkaiLogLevel {
     // Conditional compilation: Only include function for non-WASM targets
     #[cfg(not(target_arch = "wasm32"))]
+    #[allow(dead_code)]
     fn to_log_level(&self) -> Level {
         match self {
             ShinkaiLogLevel::Error => Level::ERROR,
@@ -75,7 +76,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::CryptoIdentity,
             ShinkaiLogOption::JobExecution,
             ShinkaiLogOption::CronExecution,
-            ShinkaiLogOption::API,
+            ShinkaiLogOption::Api,
             ShinkaiLogOption::WsAPI,
             ShinkaiLogOption::DetailedAPI,
             ShinkaiLogOption::Node,
@@ -114,7 +115,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
         active_options.push(ShinkaiLogOption::CryptoIdentity);
     }
     if std::env::var("LOG_API").is_ok() {
-        active_options.push(ShinkaiLogOption::API);
+        active_options.push(ShinkaiLogOption::Api);
     }
     if std::env::var("LOG_WS_API").is_ok() {
         active_options.push(ShinkaiLogOption::WsAPI);
@@ -157,7 +158,7 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
         };
 
         let message_with_header = if is_simple_log {
-            format!("{}", message)
+            message.to_string()
         } else {
             let hostname = "localhost";
             let app_name = "shinkai";

@@ -54,7 +54,7 @@ pub async fn generate_qr_codes(
             permission_type: "admin".to_string(),
             node_address: node_address.clone(),
             shinkai_identity: global_identity_name.to_string(),
-            node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+            node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key),
             node_signature_pk: identity_public_key_string.to_string(),
         };
 

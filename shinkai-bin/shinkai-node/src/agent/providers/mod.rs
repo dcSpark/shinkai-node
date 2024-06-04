@@ -3,7 +3,7 @@ use super::{
     execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
 };
 use async_trait::async_trait;
-use quickxml_to_serde::{xml_string_to_json, Config, NullValue};
+use quickxml_to_serde::{xml_string_to_json, Config};
 use reqwest::Client;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
@@ -80,7 +80,7 @@ pub trait LLMProvider {
                         tag_start = Some(i);
                         // Capture the tag name
                         let mut tag_name = String::new();
-                        while let Some((_, char)) = chars.next() {
+                        for (_, char) in chars.by_ref() {
                             if char == '>' {
                                 break;
                             }
@@ -195,11 +195,11 @@ pub trait LLMProvider {
 
 fn replace_single_quotes(s: &str) -> String {
     let replaced_string = s.to_string().replace("''", "'");
-    let mut chars = replaced_string.chars().peekable();
+    let chars = replaced_string.chars().peekable();
     let mut cleaned_string = String::new();
     let mut in_quotes = false; // Tracks whether we are inside quotes
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         match c {
             // If we encounter a double quote, we flip the in_quotes flag
             '"' => {

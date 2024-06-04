@@ -42,24 +42,24 @@ pub fn unsafe_deterministic_encryption_keypair(n: u32) -> (StaticSecret, PublicK
 }
 
 pub fn ephemeral_encryption_keys() -> (StaticSecret, PublicKey) {
-    let mut csprng = OsRng;
-    let secret_key = StaticSecret::random_from_rng(&mut csprng);
+    let csprng = OsRng;
+    let secret_key = StaticSecret::random_from_rng(csprng);
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }
 
 pub fn encryption_secret_key_to_string(secret_key: StaticSecret) -> String {
     let bytes = secret_key.to_bytes();
-    hex::encode(&bytes)
+    hex::encode(bytes)
 }
 
 pub fn encryption_public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
-    hex::encode(&bytes)
+    hex::encode(bytes)
 }
 
 pub fn encryption_public_key_to_string_ref(public_key: &PublicKey) -> String {
-    encryption_public_key_to_string(public_key.clone())
+    encryption_public_key_to_string(*public_key)
 }
 
 pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {

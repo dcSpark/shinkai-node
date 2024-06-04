@@ -12,10 +12,9 @@ use shinkai_message_primitives::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
-        utils::random_string,
     },
 };
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::{file_parser::unstructured_api::UnstructuredAPI, utils::random_string};
 
 use crate::{
     agent::{
@@ -185,7 +184,7 @@ impl JobManager {
 
                     for link in links {
                         let mut scraper_for_link = scraper.clone();
-                        scraper_for_link.task.url = link.clone();
+                        scraper_for_link.task.url.clone_from(&link);
                         match scraper_for_link.download_and_parse().await {
                             Ok(content) => {
                                 let (inference_response_content, new_execution_context) =
@@ -335,14 +334,14 @@ impl JobManager {
                 let kai_file_bytes = kai_file_json.into_bytes();
 
                 // Save the KaiJobFile to the inbox
-                let _ = vector_fs.db.add_file_to_files_message_inbox(
+                vector_fs.db.add_file_to_files_message_inbox(
                     inbox_name.clone(),
                     format!("{}.jobkai", file_name_no_ext).to_string(),
                     kai_file_bytes,
                 )?;
-                return Ok(inbox_name);
+                Ok(inbox_name)
             }
-            Err(err) => return Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
+            Err(err) => Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
         }
     }
 }

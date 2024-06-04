@@ -34,10 +34,8 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::vector_resource::VRPath;
-use std::sync::Weak;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
-use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -236,8 +234,6 @@ impl Node {
         encryption_public_key: EncryptionPublicKey,
         res: Sender<(VerifyingKey, EncryptionPublicKey)>,
     ) -> Result<(), Error> {
-        let identity_public_key = identity_public_key.clone();
-        let encryption_public_key = encryption_public_key.clone();
         let _ = res
             .send((identity_public_key, encryption_public_key))
             .await

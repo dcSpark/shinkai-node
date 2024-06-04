@@ -1,20 +1,14 @@
 use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
-use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use crate::vector_fs::vector_fs_error::VectorFSError;
 use futures::stream::{Stream, StreamExt};
-use keyphrases::KeyPhraseExtractor;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::{
-    deep_search_scores_average_out, BaseVectorResource, Node, ResultsMode, RetrievedNode, ScoringMode, TraversalMethod,
-    TraversalOption, VRHeader, VRPath,
+    BaseVectorResource, VRPath,
 };
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;

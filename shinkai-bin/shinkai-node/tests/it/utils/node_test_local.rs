@@ -71,6 +71,7 @@ pub async fn local_registration_profile_node(
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
+        #[allow(clippy::type_complexity)]
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
             async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
@@ -89,11 +90,8 @@ pub async fn local_registration_profile_node(
             "Node has 1 subidentity"
         );
         eprintln!(
-            "{}",
-            format!(
-                "{} subidentity: {:?}",
-                node_profile_name, node2_all_subidentities[0].full_identity_name
-            )
+            "{} subidentity: {:?}",
+            node_profile_name, node2_all_subidentities[0].full_identity_name
         );
         assert_eq!(
             node2_all_subidentities[identities_number - 1].full_identity_name,
@@ -103,6 +101,7 @@ pub async fn local_registration_profile_node(
         );
 
         // use GetAllSubidentitiesDevicesAndAgents to check if the subidentity is registered
+        #[allow(clippy::type_complexity)]
         let (res_all_subidentities_devices_and_agents_sender, res_all_subidentities_devices_and_agents_receiver): (
             async_channel::Sender<Result<Vec<Identity>, APIError>>,
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
@@ -120,12 +119,9 @@ pub async fn local_registration_profile_node(
             .unwrap();
 
         eprintln!(
-            "{}",
-            format!(
-                "{} subidentity: {:?}",
-                node_profile_name,
-                node2_all_subidentities_devices_and_agents[0].get_full_identity_name()
-            )
+            "{} subidentity: {:?}",
+            node_profile_name,
+            node2_all_subidentities_devices_and_agents[0].get_full_identity_name()
         );
     }
 }

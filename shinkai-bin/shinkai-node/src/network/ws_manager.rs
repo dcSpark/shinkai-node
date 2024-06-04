@@ -163,10 +163,7 @@ impl WebSocketManager {
         )
         .await;
 
-        match result {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        result.is_ok()
     }
 
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
@@ -202,7 +199,7 @@ impl WebSocketManager {
                                 .as_str(),
                             );
                         }
-                        return value;
+                        value
                     }
                     Err(_) => {
                         shinkai_log(
@@ -214,14 +211,14 @@ impl WebSocketManager {
                             )
                             .as_str(),
                         );
-                        return false;
+                        false
                     }
                 }
             }
             WSTopic::SmartInboxes => {
                 // Note: everyone has access to their inboxes.
                 // But we need to be careful about *just* sharing their inboxes.
-                return true;
+                true
             }
         }
     }

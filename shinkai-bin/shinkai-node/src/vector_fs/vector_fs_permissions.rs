@@ -193,12 +193,12 @@ impl PermissionsIndex {
 
     /// Creates a new PermissionsIndex using an input hashmap and profile.
     pub fn from_hashmap(profile_name: ShinkaiName, json_permissions: HashMap<VRPath, String>) -> Self {
-        let index = Self {
+        
+
+        Self {
             fs_permissions: RwLock::new(json_permissions),
             profile_name,
-        };
-
-        index
+        }
     }
 
     // /// We can't use serde:Serialize because of the RwLock, so we need to manually serialize the struct.
@@ -716,7 +716,7 @@ impl VectorFS {
 
         let final_result = hashmap_result
             .into_iter()
-            .filter(|(path, _)| all_internals_paths.contains_key(&path))
+            .filter(|(path, _)| all_internals_paths.contains_key(path))
             .collect();
 
         Ok(final_result)
@@ -758,7 +758,7 @@ impl VectorFS {
 
         let final_result = hashmap_result
             .into_iter()
-            .filter(|(path, _)| all_internals_paths.contains_key(&path))
+            .filter(|(path, _)| all_internals_paths.contains_key(path))
             .collect();
 
         Ok(final_result)

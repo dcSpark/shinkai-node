@@ -96,7 +96,7 @@ impl From<InboxNameError> for NodeError {
 impl From<ShinkaiNameError> for NodeError {
     fn from(error: ShinkaiNameError) -> Self {
         NodeError {
-            message: format!("ShinkaiNameError: {}", error.to_string()),
+            message: format!("ShinkaiNameError: {}", error),
         }
     }
 }

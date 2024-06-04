@@ -712,10 +712,10 @@ impl ShinkaiDB {
             full_identity_name,
             node_encryption_public_key,
             node_signature_public_key,
-            profile_encryption_public_key: profile_encryption_public_key,
-            profile_signature_public_key: profile_signature_public_key,
-            device_encryption_public_key: device_encryption_public_key,
-            device_signature_public_key: device_signature_public_key,
+            profile_encryption_public_key,
+            profile_signature_public_key,
+            device_encryption_public_key,
+            device_signature_public_key,
             permission_type,
         })
     }

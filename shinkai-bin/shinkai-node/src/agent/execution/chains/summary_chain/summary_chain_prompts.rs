@@ -1,18 +1,16 @@
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
 use crate::agent::{
     execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
-    job::JobStepResult,
 };
 use shinkai_vector_resources::{
     source::VRSourceReference,
-    vector_resource::{BaseVectorResource, RetrievedNode},
 };
 
 impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
     pub fn summary_chain_detailed_summary_prompt(
         user_message: ParsedUserMessage,
-        mut resource_sub_prompts: Vec<SubPrompt>,
+        resource_sub_prompts: Vec<SubPrompt>,
         resource_source: VRSourceReference,
     ) -> Prompt {
         let mut prompt = Prompt::new();

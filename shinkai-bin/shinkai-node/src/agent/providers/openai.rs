@@ -2,9 +2,8 @@ use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::agent::job_manager::JobManager;
 use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -61,7 +60,7 @@ impl LLMProvider for OpenAI {
                     }
                 };
 
-                let mut payload = json!({
+                let payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,

@@ -58,7 +58,7 @@ impl ShinkaiDB {
         let mut batch = WriteBatch::default();
 
         // Add encrypted inbox name to the MessageBoxSymmetricKeys column family with a prefix
-        batch.put_cf(cf_message_box_symmetric_keys, cf_name_encrypted_inbox.as_bytes(), &[]);
+        batch.put_cf(cf_message_box_symmetric_keys, cf_name_encrypted_inbox.as_bytes(), []);
 
         // Add current time to MessageBoxSymmetricKeys with the encrypted inbox name as the key
         let current_time = Utc::now().to_rfc3339();

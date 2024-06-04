@@ -14,7 +14,6 @@ use aes_gcm::KeyInit;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use reqwest::Proxy;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -278,8 +277,8 @@ impl NetworkJobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            let job = job_queue_manager.peek(&job_id).await;
-                            job
+                            
+                            job_queue_manager.peek(&job_id).await
                         };
 
                         match job {

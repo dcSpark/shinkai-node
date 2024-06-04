@@ -108,9 +108,9 @@ impl ParsedUserMessage {
             .iter()
             .map(|element| match element {
                 JobTaskElement::Text(text) => format!("{} ", text.get_output_string()),
-                JobTaskElement::CodeBlock(code_block) => format!("{}", code_block.get_output_string()),
-                JobTaskElement::ListPoint(list_point) => format!("{}", list_point.get_output_string()),
-                JobTaskElement::List(list) => format!("{}", list.get_output_string()),
+                JobTaskElement::CodeBlock(code_block) => code_block.get_output_string().to_string(),
+                JobTaskElement::ListPoint(list_point) => list_point.get_output_string().to_string(),
+                JobTaskElement::List(list) => list.get_output_string().to_string(),
             })
             .collect::<Vec<String>>()
             .join("")
@@ -338,7 +338,7 @@ fn get_list_item_patterns() -> Vec<String> {
     let mut patterns = Vec::new();
 
     // Patterns for unordered lists
-    let unordered_markers = vec!["-", "*"];
+    let unordered_markers = ["-", "*"];
 
     // Generate patterns for unordered list markers with various spacings
     for marker in unordered_markers.iter() {

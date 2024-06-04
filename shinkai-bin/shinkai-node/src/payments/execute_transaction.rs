@@ -101,7 +101,7 @@ pub async fn execute_transaction(
 
     let from_address: ethers::types::Address = from_wallet.address.parse().unwrap();
     let nonce = provider
-        .get_transaction_count(from_address.clone(), None)
+        .get_transaction_count(from_address, None)
         .await
         .unwrap();
     tx.from = Some(from_address);

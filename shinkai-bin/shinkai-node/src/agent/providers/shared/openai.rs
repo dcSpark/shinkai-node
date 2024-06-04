@@ -77,7 +77,7 @@ impl OpenAIApiMessage {
     pub fn from_chat_completion_messages(
         chat_completion_messages: Vec<ChatCompletionRequestMessage>,
     ) -> Result<Vec<OpenAIApiMessage>, AgentError> {
-        let mut messages: Vec<OpenAIApiMessage> = chat_completion_messages
+        let messages: Vec<OpenAIApiMessage> = chat_completion_messages
             .into_iter()
             .filter_map(|message| {
                 if let Some(content) = message.content {
@@ -132,7 +132,7 @@ pub struct ApiPayload {
 }
 
 pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, AgentError> {
-    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(&model);
+    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
     let chat_completion_messages = prompt.generate_openai_messages(Some(max_input_tokens))?;

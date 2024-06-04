@@ -140,10 +140,10 @@ impl DeviceIdentity {
         Some(StandardIdentity {
             full_identity_name,
             addr: None,
-            node_encryption_public_key: self.node_encryption_public_key.clone(),
-            node_signature_public_key: self.node_signature_public_key.clone(),
-            profile_encryption_public_key: Some(self.profile_encryption_public_key.clone()),
-            profile_signature_public_key: Some(self.profile_signature_public_key.clone()),
+            node_encryption_public_key: self.node_encryption_public_key,
+            node_signature_public_key: self.node_signature_public_key,
+            profile_encryption_public_key: Some(self.profile_encryption_public_key),
+            profile_signature_public_key: Some(self.profile_signature_public_key),
             identity_type: StandardIdentityType::Profile,
             permission_type: self.permission_type.clone(),
         })

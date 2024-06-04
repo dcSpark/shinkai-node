@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::{agents::serialized_agent::{AgentLLMInterface, SerializedAgent}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::job_scope::JobScope};
+use shinkai_message_primitives::{schemas::{agents::serialized_agent::{AgentLLMInterface, SerializedAgent}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AgentSubset {

@@ -99,7 +99,7 @@ impl ShinkaiName {
     pub fn validate_name(raw_name: &str) -> Result<(), &'static str> {
         let parts: Vec<&str> = raw_name.split('/').collect();
 
-        if !(parts.len() >= 1 && parts.len() <= 4) {
+        if !(!parts.is_empty() && parts.len() <= 4) {
             shinkai_log(
                 ShinkaiLogOption::Identity,
                 ShinkaiLogLevel::Info,
@@ -202,7 +202,7 @@ impl ShinkaiName {
 
     pub fn from_node_name(node_name: String) -> Result<Self, ShinkaiNameError> {
         // Ensure the node_name has no forward slashes
-        if node_name.contains("/") {
+        if node_name.contains('/') {
             return Err(ShinkaiNameError::InvalidNameFormat(node_name.clone()));
         }
         let node_name_clone = node_name.clone();
@@ -337,7 +337,7 @@ impl ShinkaiName {
     fn is_valid_node_identity_name_and_no_subidentities(name: &String) -> bool {
         // A node name is valid if it starts with '@@', ends with a valid ending, and doesn't contain '/'
         name.starts_with("@@")
-            && !name.contains("/")
+            && !name.contains('/')
             && Self::VALID_ENDINGS.iter().any(|&ending| name.ends_with(ending))
     }
 
@@ -446,13 +446,13 @@ impl ShinkaiName {
         }
 
         // Reconstruct the name
-        let corrected_name = if parts.len() > 1 {
+        
+
+        if parts.len() > 1 {
             format!("{}/{}", node_name, parts[1])
         } else {
             node_name
-        };
-
-        corrected_name
+        }
     }
 }
 

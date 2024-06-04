@@ -2,6 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, ShinkaiSubscriptionStatus};
+use shinkai_vector_resources::utils::hash_string;
 use core::panic;
 use std::collections::HashMap;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -18,7 +19,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
@@ -583,17 +583,21 @@ fn subscription_manager_test() {
                                                 "name": "shinkai_intro",
                                                 "path": "/shared test folder/crypto/shinkai_intro",
                                                 "last_modified": "2024-02-26T23:06:00.019065981+00:00",
-                                                "children": {}
+                                                "children": {},
+                                                "web_link": null
                                             }
-                                        }
+                                        },
+                                        "web_link": null
                                     },
                                     "shinkai_intro": {
                                         "name": "shinkai_intro",
                                         "path": "/shared test folder/shinkai_intro",
                                         "last_modified": "2024-02-26T23:06:00.019065981+00:00",
-                                        "children": {}
+                                        "children": {},
+                                        "web_link": null
                                     }
-                                }
+                                },
+                                "web_link": null
                             },
                             "subscription_requirement": {
                                 "minimum_token_delegation": 100,
@@ -721,7 +725,7 @@ fn subscription_manager_test() {
                     "subscriber_destination_path": null,
                     "subscription_description": null
                 }]"#;
-                let mut expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
+                let expected_resp_json: serde_json::Value = serde_json::from_str(expected_resp_template).expect("Failed to parse expected JSON");
 
                 // Remove dates from the actual response for comparison
                 if let Some(array) = actual_resp_json.as_array_mut() {
@@ -826,8 +830,8 @@ fn subscription_manager_test() {
                         break;
                     } else {
                         eprintln!("The actual folder structure does not match the expected structure. Retrying...");
-                        eprintln!("Expected structure: {}", expected_structure.to_string());
-                        eprintln!("Actual structure: {}", actual_resp_json.to_string());
+                        eprintln!("Expected structure: {}", expected_structure);
+                        eprintln!("Actual structure: {}", actual_resp_json);
                     }
                     attempts += 1;
                     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1190,7 +1194,7 @@ fn subscription_manager_test() {
                         ])
                     ]);
 
-                    let dummy_date: DateTime<Utc> = Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+                    let dummy_date: DateTime<Utc> = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
 
                     // Remove date fields from both actual and expected subscriptions for comparison
                     for subscriptions in actual_subscriptions.values_mut() {

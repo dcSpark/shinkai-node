@@ -106,7 +106,7 @@ impl ShinkaiDB {
     pub fn uninstall_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
         // 1. Deactivate the toolkit if it is active (to remove tools from ToolRouter)
-        if toolkit_map.get_toolkit_info(&toolkit_name)?.activated {
+        if toolkit_map.get_toolkit_info(toolkit_name)?.activated {
             self.deactivate_toolkit(toolkit_name, profile)?;
         }
         // 2. Delete toolkit from toolkit map
@@ -131,7 +131,7 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         // 1. Check if toolkit is active then error
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
-        if toolkit_map.get_toolkit_info(&toolkit_name)?.activated {
+        if toolkit_map.get_toolkit_info(toolkit_name)?.activated {
             return Err(ToolError::ToolkitAlreadyActivated(toolkit_name.to_string()))?;
         }
 
@@ -167,7 +167,7 @@ impl ShinkaiDB {
     pub fn deactivate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // 1. Check if toolkit is deactivated then error
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
-        if !toolkit_map.get_toolkit_info(&toolkit_name)?.activated {
+        if !toolkit_map.get_toolkit_info(toolkit_name)?.activated {
             return Err(ToolError::ToolkitAlreadyDeactivated(toolkit_name.to_string()))?;
         }
 
@@ -244,7 +244,7 @@ impl ShinkaiDB {
         let mut header_values = serde_json::Map::new();
 
         for header in toolkit.header_definitions {
-            let bytes = self.pb_topic_get(Topic::Toolkits, &header.shinkai_db_key(&toolkit_name), profile)?;
+            let bytes = self.pb_topic_get(Topic::Toolkits, &header.shinkai_db_key(toolkit_name), profile)?;
             let value_str = std::str::from_utf8(&bytes)?;
             let value: JsonValue = serde_json::from_str(value_str)?;
             header_values.insert(header.header().clone(), value);
@@ -275,20 +275,20 @@ impl ShinkaiDB {
         let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for toolkit in toolkits {
             // Check if an equivalent version of the toolkit is already installed
-            if self.check_equivalent_toolkit_version_installed(&toolkit, profile)? {
+            if self.check_equivalent_toolkit_version_installed(toolkit, profile)? {
                 return Err(ToolError::ToolkitVersionAlreadyInstalled(
                     toolkit.name.clone(),
                     toolkit.version.clone(),
                 ))?;
             }
             // Check if the toolkit is installed with a different version
-            if self.check_if_toolkit_installed(&toolkit, profile)? {
+            if self.check_if_toolkit_installed(toolkit, profile)? {
                 // If a different version of the toolkit is installed, uninstall it
                 self.uninstall_toolkit(&toolkit.name, profile)?;
             }
 
             // Saving the toolkit itself
-            let (bytes, cf) = self._prepare_toolkit(&toolkit, profile)?;
+            let (bytes, cf) = self._prepare_toolkit(toolkit, profile)?;
             pb_batch.pb_put_cf(cf, &toolkit.shinkai_db_key(), &bytes);
 
             // Add the toolkit info to the map
