@@ -41,8 +41,8 @@ fn subidentity_registration() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sepolia-shinkai";
-        let node2_identity_name = "@@node2_test.sepolia-shinkai";
+        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
+        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";

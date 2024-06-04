@@ -41,8 +41,8 @@ fn subscription_manager_test() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sepolia-shinkai";
-        let node2_identity_name = "@@node2_test.sepolia-shinkai";
+        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
+        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";
@@ -558,7 +558,7 @@ fn subscription_manager_test() {
                 eprint!("\n\nsend_result (after retry): {:?}", send_result);
 
                 let mut expected_response = serde_json::json!({
-                    "node_name": "@@node1_test.sepolia-shinkai/main",
+                    "node_name": "@@node1_test.arb-sep-shinkai/main",
                     "last_ext_node_response": "2024-03-24T00:47:22.292345Z",
                     "last_request_to_ext_node": "2024-03-24T00:47:22.292346Z",
                     "last_updated": "2024-03-24T00:47:22.292346Z",
@@ -710,14 +710,14 @@ fn subscription_manager_test() {
                 // Expected response template without dates for comparison
                 let expected_resp_template = r#"[{
                     "subscription_id": {
-                        "unique_id": "@@node1_test.sepolia-shinkai:::main:::/shared test folder:::@@node2_test.sepolia-shinkai:::main_profile_node2",
+                        "unique_id": "@@node1_test.arb-sep-shinkai:::main:::/shared test folder:::@@node2_test.arb-sep-shinkai:::main_profile_node2",
                         "exclude_folders": null,
                         "include_folders": null
                     },
                     "shared_folder": "/shared test folder",
-                    "streaming_node": "@@node1_test.sepolia-shinkai",
+                    "streaming_node": "@@node1_test.arb-sep-shinkai",
                     "streaming_profile": "main",
-                    "subscriber_node": "@@node2_test.sepolia-shinkai",
+                    "subscriber_node": "@@node2_test.arb-sep-shinkai",
                     "subscriber_profile": "main_profile_node2",
                     "http_preferred": null,
                     "payment": "Free",
@@ -1182,9 +1182,9 @@ fn subscription_manager_test() {
                         ("/shared test folder".to_string(), vec![
                             ShinkaiSubscription::new(
                                 "/shared test folder".to_string(),
-                                ShinkaiName::new("@@node1_test.sepolia-shinkai".to_string()).unwrap(),
+                                ShinkaiName::new("@@node1_test.arb-sep-shinkai".to_string()).unwrap(),
                                 "main".to_string(),
-                                ShinkaiName::new("@@node2_test.sepolia-shinkai".to_string()).unwrap(),
+                                ShinkaiName::new("@@node2_test.arb-sep-shinkai".to_string()).unwrap(),
                                 "main_profile_node2".to_string(),
                                 ShinkaiSubscriptionStatus::SubscriptionConfirmed,
                                 Some(SubscriptionPayment::Free),

@@ -14,11 +14,11 @@ mod tests {
             "@@alice.shinkai/profileName",
             "@@alice.shinkai/profileName/agent/myChatGPTAgent",
             "@@alice.shinkai/profileName/device/myPhone",
-            "@@alice.sepolia-shinkai",
-            "@@alice.sepolia-shinkai/profileName",
-            "@@alice.sepolia-shinkai/profileName/agent/myChatGPTAgent",
-            "@@alice.sepolia-shinkai/profileName/device/myPhone",
-            "@@_my_9552.sepolia-shinkai/main",
+            "@@alice.arb-sep-shinkai",
+            "@@alice.arb-sep-shinkai/profileName",
+            "@@alice.arb-sep-shinkai/profileName/agent/myChatGPTAgent",
+            "@@alice.arb-sep-shinkai/profileName/device/myPhone",
+            "@@_my_9552.arb-sep-shinkai/main",
         ];
 
         for name in valid_names {

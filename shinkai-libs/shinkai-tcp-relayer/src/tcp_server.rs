@@ -58,7 +58,7 @@ impl TCPProxy {
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
-            .unwrap_or("https://sepolia.infura.io/v3/0153fa7ada9046f9acee3842cdb28082".to_string());
+            .unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
             .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
@@ -734,7 +734,7 @@ impl TCPProxy {
         _subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
         let mut modified_message = message;
-        modified_message.external_metadata.recipient = "@@locahost.sepolia-shinkai".to_string();
+        modified_message.external_metadata.recipient = "@@locahost.arb-sep-shinkai".to_string();
         modified_message.external_metadata.intra_sender = "".to_string();
         modified_message.body = match modified_message.body {
             MessageBody::Unencrypted(mut body) => {

@@ -167,7 +167,7 @@ fn mirror_sync_tests() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sepolia-shinkai";
+        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
 
