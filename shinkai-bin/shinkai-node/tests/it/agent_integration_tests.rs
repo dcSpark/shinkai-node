@@ -26,7 +26,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
+    api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
 
 use mockito::Server;
