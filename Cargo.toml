@@ -1,6 +1,10 @@
 [workspace]
 members = [
-  "shinkai-libs/*",
+  "shinkai-libs/shinkai-dsl",
+  "shinkai-libs/shinkai-crypto-identities",
+  "shinkai-libs/shinkai-message-primitives",
+  "shinkai-libs/shinkai-tcp-relayer",
+  "shinkai-libs/shinkai-vector-resources",
   "shinkai-bin/*",
   "shinkai-cli-tools/*"
 ]
