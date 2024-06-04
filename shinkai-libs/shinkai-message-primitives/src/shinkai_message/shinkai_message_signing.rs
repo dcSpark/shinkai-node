@@ -1,19 +1,14 @@
-
-
-use super::shinkai_message::{
-    MessageBody, ShinkaiMessage,
-};
+use super::shinkai_message::{MessageBody, ShinkaiMessage};
 use super::shinkai_message_error::ShinkaiMessageError;
 
 use blake3::Hasher;
-use chacha20poly1305::aead::{NewAead};
 
+use ed25519_dalek::SigningKey;
 use ed25519_dalek::{Signer, Verifier};
-use ed25519_dalek::{SigningKey};
-
 
 use serde_json::json;
 use std::convert::TryInto;
+use std::env;
 
 impl ShinkaiMessage {
     pub fn sign_outer_layer(&self, secret_key: &SigningKey) -> Result<ShinkaiMessage, ShinkaiMessageError> {
@@ -23,9 +18,8 @@ impl ShinkaiMessage {
         let message_hash = message_clone.calculate_message_hash_with_empty_outer_signature();
 
         // Convert the hexadecimal hash back to bytes
-        let message_hash_bytes = hex::decode(message_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
-        })?;
+        let message_hash_bytes = hex::decode(message_hash)
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e)))?;
 
         let signature = secret_key.sign(message_hash_bytes.as_slice());
         message_clone.external_metadata.signature = hex::encode(signature.to_bytes());
@@ -38,9 +32,8 @@ impl ShinkaiMessage {
         let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
 
         // Convert the hexadecimal hash back to bytes
-        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
-        })?;
+        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash)
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e)))?;
 
         // Sign the hash of the ShinkaiBody
         let signature = secret_key.sign(shinkai_body_hash_bytes.as_slice());
@@ -60,6 +53,7 @@ impl ShinkaiMessage {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn verify_outer_layer_signature(
         &self,
         public_key: &ed25519_dalek::VerifyingKey,
@@ -76,10 +70,7 @@ impl ShinkaiMessage {
             signature_bytes_slice
                 .try_into()
                 .map_err(|e: std::array::TryFromSliceError| {
-                    ShinkaiMessageError::SigningError(format!(
-                        "Failed to convert signature bytes to array: {}",
-                        e
-                    ))
+                    ShinkaiMessageError::SigningError(format!("Failed to convert signature bytes to array: {}", e))
                 })?;
 
         let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
@@ -88,9 +79,8 @@ impl ShinkaiMessage {
         let message_hash = self.calculate_message_hash_with_empty_outer_signature();
 
         // Convert the hexadecimal hash back to bytes
-        let message_hash_bytes = hex::decode(message_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
-        })?;
+        let message_hash_bytes = hex::decode(message_hash)
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e)))?;
 
         // Verify the signature against the hash of the message
         match public_key.verify(&message_hash_bytes, &signature) {
@@ -99,6 +89,7 @@ impl ShinkaiMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn verify_inner_layer_signature(
         &self,
         public_key: &ed25519_dalek::VerifyingKey,
@@ -126,10 +117,7 @@ impl ShinkaiMessage {
             signature_bytes_slice
                 .try_into()
                 .map_err(|e: std::array::TryFromSliceError| {
-                    ShinkaiMessageError::SigningError(format!(
-                        "Failed to convert signature bytes to array: {}",
-                        e
-                    ))
+                    ShinkaiMessageError::SigningError(format!("Failed to convert signature bytes to array: {}", e))
                 })?;
         let signature = ed25519_dalek::Signature::from_bytes(signature_bytes_array);
 
@@ -137,9 +125,8 @@ impl ShinkaiMessage {
         let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
 
         // Convert the hexadecimal hash back to bytes
-        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash).map_err(|e| {
-            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e))
-        })?;
+        let shinkai_body_hash_bytes = hex::decode(shinkai_body_hash)
+            .map_err(|e| ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e)))?;
 
         // Verify the signature against the hash of the ShinkaiBody
         match public_key.verify(&shinkai_body_hash_bytes, &signature) {
@@ -148,6 +135,7 @@ impl ShinkaiMessage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn calculate_message_hash_for_pagination(&self) -> String {
         let temp_message = match self.clone().update_node_api_data(None) {
             Ok(updated_message) => updated_message,
@@ -242,5 +230,102 @@ impl ShinkaiMessage {
             }
             _ => {}
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn generate_desktop_installation_proof(
+        public_key: &ed25519_dalek::VerifyingKey,
+        secret_key: &SigningKey,
+    ) -> Result<(String, String), ShinkaiMessageError> {
+        // Read the secret desktop key from the environment
+        let secret_desktop_key = env::var("SECRET_DESKTOP_KEY").map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to read SECRET_DESKTOP_KEY from environment: {}", e))
+        })?;
+
+        // Convert the public key to hex
+        let public_key_hex = hex::encode(public_key.to_bytes());
+
+        // Combine the public key hex and the secret desktop key
+        let combined = format!("{}{}", public_key_hex, secret_desktop_key);
+
+        // Hash the combined value and take the last 4 characters
+        let mut hasher = Hasher::new();
+        hasher.update(combined.as_bytes());
+        let hash_result = hasher.finalize();
+        let hash_str = hex::encode(hash_result.as_bytes());
+        let last_8_chars = &hash_str[hash_str.len() - 8..];
+
+        // Concatenate the public key hex with the last 4 characters using :::
+        let concatenated = format!("{}:::{}", public_key_hex, last_8_chars);
+
+        // Hash the concatenated string
+        let mut hasher = Hasher::new();
+        hasher.update(concatenated.as_bytes());
+        let final_hash_result = hasher.finalize();
+        let final_hash_bytes = final_hash_result.as_bytes();
+
+        // Sign the final hash
+        let signature = secret_key.sign(final_hash_bytes);
+
+        // Return the signature as a hexadecimal string and the concatenated string
+        Ok((hex::encode(signature.to_bytes()), concatenated))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+
+    use super::*;
+    use ed25519_dalek::Signature;
+    use std::env;
+
+    #[test]
+    fn test_generate_desktop_installation_proof() {
+        // Set the SECRET_DESKTOP_KEY environment variable
+        env::set_var("SECRET_DESKTOP_KEY", "HOLA");
+
+        // Generate a deterministic keypair for testing
+        let (secret_key, public_key) = unsafe_deterministic_signature_keypair(42);
+
+        // Generate the desktop installation proof
+        let result = ShinkaiMessage::generate_desktop_installation_proof(&public_key, &secret_key);
+        eprintln!("result: {:?}", result);
+
+        // Check that the result is Ok
+        assert!(result.is_ok());
+
+        // Extract the signature and concatenated string
+        let (signature_hex, concatenated) = result.unwrap();
+
+        // Verify the concatenated string format
+        let public_key_hex = hex::encode(public_key.to_bytes());
+        let combined = format!("{}{}", public_key_hex, "HOLA");
+
+        // Hash the combined value and take the last 4 characters
+        let mut hasher = Hasher::new();
+        hasher.update(combined.as_bytes());
+        let hash_result = hasher.finalize();
+        let hash_str = hex::encode(hash_result.as_bytes());
+        let last_8_chars = &hash_str[hash_str.len() - 8..];
+
+        // Expected concatenated string
+        let expected_concatenated = format!("{}:::{}", public_key_hex, last_8_chars);
+        assert_eq!(concatenated, expected_concatenated);
+
+        // Hash the concatenated string
+        let mut hasher = Hasher::new();
+        hasher.update(concatenated.as_bytes());
+        let final_hash_result = hasher.finalize();
+        let final_hash_bytes = final_hash_result.as_bytes();
+
+        // Verify the signature
+        let signature_bytes = hex::decode(signature_hex).expect("Failed to decode hex signature");
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
+            .expect("Failed to convert signature to array");
+        let signature = Signature::from_bytes(&signature_array);
+
+        assert!(public_key.verify(final_hash_bytes, &signature).is_ok());
     }
 }
