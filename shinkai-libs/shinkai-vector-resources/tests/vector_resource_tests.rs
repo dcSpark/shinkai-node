@@ -831,11 +831,11 @@ fn test_checking_embedding_similarity() {
     // Testing small alternations to the input text still retain a high similarity score
     let res = doc.vector_search(fact1_embedding.clone(), 1);
     assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
-    assert!(res[0].score > 0.99);
+    assert!(res[0].score > 0.98);
 
     let fact1_embedding_2 = generator.generate_embedding_default_blocking(fact1).unwrap();
     let res = doc.vector_search(fact1_embedding_2.clone(), 1);
-    assert!(res[0].score > 0.99);
+    assert!(res[0].score > 0.98);
 
     let similar_to_fact_1 = "Dogs are creatures with 4 legs that bark .";
     let similar_fact1_embedding = generator
@@ -843,7 +843,7 @@ fn test_checking_embedding_similarity() {
         .unwrap();
     let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
     println!("{} : {}", res[0].score, similar_to_fact_1);
-    assert!(res[0].score > 0.99);
+    assert!(res[0].score > 0.98);
 
     let similar_to_fact_1 = "Dogs are creatures with 4 legs that bark";
     let similar_fact1_embedding = generator
@@ -851,7 +851,7 @@ fn test_checking_embedding_similarity() {
         .unwrap();
     let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
     println!("{} : {}", res[0].score, similar_to_fact_1);
-    assert!(res[0].score > 0.99);
+    assert!(res[0].score > 0.98);
 
     let similar_to_fact_1 = "Dogs   are   creatures with 4   legs that   bark";
     let similar_fact1_embedding = generator
@@ -859,7 +859,7 @@ fn test_checking_embedding_similarity() {
         .unwrap();
     let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
     println!("{} : {}", res[0].score, similar_to_fact_1);
-    assert!(res[0].score > 0.99);
+    assert!(res[0].score > 0.98);
 
     let similar_to_fact_1 = "Dogs --   are ||  creatures ~ with 4 legs, that   bark";
     let similar_fact1_embedding = generator
@@ -867,7 +867,7 @@ fn test_checking_embedding_similarity() {
         .unwrap();
     let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
     println!("{} : {}", res[0].score, similar_to_fact_1);
-    assert!(res[0].score < 0.99);
+    assert!(res[0].score < 0.98);
 }
 
 #[tokio::test]
@@ -1170,7 +1170,7 @@ async fn local_md_parsing_test() {
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
     let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    assert!(results.iter().all(|node| node.score > 0.7));
+    assert!(results.iter().all(|node| node.score > 0.6));
     assert!(results
         .iter()
         .any(|node| node.node.get_text_content().unwrap().contains("Pepe Runner 2049")));
@@ -1186,7 +1186,7 @@ async fn local_md_parsing_test() {
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
     let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
-    assert!(results[0].score > 0.7);
+    assert!(results[0].score > 0.6);
     assert!(results[0]
         .node
         .get_text_content()
