@@ -75,16 +75,40 @@ paths:
             text/plain:
               schema:
                 type: string
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
+  /v1/vrpack/generate-from-files:
+    post:
+      summary: Generates a base64 encoded VRPACK from files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  items:
                     type: string
-                    example: "Invalid request"
+                    format: binary
+                embedding_model:
+                  type: string
+                  default: snowflake-arctic-embed:xs
+                embedding_gen_url:
+                  type: string
+                  default: https://internal.shinkai.com/x-embed-api/
+                embedding_gen_key:
+                  type: string
+                vrpack_name:
+                  type: string
+              required:
+                - file
+      responses:
+        "200":
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
 
 components:
   schemas:

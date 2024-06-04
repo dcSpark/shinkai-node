@@ -2,7 +2,9 @@ use assert_cmd::prelude::*;
 use reqwest::multipart;
 use shinkai_side_executor::api;
 use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, file_parser::file_parser_types::TextGroup, vector_resource::VRKai,
+    embedding_generator::RemoteEmbeddingGenerator,
+    file_parser::file_parser_types::TextGroup,
+    vector_resource::{VRKai, VRPack},
 };
 use std::{
     io::Cursor,
@@ -45,6 +47,28 @@ fn cli_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(trimmed_output.len() > 0);
     assert!(VRKai::from_base64(&trimmed_output).is_ok());
+
+    Ok(())
+}
+
+#[test]
+fn cli_vrpack_generate_from_files() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrpack")
+        .arg("generate-from-files")
+        .arg("--file=../files/shinkai_intro.pdf")
+        .arg("--file=../files/shinkai_welcome.md");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let output = cmd.output().unwrap().stdout;
+    let output = String::from_utf8(output).unwrap();
+    let trimmed_output = output.trim();
+
+    let vrpack = VRPack::from_base64(&trimmed_output).unwrap();
+
+    vrpack.print_internal_structure(None);
 
     Ok(())
 }
@@ -117,6 +141,54 @@ fn api_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 
         let response = response.text().await.unwrap();
         let _vrkai = VRKai::from_base64(&response).unwrap();
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrpack_generate_from_files() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        let pdf_file = std::fs::read("../files/shinkai_intro.pdf").unwrap();
+        let pdf_form_file = multipart::Part::bytes(pdf_file).file_name("shinkai_intro.pdf");
+
+        let md_file = std::fs::read("../files/shinkai_welcome.md").unwrap();
+        let md_form_file = multipart::Part::bytes(md_file).file_name("shinkai_welcome.md");
+
+        let form = multipart::Form::new()
+            .part("file", pdf_form_file)
+            .part("file", md_form_file)
+            .part(
+                "embedding_model",
+                multipart::Part::text(generator.model_type.to_string()),
+            )
+            .part("embedding_gen_url", multipart::Part::text(generator.api_url));
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrpack/generate-from-files")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        let response = response.text().await.unwrap();
+        let _vrpack = VRPack::from_base64(&response).unwrap();
+
+        _vrpack.print_internal_structure(None);
 
         abort_handler.abort();
     });

@@ -41,7 +41,7 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let try_bind = TcpListener::bind(&address).await;
 
-    let extract_to_text_groups = warp::path!("v1" / "pdf" / "extract-to-text-groups")
+    let pdf_extract_to_text_groups = warp::path!("v1" / "pdf" / "extract-to-text-groups")
         .and(warp::post())
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
@@ -53,8 +53,15 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_generate_from_file_handler(form));
 
-    let routes = extract_to_text_groups
+    let vrpack_generate_from_files = warp::path!("v1" / "vrpack" / "generate-from-files")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_files_handler(form));
+
+    let routes = pdf_extract_to_text_groups
         .or(vrkai_generate_from_file)
+        .or(vrpack_generate_from_files)
         .recover(handle_rejection);
 
     match try_bind {

@@ -1,8 +1,7 @@
+use std::collections::HashMap;
+
 use futures::StreamExt;
-use shinkai_vector_resources::{
-    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
-    model_type::EmbeddingModelType,
-};
+use shinkai_vector_resources::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use warp::Buf;
 
 use crate::{api::APIError, file_stream_parser::FileStreamParser};
@@ -11,6 +10,7 @@ const PART_KEY_EMBEDDING_MODEL: &str = "embedding_model";
 const PART_KEY_EMBEDDING_GEN_URL: &str = "embedding_gen_url";
 const PART_KEY_EMBEDDING_GEN_KEY: &str = "embedding_gen_key";
 const PART_KEY_MAX_NODE_TEXT_SIZE: &str = "max_node_text_size";
+const PART_KEY_VRPACK_NAME: &str = "vrpack_name";
 
 pub async fn pdf_extract_to_text_groups_handler(
     form: warp::multipart::FormData,
@@ -69,10 +69,7 @@ pub async fn pdf_extract_to_text_groups_handler(
                 warp::reply::json(&text_groups),
                 warp::http::StatusCode::OK,
             ))),
-            Err(error) => Ok(Box::new(warp::reply::with_status(
-                warp::reply::json(&error.to_string()),
-                warp::http::StatusCode::BAD_REQUEST,
-            ))),
+            Err(error) => Err(warp::reject::custom(APIError::from(error.to_string()))),
         },
         _ => Ok(Box::new(warp::reply::with_status(
             warp::reply::json(&"File does not have PDF extension."),
@@ -145,14 +142,7 @@ pub async fn vrkai_generate_from_file_handler(
         embedding_gen_key,
     );
 
-    match FileStreamParser::generate_vrkai(
-        &filename,
-        file_buffer,
-        generator.model_type().max_input_token_count() as u64,
-        &generator,
-    )
-    .await
-    {
+    match FileStreamParser::generate_vrkai(&filename, file_buffer, &generator).await {
         Ok(vrkai) => {
             let encoded_vrkai = vrkai
                 .encode_as_base64()
@@ -163,9 +153,85 @@ pub async fn vrkai_generate_from_file_handler(
                 warp::http::StatusCode::OK,
             )))
         }
-        Err(error) => Ok(Box::new(warp::reply::with_status(
-            warp::reply::json(&error.to_string()),
-            warp::http::StatusCode::BAD_REQUEST,
-        ))),
+        Err(error) => Err(warp::reject::custom(APIError::from(error.to_string()))),
     }
+}
+
+pub async fn vrpack_generate_from_files_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut embedding_model = "".to_string();
+    let mut embedding_gen_url = "".to_string();
+    let mut embedding_gen_key: Option<String> = None;
+    let mut vrpack_name = "".to_string();
+
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            println!("Received part: {:?}", part);
+
+            let part_name = part.name().to_string();
+            let file_name = part.filename().map(|s| s.to_string());
+
+            let stream = part
+                .stream()
+                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+
+            if [
+                PART_KEY_EMBEDDING_MODEL.to_string(),
+                PART_KEY_EMBEDDING_GEN_URL.to_string(),
+                PART_KEY_EMBEDDING_GEN_KEY.to_string(),
+                PART_KEY_VRPACK_NAME.to_string(),
+            ]
+            .contains(&part_name)
+            {
+                return Some((part_name, stream));
+            }
+
+            if let Some(file_name) = file_name {
+                return Some((file_name, stream));
+            }
+        }
+        None
+    }));
+
+    let mut files = HashMap::new();
+
+    while let Some((part_name, mut part_stream)) = stream.next().await {
+        println!("Processing part: {:?}", part_name);
+
+        let mut part_data = Vec::new();
+        while let Some(Ok(node)) = part_stream.next().await {
+            part_data.extend(node);
+        }
+
+        match part_name.as_str() {
+            PART_KEY_EMBEDDING_MODEL => embedding_model = String::from_utf8(part_data).unwrap_or_default(),
+            PART_KEY_EMBEDDING_GEN_URL => embedding_gen_url = String::from_utf8(part_data).unwrap_or_default(),
+            PART_KEY_EMBEDDING_GEN_KEY => embedding_gen_key = Some(String::from_utf8(part_data).unwrap_or_default()),
+            PART_KEY_VRPACK_NAME => vrpack_name = String::from_utf8(part_data).unwrap_or_default(),
+            _ => {
+                files.insert(part_name, part_data);
+            }
+        }
+    }
+
+    let generator = RemoteEmbeddingGenerator::new(
+        EmbeddingModelType::from_string(&embedding_model)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?,
+        &embedding_gen_url,
+        embedding_gen_key,
+    );
+
+    let vrpack = FileStreamParser::generate_vrpack(files, &generator, &vrpack_name)
+        .await
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    let encoded_vrpack = vrpack
+        .encode_as_base64()
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    Ok(Box::new(warp::reply::with_status(
+        encoded_vrpack,
+        warp::http::StatusCode::OK,
+    )))
 }
