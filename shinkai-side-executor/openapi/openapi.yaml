@@ -1,0 +1,121 @@
+openapi: 3.0.0
+info:
+  title: Shinkai Side Executor
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8090
+    description: Local default development server
+
+paths:
+  /v1/pdf/extract-to-text-groups:
+    post:
+      summary: Extract text from a PDF and returns an array of text groups
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                max_node_text_size:
+                  type: integer
+                  default: 400
+              required:
+                - file
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TextGroup"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid request"
+  /v1/vrkai/generate-from-file:
+    post:
+      summary: Generates a base64 encoded VRKAI from a file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                embedding_model:
+                  type: string
+                  default: snowflake-arctic-embed:xs
+                embedding_gen_url:
+                  type: string
+                  default: https://internal.shinkai.com/x-embed-api/
+                embedding_gen_key:
+                  type: string
+              required:
+                - file
+      responses:
+        "200":
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid request"
+
+components:
+  schemas:
+    TextGroup:
+      type: object
+      properties:
+        text:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        sub_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/TextGroup"
+        Embedding:
+          $ref: "#/components/schemas/Embedding"
+      required:
+        - text
+        - metadata
+        - sub_groups
+    Embedding:
+      type: object
+      properties:
+        id:
+          type: string
+        vector:
+          type: array
+          items:
+            type: number
+      required:
+        - id
+        - vector

@@ -22,7 +22,7 @@ PDFIUM_STATIC_LIB_PATH="$(pwd)/pdfium/mac-x64" cargo build --release
 
 [Prerequisites](https://pdfium.googlesource.com/pdfium/)
 
-Run the follow script in the `pdfium` directory passing the `target_os` (`mac|linux`) and `target_cpu` (`x64|arm64`) as parameters:
+Run the follow script in the `pdfium` directory passing the `target_os` (`linux|mac|win`) and `target_cpu` (`arm64|x64`) as parameters:
 
 ```sh
 ./build.sh os cpu
@@ -60,18 +60,28 @@ cargo run --release -- --address <ADDRESS>
 
 ### Arguments
 
+#### Server
 - `--address`: The address the server will bind to. Default is `0.0.0.0:8090`.
-- `--max-node-text-size`: Maximum length of the text a text group can hold. Default is `400` characters. Takes effect only if used with `parse_pdf` argument.
-- `--parse-pdf`: Path to a PDF file to run PDF parser from the CLI. Specifying this parameter won't start the server.
+
+#### CLI
+
+```sh
+cargo run --release -- --help
+```
+
+## API documentation
+
+- OpenAPI schema: `openapi/openapi.yaml`. 
+- Online Swagger editor: https://editor.swagger.io/
 
 ## PDF parsing
 
 ### Using the server
 
-To test the PDF parser make an HTTP multipart/form-data POST request to the `/v1/pdf/extract-to-text-groups/:max_node_text_size` endpoint with a PDF file in the body such as:
+To test the PDF parser make an HTTP multipart/form-data POST request to the `/v1/pdf/extract-to-text-groups` endpoint with a PDF file in the body such as:
 
 ```sh
-curl -F "file=@/shinkai-node/files/shinkai_intro.pdf;filename=shinkai_intro.pdf" 127.0.0.1:8090/v1/pdf/extract-to-text-groups/400
+curl -F "file=@/shinkai-node/files/shinkai_intro.pdf;filename=shinkai_intro.pdf" 127.0.0.1:8090/v1/pdf/extract-to-text-groups
 ```
 
 ### Using the CLI

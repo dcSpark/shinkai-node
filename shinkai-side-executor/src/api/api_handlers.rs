@@ -42,7 +42,7 @@ pub async fn pdf_extract_to_text_groups_handler(
     }));
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing file: {:?}", part_name);
+        println!("Processing part: {:?}", part_name);
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
@@ -120,7 +120,7 @@ pub async fn vrkai_generate_from_file_handler(
     }));
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing file: {:?}", part_name);
+        println!("Processing part: {:?}", part_name);
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
