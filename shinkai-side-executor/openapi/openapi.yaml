@@ -7,10 +7,20 @@ servers:
   - url: http://localhost:8090
     description: Local default development server
 
+tags:
+  - name: PDF
+    description: PDF related operations
+  - name: VRKai
+    description: VRKai related operations
+  - name: VRPack
+    description: VRPack related operations
+
 paths:
   /v1/pdf/extract-to-text-groups:
     post:
       summary: Extract text from a PDF and returns an array of text groups
+      tags:
+        - PDF
       requestBody:
         required: true
         content:
@@ -47,7 +57,9 @@ paths:
                     example: "Invalid request"
   /v1/vrkai/generate-from-file:
     post:
-      summary: Generates a base64 encoded VRKAI from a file
+      summary: Generates a base64 encoded VRKai from a file
+      tags:
+        - VRKai
       requestBody:
         required: true
         content:
@@ -77,7 +89,9 @@ paths:
                 type: string
   /v1/vrpack/generate-from-files:
     post:
-      summary: Generates a base64 encoded VRPACK from files
+      summary: Generates a base64 encoded VRPack from files
+      tags:
+        - VRPack
       requestBody:
         required: true
         content:
@@ -98,6 +112,34 @@ paths:
                   default: https://internal.shinkai.com/x-embed-api/
                 embedding_gen_key:
                   type: string
+                vrpack_name:
+                  type: string
+              required:
+                - file
+      responses:
+        "200":
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/vrpack/generate-from-vrkais:
+    post:
+      summary: Generates a base64 encoded VRPack from VRKais
+      tags:
+        - VRPack
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
                 vrpack_name:
                   type: string
               required:

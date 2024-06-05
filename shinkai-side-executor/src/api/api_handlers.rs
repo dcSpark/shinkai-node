@@ -222,7 +222,66 @@ pub async fn vrpack_generate_from_files_handler(
         embedding_gen_key,
     );
 
-    let vrpack = FileStreamParser::generate_vrpack(files, &generator, &vrpack_name)
+    let vrpack = FileStreamParser::generate_vrpack_from_files(files, &generator, &vrpack_name)
+        .await
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    let encoded_vrpack = vrpack
+        .encode_as_base64()
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    Ok(Box::new(warp::reply::with_status(
+        encoded_vrpack,
+        warp::http::StatusCode::OK,
+    )))
+}
+
+pub async fn vrpack_generate_from_vrkais_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut vrpack_name = "".to_string();
+
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            println!("Received part: {:?}", part);
+
+            let part_name = part.name().to_string();
+            let file_name = part.filename().map(|s| s.to_string());
+
+            let stream = part
+                .stream()
+                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+
+            if part_name == PART_KEY_VRPACK_NAME {
+                return Some((part_name, stream));
+            }
+
+            if let Some(file_name) = file_name {
+                return Some((file_name, stream));
+            }
+        }
+        None
+    }));
+
+    let mut files = Vec::new();
+
+    while let Some((part_name, mut part_stream)) = stream.next().await {
+        println!("Processing part: {:?}", part_name);
+
+        let mut part_data = Vec::new();
+        while let Some(Ok(node)) = part_stream.next().await {
+            part_data.extend(node);
+        }
+
+        match part_name.as_str() {
+            PART_KEY_VRPACK_NAME => vrpack_name = String::from_utf8(part_data).unwrap_or_default(),
+            _ => {
+                files.push(part_data);
+            }
+        }
+    }
+
+    let vrpack = FileStreamParser::generate_vrpack_from_vrkais(files, &vrpack_name)
         .await
         .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
 

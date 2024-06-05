@@ -80,6 +80,15 @@ pub struct VrpackGenerateFromFilesArgs {
     pub vrpack_name: Option<String>,
 }
 
+#[derive(Parser)]
+pub struct VrpackGenerateFromVrkaisArgs {
+    #[arg(long, num_args = 1.., help = "Path to a VRKai file. Can be specified multiple times.")]
+    pub file: Vec<PathBuf>,
+
+    #[arg(long)]
+    pub vrpack_name: Option<String>,
+}
+
 #[derive(Subcommand)]
 pub enum CliCommands {
     Pdf(PdfArgs),
@@ -100,6 +109,7 @@ pub enum VrkaiCommands {
 #[derive(Subcommand)]
 pub enum VrpackCommands {
     GenerateFromFiles(VrpackGenerateFromFilesArgs),
+    GenerateFromVrkais(VrpackGenerateFromVrkaisArgs),
 }
 
 pub struct Cli {}
@@ -122,7 +132,7 @@ impl Cli {
                         vrkai_args.embedding_gen_key,
                     )
                     .await?;
-                    println!("{}", encoded_vrkai);
+                    print!("{}", encoded_vrkai);
                 }
             },
             CliCommands::Vrpack(vrpack_args) => match vrpack_args.cmd {
@@ -135,7 +145,12 @@ impl Cli {
                         vrpack_args.vrpack_name,
                     )
                     .await?;
-                    println!("{}", encoded_vrpack);
+                    print!("{}", encoded_vrpack);
+                }
+                VrpackCommands::GenerateFromVrkais(vrpack_args) => {
+                    let encoded_vrpack =
+                        Cli::vrpack_generate_from_vrkais(&vrpack_args.file, vrpack_args.vrpack_name).await?;
+                    print!("{}", encoded_vrpack);
                 }
             },
         }
@@ -193,7 +208,28 @@ impl Cli {
             embedding_gen_key,
         );
 
-        match FileStreamParser::generate_vrpack(files, &generator, vrpack_name.as_deref().unwrap_or("")).await {
+        match FileStreamParser::generate_vrpack_from_files(files, &generator, vrpack_name.as_deref().unwrap_or(""))
+            .await
+        {
+            Ok(vrpack) => {
+                let encoded_vrpack = vrpack.encode_as_base64()?;
+                Ok(encoded_vrpack)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn vrpack_generate_from_vrkais(
+        file_paths: &Vec<PathBuf>,
+        vrpack_name: Option<String>,
+    ) -> anyhow::Result<String> {
+        let mut files = Vec::new();
+        for file_path in file_paths {
+            let file_data = std::fs::read(file_path)?;
+            files.push(file_data);
+        }
+
+        match FileStreamParser::generate_vrpack_from_vrkais(files, vrpack_name.as_deref().unwrap_or("")).await {
             Ok(vrpack) => {
                 let encoded_vrpack = vrpack.encode_as_base64()?;
                 Ok(encoded_vrpack)

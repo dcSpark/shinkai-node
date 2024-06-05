@@ -70,7 +70,7 @@ impl FileStreamParser {
         }
     }
 
-    pub async fn generate_vrpack(
+    pub async fn generate_vrpack_from_files(
         files: HashMap<String, Vec<u8>>,
         generator: &dyn EmbeddingGenerator,
         vrpack_name: &str,
@@ -104,6 +104,21 @@ impl FileStreamParser {
 
         let mut vrpack = VRPack::new_empty(&vrpack_name);
         for vrkai in vrkais {
+            vrpack.insert_vrkai(&vrkai, VRPath::root(), true)?;
+        }
+
+        Ok(vrpack)
+    }
+
+    pub async fn generate_vrpack_from_vrkais(files: Vec<Vec<u8>>, vrpack_name: &str) -> anyhow::Result<VRPack> {
+        let vrkais = files
+            .iter()
+            .map(|file_data| VRKai::from_bytes(&file_data))
+            .collect::<Vec<_>>();
+
+        let mut vrpack = VRPack::new_empty(&vrpack_name);
+        for vrkai in vrkais {
+            let vrkai = vrkai?;
             vrpack.insert_vrkai(&vrkai, VRPath::root(), true)?;
         }
 

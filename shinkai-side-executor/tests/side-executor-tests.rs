@@ -74,6 +74,28 @@ fn cli_vrpack_generate_from_files() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn cli_vrpack_generate_from_vrkais() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrpack")
+        .arg("generate-from-vrkais")
+        .arg("--file=../files/shinkai_intro.vrkai")
+        .arg("--file=../files/zeko.vrkai");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let output = cmd.output().unwrap().stdout;
+    let output = String::from_utf8(output).unwrap();
+    let trimmed_output = output.trim();
+
+    let vrpack = VRPack::from_base64(&trimmed_output).unwrap();
+
+    vrpack.print_internal_structure(None);
+
+    Ok(())
+}
+
+#[test]
 fn api_pdf_extract_to_text_groups() -> Result<(), Box<dyn std::error::Error>> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
@@ -180,6 +202,44 @@ fn api_vrpack_generate_from_files() -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
         let response = client
             .post("http://127.0.0.1:8090/v1/vrpack/generate-from-files")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        let response = response.text().await.unwrap();
+        let _vrpack = VRPack::from_base64(&response).unwrap();
+
+        _vrpack.print_internal_structure(None);
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrpack_generate_from_vrkais() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        let vrkai_file = std::fs::read("../files/shinkai_intro.vrkai").unwrap();
+        let vrkai_form_file = multipart::Part::bytes(vrkai_file).file_name("shinkai_intro.vrkai");
+
+        let form = multipart::Form::new()
+            .part("file", vrkai_form_file)
+            .part("vrpack_name", multipart::Part::text("Shinkai intro"));
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrpack/generate-from-vrkais")
             .multipart(form)
             .send()
             .await

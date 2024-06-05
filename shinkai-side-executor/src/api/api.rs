@@ -59,9 +59,16 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_files_handler(form));
 
+    let vrpack_generate_from_vrkais = warp::path!("v1" / "vrpack" / "generate-from-vrkais")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_vrkais_handler(form));
+
     let routes = pdf_extract_to_text_groups
         .or(vrkai_generate_from_file)
         .or(vrpack_generate_from_files)
+        .or(vrpack_generate_from_vrkais)
         .recover(handle_rejection);
 
     match try_bind {
