@@ -755,9 +755,9 @@ pub fn deep_search_scores_average_out(
     // This might be too intensive to run rake on all results, so re-think this over later/test it.
 
     // Go with a simple additional approach rather than actual average, so that low vr_scores never decrease actual node scores
-    let vr_weight = 0.2;
+    let vr_weight = 0.1;
     let adjusted_vr_score = (vr_score * vr_weight).min(0.2);
     let final_score = node_score + adjusted_vr_score;
 
-    final_score
+    final_score.min(1.0)
 }
