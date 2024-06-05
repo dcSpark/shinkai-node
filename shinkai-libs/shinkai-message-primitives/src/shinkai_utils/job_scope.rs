@@ -92,6 +92,41 @@ impl JobScope {
     pub fn to_json_value(&self) -> serde_json::Result<serde_json::Value> {
         serde_json::to_value(self)
     }
+
+    /// Serializes the JobScope to a minimal JSON value similar to the Debug output.
+    pub fn to_json_value_minimal(&self) -> serde_json::Result<serde_json::Value> {
+        let local_vrkai_ids: Vec<String> = self
+            .local_vrkai
+            .iter()
+            .map(|entry| match &entry.vrkai.resource {
+                BaseVectorResource::Document(doc) => doc.reference_string(),
+                BaseVectorResource::Map(map) => map.reference_string(),
+            })
+            .collect();
+
+        let local_vrpack_ids: Vec<String> = self.local_vrpack.iter().map(|entry| entry.vrpack.id()).collect();
+
+        let vector_fs_item_paths: Vec<String> = self
+            .vector_fs_items
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let vector_fs_folder_paths: Vec<String> = self
+            .vector_fs_folders
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .collect();
+
+        let minimal_json = serde_json::json!({
+            "local_vrkai": local_vrkai_ids,
+            "local_vrpack": local_vrpack_ids,
+            "vector_fs_items": vector_fs_item_paths,
+            "vector_fs_folders": vector_fs_folder_paths,
+        });
+
+        Ok(minimal_json)
+    }
 }
 
 impl fmt::Debug for JobScope {

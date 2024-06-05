@@ -98,7 +98,9 @@ impl ShinkaiDB {
                 // Fetch the most recent message from the inbox
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 1, None)?;
                 if let Some(first_batch) = last_messages.first() {
-                    first_batch.first().map(|last_message| last_message.calculate_message_hash_for_pagination())
+                    first_batch
+                        .first()
+                        .map(|last_message| last_message.calculate_message_hash_for_pagination())
                 } else {
                     None
                 }
@@ -509,25 +511,7 @@ impl ShinkaiDB {
                 match InboxName::new(inbox_id.clone())? {
                     InboxName::JobInbox { unique_id, .. } => {
                         let job = self.get_job(&unique_id)?;
-                        let mut scope_value = job.scope.to_json_value()?;
-            
-                        // Assuming embeddings are stored in a predictable location in the JSON structure
-                        if let Value::Object(ref mut map) = scope_value {
-                            // Iterate through local_vrkai and remove embeddings from each entry
-                            if let Some(Value::Array(local_vrkais)) = map.get_mut("local_vrkai") {
-                                for local_vrkai in local_vrkais.iter_mut() {
-                                    if let Value::Object(local_vrkai_map) = local_vrkai {
-                                        // Remove the embeddings field
-                                        if let Some(vrkai) = local_vrkai_map.get_mut("vrkai") {
-                                            if let Value::Object(vrkai_map) = vrkai {
-                                                vrkai_map.remove("embeddings");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-            
+                        let scope_value = job.scope.to_json_value_minimal()?;
                         job_scope_value = Some(scope_value);
                         job.is_finished
                     }
@@ -548,7 +532,7 @@ impl ShinkaiDB {
                                     let agent_id = job.parent_agent_id;
                                     match self.get_agent(&agent_id, &p) {
                                         Ok(agent) => agent.map(AgentSubset::from_serialized_agent),
-                                        Err(_) => None
+                                        Err(_) => None,
                                     }
                                 }
                                 _ => None,
@@ -556,7 +540,7 @@ impl ShinkaiDB {
                         } else {
                             None
                         }
-                    },
+                    }
                     Err(_) => None,
                 }
             };
