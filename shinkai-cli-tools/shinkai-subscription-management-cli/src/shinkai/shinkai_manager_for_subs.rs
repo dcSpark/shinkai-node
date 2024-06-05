@@ -294,7 +294,7 @@ impl ShinkaiManagerForSubs {
             self.sender_subidentity.clone(),
             self.node_receiver.clone(),
             self.node_receiver_subidentity.clone(),
-            None
+            None,
         )
         .unwrap();
 

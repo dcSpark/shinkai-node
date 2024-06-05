@@ -8,7 +8,7 @@ export NODE_WS_PORT="9951"
 export IDENTITY_SECRET_KEY="df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119"
 export ENCRYPTION_SECRET_KEY="d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159"
 export PING_INTERVAL_SECS="0"
-export GLOBAL_IDENTITY_NAME="@@nico_requester.sepolia-shinkai"
+export GLOBAL_IDENTITY_NAME="@@nico_requester.arb-sep-shinkai"
 export NODE_STORAGE_PATH="storage_requester"
 export RUST_LOG=debug,error,info
 export STARTING_NUM_QR_PROFILES="1"
@@ -31,7 +31,7 @@ export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com"
 export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview"
 
 export RPC_URL="https://rpc.sepolia.org"
-export CONTRACT_ADDRESS="0xDCbBd3364a98E2078e8238508255dD4a2015DD3E"
+export CONTRACT_ADDRESS="0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

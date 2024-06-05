@@ -36,8 +36,8 @@ impl fmt::Display for ShinkaiSubidentityType {
 // @@alice.shinkai/profileName
 // @@alice.shinkai/profileName/agent/myChatGPTAgent
 // @@alice.shinkai/profileName/device/myPhone
-// @@alice.sepolia-shinkai
-// @@alice.sepolia-shinkai/profileName
+// @@alice.arb-sep-shinkai
+// @@alice.arb-sep-shinkai/profileName
 
 // Not valid examples
 // @@alice.shinkai/profileName/myPhone
@@ -48,7 +48,7 @@ impl fmt::Display for ShinkaiSubidentityType {
 
 impl ShinkaiName {
     // Define a list of valid endings
-    const VALID_ENDINGS: [&'static str; 2] = [".shinkai", ".sepolia-shinkai"];
+    const VALID_ENDINGS: [&'static str; 2] = [".shinkai", ".arb-sep-shinkai"];
 
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
         let raw_name = Self::correct_node_name(raw_name);
@@ -117,10 +117,10 @@ impl ShinkaiName {
                 ShinkaiLogLevel::Info,
                 &format!("Validation error: {}", raw_name),
             );
-            return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.sepolia-shinkai', etc.).");
+            return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.arb-sep-shinkai', etc.).");
         }
 
-        let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.sepolia-shinkai)$";
+        let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.arb-sep-shinkai)$";
         if !Regex::new(node_name_regex).unwrap().is_match(parts[0]) {
             shinkai_log(
                 ShinkaiLogOption::Identity,
