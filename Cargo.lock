@@ -6469,7 +6469,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "aes-gcm",
  "anyhow",
