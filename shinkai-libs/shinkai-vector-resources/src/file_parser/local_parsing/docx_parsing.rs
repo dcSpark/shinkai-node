@@ -48,7 +48,8 @@ impl LocalFileParser {
                     }) {
                         true
                     } else {
-                        property.r_pr.as_ref().map_or(false, |p| p.bold.is_some())
+                        // Cloning r_pr because of pyo3 build error using as_ref()
+                        property.r_pr.clone().map_or(false, |p| p.bold.is_some())
                     };
 
                     let has_size = if paragraph.content.iter().any(|content| match content {
@@ -57,7 +58,8 @@ impl LocalFileParser {
                     }) {
                         true
                     } else {
-                        property.r_pr.as_ref().map_or(false, |p| p.size.is_some())
+                        // Cloning r_pr because of pyo3 build error using as_ref()
+                        property.r_pr.clone().map_or(false, |p| p.size.is_some())
                     };
 
                     if style_value == "Title" || style_value.starts_with("Heading") {
