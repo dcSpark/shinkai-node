@@ -2867,6 +2867,7 @@ impl Node {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_send_onionized_message(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
@@ -2878,12 +2879,12 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if node_name.get_node_name_string() == "@@localhost.shinkai" {
+        if node_name.get_node_name_string().starts_with("@@localhost.") {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "Invalid node name: @@localhost.shinkai".to_string(),
+                    message: "Invalid node name: @@localhost".to_string(),
                 }))
                 .await;
             return Ok(());
