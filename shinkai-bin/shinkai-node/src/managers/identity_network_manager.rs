@@ -10,7 +10,8 @@ pub struct IdentityNetworkManager {
 impl IdentityNetworkManager {
     pub async fn new() -> Self {
         // TODO: Update with mainnet values (eventually)
-        let rpc_url = env::var("RPC_URL").unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
+        let rpc_url =
+            env::var("RPC_URL").unwrap_or("https://public.stackup.sh/api/v1/node/arbitrum-sepolia".to_string());
         let contract_address =
             env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
         let abi_path = env::var("ABI_PATH").ok();
@@ -42,11 +43,11 @@ impl IdentityNetworkManager {
             }
         };
 
-        // Check if any of the address_or_proxy_nodes ends with .arb-sep-shinkai
+        // Check if any of the address_or_proxy_nodes ends with .sepolia-shinkai
         if record
             .address_or_proxy_nodes
             .iter()
-            .any(|node| node.ends_with(".arb-sep-shinkai"))
+            .any(|node| node.ends_with(".sepolia-shinkai"))
         {
             // Call the proxy node to get the actual data
             let proxy_identity = record.address_or_proxy_nodes.clone();
@@ -63,7 +64,10 @@ impl IdentityNetworkManager {
                 address_or_proxy_nodes: proxy_record.address_or_proxy_nodes,
                 ..record
             };
-            eprintln!("external_identity_to_profile_data> Found record with proxy: {:?}", updated_record);
+            eprintln!(
+                "external_identity_to_profile_data> Found record with proxy: {:?}",
+                updated_record
+            );
 
             return Ok(updated_record);
         }
