@@ -52,6 +52,21 @@ fn cli_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn cli_vrkai_view_contents() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrkai")
+        .arg("view-contents")
+        .arg("--file=../files/shinkai_intro.vrkai");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let _output: VRKai = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
+
+    Ok(())
+}
+
+#[test]
 fn cli_vrpack_generate_from_files() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
 
@@ -163,6 +178,53 @@ fn api_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 
         let response = response.text().await.unwrap();
         let _vrkai = VRKai::from_base64(&response).unwrap();
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrkai_view_contents() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        // Test valid VRKai
+        let vrkai = std::fs::read_to_string("../files/shinkai_intro.vrkai").unwrap();
+        let form = multipart::Form::new().part("encoded_vrkai", multipart::Part::text(vrkai));
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrkai/view-contents")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+
+        let _vrkai = response.json::<VRKai>().await.unwrap();
+
+        // Test invalid VRKai
+        let invalid_vrkai = "invalid_vrkai";
+        let form = multipart::Form::new().part("encoded_vrkai", multipart::Part::text(invalid_vrkai));
+
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrkai/view-contents")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_client_error());
 
         abort_handler.abort();
     });

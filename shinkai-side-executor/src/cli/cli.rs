@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use clap::{Parser, Subcommand};
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator, file_parser::file_parser_types::TextGroup,
-    model_type::EmbeddingModelType,
+    model_type::EmbeddingModelType, vector_resource::VRKai,
 };
 
 use crate::file_stream_parser::{FileStreamParser, PDFParser};
@@ -28,8 +28,11 @@ pub struct PdfArgs {
 
 #[derive(Parser)]
 pub struct PdfExtractToTextGroupsArgs {
-    #[arg(long, value_name = "PDF_FILE")]
+    #[arg(short, long, value_name = "PDF_FILE")]
     pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
 
     #[arg(short, long, default_value = "400")]
     pub max_node_text_size: u64,
@@ -43,8 +46,11 @@ pub struct VrkaiArgs {
 
 #[derive(Parser)]
 pub struct VrkaiGenerateFromFileArgs {
-    #[arg(long, value_name = "FILE")]
+    #[arg(short, long, value_name = "FILE")]
     pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
 
     #[arg(long, default_value = "snowflake-arctic-embed:xs")]
     pub embedding_model: String,
@@ -57,6 +63,15 @@ pub struct VrkaiGenerateFromFileArgs {
 }
 
 #[derive(Parser)]
+pub struct VrkaiViewContentsArgs {
+    #[arg(short, long, value_name = "FILE")]
+    pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Parser)]
 pub struct VrpackArgs {
     #[command(subcommand)]
     pub cmd: VrpackCommands,
@@ -64,8 +79,11 @@ pub struct VrpackArgs {
 
 #[derive(Parser)]
 pub struct VrpackGenerateFromFilesArgs {
-    #[arg(long, num_args = 1.., help = "Path to a file. Can be specified multiple times.")]
+    #[arg(short, long, num_args = 1.., help = "Path to a file. Can be specified multiple times.")]
     pub file: Vec<PathBuf>,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
 
     #[arg(long, default_value = "snowflake-arctic-embed:xs")]
     pub embedding_model: String,
@@ -82,8 +100,11 @@ pub struct VrpackGenerateFromFilesArgs {
 
 #[derive(Parser)]
 pub struct VrpackGenerateFromVrkaisArgs {
-    #[arg(long, num_args = 1.., help = "Path to a VRKai file. Can be specified multiple times.")]
+    #[arg(short, long, num_args = 1.., help = "Path to a VRKai file. Can be specified multiple times.")]
     pub file: Vec<PathBuf>,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
 
     #[arg(long)]
     pub vrpack_name: Option<String>,
@@ -104,6 +125,7 @@ pub enum PdfCommands {
 #[derive(Subcommand)]
 pub enum VrkaiCommands {
     GenerateFromFile(VrkaiGenerateFromFileArgs),
+    ViewContents(VrkaiViewContentsArgs),
 }
 
 #[derive(Subcommand)]
@@ -120,7 +142,12 @@ impl Cli {
             CliCommands::Pdf(pdf_args) => match pdf_args.cmd {
                 PdfCommands::ExtractToTextGroups(pdf_args) => {
                     let text_groups = Cli::pdf_extract_to_text_groups(&pdf_args.file, pdf_args.max_node_text_size)?;
-                    println!("{}", serde_json::to_string_pretty(&text_groups)?);
+
+                    if let Some(output_file) = pdf_args.output {
+                        std::fs::write(output_file, serde_json::to_string(&text_groups)?)?;
+                    } else {
+                        println!("{}", serde_json::to_string(&text_groups)?);
+                    }
                 }
             },
             CliCommands::Vrkai(vrkai_args) => match vrkai_args.cmd {
@@ -132,7 +159,21 @@ impl Cli {
                         vrkai_args.embedding_gen_key,
                     )
                     .await?;
-                    print!("{}", encoded_vrkai);
+
+                    if let Some(output_file) = vrkai_args.output {
+                        std::fs::write(output_file, encoded_vrkai)?;
+                    } else {
+                        print!("{}", encoded_vrkai);
+                    }
+                }
+                VrkaiCommands::ViewContents(vrkai_args) => {
+                    let vrkai = Cli::vrkai_view_contents(&vrkai_args.file).await?;
+
+                    if let Some(output_file) = vrkai_args.output {
+                        std::fs::write(output_file, serde_json::to_string(&vrkai)?)?;
+                    } else {
+                        println!("{}", serde_json::to_string(&vrkai)?);
+                    }
                 }
             },
             CliCommands::Vrpack(vrpack_args) => match vrpack_args.cmd {
@@ -145,12 +186,22 @@ impl Cli {
                         vrpack_args.vrpack_name,
                     )
                     .await?;
-                    print!("{}", encoded_vrpack);
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, encoded_vrpack)?;
+                    } else {
+                        print!("{}", encoded_vrpack);
+                    }
                 }
                 VrpackCommands::GenerateFromVrkais(vrpack_args) => {
                     let encoded_vrpack =
                         Cli::vrpack_generate_from_vrkais(&vrpack_args.file, vrpack_args.vrpack_name).await?;
-                    print!("{}", encoded_vrpack);
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, encoded_vrpack)?;
+                    } else {
+                        print!("{}", encoded_vrpack);
+                    }
                 }
             },
         }
@@ -186,6 +237,13 @@ impl Cli {
             }
             Err(e) => Err(e),
         }
+    }
+
+    async fn vrkai_view_contents(file_path: &PathBuf) -> anyhow::Result<VRKai> {
+        let file_data = std::fs::read(file_path)?;
+        let vrkai = VRKai::from_bytes(&file_data)?;
+
+        Ok(vrkai)
     }
 
     async fn vrpack_generate_from_files(

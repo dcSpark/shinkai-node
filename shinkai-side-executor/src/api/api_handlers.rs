@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use futures::StreamExt;
-use shinkai_vector_resources::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
+use shinkai_vector_resources::{
+    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, vector_resource::VRKai,
+};
 use warp::Buf;
 
 use crate::{api::APIError, file_stream_parser::FileStreamParser};
@@ -9,6 +11,7 @@ use crate::{api::APIError, file_stream_parser::FileStreamParser};
 const PART_KEY_EMBEDDING_MODEL: &str = "embedding_model";
 const PART_KEY_EMBEDDING_GEN_URL: &str = "embedding_gen_url";
 const PART_KEY_EMBEDDING_GEN_KEY: &str = "embedding_gen_key";
+const PART_KEY_ENCODED_VRKAI: &str = "encoded_vrkai";
 const PART_KEY_MAX_NODE_TEXT_SIZE: &str = "max_node_text_size";
 const PART_KEY_VRPACK_NAME: &str = "vrpack_name";
 
@@ -154,6 +157,52 @@ pub async fn vrkai_generate_from_file_handler(
             )))
         }
         Err(error) => Err(warp::reject::custom(APIError::from(error.to_string()))),
+    }
+}
+
+pub async fn vrkai_view_contents_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut encoded_vrkai = "".to_string();
+
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            println!("Received part: {:?}", part);
+
+            let part_name = part.name().to_string();
+
+            if part_name == PART_KEY_ENCODED_VRKAI {
+                let stream = part
+                    .stream()
+                    .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+                return Some((part_name, stream));
+            }
+        }
+        None
+    }));
+
+    while let Some((part_name, mut part_stream)) = stream.next().await {
+        println!("Processing part: {:?}", part_name);
+
+        let mut part_data = Vec::new();
+        while let Some(Ok(node)) = part_stream.next().await {
+            part_data.extend(node);
+        }
+
+        if part_name == PART_KEY_ENCODED_VRKAI {
+            encoded_vrkai = String::from_utf8(part_data).unwrap_or_default();
+        }
+    }
+
+    match VRKai::from_base64(&encoded_vrkai) {
+        Ok(vrkai) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&vrkai),
+            warp::http::StatusCode::OK,
+        ))),
+        Err(_) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&"Input is not a valid VRKai."),
+            warp::http::StatusCode::BAD_REQUEST,
+        ))),
     }
 }
 
