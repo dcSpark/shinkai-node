@@ -1,14 +1,10 @@
 use super::{BaseVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath};
-use crate::{
-    embeddings::Embedding,
-    resource_errors::VRError,
-    source::{SourceFileMap},
-};
+use crate::{embeddings::Embedding, resource_errors::VRError, source::SourceFileMap};
 use base64::{decode, encode};
 use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use serde::{Deserialize, Serialize};
 
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 // Versions of VRKai that are supported
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -61,7 +57,7 @@ impl VRKai {
             let base64_encoded = self.encode_as_base64()?;
             return Ok(base64_encoded.into_bytes());
         }
-        return Err(VRError::UnsupportedVRKaiVersion(self.version.to_string()));
+        Err(VRError::UnsupportedVRKaiVersion(self.version.to_string()))
     }
 
     /// Prepares the VRKai to be saved or transferred across the network as a compressed base64 encoded string.
@@ -72,7 +68,7 @@ impl VRKai {
             let base64_encoded = encode(compressed_bytes);
             return Ok(base64_encoded);
         }
-        return Err(VRError::UnsupportedVRKaiVersion(self.version.to_string()));
+        Err(VRError::UnsupportedVRKaiVersion(self.version.to_string()))
     }
 
     /// Parses a VRKai from an array of bytes, assuming the bytes are a Base64 encoded string.
@@ -84,7 +80,7 @@ impl VRKai {
             return Self::from_base64(&base64_str);
         }
 
-        return Err(VRError::UnsupportedVRKaiVersion("".to_string()));
+        Err(VRError::UnsupportedVRKaiVersion("".to_string()))
     }
 
     /// Parses a VRKai from a Base64 encoded string.
@@ -94,7 +90,7 @@ impl VRKai {
             return Ok(vrkai);
         }
 
-        return Err(VRError::UnsupportedVRKaiVersion("".to_string()));
+        Err(VRError::UnsupportedVRKaiVersion("".to_string()))
     }
 
     /// Parses a VRKai from a Base64 encoded string using V1 logic.

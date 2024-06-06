@@ -4,8 +4,8 @@ use crate::{
 };
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{fmt, hash::Hasher};
 use std::hash::Hash;
+use std::{fmt, hash::Hasher};
 
 #[derive(Debug, Clone, Eq)]
 pub struct ShinkaiName {
@@ -48,7 +48,7 @@ impl fmt::Display for ShinkaiSubidentityType {
 
 impl ShinkaiName {
     // Define a list of valid endings
-    const VALID_ENDINGS: [&'static str; 2] = [".shinkai", ".arb-sep-shinkai"];
+    const VALID_ENDINGS: [&'static str; 3] = [".shinkai", ".sepolia-shinkai", ".arb-sep-shinkai"];
 
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
         let raw_name = Self::correct_node_name(raw_name);
@@ -120,7 +120,7 @@ impl ShinkaiName {
             return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.arb-sep-shinkai', etc.).");
         }
 
-        let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.arb-sep-shinkai)$";
+        let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.arb-sep-shinkai|\.sepolia-shinkai)$";
         if !Regex::new(node_name_regex).unwrap().is_match(parts[0]) {
             shinkai_log(
                 ShinkaiLogOption::Identity,
@@ -446,7 +446,6 @@ impl ShinkaiName {
         }
 
         // Reconstruct the name
-        
 
         if parts.len() > 1 {
             format!("{}/{}", node_name, parts[1])

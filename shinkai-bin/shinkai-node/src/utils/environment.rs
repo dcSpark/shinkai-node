@@ -84,7 +84,7 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {
-    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string());
+    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string());
 
     // Fetch the environment variables for the IP and port, or use default values
     let ip: IpAddr = env::var("NODE_IP")
