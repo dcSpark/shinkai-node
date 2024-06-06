@@ -1,12 +1,21 @@
-# Shinkai Node
+<h1 align="center">
+  <img src="files/shinkai-logo-block.png" width="300px"/><br/>
+</h1>
+<p align="center">
+Shinkai is an AI Operating System in the form of a simple App for Windows, Mac, and Linux. Focusing on decentralization and privacy, Shinkai enables you to use your favorite AI models locally, powered by an AI OS which unlocks new capabilities & integrates with the Shinkai Network.</p>
 
-## Build
+## Getting Started
+
+The fastest way to get started using Shinkai is to setup Shinkai Desktop locally. Simply follow the [Getting Started Docs](https://docs.shinkai.com/getting-started/) to have a fully private AI Operating System ready for you to use with the latest state-of-the-art open source Large Language Models.
+
+## Building Shinkai
 
 ### Build Shinkai Rust Node
 
 ```
 cargo build
 ```
+
 Note: You must run this command from the root directory of this repo and make sure that you have set the required ENV variables.
 
 ### Add Telemetry support
