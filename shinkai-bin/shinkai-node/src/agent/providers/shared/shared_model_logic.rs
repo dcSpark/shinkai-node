@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_parse_markdown_to_json_with_given_content() {
-        let markdown = "\n# Answer\n Hello there, how may I assist you today?\n# Summary\n Answer's summary";
+        let markdown = "\n# Answer \n Hello there, how may I assist you today?\n# Summary\n Answer's summary";
         let result = parse_markdown_to_json(markdown).unwrap();
         let expected_json = json!({
             "Answer": "Hello there, how may I assist you today?",

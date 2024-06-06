@@ -80,7 +80,7 @@ fn node_agent_registration() {
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "\n# Answer\n Hello there, how may I assist you today?"
+                    "content": "\n# Answer \n Hello there, how may I assist you today?"
                 },
                 "finish_reason": "stop"
             }],

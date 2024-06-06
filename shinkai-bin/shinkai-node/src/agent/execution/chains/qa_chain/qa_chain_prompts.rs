@@ -53,7 +53,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            r#"# Answer\n{{answer}}\n"#.to_string(),
+            r#"# Answer \n{{answer}}\n"#.to_string(),
             SubPromptType::System,
             100,
         );
@@ -134,7 +134,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            r#"# Answer\n{{answer}}\n"#.to_string(),
+            r#"# Answer \n{{answer}}\n"#.to_string(),
             SubPromptType::System,
             100,
         );
@@ -184,10 +184,11 @@ pub fn add_step_history_prompt(
         }
 
         prompt.add_content(
-            "----- End Of Conversation History -----".to_string(),
+            "--- End Of Conversation History ---".to_string(),
             SubPromptType::System,
             98,
         );
+        eprintln!("Step history is empty: {}", step_history_is_empty);
     }
 
     step_history_is_empty
