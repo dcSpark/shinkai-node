@@ -49,7 +49,7 @@ impl LocalFileParser {
                         true
                     } else {
                         // Cloning r_pr because of pyo3 build error using as_ref()
-                        property.r_pr.clone().map_or(false, |p| p.bold.is_some())
+                        property.r_pr.clone().map(|p| p.bold.is_some()).unwrap_or(false)
                     };
 
                     let has_size = if paragraph.content.iter().any(|content| match content {
@@ -59,7 +59,7 @@ impl LocalFileParser {
                         true
                     } else {
                         // Cloning r_pr because of pyo3 build error using as_ref()
-                        property.r_pr.clone().map_or(false, |p| p.size.is_some())
+                        property.r_pr.clone().map(|p| p.size.is_some()).unwrap_or(false)
                     };
 
                     if style_value == "Title" || style_value.starts_with("Heading") {
