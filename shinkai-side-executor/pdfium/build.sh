@@ -35,12 +35,16 @@ mkdir -p pdfium-source
 cd pdfium-source
 
 ## Install
-case "$TARGET_OS" in
-  linux)
-    sudo apt-get update
-    sudo apt-get install -y cmake pkg-config g++
-    ;;
-esac
+if [[ ${3-} != "no-install" ]]
+then
+  case "$TARGET_OS" in
+    linux)
+      sudo apt-get update
+      sudo apt-get install -y cmake pkg-config g++
+      ;;
+  esac
+fi
+
 
 # Clone depot tools, standard tools used for building Chromium and associated projects.
 if [ ! -d "depot_tools" ]; then
@@ -59,12 +63,15 @@ gclient config --unmanaged https://pdfium.googlesource.com/pdfium.git
 gclient sync -r "origin/${PDFIUM_BRANCH}" --no-history
 
 ## Install dependencies
-case "$TARGET_OS" in
-  linux)
-    build/install-build-deps.sh
-    gclient runhooks
-    ;;
-esac
+if [[ ${3-} != "no-install" ]]
+then
+  case "$TARGET_OS" in
+    linux)
+      build/install-build-deps.sh
+      gclient runhooks
+      ;;
+  esac
+fi
 
 ## Configure build
 

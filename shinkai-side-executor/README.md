@@ -30,6 +30,20 @@ Run the follow script in the `pdfium` directory passing the `target_os` (`linux|
 
 After the script finishes `libpdfium.a` should be available in the `$OS-$CPU` directory.
 
+#### Using docker
+
+To build the library on Linux step into the `pdfium` directory and build the image:
+
+```sh
+docker build -t build-pdfium -f Dockerfile .
+```
+
+Mount directory `linux-x64` and run the container:
+
+```sh
+docker run -v $(PWD)/linux-x64:/app/linux-x64 --name build-pdfium build-pdfium
+```
+
 ### Building with dynamic linking
 
 [Dynamic library release](https://github.com/bblanchon/pdfium-binaries/releases)
