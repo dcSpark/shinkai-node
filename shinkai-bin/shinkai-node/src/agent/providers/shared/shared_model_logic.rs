@@ -85,13 +85,13 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
     let mut sections = serde_json::Map::new();
     // let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
     let re = Regex::new(r"(?m)^#\s+(.+)$").unwrap();
-    let mut current_section = None;
+    let mut current_section: Option<String> = None;
     let mut content = String::new();
 
     for line in trimmed_markdown.lines() {
         if let Some(caps) = re.captures(line) {
             if let Some(section) = current_section {
-                sections.insert(section, JsonValue::String(content.trim().to_string()));
+                sections.insert(section.to_lowercase(), JsonValue::String(content.trim().to_string()));
                 content.clear();
             }
             current_section = Some(caps[1].to_string());
@@ -108,7 +108,7 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
     if let Some(section) = current_section {
         if !sections.contains_key(&section) {
             sections.insert(
-                section.trim().to_string(),
+                section.trim().to_lowercase().to_string(),
                 JsonValue::String(content.trim().to_string()),
             );
         }
