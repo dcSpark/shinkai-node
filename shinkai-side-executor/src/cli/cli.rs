@@ -5,7 +5,7 @@ use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator,
     file_parser::file_parser_types::TextGroup,
     model_type::EmbeddingModelType,
-    vector_resource::{VRKai, VRPack},
+    vector_resource::{VRKai, VRPack, VRPath},
 };
 
 use crate::{
@@ -116,6 +116,36 @@ pub struct VrpackGenerateFromVrkaisArgs {
 }
 
 #[derive(Parser)]
+pub struct VrpackAddVrkaisArgs {
+    #[arg(short, long, value_name = "FILE", help = "Path to a VRPack file.")]
+    pub file: PathBuf,
+
+    #[arg(short, long, num_args = 1.., help = "Path to a VRKai file. Can be specified multiple times.")]
+    pub vrkai_file: Vec<PathBuf>,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+
+    #[arg(long)]
+    pub vrpath: Option<String>,
+}
+
+#[derive(Parser)]
+pub struct VrpackAddFolderArgs {
+    #[arg(short, long, value_name = "FILE", help = "Path to a VRPack file.")]
+    pub file: PathBuf,
+
+    #[arg(long)]
+    pub folder_name: String,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+
+    #[arg(long)]
+    pub vrpath: Option<String>,
+}
+
+#[derive(Parser)]
 pub struct VrpackViewContentsArgs {
     #[arg(short, long, value_name = "FILE")]
     pub file: PathBuf,
@@ -146,6 +176,8 @@ pub enum VrkaiCommands {
 pub enum VrpackCommands {
     GenerateFromFiles(VrpackGenerateFromFilesArgs),
     GenerateFromVrkais(VrpackGenerateFromVrkaisArgs),
+    AddVrkais(VrpackAddVrkaisArgs),
+    AddFolder(VrpackAddFolderArgs),
     ViewContents(VrpackViewContentsArgs),
 }
 
@@ -211,6 +243,26 @@ impl Cli {
                 VrpackCommands::GenerateFromVrkais(vrpack_args) => {
                     let encoded_vrpack =
                         Cli::vrpack_generate_from_vrkais(&vrpack_args.file, vrpack_args.vrpack_name).await?;
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, encoded_vrpack)?;
+                    } else {
+                        print!("{}", encoded_vrpack);
+                    }
+                }
+                VrpackCommands::AddVrkais(vrpack_args) => {
+                    let encoded_vrpack =
+                        Cli::vrpack_add_vrkais(&vrpack_args.file, &vrpack_args.vrkai_file, vrpack_args.vrpath).await?;
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, encoded_vrpack)?;
+                    } else {
+                        print!("{}", encoded_vrpack);
+                    }
+                }
+                VrpackCommands::AddFolder(vrpack_args) => {
+                    let encoded_vrpack =
+                        Cli::vrpack_add_folder(&vrpack_args.file, vrpack_args.folder_name, vrpack_args.vrpath).await?;
 
                     if let Some(output_file) = vrpack_args.output {
                         std::fs::write(output_file, encoded_vrpack)?;
@@ -318,6 +370,52 @@ impl Cli {
             }
             Err(e) => Err(e),
         }
+    }
+
+    async fn vrpack_add_vrkais(
+        vrpack_path: &PathBuf,
+        vrkai_paths: &Vec<PathBuf>,
+        vrpath: Option<String>,
+    ) -> anyhow::Result<String> {
+        let mut vrpack = VRPack::from_bytes(&std::fs::read(vrpack_path)?)?;
+        let vrpath = if let Some(path) = vrpath {
+            VRPath::from_string(&path)?
+        } else {
+            VRPath::root()
+        };
+
+        let mut vrkais = Vec::new();
+        for path in vrkai_paths {
+            let file_data = std::fs::read(path)?;
+            let vrkai = VRKai::from_bytes(&file_data)?;
+
+            vrkais.push(vrkai);
+        }
+
+        for vrkai in vrkais {
+            vrpack.insert_vrkai(&vrkai, vrpath.clone(), true)?;
+        }
+
+        let encoded_vrpack = vrpack.encode_as_base64()?;
+        Ok(encoded_vrpack)
+    }
+
+    async fn vrpack_add_folder(
+        vrpack_path: &PathBuf,
+        folder_name: String,
+        vrpath: Option<String>,
+    ) -> anyhow::Result<String> {
+        let mut vrpack = VRPack::from_bytes(&std::fs::read(vrpack_path)?)?;
+        let vrpath = if let Some(path) = vrpath {
+            VRPath::from_string(&path)?
+        } else {
+            VRPath::root()
+        };
+
+        vrpack.create_folder(&folder_name, vrpath.clone())?;
+
+        let encoded_vrpack = vrpack.encode_as_base64()?;
+        Ok(encoded_vrpack)
     }
 
     async fn vrpack_view_contents(file_path: &PathBuf) -> anyhow::Result<VRPackContent> {

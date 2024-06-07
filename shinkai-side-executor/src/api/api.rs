@@ -74,6 +74,18 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_vrkais_handler(form));
 
+    let vrpack_add_vrkais = warp::path!("v1" / "vrpack" / "add-vrkais")
+        .and(warp::put())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_add_vrkais_handler(form));
+
+    let vrpack_add_folder = warp::path!("v1" / "vrpack" / "add-folder")
+        .and(warp::put())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_add_folder_handler(form));
+
     let vrpack_view_contents = warp::path!("v1" / "vrpack" / "view-contents")
         .and(warp::post())
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
@@ -85,6 +97,8 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .or(vrkai_view_contents)
         .or(vrpack_generate_from_files)
         .or(vrpack_generate_from_vrkais)
+        .or(vrpack_add_vrkais)
+        .or(vrpack_add_folder)
         .or(vrpack_view_contents)
         .recover(handle_rejection);
 

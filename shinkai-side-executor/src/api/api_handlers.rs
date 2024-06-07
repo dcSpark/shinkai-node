@@ -2,7 +2,7 @@ use futures::StreamExt;
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator,
     model_type::EmbeddingModelType,
-    vector_resource::{VRKai, VRPack},
+    vector_resource::{VRKai, VRPack, VRPath},
 };
 use std::collections::HashMap;
 use warp::Buf;
@@ -18,7 +18,9 @@ const PART_KEY_EMBEDDING_GEN_URL: &str = "embedding_gen_url";
 const PART_KEY_EMBEDDING_GEN_KEY: &str = "embedding_gen_key";
 const PART_KEY_ENCODED_VRKAI: &str = "encoded_vrkai";
 const PART_KEY_ENCODED_VRPACK: &str = "encoded_vrpack";
+const PART_KEY_FOLDER_NAME: &str = "folder_name";
 const PART_KEY_MAX_NODE_TEXT_SIZE: &str = "max_node_text_size";
+const PART_KEY_VRPATH: &str = "vrpath";
 const PART_KEY_VRPACK_NAME: &str = "vrpack_name";
 
 pub async fn pdf_extract_to_text_groups_handler(
@@ -338,6 +340,176 @@ pub async fn vrpack_generate_from_vrkais_handler(
 
     let vrpack = FileStreamParser::generate_vrpack_from_vrkais(files, &vrpack_name)
         .await
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    let encoded_vrpack = vrpack
+        .encode_as_base64()
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    Ok(Box::new(warp::reply::with_status(
+        encoded_vrpack,
+        warp::http::StatusCode::OK,
+    )))
+}
+
+pub async fn vrpack_add_vrkais_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut vrpath = VRPath::root();
+
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            println!("Received part: {:?}", part);
+
+            let part_name = part.name().to_string();
+
+            let stream = part
+                .stream()
+                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+
+            if [
+                PART_KEY_ENCODED_VRPACK.to_string(),
+                PART_KEY_ENCODED_VRKAI.to_string(),
+                PART_KEY_VRPATH.to_string(),
+            ]
+            .contains(&part_name)
+            {
+                return Some((part_name, stream));
+            }
+        }
+        None
+    }));
+
+    let mut vrpack = VRPack::new_empty("");
+    let mut vrkais = Vec::new();
+
+    while let Some((part_name, mut part_stream)) = stream.next().await {
+        println!("Processing part: {:?}", part_name);
+
+        let mut part_data = Vec::new();
+        while let Some(Ok(node)) = part_stream.next().await {
+            part_data.extend(node);
+        }
+
+        match part_name.as_str() {
+            PART_KEY_ENCODED_VRPACK => match VRPack::from_bytes(&part_data) {
+                Ok(result) => vrpack = result,
+                Err(_) => {
+                    return Ok(Box::new(warp::reply::with_status(
+                        warp::reply::json(&"Input is not a valid VRPack."),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    )));
+                }
+            },
+            PART_KEY_ENCODED_VRKAI => match VRKai::from_bytes(&part_data) {
+                Ok(vrkai) => vrkais.push(vrkai),
+                Err(_) => {
+                    return Ok(Box::new(warp::reply::with_status(
+                        warp::reply::json(&"Input is not a valid VRKai."),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    )));
+                }
+            },
+            PART_KEY_VRPATH => {
+                let path = String::from_utf8(part_data).unwrap_or_default();
+                match VRPath::from_string(&path) {
+                    Ok(result) => vrpath = result,
+                    Err(_) => {
+                        return Ok(Box::new(warp::reply::with_status(
+                            warp::reply::json(&"Input is not a valid VRPath."),
+                            warp::http::StatusCode::BAD_REQUEST,
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for vrkai in vrkais {
+        vrpack
+            .insert_vrkai(&vrkai, vrpath.clone(), true)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+    }
+
+    let encoded_vrpack = vrpack
+        .encode_as_base64()
+        .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+
+    Ok(Box::new(warp::reply::with_status(
+        encoded_vrpack,
+        warp::http::StatusCode::OK,
+    )))
+}
+
+pub async fn vrpack_add_folder_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut vrpath = VRPath::root();
+    let mut folder_name = "".to_string();
+
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            println!("Received part: {:?}", part);
+
+            let part_name = part.name().to_string();
+
+            let stream = part
+                .stream()
+                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+
+            if [
+                PART_KEY_ENCODED_VRPACK.to_string(),
+                PART_KEY_FOLDER_NAME.to_string(),
+                PART_KEY_VRPATH.to_string(),
+            ]
+            .contains(&part_name)
+            {
+                return Some((part_name, stream));
+            }
+        }
+        None
+    }));
+
+    let mut vrpack = VRPack::new_empty("");
+
+    while let Some((part_name, mut part_stream)) = stream.next().await {
+        println!("Processing part: {:?}", part_name);
+
+        let mut part_data = Vec::new();
+        while let Some(Ok(node)) = part_stream.next().await {
+            part_data.extend(node);
+        }
+
+        match part_name.as_str() {
+            PART_KEY_ENCODED_VRPACK => match VRPack::from_bytes(&part_data) {
+                Ok(result) => vrpack = result,
+                Err(_) => {
+                    return Ok(Box::new(warp::reply::with_status(
+                        warp::reply::json(&"Input is not a valid VRPack."),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    )));
+                }
+            },
+            PART_KEY_FOLDER_NAME => folder_name = String::from_utf8(part_data).unwrap_or_default(),
+            PART_KEY_VRPATH => {
+                let path = String::from_utf8(part_data).unwrap_or_default();
+                match VRPath::from_string(&path) {
+                    Ok(result) => vrpath = result,
+                    Err(_) => {
+                        return Ok(Box::new(warp::reply::with_status(
+                            warp::reply::json(&"Input is not a valid VRPath."),
+                            warp::http::StatusCode::BAD_REQUEST,
+                        )));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    vrpack
+        .create_folder(&folder_name, vrpath.clone())
         .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
 
     let encoded_vrpack = vrpack
