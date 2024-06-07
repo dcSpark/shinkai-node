@@ -16,9 +16,9 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
         let ret_nodes_len = ret_nodes.len();
 
+        add_setup_prompt(&mut prompt);
         let step_history_is_empty =
             add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len, max_characters_in_prompt);
-        add_setup_prompt(&mut prompt);
 
         if let Some(summary) = summary_text {
             prompt.add_content(
@@ -43,17 +43,10 @@ impl JobPromptGenerator {
             }
         }
 
-        prompt.add_content("The user has asked: ".to_string(), SubPromptType::System, 100);
         prompt.add_content(format!("{}.\n", user_message), SubPromptType::User, 100);
 
         prompt.add_content(
-            "If you have enough information to directly answer the user's question,  respond using the following markdown schema and nothing else:\n".to_string(),
-            SubPromptType::System,
-            100,
-        );
-
-        prompt.add_content(
-            r#"# Answer \n{{answer}}\n"#.to_string(),
+            "If you have enough information to directly answer the user's question,  respond using the following markdown schema and nothing else:\n # Answer \n{{answer}}\n".to_string(),
             SubPromptType::System,
             100,
         );
@@ -92,9 +85,9 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
         let ret_nodes_len = ret_nodes.len();
 
+        add_setup_prompt(&mut prompt);
         let step_history_is_empty =
             add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len, max_characters_in_prompt);
-        add_setup_prompt(&mut prompt);
 
         if let Some(summary) = summary_text {
             prompt.add_content(
@@ -121,22 +114,14 @@ impl JobPromptGenerator {
                 }
             }
         }
-        let this_clause = this_clause(step_history_is_empty, ret_nodes_len);
 
-        let pre_task_text = "The user has asked: ".to_string();
-        prompt.add_content(pre_task_text, SubPromptType::System, 99);
-        prompt.add_content(user_message, SubPromptType::User, 100);
+        let user_message_with_format = format!("{} \n Answer using markdown. Following this format: \n# Answer \n {{answer}}", user_message);
+        prompt.add_content(user_message_with_format, SubPromptType::User, 100);
 
         prompt.add_content(
-            format!("Use the content to directly answer the user's question. {} Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs. Format the answer so that is easily readable with newlines after each 2 sentences and bullet point lists as needed.\n Respond using the following markdown schema and nothing else:\n", this_clause),
+            "Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the following markdown schema and nothing else:\n # Answer \n{{answer}}\n".to_string(),
             SubPromptType::System,
             98
-        );
-
-        prompt.add_content(
-            r#"# Answer \n{{answer}}\n"#.to_string(),
-            SubPromptType::System,
-            100,
         );
 
         prompt
@@ -182,13 +167,6 @@ pub fn add_step_history_prompt(
         } else {
             prompt.add_step_history(step_history, 4, 97, max_characters_in_prompt);
         }
-
-        prompt.add_content(
-            "--- End Of Conversation History ---".to_string(),
-            SubPromptType::System,
-            98,
-        );
-        eprintln!("Step history is empty: {}", step_history_is_empty);
     }
 
     step_history_is_empty

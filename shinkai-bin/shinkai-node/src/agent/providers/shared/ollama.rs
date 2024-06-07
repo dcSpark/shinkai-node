@@ -19,12 +19,19 @@ pub struct OllamaAPIResponse {
 pub struct OllamaAPIStreamingResponse {
     pub model: String,
     pub created_at: String,
-    pub response: Value,
+    pub message: OllamaMessage,
     pub done: bool,
+    pub done_reason: Option<String>,
     pub total_duration: Option<i64>,
     pub load_duration: Option<i64>,
     pub prompt_eval_count: Option<i32>,
     pub prompt_eval_duration: Option<i64>,
     pub eval_count: Option<i32>,
     pub eval_duration: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OllamaMessage {
+    pub role: String,
+    pub content: String,
 }

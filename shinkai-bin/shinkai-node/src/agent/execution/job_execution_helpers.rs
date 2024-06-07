@@ -5,6 +5,7 @@ use crate::agent::job::Job;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use async_std::println;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -138,6 +139,8 @@ impl JobManager {
         key: &str,
     ) -> Result<String, AgentError> {
         let response_json = response.json;
+        eprintln!("Attempting to extract key: {}", key);
+        eprintln!("Response JSON: {:?}", response_json);
         let keys_to_try = [
             key.to_string(),
             key[..1].to_uppercase() + &key[1..],

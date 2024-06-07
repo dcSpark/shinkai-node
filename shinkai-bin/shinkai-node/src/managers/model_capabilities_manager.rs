@@ -705,12 +705,6 @@ mod tests {
                 function_call: None,
             },
             ChatCompletionRequestMessage {
-                role: "system".to_string(),
-                content: Some("The user has asked: ".to_string()),
-                name: None,
-                function_call: None,
-            },
-            ChatCompletionRequestMessage {
                 role: "user".to_string(),
                 content: Some("tell me about Minecraft".to_string()),
                 name: None,

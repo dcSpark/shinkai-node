@@ -25,6 +25,7 @@ pub struct Agent {
 }
 
 impl Agent {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         full_identity_name: ShinkaiName,

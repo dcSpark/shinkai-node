@@ -199,6 +199,8 @@ pub struct Prompt {
     pub lowest_priority: u8,
     /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
     pub highest_priority: u8,
+    /// Does it accept a # Answer compliant response?
+    pub accept_non_ebnf: Option<bool>,
 }
 
 impl Default for Prompt {
@@ -213,6 +215,7 @@ impl Prompt {
             sub_prompts: Vec::new(),
             lowest_priority: 100,
             highest_priority: 0,
+            accept_non_ebnf: None,
         }
     }
 

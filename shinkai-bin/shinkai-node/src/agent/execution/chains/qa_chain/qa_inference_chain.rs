@@ -71,6 +71,7 @@ impl QAInferenceChain {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_qa_inference_chain(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
