@@ -140,8 +140,6 @@ impl JobManager {
         key: &str,
     ) -> Result<String, AgentError> {
         let response_json = response.json;
-        eprintln!("Attempting to extract key: {}", key);
-        eprintln!("Response JSON: {:?}", response_json);
         let keys_to_try = [
             key.to_string(),
             key[..1].to_uppercase() + &key[1..],
