@@ -109,7 +109,7 @@ paths:
           content:
             text/plain:
               schema:
-                type: string
+                $ref: "#/components/schemas/VRKaiContent"
         "400":
           description: Bad request
           content:
@@ -184,6 +184,39 @@ paths:
             text/plain:
               schema:
                 type: string
+  /v1/vrpack/view-contents:
+    post:
+      summary: Returns a JSON representation of a VRPack
+      tags:
+        - VRPack
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                encoded_vrpack:
+                  type: string
+              required:
+                - encoded_vrpack
+      responses:
+        "200":
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/VRPackContent"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid request"
 
 components:
   schemas:
@@ -218,3 +251,18 @@ components:
       required:
         - id
         - vector
+    VRKaiContent:
+      type: object
+      additionalProperties:
+        oneOf:
+          - type: object
+          - type: string
+    VRPackContent:
+      type: array
+      items:
+        type: object
+        properties:
+          content:
+            $ref: "#/components/schemas/VRKaiContent"
+          path:
+            type: string

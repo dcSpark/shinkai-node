@@ -2,11 +2,16 @@ use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, file_parser::file_parser_types::TextGroup,
-    model_type::EmbeddingModelType, vector_resource::VRKai,
+    embedding_generator::RemoteEmbeddingGenerator,
+    file_parser::file_parser_types::TextGroup,
+    model_type::EmbeddingModelType,
+    vector_resource::{VRKai, VRPack},
 };
 
-use crate::file_stream_parser::{FileStreamParser, PDFParser};
+use crate::{
+    file_stream_parser::{FileStreamParser, PDFParser},
+    models::dto::{ConvertFromVRPack, VRPackContent},
+};
 
 const DEFAULT_ADDRESS: &str = "0.0.0.0:8090";
 
@@ -110,6 +115,15 @@ pub struct VrpackGenerateFromVrkaisArgs {
     pub vrpack_name: Option<String>,
 }
 
+#[derive(Parser)]
+pub struct VrpackViewContentsArgs {
+    #[arg(short, long, value_name = "FILE")]
+    pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+}
+
 #[derive(Subcommand)]
 pub enum CliCommands {
     Pdf(PdfArgs),
@@ -132,6 +146,7 @@ pub enum VrkaiCommands {
 pub enum VrpackCommands {
     GenerateFromFiles(VrpackGenerateFromFilesArgs),
     GenerateFromVrkais(VrpackGenerateFromVrkaisArgs),
+    ViewContents(VrpackViewContentsArgs),
 }
 
 pub struct Cli {}
@@ -201,6 +216,15 @@ impl Cli {
                         std::fs::write(output_file, encoded_vrpack)?;
                     } else {
                         print!("{}", encoded_vrpack);
+                    }
+                }
+                VrpackCommands::ViewContents(vrpack_args) => {
+                    let vrpack_content = Cli::vrpack_view_contents(&vrpack_args.file).await?;
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, serde_json::to_string(&vrpack_content)?)?;
+                    } else {
+                        println!("{}", serde_json::to_string(&vrpack_content)?);
                     }
                 }
             },
@@ -294,5 +318,13 @@ impl Cli {
             }
             Err(e) => Err(e),
         }
+    }
+
+    async fn vrpack_view_contents(file_path: &PathBuf) -> anyhow::Result<VRPackContent> {
+        let file_data = std::fs::read(file_path)?;
+        let vrpack = VRPack::from_bytes(&file_data)?;
+        let content = VRPackContent::convert_from(vrpack)?;
+
+        Ok(content)
     }
 }

@@ -1,6 +1,6 @@
 use assert_cmd::prelude::*;
 use reqwest::multipart;
-use shinkai_side_executor::api;
+use shinkai_side_executor::{api, models::dto::VRPackContent};
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator,
     file_parser::file_parser_types::TextGroup,
@@ -106,6 +106,21 @@ fn cli_vrpack_generate_from_vrkais() -> Result<(), Box<dyn std::error::Error>> {
     let vrpack = VRPack::from_base64(&trimmed_output).unwrap();
 
     vrpack.print_internal_structure(None);
+
+    Ok(())
+}
+
+#[test]
+fn cli_vrpack_view_contents() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrpack")
+        .arg("view-contents")
+        .arg("--file=../files/shinkai_intro.vrpack");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let _output: VRPackContent = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
 
     Ok(())
 }
@@ -311,6 +326,53 @@ fn api_vrpack_generate_from_vrkais() -> Result<(), Box<dyn std::error::Error>> {
         let _vrpack = VRPack::from_base64(&response).unwrap();
 
         _vrpack.print_internal_structure(None);
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrpack_view_contents() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        // Test valid VRKai
+        let vrpack = std::fs::read_to_string("../files/shinkai_intro.vrpack").unwrap();
+        let form = multipart::Form::new().part("encoded_vrpack", multipart::Part::text(vrpack));
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrpack/view-contents")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+
+        let _vrpack_content = response.json::<VRPackContent>().await.unwrap();
+
+        // Test invalid VRKai
+        let invalid_vrpack = "invalid_vrpack";
+        let form = multipart::Form::new().part("encoded_vrpack", multipart::Part::text(invalid_vrpack));
+
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrpack/view-contents")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_client_error());
 
         abort_handler.abort();
     });

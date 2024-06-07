@@ -41,41 +41,51 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let try_bind = TcpListener::bind(&address).await;
 
+    // PDF
     let pdf_extract_to_text_groups = warp::path!("v1" / "pdf" / "extract-to-text-groups")
         .and(warp::post())
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::pdf_extract_to_text_groups_handler(form));
 
+    // VRKai
     let vrkai_generate_from_file = warp::path!("v1" / "vrkai" / "generate-from-file")
         .and(warp::post())
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_generate_from_file_handler(form));
 
     let vrkai_view_contents = warp::path!("v1" / "vrkai" / "view-contents")
         .and(warp::post())
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_view_contents_handler(form));
 
+    // VRPack
     let vrpack_generate_from_files = warp::path!("v1" / "vrpack" / "generate-from-files")
         .and(warp::post())
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_files_handler(form));
 
     let vrpack_generate_from_vrkais = warp::path!("v1" / "vrpack" / "generate-from-vrkais")
         .and(warp::post())
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH)) // 200MB
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_generate_from_vrkais_handler(form));
+
+    let vrpack_view_contents = warp::path!("v1" / "vrpack" / "view-contents")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrpack_view_contents_handler(form));
 
     let routes = pdf_extract_to_text_groups
         .or(vrkai_generate_from_file)
         .or(vrkai_view_contents)
         .or(vrpack_generate_from_files)
         .or(vrpack_generate_from_vrkais)
+        .or(vrpack_view_contents)
         .recover(handle_rejection);
 
     match try_bind {
