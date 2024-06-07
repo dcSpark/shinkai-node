@@ -5,8 +5,7 @@ on:
       - ".github/workflows/main.yml"
       - "Cargo.*"
       - "shinkai-libs/**"
-      - "src/**"
-      - "tests/**"
+      - "shinkai-bin/**"
   pull_request:
     branches: [ main ]
     types: [ opened, reopened, synchronize, ready_for_review ]
@@ -14,8 +13,7 @@ on:
       - ".github/workflows/main.yml"
       - "Cargo.*"
       - "shinkai-libs/**"
-      - "src/**"
-      - "tests/**"
+      - "shinkai-bin/**"
 
 name: Shinkai Test Workflow
 
