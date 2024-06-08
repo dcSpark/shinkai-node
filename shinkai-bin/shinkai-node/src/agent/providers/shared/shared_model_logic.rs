@@ -68,6 +68,16 @@ pub fn llava_prepare_messages(
 }
 
 pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
+    let mut markdown = markdown;
+
+    // Check if the text starts with "```markdown" and remove it along with the ending triple quotes
+    if markdown.starts_with("```markdown") {
+        markdown = markdown.trim_start_matches("```markdown").trim();
+        if markdown.ends_with("```") {
+            markdown = markdown.trim_end_matches("```").trim();
+        }
+    }
+
     // Find the index of the first '#' and slice the string from there
     let start_index = markdown.find('#').unwrap_or(0);
     let trimmed_markdown = &markdown[start_index..];
@@ -75,13 +85,13 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
     let mut sections = serde_json::Map::new();
     // let re = Regex::new(r"(?m)^# (\w+)$").unwrap();
     let re = Regex::new(r"(?m)^#\s+(.+)$").unwrap();
-    let mut current_section = None;
+    let mut current_section: Option<String> = None;
     let mut content = String::new();
 
     for line in trimmed_markdown.lines() {
         if let Some(caps) = re.captures(line) {
             if let Some(section) = current_section {
-                sections.insert(section, JsonValue::String(content.trim().to_string()));
+                sections.insert(section.trim().to_lowercase(), JsonValue::String(content.trim().to_string()));
                 content.clear();
             }
             current_section = Some(caps[1].to_string());
@@ -96,7 +106,12 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
     }
 
     if let Some(section) = current_section {
-        sections.insert(section, JsonValue::String(content.trim().to_string()));
+        if !sections.contains_key(&section.to_lowercase()) {
+            sections.insert(
+                section.trim().to_lowercase().to_string(),
+                JsonValue::String(content.trim().to_string()),
+            );
+        }
     }
 
     Ok(JsonValue::Object(sections))
@@ -113,7 +128,7 @@ mod tests {
         let markdown = "# Section1\nContent line 1\nContent line 2";
         let result = parse_markdown_to_json(markdown).unwrap();
         let expected_json = json!({
-            "Section1": "Content line 1\nContent line 2"
+            "section1": "Content line 1\nContent line 2"
         });
         assert_eq!(result, expected_json);
     }
@@ -123,8 +138,8 @@ mod tests {
         let markdown = "# Section1\nContent line 1\n# Section2\nContent line 2";
         let result = parse_markdown_to_json(markdown).unwrap();
         let expected_json = json!({
-            "Section1": "Content line 1",
-            "Section2": "Content line 2"
+            "section1": "Content line 1",
+            "section2": "Content line 2"
         });
         assert_eq!(result, expected_json);
     }
@@ -152,19 +167,49 @@ mod tests {
         let markdown = "# Section1\nContent line 1\nContent line 2\n# Section2\nContent line 3\nContent line 4";
         let result = parse_markdown_to_json(markdown).unwrap();
         let expected_json = json!({
-            "Section1": "Content line 1\nContent line 2",
-            "Section2": "Content line 3\nContent line 4"
+            "section1": "Content line 1\nContent line 2",
+            "section2": "Content line 3\nContent line 4"
         });
         assert_eq!(result, expected_json);
     }
 
     #[test]
     fn test_parse_markdown_to_json_with_given_content() {
-        let markdown = "\n# Answer\n Hello there, how may I assist you today?\n# Summary\n Answer's summary";
+        let markdown = "\n# Answer \n Hello there, how may I assist you today?\n# Summary\n Answer's summary";
         let result = parse_markdown_to_json(markdown).unwrap();
         let expected_json = json!({
-            "Answer": "Hello there, how may I assist you today?",
-            "Summary": "Answer's summary"
+            "answer": "Hello there, how may I assist you today?",
+            "summary": "Answer's summary"
+        });
+        assert_eq!(result, expected_json);
+    }
+
+    #[test]
+    fn test_parse_markdown_to_json_answer_section() {
+        let markdown = "# Answer\nYes, I am here. How can I assist you today?";
+        let result = parse_markdown_to_json(markdown).unwrap();
+        let expected_json = json!({
+            "answer": "Yes, I am here. How can I assist you today?"
+        });
+        assert_eq!(result, expected_json);
+    }
+
+    #[test]
+    fn test_parse_markdown_to_json_with_special_characters() {
+        let markdown = "```markdown\n# Answer\n\nThe Roman Empire was one of the largest and most influential...\n```";
+        let result = parse_markdown_to_json(markdown).unwrap();
+        let expected_json = json!({
+            "answer": "The Roman Empire was one of the largest and most influential..."
+        });
+        assert_eq!(result, expected_json);
+    }
+
+    #[test]
+    fn test_parse_markdown_to_json_multiple_answers() {
+        let markdown = "# Answer\nThe zodiac has no special significance in the modern world, but it was an important concept in ancient times. For example, if we were to create a joke about the zodiac, it could be as follows: \"Why did the fish cross the zodiac?\" The punchline would be that the fish is asking why he had to go through all of the challenges and obstacles required to travel across the various parts of the sky.\n\n# Answer\nThe Roman Empire was a significant civilization with its impact on art, law, culture, technology, economics, religion, philosophy, and military tactics.";
+        let result = parse_markdown_to_json(markdown).unwrap();
+        let expected_json = json!({
+            "answer": "The zodiac has no special significance in the modern world, but it was an important concept in ancient times. For example, if we were to create a joke about the zodiac, it could be as follows: \"Why did the fish cross the zodiac?\" The punchline would be that the fish is asking why he had to go through all of the challenges and obstacles required to travel across the various parts of the sky."
         });
         assert_eq!(result, expected_json);
     }

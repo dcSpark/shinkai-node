@@ -71,6 +71,7 @@ impl QAInferenceChain {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_qa_inference_chain(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -236,42 +237,45 @@ impl QAInferenceChain {
                 }
             };
 
-        // If the new search text is the same as the previous one, prompt the agent for a new search term
-        let mut new_search_text = new_search_text.clone();
-        if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
-            let retry_prompt =
-                JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
-            let response = JobManager::inference_agent_markdown(agent.clone(), retry_prompt).await;
-            if let Ok(response) = response {
-                match JobManager::direct_extract_key_inference_response(response, "search") {
-                    Ok(search_str) => {
-                        new_search_text = search_str;
-                    }
-                    // If extracting fails, use summary to make the new search text likely different compared to last iteration
-                    Err(_) => new_search_text.clone_from(&summary),
-                }
-            } else {
-                new_search_text.clone_from(&summary);
-            }
-        }
+                // TODO: Local LLMs struggle to summarize AND decide if it's enough content, it should be a consecutive process to avoid this issue
+                Ok(summary)
 
-        // Recurse with the new search/summary text and increment iteration_count
-        QAInferenceChain::start_qa_inference_chain(
-            db,
-            vector_fs,
-            full_job,
-            user_message.to_string(),
-            agent,
-            execution_context,
-            generator,
-            user_profile,
-            Some(new_search_text),
-            Some(summary.to_string()),
-            iteration_count + 1,
-            max_iterations,
-            max_tokens_in_prompt,
-        )
-        .await
+        // If the new search text is the same as the previous one, prompt the agent for a new search term
+        // let mut new_search_text = new_search_text.clone();
+        // if Some(new_search_text.clone()) == search_text && !full_job.scope.is_empty() {
+        //     let retry_prompt =
+        //         JobPromptGenerator::retry_new_search_term_prompt(new_search_text.clone(), summary.clone());
+        //     let response = JobManager::inference_agent_markdown(agent.clone(), retry_prompt).await;
+        //     if let Ok(response) = response {
+        //         match JobManager::direct_extract_key_inference_response(response, "search") {
+        //             Ok(search_str) => {
+        //                 new_search_text = search_str;
+        //             }
+        //             // If extracting fails, use summary to make the new search text likely different compared to last iteration
+        //             Err(_) => new_search_text.clone_from(&summary),
+        //         }
+        //     } else {
+        //         new_search_text.clone_from(&summary);
+        //     }
+        // }
+
+        // // Recurse with the new search/summary text and increment iteration_count
+        // QAInferenceChain::start_qa_inference_chain(
+        //     db,
+        //     vector_fs,
+        //     full_job,
+        //     user_message.to_string(),
+        //     agent,
+        //     execution_context,
+        //     generator,
+        //     user_profile,
+        //     Some(new_search_text),
+        //     Some(summary.to_string()),
+        //     iteration_count + 1,
+        //     max_iterations,
+        //     max_tokens_in_prompt,
+        // )
+        // .await
     }
 }
 

@@ -5,6 +5,7 @@ use crate::agent::job::Job;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use async_std::println;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -133,6 +134,7 @@ impl JobManager {
 
     /// Attempts to extract a String using the provided key in the JSON response.
     /// Also tries variants of the provided key using capitalization/casing.
+    /// If the key is "answer" and there is no "answer", returns the content of the first key (if it exists).
     pub fn direct_extract_key_inference_response(
         response: LLMInferenceResponse,
         key: &str,
@@ -155,6 +157,29 @@ impl JobManager {
                     _ => value.to_string(),
                 };
                 return Ok(value_str);
+            }
+        }
+
+        // TODO: discuss with Rob
+        if key == "answer" {
+            let additional_keys = ["summary", "Summary", "search", "Search", "lookup", "Lookup"];
+            let mut additional_keys_exist = false;
+    
+            for additional_key in additional_keys.iter() {
+                if response_json.get(additional_key).is_some() {
+                    additional_keys_exist = true;
+                    break;
+                }
+            }
+    
+            if !additional_keys_exist {
+                if let Some((_first_key, first_value)) = response_json.as_object().and_then(|obj| obj.iter().next()) {
+                    let value_str = match first_value {
+                        JsonValue::String(s) => s.clone(),
+                        _ => first_value.to_string(),
+                    };
+                    return Ok(value_str);
+                }
             }
         }
 
@@ -325,4 +350,28 @@ async fn internal_fix_markdown_to_include_proper_key(
     };
 
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_direct_extract_key_inference_response() {
+        let response_json = json!({
+            "Minecraft": "Minecraft is a sandbox video game created by Swedish programmer Markus Persson in 2009. Players start with an in-game world that is randomly generated every time they load it, creating new puzzles to explore and solve.\n\nThe gameplay involves manipulating blocks of stone called \"tiles\" using various tools to create structures, build cities, and craft items like swords, axes, and shields. The game also allows players to harvest resources like gold, iron, and wood to make tools, weapons, armor, and other items needed for crafting.\n\nMinecraft is renowned for its extensive modding community, which has created thousands of mods that add new features and mechanics to the core gameplay. Some popular examples include survival mechanics such as crafting food and shelter, an economy system where players can trade resources with each other, and a unique combat system based on real-time combat simulation.\n\nThe game is accessible to both novice and experienced gamers due to its simplicity and freedom of experimentation. Players can explore vast environments underground or build cities above the surface. The endless possibilities allow for endless hours of creative exploration and discovery."
+        });
+
+        let response = LLMInferenceResponse {
+            json: response_json,
+            original_response_string: String::new(),
+        };
+
+        let key = "answer";
+        let result = JobManager::direct_extract_key_inference_response(response, key);
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Minecraft is a sandbox video game created by Swedish programmer Markus Persson in 2009. Players start with an in-game world that is randomly generated every time they load it, creating new puzzles to explore and solve.\n\nThe gameplay involves manipulating blocks of stone called \"tiles\" using various tools to create structures, build cities, and craft items like swords, axes, and shields. The game also allows players to harvest resources like gold, iron, and wood to make tools, weapons, armor, and other items needed for crafting.\n\nMinecraft is renowned for its extensive modding community, which has created thousands of mods that add new features and mechanics to the core gameplay. Some popular examples include survival mechanics such as crafting food and shelter, an economy system where players can trade resources with each other, and a unique combat system based on real-time combat simulation.\n\nThe game is accessible to both novice and experienced gamers due to its simplicity and freedom of experimentation. Players can explore vast environments underground or build cities above the surface. The endless possibilities allow for endless hours of creative exploration and discovery.");
+    }
 }

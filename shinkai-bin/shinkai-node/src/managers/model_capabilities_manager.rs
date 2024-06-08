@@ -151,17 +151,6 @@ impl ModelCapabilitiesManager {
                 _ => vec![],
             },
             AgentLLMInterface::Ollama(ollama) => match ollama.model_type.as_str() {
-                model_type if model_type.starts_with("llama-2") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("mistral") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("mixtral") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("deepseek") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("meditron") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("starling-lm") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("orca2") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("yi") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("aya") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("codestral") => vec![ModelCapability::TextInference],
-                model_type if model_type.starts_with("yarn-mistral") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("llava") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
@@ -172,8 +161,7 @@ impl ModelCapabilitiesManager {
                 model_type if model_type.contains("minicpm_llama3") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 }
-                model_type if model_type.starts_with("yarn-llama2") => vec![ModelCapability::TextInference],
-                _ => vec![],
+                _ => vec![ModelCapability::TextInference],
             },
             AgentLLMInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
@@ -301,6 +289,10 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("wizardlm2")
                     || ollama.model_type.starts_with("phi3")
                     || ollama.model_type.starts_with("aya")
+                    || ollama.model_type.starts_with("qwen2:0.5b")
+                    || ollama.model_type.starts_with("qwen2:1.5b")
+                    || ollama.model_type.starts_with("qwen2:7b")
+                    || ollama.model_type.starts_with("qwen2:72b")
                     || ollama.model_type.starts_with("codestral")
                     || ollama
                         .model_type
@@ -389,10 +381,7 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
                     model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
                     model_type if model_type.starts_with("mixtral:8x22b") => 65_000,
-                    model_type if model_type.starts_with("llama3-gradient") => {
-                        eprintln!("llama3-gradient detected");
-                        return 256_000;
-                    }
+                    model_type if model_type.starts_with("llama3-gradient") => 256_000,
                     model_type if model_type.starts_with("falcon2") => 8_000,
                     model_type if model_type.starts_with("llama3-chatqa") => 8_000,
                     model_type if model_type.starts_with("llava-phi3") => 4_000,
@@ -400,6 +389,10 @@ impl ModelCapabilitiesManager {
                     model_type if model_type.starts_with("dolphin-llama3") => 8_000,
                     model_type if model_type.starts_with("command-r-plus") => 128_000,
                     model_type if model_type.starts_with("codestral") => 32_000,
+                    model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
+                    model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
+                    model_type if model_type.starts_with("qwen2:7b") => 128_000,
+                    model_type if model_type.starts_with("qwen2:72b") => 128_000,
                     model_type if model_type.starts_with("aya") => 32_000,
                     model_type if model_type.starts_with("wizardlm2") => 8_000,
                     model_type if model_type.starts_with("phi2") => 4_000,
@@ -708,12 +701,6 @@ mod tests {
             ChatCompletionRequestMessage {
                 role: "system".to_string(),
                 content: Some("You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string()),
-                name: None,
-                function_call: None,
-            },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
-                content: Some("The user has asked: ".to_string()),
                 name: None,
                 function_call: None,
             },
