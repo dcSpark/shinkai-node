@@ -6,7 +6,7 @@ mod tests {
     use shinkai_dsl::{
         dsl_schemas::{Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, WorkflowValue},
         parser::parse_workflow,
-        sm_executor::{StepExecutor, WorkflowEngine},
+        sm_executor::{WorkflowEngine, WorkflowError},
     };
 
     #[test]
@@ -59,11 +59,11 @@ mod tests {
         let mut functions = HashMap::new();
         functions.insert(
             "sum".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Box<dyn Any> {
+            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
                 let x = *args[0].downcast_ref::<i32>().unwrap();
                 let y = *args[1].downcast_ref::<i32>().unwrap();
-                Box::new(x + y)
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any> + Send + Sync>,
+                Ok(Box::new(x + y))
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
 
         eprintln!("\n\n\nStarting workflow execution");
@@ -71,7 +71,9 @@ mod tests {
         let executor = WorkflowEngine::new(&functions);
 
         // Execute the workflow
-        let registers = executor.execute_workflow(&workflow);
+        let registers = executor
+            .execute_workflow(&workflow)
+            .expect("Failed to execute workflow");
         eprintln!("Registers: {:?}", registers);
 
         // Check the results
@@ -85,18 +87,18 @@ mod tests {
         let mut functions = HashMap::new();
         functions.insert(
             "multiply".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Box<dyn Any> {
+            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
                 let x = *args[0].downcast_ref::<i32>().unwrap();
                 let y = *args[1].downcast_ref::<i32>().unwrap();
-                Box::new(x * y)
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any> + Send + Sync>,
+                Ok(Box::new(x * y))
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
-
+    
         let executor = WorkflowEngine::new(&functions);
         let mut registers = HashMap::new();
         registers.insert("$R1".to_string(), 5);
         registers.insert("$R2".to_string(), 10);
-
+    
         let action = Action::ExternalFnCall(FunctionCall {
             name: "multiply".to_string(),
             args: vec![
@@ -104,9 +106,9 @@ mod tests {
                 Param::Identifier("$R2".to_string()),
             ],
         });
-
-        executor.execute_action(&action, &mut registers);
-
+    
+        executor.execute_action(&action, &mut registers).expect("Failed to execute action");
+    
         assert_eq!(*registers.get("$R1").unwrap(), 50); // Assuming the result is stored back in "$R1"
     }
 
@@ -145,7 +147,7 @@ mod tests {
             action: Box::new(loop_body),
         };
 
-        executor.execute_step_body(&for_loop, &mut registers);
+        executor.execute_step_body(&for_loop, &mut registers).expect("Failed to execute for loop");
 
         assert_eq!(*registers.get("$Sum").unwrap(), 3); // Assuming $Sum accumulates values of "$i"
     }
@@ -180,19 +182,23 @@ mod tests {
         let mut functions = HashMap::new();
         functions.insert(
             "sum".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Box<dyn Any> {
+            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
                 let x = *args[0].downcast_ref::<i32>().unwrap();
                 let y = *args[1].downcast_ref::<i32>().unwrap();
-                Box::new(x + y)
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any> + Send + Sync>,
+                Ok(Box::new(x + y))
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
         functions.insert(
             "divide".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Box<dyn Any> {
+            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
                 let x = *args[0].downcast_ref::<i32>().unwrap();
                 let y = *args[1].downcast_ref::<i32>().unwrap();
-                Box::new(x / y)
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Box<dyn Any> + Send + Sync>,
+                if y == 0 {
+                    Err(WorkflowError::FunctionError("Division by zero".to_string()))
+                } else {
+                    Ok(Box::new(x / y))
+                }
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
 
         // Create the WorkflowEngine with the function mappings
@@ -202,7 +208,8 @@ mod tests {
         let mut step_executor = engine.iter(&workflow);
 
         // Execute the workflow step by step
-        for (i, registers) in step_executor.by_ref().enumerate() {
+        for (i, result) in step_executor.by_ref().enumerate() {
+            let registers = result.expect("Failed to execute step");
             println!("Iteration {}: {:?}", i, registers);
             match i {
                 0 => {
