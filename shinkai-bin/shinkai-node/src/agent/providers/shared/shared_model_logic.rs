@@ -91,7 +91,7 @@ pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
     for line in trimmed_markdown.lines() {
         if let Some(caps) = re.captures(line) {
             if let Some(section) = current_section {
-                sections.insert(section.to_lowercase(), JsonValue::String(content.trim().to_string()));
+                sections.insert(section.trim().to_lowercase(), JsonValue::String(content.trim().to_string()));
                 content.clear();
             }
             current_section = Some(caps[1].to_string());
