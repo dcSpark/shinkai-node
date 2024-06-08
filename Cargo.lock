@@ -6524,6 +6524,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_crypto_identities",
+ "shinkai_dsl",
  "shinkai_fs_mirror",
  "shinkai_message_primitives",
  "shinkai_tcp_relayer",
