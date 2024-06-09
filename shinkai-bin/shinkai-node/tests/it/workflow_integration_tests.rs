@@ -37,7 +37,7 @@ fn setup() {
 fn workflow_integration_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
-    
+
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
@@ -80,7 +80,7 @@ fn workflow_integration_test() {
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "\n# Answer \n Hello there, how may I assist you today?"
+                    "content": "\n# Answer \n The Roman Empire is very interesting"
                 },
                 "finish_reason": "stop"
             }],
@@ -106,26 +106,13 @@ fn workflow_integration_test() {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
-        let _ollama = Ollama {
-            model_type: "mistral".to_string(),
-        };
-
-        let _shinkai_backend = ShinkaiBackend::new("gpt-4-1106-preview");
-
         let agent = SerializedAgent {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
-            // external_url: Some("http://localhost:3000".to_string()),
-            // external_url: Some("http://localhost:11434".to_string()),
-            // external_url: Some("https://api.openai.com".to_string()),
             external_url: Some(server.url()),
-            // api_key: Some("api_key".to_string()),
             api_key: Some("mockapikey".to_string()),
-            // api_key: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjE3LCJpYXQiOjE3MDEzMTg5ODZ9.jTLpbsAVITowuCMYdNgTyUHikGRlLjEqqOYHWMRNSz4".to_string()),
             model: AgentLLMInterface::OpenAI(open_ai),
-            // model: AgentLLMInterface::Ollama(ollama),
-            // model: AgentLLMInterface::ShinkaiBackend(shinkai_backend),
             toolkit_permissions: vec![],
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],
@@ -210,7 +197,7 @@ fn workflow_integration_test() {
                     ShinkaiLogLevel::Debug,
                     &format!("Sending a message to Job {}", job_id.clone()),
                 );
-                let message = "1) Tell me. Who are you?".to_string();
+                let message = "Run this workflow (this message is not used)".to_string();
                 let workflow = r#"
                 workflow MyProcess v0.1 {
                     step Initialize {
@@ -265,6 +252,7 @@ fn workflow_integration_test() {
                     node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
 
                     if node2_last_messages.len() >= 2 {
+                        eprintln!("breaking>> node2_last_messages: {:?}", node2_last_messages);
                         break;
                     }
 
@@ -277,12 +265,13 @@ fn workflow_integration_test() {
                     &format!("node2_last_messages: {:?}", node2_last_messages),
                 );
 
+                eprintln!("node2_last_messages: {:?}", node2_last_messages);
                 let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
                 let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
                 assert_eq!(
                     message_content_agent.content,
-                    "Hello there, how may I assist you today?".to_string()
+                    "The Roman Empire is very interesting".to_string()
                 );
                 assert!(node2_last_messages.len() == 2);
             }

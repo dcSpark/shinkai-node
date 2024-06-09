@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::time::Duration;
 use std::{any::Any, fmt};
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use futures::Future;
+use tokio::runtime::Runtime;
+use tokio::task;
+use tokio::time::sleep;
 
 use crate::dsl_schemas::{
     Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
@@ -54,7 +59,7 @@ pub struct StepExecutor<'a> {
     engine: &'a WorkflowEngine<'a>,
     workflow: &'a Workflow,
     pub current_step: usize,
-    pub registers: HashMap<String, String>,
+    pub registers: DashMap<String, String>,
 }
 
 impl<'a> WorkflowEngine<'a> {
@@ -62,11 +67,11 @@ impl<'a> WorkflowEngine<'a> {
         WorkflowEngine { functions }
     }
 
-    pub async fn execute_workflow(&self, workflow: &Workflow) -> Result<HashMap<String, String>, WorkflowError> {
-        let mut registers = HashMap::new();
+    pub async fn execute_workflow(&self, workflow: &Workflow) -> Result<DashMap<String, String>, WorkflowError> {
+        let registers = DashMap::new();
         for step in &workflow.steps {
             for body in &step.body {
-                self.execute_step_body(body, &mut registers).await?;
+                self.execute_step_body(body, &registers).await?;
             }
         }
         Ok(registers)
@@ -75,7 +80,7 @@ impl<'a> WorkflowEngine<'a> {
     pub fn execute_step_body<'b>(
         &'b self,
         step_body: &'b StepBody,
-        registers: &'b mut HashMap<String, String>,
+        registers: &'b DashMap<String, String>,
     ) -> Pin<Box<dyn Future<Output = Result<(), WorkflowError>> + Send + 'b>> {
         Box::pin(async move {
             match step_body {
@@ -88,7 +93,10 @@ impl<'a> WorkflowEngine<'a> {
                 }
                 StepBody::ForLoop { var, in_expr, action } => {
                     if let Expression::Range { start, end } = in_expr {
-                        let start = self.evaluate_param(start.as_ref(), registers).parse::<i32>().unwrap_or(0);
+                        let start = self
+                            .evaluate_param(start.as_ref(), registers)
+                            .parse::<i32>()
+                            .unwrap_or(0);
                         let end = self.evaluate_param(end.as_ref(), registers).parse::<i32>().unwrap_or(0);
                         for i in start..=end {
                             registers.insert(var.clone(), i.to_string());
@@ -102,6 +110,7 @@ impl<'a> WorkflowEngine<'a> {
                     let value = self.evaluate_workflow_value(value, registers).await;
                     println!("Value: {}", value);
                     registers.insert(register.clone(), value);
+                    eprintln!("Registers: {:?}", registers);
                     Ok(())
                 }
                 StepBody::Composite(bodies) => {
@@ -117,7 +126,7 @@ impl<'a> WorkflowEngine<'a> {
     pub async fn execute_action(
         &self,
         action: &Action,
-        registers: &mut HashMap<String, String>,
+        registers: &DashMap<String, String>,
     ) -> Result<(), WorkflowError> {
         println!("Executing action: {:?}", action);
         match action {
@@ -127,6 +136,19 @@ impl<'a> WorkflowEngine<'a> {
                         .iter()
                         .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any + Send>)
                         .collect();
+
+                    // debug
+                    eprintln!("execute_action> before tokio task");
+                    // Simulate a task with tokio::spawn
+                    let task_response = tokio::spawn(async move {
+                        eprintln!("inside tokio task");
+                        sleep(Duration::from_millis(100)).await;
+                        "Simulated task response".to_string()
+                    })
+                    .await
+                    .map_err(|e| WorkflowError::FunctionError(format!("Task failed: {:?}", e)))?;
+                    // end debug
+
                     let result = func.call(arg_values).await?;
                     if let Ok(result) = result.downcast::<String>() {
                         if let Some(Param::Identifier(register_name)) = args.first() {
@@ -143,7 +165,7 @@ impl<'a> WorkflowEngine<'a> {
     pub fn evaluate_condition(
         &self,
         expression: &Expression,
-        registers: &HashMap<String, String>,
+        registers: &DashMap<String, String>,
     ) -> Result<bool, WorkflowError> {
         match expression {
             Expression::Binary { left, operator, right } => {
@@ -170,12 +192,12 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_param(&self, param: &Param, registers: &HashMap<String, String>) -> String {
+    pub fn evaluate_param(&self, param: &Param, registers: &DashMap<String, String>) -> String {
         eprintln!("Evaluating param: {:?}", param);
         eprintln!("Registers: {:?}", registers);
         match param {
             Param::Number(n) => n.to_string(),
-            Param::Identifier(id) | Param::Register(id) => registers.get(id).cloned().unwrap_or_else(|| {
+            Param::Identifier(id) | Param::Register(id) => registers.get(id).map(|v| v.value().clone()).unwrap_or_else(|| {
                 eprintln!(
                     "Warning: Identifier/Register '{}' not found in registers, defaulting to 0",
                     id
@@ -189,12 +211,12 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, String>) -> String {
+    pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &DashMap<String, String>) -> String {
         match value {
             WorkflowValue::String(s) => s.clone(),
             WorkflowValue::Number(n) => n.to_string(),
             WorkflowValue::Boolean(b) => b.to_string(),
-            WorkflowValue::Identifier(id) => registers.get(id).cloned().unwrap_or_else(|| "0".to_string()),
+            WorkflowValue::Identifier(id) => registers.get(id).map(|v| v.value().clone()).unwrap_or_else(|| "0".to_string()),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
                     let arg_values = args
@@ -233,24 +255,38 @@ impl<'a> WorkflowEngine<'a> {
             engine: self,
             workflow,
             current_step: 0,
-            registers: HashMap::new(),
+            registers: DashMap::new(),
         }
     }
 }
 
 impl<'a> Iterator for StepExecutor<'a> {
-    type Item = Result<HashMap<String, String>, WorkflowError>;
+    type Item = Result<DashMap<String, String>, WorkflowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_step < self.workflow.steps.len() {
             let step = &self.workflow.steps[self.current_step];
-            for body in &step.body {
-                if let Err(e) = futures::executor::block_on(self.engine.execute_step_body(body, &mut self.registers)) {
-                    return Some(Err(e));
-                }
-            }
+            eprintln!("Executing step: {:?}", step);
+            let mut result = Ok(self.registers.clone());
+
+            task::block_in_place(|| {
+                let rt = Runtime::new().unwrap();
+                rt.block_on(async {
+                    for body in &step.body {
+                        if let Err(e) = self.engine.execute_step_body(body, &self.registers).await {
+                            result = Err(e);
+                            break;
+                        }
+                    }
+                    if result.is_ok() {
+                        result = Ok(self.registers.clone());
+                    }
+                    eprintln!("Registers: {:?}", self.registers);
+                });
+            });
+
             self.current_step += 1;
-            Some(Ok(self.registers.clone()))
+            Some(result)
         } else {
             None
         }

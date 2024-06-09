@@ -2,6 +2,7 @@ use std::{any::Any, collections::HashMap, fmt, marker::PhantomData};
 
 use crate::agent::job::JobLike;
 use async_trait::async_trait;
+use dashmap::DashMap;
 use shinkai_dsl::{
     dsl_schemas::Workflow,
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
@@ -46,22 +47,28 @@ impl<'a> InferenceChain for DslChain<'a> {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
         let engine = WorkflowEngine::new(&self.functions);
         let executor = engine.iter(&self.workflow);
-        let mut final_registers = HashMap::new();
+        let mut final_registers = DashMap::new();
 
         for result in executor {
             match result {
                 Ok(registers) => {
                     final_registers = registers;
                 }
-                Err(e) => return Err(AgentError::WorkflowExecutionError(e.to_string())),
+                Err(e) => {
+                    eprintln!("Error in workflow engine: {}", e);
+                    return Err(AgentError::WorkflowExecutionError(e.to_string()));
+                }
             }
         }
 
-        if let Some((key, value)) = final_registers.iter().next() {
-            Ok(InferenceChainResult::new(value.clone(), final_registers))
-        } else {
-            Ok(InferenceChainResult::new_empty())
-        }
+        eprintln!("final_registers: {:?}", final_registers);
+
+        let response_register = final_registers
+            .get("$R1")
+            .map(|r| r.clone())
+            .unwrap_or_else(|| String::new());
+        let new_contenxt = HashMap::new();
+        Ok(InferenceChainResult::new(response_register, new_contenxt))
     }
 }
 
@@ -152,10 +159,17 @@ impl AsyncFunction for InferenceFunction {
         // Handle response_res without using the `?` operator
         let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone())
             .await
-            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+            .map_err(|e| {
+                eprintln!("Error calling inference agent markdown: {}", e);
+                WorkflowError::ExecutionError(e.to_string())
+            })?;
 
+        eprintln!("response: {:?}", response.clone());
+        eprintln!("calling direct_extract_key_inference_response");
         let answer = JobManager::direct_extract_key_inference_response(response.clone(), "answer")
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+
+        eprintln!("inference answer: {:?}", answer.clone());
 
         Ok(Box::new(answer))
     }

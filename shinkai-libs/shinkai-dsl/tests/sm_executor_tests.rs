@@ -4,12 +4,14 @@ mod tests {
     use std::collections::HashMap;
 
     use async_trait::async_trait;
+    use dashmap::DashMap;
     use shinkai_dsl::{
         dsl_schemas::{Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, WorkflowValue},
         parser::parse_workflow,
         sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
     };
 
+    use tokio::time::{sleep, Duration};
     struct SumFunction;
 
     #[async_trait]
@@ -67,6 +69,22 @@ mod tests {
             // Simulate an inference result
             let result = format!("Inference result for: {}", input);
             Ok(Box::new(result))
+        }
+    }
+
+    struct CloneWithDelayFunction;
+
+    #[async_trait]
+    impl AsyncFunction for CloneWithDelayFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let input = args[0].downcast_ref::<String>().unwrap().clone();
+            let task_response = tokio::spawn(async move {
+                sleep(Duration::from_millis(100)).await;
+                input
+            })
+            .await
+            .map_err(|e| WorkflowError::FunctionError(format!("Task failed: {:?}", e)))?;
+            Ok(Box::new(task_response))
         }
     }
 
@@ -132,9 +150,9 @@ mod tests {
         eprintln!("Registers: {:?}", registers);
 
         // Check the results
-        assert_eq!(registers.get("$R1").unwrap(), "5");
-        assert_eq!(registers.get("$R2").unwrap(), "10");
-        assert_eq!(registers.get("$R3").unwrap(), "20");
+        assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
+        assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
+        assert_eq!(registers.get("$R3").unwrap().as_str(), "20");
     }
 
     #[tokio::test]
@@ -146,7 +164,7 @@ mod tests {
         );
 
         let executor = WorkflowEngine::new(&functions);
-        let mut registers = HashMap::new();
+        let registers = DashMap::new();
         registers.insert("$R1".to_string(), "5".to_string());
         registers.insert("$R2".to_string(), "10".to_string());
 
@@ -159,7 +177,7 @@ mod tests {
         });
 
         executor
-            .execute_action(&action, &mut registers)
+            .execute_action(&action, &registers)
             .await
             .expect("Failed to execute action");
 
@@ -170,10 +188,9 @@ mod tests {
     fn test_evaluate_condition() {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
-        let registers = HashMap::from([
-            ("$R1".to_string(), "5".to_string()),
-            ("$R2".to_string(), "10".to_string()),
-        ]);
+        let registers = DashMap::new();
+        registers.insert("$R1".to_string(), "5".to_string());
+        registers.insert("$R2".to_string(), "10".to_string());
 
         let condition = Expression::Binary {
             left: Box::new(Param::Identifier("$R1".to_string())),
@@ -190,7 +207,7 @@ mod tests {
     async fn test_for_loop_execution() {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
-        let mut registers = HashMap::new();
+        let registers = DashMap::new();
 
         let loop_body = StepBody::RegisterOperation {
             register: "$Sum".to_string(),
@@ -207,88 +224,91 @@ mod tests {
         };
 
         executor
-            .execute_step_body(&for_loop, &mut registers)
+            .execute_step_body(&for_loop, &registers)
             .await
             .expect("Failed to execute for loop");
 
-        assert_eq!(registers.get("$Sum").unwrap(), "3"); // Assuming $Sum accumulates values of "$i"
+        assert_eq!(registers.get("$Sum").unwrap().as_str(), "3"); // Assuming $Sum accumulates values of "$i"
     }
 
-    #[tokio::test]
-    async fn test_step_executor() {
-        let dsl_input = r#"
-        workflow MyProcess v0.1 {
-            step Initialize {
-                $R1 = 5
-                $R2 = 10
-                $R3 = 0
-                $R4 = 20
-            }
-            step Compute {
-                if $R1 < $R2 {
-                    $R3 = call sum($R2, $R1)
+    #[test]
+    fn test_step_executor() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let dsl_input = r#"
+            workflow MyProcess v0.1 {
+                step Initialize {
+                    $R1 = 5
+                    $R2 = 10
+                    $R3 = 0
+                    $R4 = 20
+                }
+                step Compute {
+                    if $R1 < $R2 {
+                        $R3 = call sum($R2, $R1)
+                    }
+                }
+                step Divide {
+                    $R4 = call divide($R4, $R1)
+                }
+                step Finalize {
+                    $R3 = call sum($R3, $R1)
                 }
             }
-            step Divide {
-                $R4 = call divide($R4, $R1)
+            "#;
+    
+            let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+    
+            // Create function mappings
+            let mut functions: FunctionMap = HashMap::new();
+            functions.insert("sum".to_string(), Box::new(SumFunction) as Box<dyn AsyncFunction>);
+            functions.insert("divide".to_string(), Box::new(DivideFunction) as Box<dyn AsyncFunction>);
+    
+            // Create the WorkflowEngine with the function mappings
+            let engine = WorkflowEngine::new(&functions);
+    
+            // Create the StepExecutor iterator
+            let mut step_executor = engine.iter(&workflow);
+    
+            // Execute the workflow step by step
+            for (i, result) in step_executor.by_ref().enumerate() {
+                let registers = result.expect("Failed to execute step");
+                println!("Iteration {}: {:?}", i, registers);
+                match i {
+                    0 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
+                        assert_eq!(registers.get("$R3").unwrap().as_str(), "0");
+                        assert_eq!(registers.get("$R4").unwrap().as_str(), "20");
+                    }
+                    1 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
+                        assert_eq!(registers.get("$R3").unwrap().as_str(), "15"); // 10 + 5
+                        assert_eq!(registers.get("$R4").unwrap().as_str(), "20");
+                    }
+                    2 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
+                        assert_eq!(registers.get("$R3").unwrap().as_str(), "15");
+                        assert_eq!(registers.get("$R4").unwrap().as_str(), "4"); // 20 / 5
+                    }
+                    3 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
+                        assert_eq!(registers.get("$R3").unwrap().as_str(), "20"); // 15 + 5
+                        assert_eq!(registers.get("$R4").unwrap().as_str(), "4");
+                    }
+                    _ => panic!("Unexpected iteration"),
+                }
             }
-            step Finalize {
-                $R3 = call sum($R3, $R1)
-            }
-        }
-        "#;
-
-        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
-
-        // Create function mappings
-        let mut functions: FunctionMap = HashMap::new();
-        functions.insert("sum".to_string(), Box::new(SumFunction) as Box<dyn AsyncFunction>);
-        functions.insert("divide".to_string(), Box::new(DivideFunction) as Box<dyn AsyncFunction>);
-
-        // Create the WorkflowEngine with the function mappings
-        let engine = WorkflowEngine::new(&functions);
-
-        // Create the StepExecutor iterator
-        let mut step_executor = engine.iter(&workflow);
-
-        // Execute the workflow step by step
-        for (i, result) in step_executor.by_ref().enumerate() {
-            let registers = result.expect("Failed to execute step");
-            println!("Iteration {}: {:?}", i, registers);
-            match i {
-                0 => {
-                    assert_eq!(registers.get("$R1").unwrap(), "5");
-                    assert_eq!(registers.get("$R2").unwrap(), "10");
-                    assert_eq!(registers.get("$R3").unwrap(), "0");
-                    assert_eq!(registers.get("$R4").unwrap(), "20");
-                }
-                1 => {
-                    assert_eq!(registers.get("$R1").unwrap(), "5");
-                    assert_eq!(registers.get("$R2").unwrap(), "10");
-                    assert_eq!(registers.get("$R3").unwrap(), "15"); // 10 + 5
-                    assert_eq!(registers.get("$R4").unwrap(), "20");
-                }
-                2 => {
-                    assert_eq!(registers.get("$R1").unwrap(), "5");
-                    assert_eq!(registers.get("$R2").unwrap(), "10");
-                    assert_eq!(registers.get("$R3").unwrap(), "15");
-                    assert_eq!(registers.get("$R4").unwrap(), "4"); // 20 / 5
-                }
-                3 => {
-                    assert_eq!(registers.get("$R1").unwrap(), "5");
-                    assert_eq!(registers.get("$R2").unwrap(), "10");
-                    assert_eq!(registers.get("$R3").unwrap(), "20"); // 15 + 5
-                    assert_eq!(registers.get("$R4").unwrap(), "4");
-                }
-                _ => panic!("Unexpected iteration"),
-            }
-        }
-        // Check the final results
-        let final_registers = step_executor.registers;
-        assert_eq!(final_registers.get("$R1").unwrap(), "5");
-        assert_eq!(final_registers.get("$R2").unwrap(), "10");
-        assert_eq!(final_registers.get("$R3").unwrap(), "20");
-        assert_eq!(final_registers.get("$R4").unwrap(), "4"); // 20 / 5 = 4
+            // Check the final results
+            let final_registers = step_executor.registers;
+            assert_eq!(final_registers.get("$R1").unwrap().as_str(), "5");
+            assert_eq!(final_registers.get("$R2").unwrap().as_str(), "10");
+            assert_eq!(final_registers.get("$R3").unwrap().as_str(), "20");
+            assert_eq!(final_registers.get("$R4").unwrap().as_str(), "4"); // 20 / 5 = 4
+        });
     }
 
     #[tokio::test]
@@ -297,7 +317,7 @@ mod tests {
         functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
 
         let executor = WorkflowEngine::new(&functions);
-        let mut registers = HashMap::new();
+        let mut registers = DashMap::new();
         registers.insert("$S1".to_string(), "Hello".to_string());
         registers.insert("$S2".to_string(), "World".to_string());
 
@@ -310,11 +330,11 @@ mod tests {
         });
 
         executor
-            .execute_action(&action, &mut registers)
+            .execute_action(&action, &registers)
             .await
             .expect("Failed to execute action");
 
-        assert_eq!(registers.get("$S1").unwrap(), "HelloWorld"); // Assuming the result is stored back in "$S1"
+        assert_eq!(registers.get("$S1").unwrap().as_str(), "HelloWorld"); // Assuming the result is stored back in "$S1"
     }
 
     #[tokio::test]
@@ -351,12 +371,46 @@ mod tests {
 
         // Check the results
         assert_eq!(
-            registers.get("$R1").unwrap(),
+            registers.get("$R1").unwrap().as_str(),
             "Inference result for: Tell me about the Economy of the Roman Empire"
         );
         assert_eq!(
-            registers.get("$R2").unwrap(),
+            registers.get("$R2").unwrap().as_str(),
             "Tell me about the Economy of the Roman Empire"
         );
+    }
+
+    #[tokio::test]
+    async fn test_clone_workflow() {
+        let dsl_input = r#"
+        workflow MyProcess v0.1 {
+            step Initialize {
+                $R1 = ""
+                $R2 = "Clone this string"
+            }
+            step Clone {
+                $R1 = call clone($R2)
+            }
+        }
+        "#;
+
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+
+        // Create function mappings
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert("clone".to_string(), Box::new(CloneWithDelayFunction) as Box<dyn AsyncFunction>);
+
+        // Create the WorkflowEngine with the function mappings
+        let executor = WorkflowEngine::new(&functions);
+
+        // Execute the workflow
+        let registers = executor
+            .execute_workflow(&workflow)
+            .await
+            .expect("Failed to execute workflow");
+
+        // Check the results
+        assert_eq!(registers.get("$R1").unwrap().as_str(), "Clone this string");
+        assert_eq!(registers.get("$R2").unwrap().as_str(), "Clone this string");
     }
 }

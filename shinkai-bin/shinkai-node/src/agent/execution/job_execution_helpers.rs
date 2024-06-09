@@ -194,6 +194,7 @@ impl JobManager {
     ) -> Result<LLMInferenceResponse, AgentError> {
         let agent_cloned = agent.clone();
         let prompt_cloned = filled_prompt.clone();
+
         let task_response = tokio::spawn(async move {
             let agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference_markdown(prompt_cloned).await

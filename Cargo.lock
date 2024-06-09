@@ -6405,6 +6405,7 @@ name = "shinkai_dsl"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dashmap",
  "futures",
  "pest",
  "pest_derive",
