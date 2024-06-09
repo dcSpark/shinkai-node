@@ -32,7 +32,7 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
         Rule::action => {
             println!("Parsing action");
             StepBody::Action(parse_action(pair))
-        },
+        }
         Rule::condition => {
             println!("Parsing condition");
             let mut inner_pairs = pair.into_inner();
@@ -43,7 +43,7 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 condition: expression,
                 body: Box::new(body),
             }
-        },
+        }
         Rule::for_loop => {
             println!("Parsing for loop");
             let mut loop_inner_pairs = pair.into_inner();
@@ -55,17 +55,21 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 in_expr: parse_expression(in_expr_pair),
                 action: Box::new(parse_step_body_item(action_pair)),
             }
-        },
+        }
         Rule::register_operation => {
             println!("Parsing register operation");
             let mut register_inner_pairs = pair.into_inner();
-            let register_pair = register_inner_pairs.next().expect("Expected register in register operation");
-            let value_pair = register_inner_pairs.next().expect("Expected value in register operation");
+            let register_pair = register_inner_pairs
+                .next()
+                .expect("Expected register in register operation");
+            let value_pair = register_inner_pairs
+                .next()
+                .expect("Expected value in register operation");
             StepBody::RegisterOperation {
                 register: register_pair.as_str().to_string(),
                 value: parse_workflow_value(value_pair),
             }
-        },
+        }
         _ => panic!("Unexpected rule in step body item: {:?}", pair.as_rule()),
     }
 }
@@ -81,7 +85,9 @@ pub fn parse_value_or_call(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
 pub fn parse_external_fn_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall {
     println!("Parsing external function call");
     let mut inner_pairs = pair.into_inner();
-    let name_pair = inner_pairs.next().expect("Expected function name in external function call");
+    let name_pair = inner_pairs
+        .next()
+        .expect("Expected function name in external function call");
     let args = inner_pairs.map(parse_param).collect();
 
     FunctionCall {
@@ -271,10 +277,8 @@ pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue 
             } else {
                 WorkflowValue::Identifier(input.to_string())
             }
-        },
-        Rule::external_fn_call => {
-            WorkflowValue::FunctionCall(parse_external_fn_call(pair))
-        },
+        }
+        Rule::external_fn_call => WorkflowValue::FunctionCall(parse_external_fn_call(pair)),
         _ => panic!("Unexpected rule in parse_workflow_value: {:?}", pair.as_rule()),
     }
 }
@@ -311,8 +315,8 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
 
     Ok(Workflow {
         name: workflow_name,
-        version: version,
-        steps: steps,
+        version,
+        steps,
     })
 }
 

@@ -3,14 +3,63 @@ mod tests {
     use std::any::Any;
     use std::collections::HashMap;
 
+    use async_trait::async_trait;
     use shinkai_dsl::{
         dsl_schemas::{Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, WorkflowValue},
         parser::parse_workflow,
-        sm_executor::{WorkflowEngine, WorkflowError},
+        sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
     };
 
-    #[test]
-    fn test_workflow_executor() {
+    struct SumFunction;
+
+    #[async_trait]
+    impl AsyncFunction for SumFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            Ok(Box::new((x + y).to_string()))
+        }
+    }
+
+    struct MultiplyFunction;
+
+    #[async_trait]
+    impl AsyncFunction for MultiplyFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            Ok(Box::new((x * y).to_string()))
+        }
+    }
+
+    struct DivideFunction;
+
+    #[async_trait]
+    impl AsyncFunction for DivideFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+            if y == 0 {
+                Err(WorkflowError::FunctionError("Division by zero".to_string()))
+            } else {
+                Ok(Box::new((x / y).to_string()))
+            }
+        }
+    }
+
+    struct ConcatFunction;
+
+    #[async_trait]
+    impl AsyncFunction for ConcatFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let s1 = args[0].downcast_ref::<String>().unwrap();
+            let s2 = args[1].downcast_ref::<String>().unwrap();
+            Ok(Box::new(format!("{}{}", s1, s2)))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_executor() {
         let dsl_input = r#"
         workflow MyProcess v0.1 {
             step Initialize {
@@ -57,14 +106,7 @@ mod tests {
 
         // Create function mappings
         let mut functions = HashMap::new();
-        functions.insert(
-            "sum".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                Ok(Box::new((x + y).to_string()))
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
-        );
+        functions.insert("sum".to_string(), Box::new(SumFunction) as Box<dyn AsyncFunction>);
 
         eprintln!("\n\n\nStarting workflow execution");
         // Create the WorkflowEngine with the function mappings
@@ -73,6 +115,7 @@ mod tests {
         // Execute the workflow
         let registers = executor
             .execute_workflow(&workflow)
+            .await
             .expect("Failed to execute workflow");
         eprintln!("Registers: {:?}", registers);
 
@@ -82,16 +125,12 @@ mod tests {
         assert_eq!(registers.get("$R3").unwrap(), "20");
     }
 
-    #[test]
-    fn test_execute_action_external_function_call() {
-        let mut functions = HashMap::new();
+    #[tokio::test]
+    async fn test_execute_action_external_function_call() {
+        let mut functions: FunctionMap = HashMap::new();
         functions.insert(
             "multiply".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                Ok(Box::new((x * y).to_string()))
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
+            Box::new(MultiplyFunction) as Box<dyn AsyncFunction>,
         );
 
         let executor = WorkflowEngine::new(&functions);
@@ -109,6 +148,7 @@ mod tests {
 
         executor
             .execute_action(&action, &mut registers)
+            .await
             .expect("Failed to execute action");
 
         assert_eq!(*registers.get("$R1").unwrap(), "50"); // Assuming the result is stored back in "$R1"
@@ -129,11 +169,13 @@ mod tests {
             right: Box::new(Param::Identifier("$R2".to_string())),
         };
 
-        assert!(executor.evaluate_condition(&condition, &registers).expect("Failed to evaluate condition"));
+        assert!(executor
+            .evaluate_condition(&condition, &registers)
+            .expect("Failed to evaluate condition"));
     }
 
-    #[test]
-    fn test_for_loop_execution() {
+    #[tokio::test]
+    async fn test_for_loop_execution() {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let mut registers = HashMap::new();
@@ -154,13 +196,14 @@ mod tests {
 
         executor
             .execute_step_body(&for_loop, &mut registers)
+            .await
             .expect("Failed to execute for loop");
 
         assert_eq!(registers.get("$Sum").unwrap(), "3"); // Assuming $Sum accumulates values of "$i"
     }
 
-    #[test]
-    fn test_step_executor() {
+    #[tokio::test]
+    async fn test_step_executor() {
         let dsl_input = r#"
         workflow MyProcess v0.1 {
             step Initialize {
@@ -186,27 +229,9 @@ mod tests {
         let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
 
         // Create function mappings
-        let mut functions = HashMap::new();
-        functions.insert(
-            "sum".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                Ok(Box::new((x + y).to_string()))
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
-        );
-        functions.insert(
-            "divide".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                if y == 0 {
-                    Err(WorkflowError::FunctionError("Division by zero".to_string()))
-                } else {
-                    Ok(Box::new((x / y).to_string()))
-                }
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
-        );
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert("sum".to_string(), Box::new(SumFunction) as Box<dyn AsyncFunction>);
+        functions.insert("divide".to_string(), Box::new(DivideFunction) as Box<dyn AsyncFunction>);
 
         // Create the WorkflowEngine with the function mappings
         let engine = WorkflowEngine::new(&functions);
@@ -254,17 +279,10 @@ mod tests {
         assert_eq!(final_registers.get("$R4").unwrap(), "4"); // 20 / 5 = 4
     }
 
-    #[test]
-    fn test_string_concatenation() {
-        let mut functions = HashMap::new();
-        functions.insert(
-            "concat".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let s1 = args[0].downcast_ref::<String>().unwrap();
-                let s2 = args[1].downcast_ref::<String>().unwrap();
-                Ok(Box::new(format!("{}{}", s1, s2)))
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
-        );
+    #[tokio::test]
+    async fn test_string_concatenation() {
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
 
         let executor = WorkflowEngine::new(&functions);
         let mut registers = HashMap::new();
@@ -281,6 +299,7 @@ mod tests {
 
         executor
             .execute_action(&action, &mut registers)
+            .await
             .expect("Failed to execute action");
 
         assert_eq!(registers.get("$S1").unwrap(), "HelloWorld"); // Assuming the result is stored back in "$S1"

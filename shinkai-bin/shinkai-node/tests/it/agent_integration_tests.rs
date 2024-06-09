@@ -462,6 +462,7 @@ fn node_agent_registration() {
                     content: "testing old message".to_string(),
                     files_inbox: "".to_string(),
                     parent: None,
+                    workflow: None,
                 };
                 let body = serde_json::to_string(&job_message)
                     .map_err(|_| "Failed to serialize job message to JSON")

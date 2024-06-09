@@ -144,6 +144,7 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: Some(parent_hash),
+            workflow: None, // TODO: needs update
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -181,6 +182,7 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: None,
+            workflow: None, // TODO: needs update
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

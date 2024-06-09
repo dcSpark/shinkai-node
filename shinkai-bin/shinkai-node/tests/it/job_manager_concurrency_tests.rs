@@ -1,4 +1,4 @@
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -53,7 +53,7 @@ fn generate_message_with_text(
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
@@ -70,8 +70,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 fn default_test_profile() -> ShinkaiName {
@@ -106,7 +105,7 @@ async fn test_process_job_queue_concurrency() {
     init_default_tracing();
     utils::db_handlers::setup();
 
-    let NUM_THREADS = 8;
+    let num_threads = 8;
     let db_path = "db_tests/";
     let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
@@ -165,11 +164,11 @@ async fn test_process_job_queue_concurrency() {
         db_weak.clone(),
         vector_fs_weak.clone(),
         node_name.clone(),
-        NUM_THREADS,
+        num_threads,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, vector_fs, node_name, identity_sk, generator, unstructured_api| {
+        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -191,6 +190,7 @@ async fn test_process_job_queue_concurrency() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -228,7 +228,7 @@ async fn test_sequential_process_for_same_job_id() {
     init_default_tracing();
     super::utils::db_handlers::setup();
 
-    let NUM_THREADS = 8;
+    let num_threads = 8;
     let db_path = "db_tests/";
     let db = Arc::new(ShinkaiDB::new(db_path).unwrap());
     let vector_fs = Arc::new(setup_default_vector_fs().await);
@@ -286,12 +286,12 @@ async fn test_sequential_process_for_same_job_id() {
         job_queue_manager,
         db_weak.clone(),
         vector_fs_weak.clone(),
-        node_name.clone(), 
-        NUM_THREADS,
+        node_name.clone(),
+        num_threads,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, db, vector_fs, node_name, identity_sk, generator, unstructured_api| {
+        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -312,6 +312,7 @@ async fn test_sequential_process_for_same_job_id() {
                 content: format!("my content {}", i).to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );

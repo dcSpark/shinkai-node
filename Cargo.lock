@@ -6404,10 +6404,13 @@ dependencies = [
 name = "shinkai_dsl"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "futures",
  "pest",
  "pest_derive",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

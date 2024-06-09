@@ -1,5 +1,9 @@
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::{any::Any, fmt};
+
+use async_trait::async_trait;
+use futures::Future;
 
 use crate::dsl_schemas::{
     Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
@@ -18,6 +22,8 @@ TODOs:
 pub enum WorkflowError {
     FunctionError(String),
     EvaluationError(String),
+    ExecutionError(String),
+    InvalidArgument(String),
 }
 
 impl fmt::Display for WorkflowError {
@@ -25,14 +31,20 @@ impl fmt::Display for WorkflowError {
         match self {
             WorkflowError::FunctionError(msg) => write!(f, "Function error: {}", msg),
             WorkflowError::EvaluationError(msg) => write!(f, "Evaluation error: {}", msg),
+            WorkflowError::ExecutionError(msg) => write!(f, "Execution error: {}", msg),
+            WorkflowError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
         }
     }
 }
 
 impl std::error::Error for WorkflowError {}
 
-pub type FunctionMap<'a> =
-    HashMap<String, Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync + 'a>>;
+#[async_trait]
+pub trait AsyncFunction: Send + Sync {
+    async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>;
+}
+
+pub type FunctionMap<'a> = HashMap<String, Box<dyn AsyncFunction + 'a>>;
 
 pub struct WorkflowEngine<'a> {
     functions: &'a FunctionMap<'a>,
@@ -50,66 +62,72 @@ impl<'a> WorkflowEngine<'a> {
         WorkflowEngine { functions }
     }
 
-    pub fn execute_workflow(&self, workflow: &Workflow) -> Result<HashMap<String, String>, WorkflowError> {
+    pub async fn execute_workflow(&self, workflow: &Workflow) -> Result<HashMap<String, String>, WorkflowError> {
         let mut registers = HashMap::new();
         for step in &workflow.steps {
             for body in &step.body {
-                self.execute_step_body(body, &mut registers)?;
+                self.execute_step_body(body, &mut registers).await?;
             }
         }
         Ok(registers)
     }
 
-    pub fn execute_step_body(
-        &self,
-        step_body: &StepBody,
-        registers: &mut HashMap<String, String>,
-    ) -> Result<(), WorkflowError> {
-        match step_body {
-            StepBody::Action(action) => self.execute_action(action, registers),
-            StepBody::Condition { condition, body } => {
-                if self.evaluate_condition(condition, registers)? {
-                    self.execute_step_body(body, registers)?;
-                }
-                Ok(())
-            }
-            StepBody::ForLoop { var, in_expr, action } => {
-                if let Expression::Range { start, end } = in_expr {
-                    let start = self.evaluate_param(start.as_ref(), registers).parse::<i32>().unwrap_or(0);
-                    let end = self.evaluate_param(end.as_ref(), registers).parse::<i32>().unwrap_or(0);
-                    for i in start..=end {
-                        registers.insert(var.clone(), i.to_string());
-                        self.execute_step_body(action, registers)?;
+    pub fn execute_step_body<'b>(
+        &'b self,
+        step_body: &'b StepBody,
+        registers: &'b mut HashMap<String, String>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), WorkflowError>> + Send + 'b>> {
+        Box::pin(async move {
+            match step_body {
+                StepBody::Action(action) => self.execute_action(action, registers).await,
+                StepBody::Condition { condition, body } => {
+                    if self.evaluate_condition(condition, registers)? {
+                        self.execute_step_body(body, registers).await?;
                     }
+                    Ok(())
                 }
-                Ok(())
-            }
-            StepBody::RegisterOperation { register, value } => {
-                println!("Setting register {} to {:?}", register, value);
-                let value = self.evaluate_workflow_value(value, registers);
-                println!("Value: {}", value);
-                registers.insert(register.clone(), value);
-                Ok(())
-            }
-            StepBody::Composite(bodies) => {
-                for body in bodies {
-                    self.execute_step_body(body, registers)?;
+                StepBody::ForLoop { var, in_expr, action } => {
+                    if let Expression::Range { start, end } = in_expr {
+                        let start = self.evaluate_param(start.as_ref(), registers).parse::<i32>().unwrap_or(0);
+                        let end = self.evaluate_param(end.as_ref(), registers).parse::<i32>().unwrap_or(0);
+                        for i in start..=end {
+                            registers.insert(var.clone(), i.to_string());
+                            self.execute_step_body(action, registers).await?;
+                        }
+                    }
+                    Ok(())
                 }
-                Ok(())
+                StepBody::RegisterOperation { register, value } => {
+                    println!("Setting register {} to {:?}", register, value);
+                    let value = self.evaluate_workflow_value(value, registers).await;
+                    println!("Value: {}", value);
+                    registers.insert(register.clone(), value);
+                    Ok(())
+                }
+                StepBody::Composite(bodies) => {
+                    for body in bodies {
+                        self.execute_step_body(body, registers).await?;
+                    }
+                    Ok(())
+                }
             }
-        }
+        })
     }
 
-    pub fn execute_action(&self, action: &Action, registers: &mut HashMap<String, String>) -> Result<(), WorkflowError> {
+    pub async fn execute_action(
+        &self,
+        action: &Action,
+        registers: &mut HashMap<String, String>,
+    ) -> Result<(), WorkflowError> {
         println!("Executing action: {:?}", action);
         match action {
             Action::ExternalFnCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
                     let arg_values = args
                         .iter()
-                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any>)
+                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any + Send>)
                         .collect();
-                    let result = func(arg_values)?;
+                    let result = func.call(arg_values).await?;
                     if let Ok(result) = result.downcast::<String>() {
                         if let Some(Param::Identifier(register_name)) = args.first() {
                             registers.insert(register_name.clone(), (*result).clone());
@@ -122,13 +140,20 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, String>) -> Result<bool, WorkflowError> {
+    pub fn evaluate_condition(
+        &self,
+        expression: &Expression,
+        registers: &HashMap<String, String>,
+    ) -> Result<bool, WorkflowError> {
         match expression {
             Expression::Binary { left, operator, right } => {
-                let left_val = self.evaluate_param(left, registers).parse::<i32>()
+                let left_val = self
+                    .evaluate_param(left, registers)
+                    .parse::<i32>()
                     .map_err(|_| WorkflowError::EvaluationError(format!("Failed to parse left operand: {:?}", left)))?;
-                let right_val = self.evaluate_param(right, registers).parse::<i32>()
-                    .map_err(|_| WorkflowError::EvaluationError(format!("Failed to parse right operand: {:?}", right)))?;
+                let right_val = self.evaluate_param(right, registers).parse::<i32>().map_err(|_| {
+                    WorkflowError::EvaluationError(format!("Failed to parse right operand: {:?}", right))
+                })?;
                 let result = match operator {
                     ComparisonOperator::Less => left_val < right_val,
                     ComparisonOperator::Greater => left_val > right_val,
@@ -139,7 +164,9 @@ impl<'a> WorkflowEngine<'a> {
                 };
                 Ok(result)
             }
-            _ => Err(WorkflowError::EvaluationError("Unsupported expression type".to_string())),
+            _ => Err(WorkflowError::EvaluationError(
+                "Unsupported expression type".to_string(),
+            )),
         }
     }
 
@@ -162,7 +189,7 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, String>) -> String {
+    pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, String>) -> String {
         match value {
             WorkflowValue::Number(n) => n.to_string(),
             WorkflowValue::Identifier(id) => registers.get(id).cloned().unwrap_or_else(|| "0".to_string()),
@@ -170,9 +197,9 @@ impl<'a> WorkflowEngine<'a> {
                 if let Some(func) = self.functions.get(name) {
                     let arg_values = args
                         .iter()
-                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any>)
+                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any + Send>)
                         .collect();
-                    let result = func(arg_values);
+                    let result = func.call(arg_values).await;
                     match result {
                         Ok(result) => {
                             if let Ok(result) = result.downcast::<String>() {
@@ -216,7 +243,7 @@ impl<'a> Iterator for StepExecutor<'a> {
         if self.current_step < self.workflow.steps.len() {
             let step = &self.workflow.steps[self.current_step];
             for body in &step.body {
-                if let Err(e) = self.engine.execute_step_body(body, &mut self.registers) {
+                if let Err(e) = futures::executor::block_on(self.engine.execute_step_body(body, &mut self.registers)) {
                     return Some(Err(e));
                 }
             }
