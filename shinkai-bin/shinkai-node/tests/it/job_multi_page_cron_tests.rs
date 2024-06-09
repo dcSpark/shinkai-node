@@ -21,7 +21,6 @@ use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use std::env;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
@@ -250,6 +249,7 @@ fn job_from_cron_multi_page() {
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                     "",
+                    None,
                 )
                 .await;
 

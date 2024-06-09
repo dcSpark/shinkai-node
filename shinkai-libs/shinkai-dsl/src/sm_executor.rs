@@ -191,7 +191,9 @@ impl<'a> WorkflowEngine<'a> {
 
     pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, String>) -> String {
         match value {
+            WorkflowValue::String(s) => s.clone(),
             WorkflowValue::Number(n) => n.to_string(),
+            WorkflowValue::Boolean(b) => b.to_string(),
             WorkflowValue::Identifier(id) => registers.get(id).cloned().unwrap_or_else(|| "0".to_string()),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {

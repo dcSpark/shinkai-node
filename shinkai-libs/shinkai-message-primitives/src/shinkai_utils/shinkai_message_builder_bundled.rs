@@ -130,6 +130,7 @@ impl ShinkaiMessageBuilder {
         content: String,
         files_inbox: String,
         parent_hash: String,
+        workflow: Option<String>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -144,7 +145,7 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: Some(parent_hash),
-            workflow: None, // TODO: needs update
+            workflow,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -182,7 +183,7 @@ impl ShinkaiMessageBuilder {
             content,
             files_inbox,
             parent: None,
-            workflow: None, // TODO: needs update
+            workflow: None, // the agent wont be sending you a workflow
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

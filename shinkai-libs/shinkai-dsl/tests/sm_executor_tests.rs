@@ -58,6 +58,18 @@ mod tests {
         }
     }
 
+    struct InferenceFunction;
+
+    #[async_trait]
+    impl AsyncFunction for InferenceFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            let input = args[0].downcast_ref::<String>().unwrap();
+            // Simulate an inference result
+            let result = format!("Inference result for: {}", input);
+            Ok(Box::new(result))
+        }
+    }
+
     #[tokio::test]
     async fn test_workflow_executor() {
         let dsl_input = r#"
@@ -303,5 +315,48 @@ mod tests {
             .expect("Failed to execute action");
 
         assert_eq!(registers.get("$S1").unwrap(), "HelloWorld"); // Assuming the result is stored back in "$S1"
+    }
+
+    #[tokio::test]
+    async fn test_inference_workflow() {
+        let dsl_input = r#"
+        workflow MyProcess v0.1 {
+            step Initialize {
+                $R1 = ""
+                $R2 = "Tell me about the Economy of the Roman Empire"
+            }
+            step Inference {
+                $R1 = call inference($R2)
+            }
+        }
+        "#;
+
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+
+        // Create function mappings
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert(
+            "inference".to_string(),
+            Box::new(InferenceFunction) as Box<dyn AsyncFunction>,
+        );
+
+        // Create the WorkflowEngine with the function mappings
+        let executor = WorkflowEngine::new(&functions);
+
+        // Execute the workflow
+        let registers = executor
+            .execute_workflow(&workflow)
+            .await
+            .expect("Failed to execute workflow");
+
+        // Check the results
+        assert_eq!(
+            registers.get("$R1").unwrap(),
+            "Inference result for: Tell me about the Economy of the Roman Empire"
+        );
+        assert_eq!(
+            registers.get("$R2").unwrap(),
+            "Tell me about the Economy of the Roman Empire"
+        );
     }
 }
