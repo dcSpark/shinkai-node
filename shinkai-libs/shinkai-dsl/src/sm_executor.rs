@@ -42,7 +42,7 @@ pub struct StepExecutor<'a> {
     engine: &'a WorkflowEngine<'a>,
     workflow: &'a Workflow,
     pub current_step: usize,
-    pub registers: HashMap<String, i32>,
+    pub registers: HashMap<String, String>,
 }
 
 impl<'a> WorkflowEngine<'a> {
@@ -50,7 +50,7 @@ impl<'a> WorkflowEngine<'a> {
         WorkflowEngine { functions }
     }
 
-    pub fn execute_workflow(&self, workflow: &Workflow) -> Result<HashMap<String, i32>, WorkflowError> {
+    pub fn execute_workflow(&self, workflow: &Workflow) -> Result<HashMap<String, String>, WorkflowError> {
         let mut registers = HashMap::new();
         for step in &workflow.steps {
             for body in &step.body {
@@ -63,22 +63,22 @@ impl<'a> WorkflowEngine<'a> {
     pub fn execute_step_body(
         &self,
         step_body: &StepBody,
-        registers: &mut HashMap<String, i32>,
+        registers: &mut HashMap<String, String>,
     ) -> Result<(), WorkflowError> {
         match step_body {
             StepBody::Action(action) => self.execute_action(action, registers),
             StepBody::Condition { condition, body } => {
-                if self.evaluate_condition(condition, registers) {
+                if self.evaluate_condition(condition, registers)? {
                     self.execute_step_body(body, registers)?;
                 }
                 Ok(())
             }
             StepBody::ForLoop { var, in_expr, action } => {
                 if let Expression::Range { start, end } = in_expr {
-                    let start = self.evaluate_param(start.as_ref(), registers);
-                    let end = self.evaluate_param(end.as_ref(), registers);
+                    let start = self.evaluate_param(start.as_ref(), registers).parse::<i32>().unwrap_or(0);
+                    let end = self.evaluate_param(end.as_ref(), registers).parse::<i32>().unwrap_or(0);
                     for i in start..=end {
-                        registers.insert(var.clone(), i);
+                        registers.insert(var.clone(), i.to_string());
                         self.execute_step_body(action, registers)?;
                     }
                 }
@@ -100,7 +100,7 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn execute_action(&self, action: &Action, registers: &mut HashMap<String, i32>) -> Result<(), WorkflowError> {
+    pub fn execute_action(&self, action: &Action, registers: &mut HashMap<String, String>) -> Result<(), WorkflowError> {
         println!("Executing action: {:?}", action);
         match action {
             Action::ExternalFnCall(FunctionCall { name, args }) => {
@@ -110,9 +110,9 @@ impl<'a> WorkflowEngine<'a> {
                         .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any>)
                         .collect();
                     let result = func(arg_values)?;
-                    if let Ok(result) = result.downcast::<i32>() {
+                    if let Ok(result) = result.downcast::<String>() {
                         if let Some(Param::Identifier(register_name)) = args.first() {
-                            registers.insert(register_name.clone(), *result);
+                            registers.insert(register_name.clone(), (*result).clone());
                         }
                     }
                 }
@@ -122,45 +122,50 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, i32>) -> bool {
+    pub fn evaluate_condition(&self, expression: &Expression, registers: &HashMap<String, String>) -> Result<bool, WorkflowError> {
         match expression {
             Expression::Binary { left, operator, right } => {
-                let left_val = self.evaluate_param(left, registers);
-                let right_val = self.evaluate_param(right, registers);
-                match operator {
+                let left_val = self.evaluate_param(left, registers).parse::<i32>()
+                    .map_err(|_| WorkflowError::EvaluationError(format!("Failed to parse left operand: {:?}", left)))?;
+                let right_val = self.evaluate_param(right, registers).parse::<i32>()
+                    .map_err(|_| WorkflowError::EvaluationError(format!("Failed to parse right operand: {:?}", right)))?;
+                let result = match operator {
                     ComparisonOperator::Less => left_val < right_val,
                     ComparisonOperator::Greater => left_val > right_val,
                     ComparisonOperator::Equal => left_val == right_val,
                     ComparisonOperator::NotEqual => left_val != right_val,
                     ComparisonOperator::LessEqual => left_val <= right_val,
                     ComparisonOperator::GreaterEqual => left_val >= right_val,
-                }
+                };
+                Ok(result)
             }
-            _ => false,
+            _ => Err(WorkflowError::EvaluationError("Unsupported expression type".to_string())),
         }
     }
 
-    pub fn evaluate_param(&self, param: &Param, registers: &HashMap<String, i32>) -> i32 {
+    pub fn evaluate_param(&self, param: &Param, registers: &HashMap<String, String>) -> String {
+        eprintln!("Evaluating param: {:?}", param);
+        eprintln!("Registers: {:?}", registers);
         match param {
-            Param::Number(n) => *n as i32,
-            Param::Identifier(id) | Param::Register(id) => registers.get(id).copied().unwrap_or_else(|| {
+            Param::Number(n) => n.to_string(),
+            Param::Identifier(id) | Param::Register(id) => registers.get(id).cloned().unwrap_or_else(|| {
                 eprintln!(
                     "Warning: Identifier/Register '{}' not found in registers, defaulting to 0",
                     id
                 );
-                0
+                "0".to_string()
             }),
             _ => {
                 eprintln!("Warning: Unsupported parameter type, defaulting to 0");
-                0
+                "0".to_string()
             }
         }
     }
 
-    pub fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, i32>) -> i32 {
+    pub fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &HashMap<String, String>) -> String {
         match value {
-            WorkflowValue::Number(n) => *n as i32,
-            WorkflowValue::Identifier(id) => *registers.get(id).unwrap_or(&0),
+            WorkflowValue::Number(n) => n.to_string(),
+            WorkflowValue::Identifier(id) => registers.get(id).cloned().unwrap_or_else(|| "0".to_string()),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
                     let arg_values = args
@@ -170,26 +175,26 @@ impl<'a> WorkflowEngine<'a> {
                     let result = func(arg_values);
                     match result {
                         Ok(result) => {
-                            if let Ok(result) = result.downcast::<i32>() {
-                                *result
+                            if let Ok(result) = result.downcast::<String>() {
+                                (*result).clone()
                             } else {
-                                eprintln!("Function call to '{}' did not return an i32.", name);
-                                0
+                                eprintln!("Function call to '{}' did not return a String.", name);
+                                "0".to_string()
                             }
                         }
                         Err(err) => {
                             eprintln!("Error executing function '{}': {}", name, err);
-                            0
+                            "0".to_string()
                         }
                     }
                 } else {
                     eprintln!("Function '{}' not found.", name);
-                    0
+                    "0".to_string()
                 }
             }
             _ => {
                 eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
-                0
+                "0".to_string()
             }
         }
     }
@@ -205,7 +210,7 @@ impl<'a> WorkflowEngine<'a> {
 }
 
 impl<'a> Iterator for StepExecutor<'a> {
-    type Item = Result<HashMap<String, i32>, WorkflowError>;
+    type Item = Result<HashMap<String, String>, WorkflowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_step < self.workflow.steps.len() {

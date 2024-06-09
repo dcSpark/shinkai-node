@@ -12,7 +12,7 @@ mod tests {
     #[test]
     fn test_workflow_executor() {
         let dsl_input = r#"
-        workflow MyProcess v1.0 {
+        workflow MyProcess v0.1 {
             step Initialize {
                 $R1 = 5
                 $R2 = 10
@@ -34,7 +34,7 @@ mod tests {
 
         // Assert the workflow name and version
         assert_eq!(workflow.name, "MyProcess");
-        assert_eq!(workflow.version, "v1.0");
+        assert_eq!(workflow.version, "v0.1");
 
         // Assert the number of steps
         assert_eq!(workflow.steps.len(), 3);
@@ -60,9 +60,9 @@ mod tests {
         functions.insert(
             "sum".to_string(),
             Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = *args[0].downcast_ref::<i32>().unwrap();
-                let y = *args[1].downcast_ref::<i32>().unwrap();
-                Ok(Box::new(x + y))
+                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                Ok(Box::new((x + y).to_string()))
             }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
 
@@ -77,9 +77,9 @@ mod tests {
         eprintln!("Registers: {:?}", registers);
 
         // Check the results
-        assert_eq!(*registers.get("$R1").unwrap(), 5);
-        assert_eq!(*registers.get("$R2").unwrap(), 10);
-        assert_eq!(*registers.get("$R3").unwrap(), 20);
+        assert_eq!(registers.get("$R1").unwrap(), "5");
+        assert_eq!(registers.get("$R2").unwrap(), "10");
+        assert_eq!(registers.get("$R3").unwrap(), "20");
     }
 
     #[test]
@@ -88,17 +88,17 @@ mod tests {
         functions.insert(
             "multiply".to_string(),
             Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = *args[0].downcast_ref::<i32>().unwrap();
-                let y = *args[1].downcast_ref::<i32>().unwrap();
-                Ok(Box::new(x * y))
+                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                Ok(Box::new((x * y).to_string()))
             }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
-    
+
         let executor = WorkflowEngine::new(&functions);
         let mut registers = HashMap::new();
-        registers.insert("$R1".to_string(), 5);
-        registers.insert("$R2".to_string(), 10);
-    
+        registers.insert("$R1".to_string(), "5".to_string());
+        registers.insert("$R2".to_string(), "10".to_string());
+
         let action = Action::ExternalFnCall(FunctionCall {
             name: "multiply".to_string(),
             args: vec![
@@ -106,17 +106,22 @@ mod tests {
                 Param::Identifier("$R2".to_string()),
             ],
         });
-    
-        executor.execute_action(&action, &mut registers).expect("Failed to execute action");
-    
-        assert_eq!(*registers.get("$R1").unwrap(), 50); // Assuming the result is stored back in "$R1"
+
+        executor
+            .execute_action(&action, &mut registers)
+            .expect("Failed to execute action");
+
+        assert_eq!(*registers.get("$R1").unwrap(), "50"); // Assuming the result is stored back in "$R1"
     }
 
     #[test]
     fn test_evaluate_condition() {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
-        let registers = HashMap::from([("$R1".to_string(), 5), ("$R2".to_string(), 10)]);
+        let registers = HashMap::from([
+            ("$R1".to_string(), "5".to_string()),
+            ("$R2".to_string(), "10".to_string()),
+        ]);
 
         let condition = Expression::Binary {
             left: Box::new(Param::Identifier("$R1".to_string())),
@@ -124,7 +129,7 @@ mod tests {
             right: Box::new(Param::Identifier("$R2".to_string())),
         };
 
-        assert!(executor.evaluate_condition(&condition, &registers));
+        assert!(executor.evaluate_condition(&condition, &registers).expect("Failed to evaluate condition"));
     }
 
     #[test]
@@ -147,15 +152,17 @@ mod tests {
             action: Box::new(loop_body),
         };
 
-        executor.execute_step_body(&for_loop, &mut registers).expect("Failed to execute for loop");
+        executor
+            .execute_step_body(&for_loop, &mut registers)
+            .expect("Failed to execute for loop");
 
-        assert_eq!(*registers.get("$Sum").unwrap(), 3); // Assuming $Sum accumulates values of "$i"
+        assert_eq!(registers.get("$Sum").unwrap(), "3"); // Assuming $Sum accumulates values of "$i"
     }
 
     #[test]
     fn test_step_executor() {
         let dsl_input = r#"
-        workflow MyProcess v1.0 {
+        workflow MyProcess v0.1 {
             step Initialize {
                 $R1 = 5
                 $R2 = 10
@@ -183,20 +190,20 @@ mod tests {
         functions.insert(
             "sum".to_string(),
             Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = *args[0].downcast_ref::<i32>().unwrap();
-                let y = *args[1].downcast_ref::<i32>().unwrap();
-                Ok(Box::new(x + y))
+                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                Ok(Box::new((x + y).to_string()))
             }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
         functions.insert(
             "divide".to_string(),
             Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = *args[0].downcast_ref::<i32>().unwrap();
-                let y = *args[1].downcast_ref::<i32>().unwrap();
+                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
+                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
                 if y == 0 {
                     Err(WorkflowError::FunctionError("Division by zero".to_string()))
                 } else {
-                    Ok(Box::new(x / y))
+                    Ok(Box::new((x / y).to_string()))
                 }
             }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
         );
@@ -213,37 +220,69 @@ mod tests {
             println!("Iteration {}: {:?}", i, registers);
             match i {
                 0 => {
-                    assert_eq!(*registers.get("$R1").unwrap(), 5);
-                    assert_eq!(*registers.get("$R2").unwrap(), 10);
-                    assert_eq!(*registers.get("$R3").unwrap(), 0);
-                    assert_eq!(*registers.get("$R4").unwrap(), 20);
+                    assert_eq!(registers.get("$R1").unwrap(), "5");
+                    assert_eq!(registers.get("$R2").unwrap(), "10");
+                    assert_eq!(registers.get("$R3").unwrap(), "0");
+                    assert_eq!(registers.get("$R4").unwrap(), "20");
                 }
                 1 => {
-                    assert_eq!(*registers.get("$R1").unwrap(), 5);
-                    assert_eq!(*registers.get("$R2").unwrap(), 10);
-                    assert_eq!(*registers.get("$R3").unwrap(), 15); // 10 + 5
-                    assert_eq!(*registers.get("$R4").unwrap(), 20);
+                    assert_eq!(registers.get("$R1").unwrap(), "5");
+                    assert_eq!(registers.get("$R2").unwrap(), "10");
+                    assert_eq!(registers.get("$R3").unwrap(), "15"); // 10 + 5
+                    assert_eq!(registers.get("$R4").unwrap(), "20");
                 }
                 2 => {
-                    assert_eq!(*registers.get("$R1").unwrap(), 5);
-                    assert_eq!(*registers.get("$R2").unwrap(), 10);
-                    assert_eq!(*registers.get("$R3").unwrap(), 15);
-                    assert_eq!(*registers.get("$R4").unwrap(), 4); // 20 / 5
+                    assert_eq!(registers.get("$R1").unwrap(), "5");
+                    assert_eq!(registers.get("$R2").unwrap(), "10");
+                    assert_eq!(registers.get("$R3").unwrap(), "15");
+                    assert_eq!(registers.get("$R4").unwrap(), "4"); // 20 / 5
                 }
                 3 => {
-                    assert_eq!(*registers.get("$R1").unwrap(), 5);
-                    assert_eq!(*registers.get("$R2").unwrap(), 10);
-                    assert_eq!(*registers.get("$R3").unwrap(), 20); // 15 + 5
-                    assert_eq!(*registers.get("$R4").unwrap(), 4);
+                    assert_eq!(registers.get("$R1").unwrap(), "5");
+                    assert_eq!(registers.get("$R2").unwrap(), "10");
+                    assert_eq!(registers.get("$R3").unwrap(), "20"); // 15 + 5
+                    assert_eq!(registers.get("$R4").unwrap(), "4");
                 }
                 _ => panic!("Unexpected iteration"),
             }
         }
         // Check the final results
         let final_registers = step_executor.registers;
-        assert_eq!(*final_registers.get("$R1").unwrap(), 5);
-        assert_eq!(*final_registers.get("$R2").unwrap(), 10);
-        assert_eq!(*final_registers.get("$R3").unwrap(), 20);
-        assert_eq!(*final_registers.get("$R4").unwrap(), 4); // 20 / 5 = 4
+        assert_eq!(final_registers.get("$R1").unwrap(), "5");
+        assert_eq!(final_registers.get("$R2").unwrap(), "10");
+        assert_eq!(final_registers.get("$R3").unwrap(), "20");
+        assert_eq!(final_registers.get("$R4").unwrap(), "4"); // 20 / 5 = 4
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        let mut functions = HashMap::new();
+        functions.insert(
+            "concat".to_string(),
+            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
+                let s1 = args[0].downcast_ref::<String>().unwrap();
+                let s2 = args[1].downcast_ref::<String>().unwrap();
+                Ok(Box::new(format!("{}{}", s1, s2)))
+            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
+        );
+
+        let executor = WorkflowEngine::new(&functions);
+        let mut registers = HashMap::new();
+        registers.insert("$S1".to_string(), "Hello".to_string());
+        registers.insert("$S2".to_string(), "World".to_string());
+
+        let action = Action::ExternalFnCall(FunctionCall {
+            name: "concat".to_string(),
+            args: vec![
+                Param::Identifier("$S1".to_string()),
+                Param::Identifier("$S2".to_string()),
+            ],
+        });
+
+        executor
+            .execute_action(&action, &mut registers)
+            .expect("Failed to execute action");
+
+        assert_eq!(registers.get("$S1").unwrap(), "HelloWorld"); // Assuming the result is stored back in "$S1"
     }
 }
