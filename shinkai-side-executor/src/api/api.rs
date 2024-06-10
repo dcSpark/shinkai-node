@@ -55,6 +55,12 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
         .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_generate_from_file_handler(form));
 
+    let vrkai_vector_search = warp::path!("v1" / "vrkai" / "vector-search")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
+        .and(warp::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |form: warp::multipart::FormData| api_handlers::vrkai_vector_search_handler(form));
+
     let vrkai_view_contents = warp::path!("v1" / "vrkai" / "view-contents")
         .and(warp::post())
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
@@ -94,6 +100,7 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let routes = pdf_extract_to_text_groups
         .or(vrkai_generate_from_file)
+        .or(vrkai_vector_search)
         .or(vrkai_view_contents)
         .or(vrpack_generate_from_files)
         .or(vrpack_generate_from_vrkais)

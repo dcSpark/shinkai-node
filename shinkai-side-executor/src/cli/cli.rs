@@ -2,10 +2,10 @@ use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator,
+    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
     file_parser::file_parser_types::TextGroup,
     model_type::EmbeddingModelType,
-    vector_resource::{VRKai, VRPack, VRPath},
+    vector_resource::{RetrievedNode, VRKai, VRPack, VRPath},
 };
 
 use crate::{
@@ -65,6 +65,30 @@ pub struct VrkaiGenerateFromFileArgs {
 
     #[arg(long)]
     pub embedding_gen_key: Option<String>,
+}
+
+#[derive(Parser)]
+pub struct VrkaiVectorSearchArgs {
+    #[arg(short, long, value_name = "FILE")]
+    pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+
+    #[arg(long, default_value = "snowflake-arctic-embed:xs")]
+    pub embedding_model: String,
+
+    #[arg(long, default_value = "https://internal.shinkai.com/x-embed-api/")]
+    pub embedding_gen_url: String,
+
+    #[arg(long)]
+    pub embedding_gen_key: Option<String>,
+
+    #[arg(short, long, default_value = "3")]
+    pub num_of_results: u64,
+
+    #[arg(short, long)]
+    pub query_string: String,
 }
 
 #[derive(Parser)]
@@ -169,6 +193,7 @@ pub enum PdfCommands {
 #[derive(Subcommand)]
 pub enum VrkaiCommands {
     GenerateFromFile(VrkaiGenerateFromFileArgs),
+    VectorSearch(VrkaiVectorSearchArgs),
     ViewContents(VrkaiViewContentsArgs),
 }
 
@@ -211,6 +236,23 @@ impl Cli {
                         std::fs::write(output_file, encoded_vrkai)?;
                     } else {
                         print!("{}", encoded_vrkai);
+                    }
+                }
+                VrkaiCommands::VectorSearch(vrkai_args) => {
+                    let results = Cli::vrkai_vector_search(
+                        &vrkai_args.file,
+                        &vrkai_args.embedding_model,
+                        &vrkai_args.embedding_gen_url,
+                        vrkai_args.embedding_gen_key,
+                        vrkai_args.num_of_results,
+                        &vrkai_args.query_string,
+                    )
+                    .await?;
+
+                    if let Some(output_file) = vrkai_args.output {
+                        std::fs::write(output_file, serde_json::to_string(&results)?)?;
+                    } else {
+                        println!("{}", serde_json::to_string(&results)?);
                     }
                 }
                 VrkaiCommands::ViewContents(vrkai_args) => {
@@ -313,6 +355,28 @@ impl Cli {
             }
             Err(e) => Err(e),
         }
+    }
+
+    async fn vrkai_vector_search(
+        file_path: &PathBuf,
+        embedding_model: &str,
+        embedding_gen_url: &str,
+        embedding_gen_key: Option<String>,
+        num_of_results: u64,
+        query_string: &str,
+    ) -> anyhow::Result<Vec<RetrievedNode>> {
+        let file_data = std::fs::read(file_path)?;
+        let vrkai = VRKai::from_bytes(&file_data)?;
+        let generator = RemoteEmbeddingGenerator::new(
+            EmbeddingModelType::from_string(&embedding_model)?,
+            embedding_gen_url,
+            embedding_gen_key,
+        );
+
+        let query_embedding = generator.generate_embedding_default(&query_string).await?;
+        let results = vrkai.vector_search(query_embedding, num_of_results);
+
+        Ok(results)
     }
 
     async fn vrkai_view_contents(file_path: &PathBuf) -> anyhow::Result<VRKai> {

@@ -4,7 +4,7 @@ use shinkai_side_executor::{api, models::dto::VRPackContent};
 use shinkai_vector_resources::{
     embedding_generator::RemoteEmbeddingGenerator,
     file_parser::file_parser_types::TextGroup,
-    vector_resource::{VRKai, VRPack},
+    vector_resource::{RetrievedNode, VRKai, VRPack},
 };
 use std::{
     io::Cursor,
@@ -47,6 +47,22 @@ fn cli_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 
     assert!(trimmed_output.len() > 0);
     assert!(VRKai::from_base64(&trimmed_output).is_ok());
+
+    Ok(())
+}
+
+#[test]
+fn cli_vrkai_vector_search() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrkai")
+        .arg("vector-search")
+        .arg("-f=../files/shinkai_intro.vrkai")
+        .arg("-q=Explain Shinkai Network Manifesto");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let _output: Vec<RetrievedNode> = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
 
     Ok(())
 }
@@ -237,6 +253,53 @@ fn api_vrkai_generate_from_file() -> Result<(), Box<dyn std::error::Error>> {
 
         let response = response.text().await.unwrap();
         let _vrkai = VRKai::from_base64(&response).unwrap();
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrkai_vector_search() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        // Test valid VRKai
+        let vrkai = std::fs::read_to_string("../files/shinkai_intro.vrkai").unwrap();
+        let form = multipart::Form::new()
+            .part("encoded_vrkai", multipart::Part::text(vrkai))
+            .part(
+                "query_string",
+                multipart::Part::text("Who are pushing in this direction?"),
+            );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrkai/vector-search")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+
+        let results = response.json::<Vec<RetrievedNode>>().await.unwrap();
+
+        results.iter().for_each(|result| {
+            println!(
+                "Score: {}, Text: {}",
+                result.score,
+                result.node.get_text_content().unwrap()
+            );
+        });
 
         abort_handler.abort();
     });
