@@ -1,10 +1,6 @@
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::agent::{
-    execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
-};
-use shinkai_vector_resources::{
-    source::VRSourceReference,
-};
+use crate::agent::execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage};
+use shinkai_vector_resources::source::VRSourceReference;
 
 impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource

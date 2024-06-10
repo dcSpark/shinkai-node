@@ -1,12 +1,11 @@
 use crate::{
     agent::{error::AgentError, job::JobStepResult},
-    managers::model_capabilities_manager::{ModelCapabilitiesManager},
+    managers::model_capabilities_manager::ModelCapabilitiesManager,
 };
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
-use std::{collections::HashMap};
+use std::{collections::HashMap, fmt};
 use tiktoken_rs::ChatCompletionRequestMessage;
-
 
 pub struct JobPromptGenerator {}
 
@@ -26,15 +25,18 @@ pub enum SubPromptType {
     User,
     System,
     Assistant,
+    ExtraContext,
 }
 
-impl ToString for SubPromptType {
-    fn to_string(&self) -> String {
-        match self {
-            SubPromptType::User => "user".to_string(),
-            SubPromptType::System => "system".to_string(),
-            SubPromptType::Assistant => "assistant".to_string(),
-        }
+impl fmt::Display for SubPromptType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            SubPromptType::User => "user",
+            SubPromptType::System => "system",
+            SubPromptType::Assistant => "assistant",
+            SubPromptType::ExtraContext => "user",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -72,6 +74,11 @@ impl SubPrompt {
             SubPrompt::Asset(_, _, content, _, _) => content.len(),
             SubPrompt::EBNF(_, ebnf, _, _) => ebnf.len(),
         }
+    }
+
+    /// Checks if the SubPrompt content is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Generates a human/LLM-readable output string from the SubPrompt content
@@ -161,7 +168,6 @@ impl SubPrompt {
             return 0;
         }
 
-        
         ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()])
     }
 
@@ -368,34 +374,10 @@ impl Prompt {
         let mut count = 0;
         let mut sub_prompts_list = Vec::new();
 
-        // sub_prompts_list.push(SubPrompt::Content(
-        //     SubPromptType::System,
-        //     "Here are the previous conversation messages:".to_string(),
-        //     priority_value,
-        // ));
-
-        // Update max previous history if the max characters is under specific limits
-        let max_previous_history = if max_characters_in_prompt < 5000 {
-            1
-        } else {
-            max_previous_history
-        };
-
-        // Set a value for maximum step history prompt content based on max characters
-        let max_step_history_prompt_content = if max_characters_in_prompt < 5000 {
-            100
-        } else if max_characters_in_prompt < 33000 {
-            400
-        } else {
-            800
-        };
-
         while let Some(step) = history.pop() {
             if let Some(prompt) = step.get_result_prompt() {
                 for sub_prompt in prompt.sub_prompts {
-                    let mut sub_prompt = sub_prompt.clone();
-                    sub_prompt.trim_content_to_length(max_step_history_prompt_content);
-                    sub_prompts_list.push(sub_prompt);
+                    sub_prompts_list.push(sub_prompt.clone());
                 }
                 count += 1;
                 if count >= max_previous_history {
@@ -458,17 +440,6 @@ impl Prompt {
             return Err(AgentError::UserPromptMissingEBNFDefinition);
         }
         Ok(())
-    }
-
-    fn generate_ebnf_response_string(&self, ebnf: &str, retry: bool) -> String {
-        if retry {
-            format!("An EBNF option to respond with: {} ", ebnf)
-        } else {
-            format!(
-                "Then respond using the following markdown formatting and absolutely nothing else: {} ",
-                ebnf
-            )
-        }
     }
 
     /// Processes all sub-prompts into a single output String.
