@@ -1,9 +1,8 @@
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::providers::shared::ollama::{ollama_conversation_prepare_messages, OllamaAPIStreamingResponse};
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
-use super::shared::openai::openai_prepare_messages;
 use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -57,6 +56,11 @@ impl LLMProvider for Ollama {
                 ShinkaiLogLevel::Info,
                 format!("Messages JSON: {:?}", messages_json).as_str(),
             );
+            // Print messages_json as a pretty JSON string
+            match serde_json::to_string_pretty(&messages_json) {
+                Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+            };
 
             let payload = json!({
                 "model": self.model_type,
