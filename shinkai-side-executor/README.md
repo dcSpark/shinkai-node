@@ -107,5 +107,5 @@ cargo run --release -- pdf extract-to-text-groups --file=<PDF_FILE> --max-node-t
 ## Running tests
 
 ```sh
-PDFIUM_STATIC_LIB_PATH="path-to/pdfium-lib-directory" cargo test
+PDFIUM_STATIC_LIB_PATH="path-to/pdfium-lib-directory" cargo test -- --test-threads=1
 ```

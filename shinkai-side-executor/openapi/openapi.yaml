@@ -309,6 +309,56 @@ paths:
             text/plain:
               schema:
                 type: string
+  /v1/vrpack/vector-search:
+    post:
+      summary: Performs a vector search that returns the most similar nodes
+      tags:
+        - VRPack
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                encoded_vrpack:
+                  type: string
+                embedding_model:
+                  type: string
+                  default: snowflake-arctic-embed:xs
+                embedding_gen_url:
+                  type: string
+                  default: https://internal.shinkai.com/x-embed-api/
+                embedding_gen_key:
+                  type: string
+                num_of_results:
+                  type: integer
+                  default: 3
+                num_of_vrkais_to_search_into:
+                  type: integer
+                  default: 50
+                query_string:
+                  type: string
+              required:
+                - encoded_vrpack
+                - query_string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VectorSearchResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invalid request"
   /v1/vrpack/view-contents:
     post:
       summary: Returns a JSON representation of a VRPack

@@ -58,11 +58,14 @@ fn cli_vrkai_vector_search() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("vrkai")
         .arg("vector-search")
         .arg("-f=../files/shinkai_intro.vrkai")
+        .arg("-n=5")
         .arg("-q=Explain Shinkai Network Manifesto");
 
     assert!(cmd.output().unwrap().status.success());
 
-    let _output: Vec<RetrievedNode> = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
+    let output: Vec<RetrievedNode> = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
+
+    assert_eq!(output.len(), 5);
 
     Ok(())
 }
@@ -171,6 +174,25 @@ fn cli_vrpack_add_folder() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn cli_vrpack_vector_search() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
+
+    cmd.arg("vrpack")
+        .arg("vector-search")
+        .arg("-f=../files/shinkai_intro.vrpack")
+        .arg("-n=5")
+        .arg("-q=Explain Shinkai Network Manifesto");
+
+    assert!(cmd.output().unwrap().status.success());
+
+    let output: Vec<RetrievedNode> = serde_json::from_reader(Cursor::new(cmd.output().unwrap().stdout))?;
+
+    assert_eq!(output.len(), 5);
+
+    Ok(())
+}
+
+#[test]
 fn cli_vrpack_view_contents() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("shinkai-side-executor")?;
 
@@ -272,14 +294,11 @@ fn api_vrkai_vector_search() -> Result<(), Box<dyn std::error::Error>> {
 
         let abort_handler = server_handle.abort_handle();
 
-        // Test valid VRKai
         let vrkai = std::fs::read_to_string("../files/shinkai_intro.vrkai").unwrap();
         let form = multipart::Form::new()
             .part("encoded_vrkai", multipart::Part::text(vrkai))
-            .part(
-                "query_string",
-                multipart::Part::text("Who are pushing in this direction?"),
-            );
+            .part("num_of_results", multipart::Part::text("5"))
+            .part("query_string", multipart::Part::text("What is Shinkai?"));
 
         let client = reqwest::Client::new();
         let response = client
@@ -293,13 +312,7 @@ fn api_vrkai_vector_search() -> Result<(), Box<dyn std::error::Error>> {
 
         let results = response.json::<Vec<RetrievedNode>>().await.unwrap();
 
-        results.iter().for_each(|result| {
-            println!(
-                "Score: {}, Text: {}",
-                result.score,
-                result.node.get_text_content().unwrap()
-            );
-        });
+        assert_eq!(results.len(), 5);
 
         abort_handler.abort();
     });
@@ -509,6 +522,44 @@ fn api_vrpack_add_folder() -> Result<(), Box<dyn std::error::Error>> {
         let _vrpack = VRPack::from_base64(&response).unwrap();
 
         _vrpack.print_internal_structure(None);
+
+        abort_handler.abort();
+    });
+    rt.shutdown_background();
+
+    Ok(())
+}
+
+#[test]
+fn api_vrpack_vector_search() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        let server_handle = tokio::spawn(async {
+            let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8090);
+            let _ = api::run_api(address).await;
+        });
+
+        let abort_handler = server_handle.abort_handle();
+
+        let vrpack = std::fs::read_to_string("../files/shinkai_intro.vrpack").unwrap();
+        let form = multipart::Form::new()
+            .part("encoded_vrpack", multipart::Part::text(vrpack))
+            .part("num_of_results", multipart::Part::text("5"))
+            .part("query_string", multipart::Part::text("What is Shinkai?"));
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post("http://127.0.0.1:8090/v1/vrpack/vector-search")
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success());
+
+        let results = response.json::<Vec<RetrievedNode>>().await.unwrap();
+
+        assert_eq!(results.len(), 5);
 
         abort_handler.abort();
     });

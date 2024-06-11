@@ -170,6 +170,33 @@ pub struct VrpackAddFolderArgs {
 }
 
 #[derive(Parser)]
+pub struct VrpackVectorSearchArgs {
+    #[arg(short, long, value_name = "FILE")]
+    pub file: PathBuf,
+
+    #[arg(short, long, value_name = "OUTPUT_FILE")]
+    pub output: Option<PathBuf>,
+
+    #[arg(long, default_value = "snowflake-arctic-embed:xs")]
+    pub embedding_model: String,
+
+    #[arg(long, default_value = "https://internal.shinkai.com/x-embed-api/")]
+    pub embedding_gen_url: String,
+
+    #[arg(long)]
+    pub embedding_gen_key: Option<String>,
+
+    #[arg(short, long, default_value = "3")]
+    pub num_of_results: u64,
+
+    #[arg(long, default_value = "50")]
+    pub num_of_vrkais_to_search_into: u64,
+
+    #[arg(short, long)]
+    pub query_string: String,
+}
+
+#[derive(Parser)]
 pub struct VrpackViewContentsArgs {
     #[arg(short, long, value_name = "FILE")]
     pub file: PathBuf,
@@ -203,6 +230,7 @@ pub enum VrpackCommands {
     GenerateFromVrkais(VrpackGenerateFromVrkaisArgs),
     AddVrkais(VrpackAddVrkaisArgs),
     AddFolder(VrpackAddFolderArgs),
+    VectorSearch(VrpackVectorSearchArgs),
     ViewContents(VrpackViewContentsArgs),
 }
 
@@ -310,6 +338,24 @@ impl Cli {
                         std::fs::write(output_file, encoded_vrpack)?;
                     } else {
                         print!("{}", encoded_vrpack);
+                    }
+                }
+                VrpackCommands::VectorSearch(vrpack_args) => {
+                    let results = Cli::vrpack_vector_search(
+                        &vrpack_args.file,
+                        &vrpack_args.embedding_model,
+                        &vrpack_args.embedding_gen_url,
+                        vrpack_args.embedding_gen_key,
+                        vrpack_args.num_of_results,
+                        vrpack_args.num_of_vrkais_to_search_into,
+                        &vrpack_args.query_string,
+                    )
+                    .await?;
+
+                    if let Some(output_file) = vrpack_args.output {
+                        std::fs::write(output_file, serde_json::to_string(&results)?)?;
+                    } else {
+                        println!("{}", serde_json::to_string(&results)?);
                     }
                 }
                 VrpackCommands::ViewContents(vrpack_args) => {
@@ -480,6 +526,35 @@ impl Cli {
 
         let encoded_vrpack = vrpack.encode_as_base64()?;
         Ok(encoded_vrpack)
+    }
+
+    async fn vrpack_vector_search(
+        file_path: &PathBuf,
+        embedding_model: &str,
+        embedding_gen_url: &str,
+        embedding_gen_key: Option<String>,
+        num_of_results: u64,
+        num_of_vrkais_to_search_into: u64,
+        query_string: &str,
+    ) -> anyhow::Result<Vec<RetrievedNode>> {
+        let file_data = std::fs::read(file_path)?;
+        let vrpack = VRPack::from_bytes(&file_data)?;
+        let generator = RemoteEmbeddingGenerator::new(
+            EmbeddingModelType::from_string(&embedding_model)?,
+            embedding_gen_url,
+            embedding_gen_key,
+        );
+
+        let results = vrpack
+            .dynamic_deep_vector_search(
+                query_string.to_string(),
+                num_of_vrkais_to_search_into,
+                num_of_results,
+                generator,
+            )
+            .await?;
+
+        Ok(results)
     }
 
     async fn vrpack_view_contents(file_path: &PathBuf) -> anyhow::Result<VRPackContent> {
