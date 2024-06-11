@@ -316,6 +316,7 @@ fn sandwich_messages_with_files_test() {
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                     "",
+                    None,
                 )
                 .await;
 
@@ -391,6 +392,7 @@ fn sandwich_messages_with_files_test() {
                     &new_job_message_content,
                     "",
                     "",
+                    None,
                 )
                 .await;
 

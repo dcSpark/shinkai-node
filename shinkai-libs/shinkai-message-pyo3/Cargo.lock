@@ -3272,7 +3272,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_pyo3"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "chrono",
  "ed25519-dalek",

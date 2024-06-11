@@ -1,9 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
-    use super::*;
-    use ed25519_dalek::SigningKey;
     use shinkai_message_primitives::{
         schemas::registration_code::RegistrationCode,
         shinkai_message::{
@@ -19,7 +15,6 @@ mod tests {
             signatures::{string_to_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
-    use x25519_dalek::{PublicKey, StaticSecret};
 
     #[test]
     fn test_job_message() {
@@ -35,7 +30,6 @@ mod tests {
         let node_sender = "@@localhost.shinkai".to_string();
         let node_receiver = "@@localhost.shinkai".to_string();
         let sender_subidentity = "main".to_string();
-        let scheduled_time = "2024-01-26T06:57:10.521Z".to_string();
         let inbox = "jobid_399c5571-3504-4aa7-a291-b1e086c1440c".to_string();
         let message_raw_content = "hello hello, are u there?".to_string();
 
@@ -44,9 +38,10 @@ mod tests {
             message_raw_content.clone(),
             "".to_string(),
             "".to_string(),
+            None,
             my_encryption_sk.clone(),
             my_signature_sk.clone(),
-            receiver_public_key.clone(),
+            receiver_public_key,
             node_sender.clone(),
             sender_subidentity.clone(),
             node_receiver.clone(),
@@ -77,7 +72,7 @@ mod tests {
     #[test]
     fn test_builder_with_all_fields_no_encryption() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
         let recipient = "@@other_node.shinkai".to_string();
@@ -121,12 +116,11 @@ mod tests {
     fn test_builder_with_all_fields_body_encryption() {
         println!("\n\n\ntest_builder_with_all_fields_body_encryption");
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
             .message_raw_content("body content".to_string())
@@ -172,12 +166,11 @@ mod tests {
     #[test]
     fn test_builder_with_all_fields_content_encryption() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
             .message_raw_content("body content".to_string())
@@ -225,10 +218,10 @@ mod tests {
     #[test]
     fn test_builder_use_code_registration() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-        let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-        let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        let (profile_identity_sk, _profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, _profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
         let recipient = "@@other_node.shinkai".to_string();
@@ -294,11 +287,11 @@ mod tests {
 
     #[test]
     fn test_initial_registration_with_no_code_for_device() {
-        let (my_device_identity_sk, my_device_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_device_encryption_sk, my_device_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_device_identity_sk, _my_device_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (my_device_encryption_sk, _my_device_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-        let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-        let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        let (profile_identity_sk, _profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, _profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = recipient.clone();
@@ -350,13 +343,9 @@ mod tests {
 
     #[test]
     fn test_builder_missing_fields() {
-        let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (my_identity_sk, _my_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
-
-        let recipient = "@@other_node.shinkai".to_string();
-        let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk).build();
         assert!(message_result.is_err());

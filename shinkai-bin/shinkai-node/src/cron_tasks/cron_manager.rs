@@ -341,6 +341,7 @@ impl CronManager {
             content: "".to_string(),
             files_inbox: inbox_name_result.unwrap(),
             parent: None,
+            workflow: None,
         };
 
         job_manager

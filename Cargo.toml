@@ -20,3 +20,4 @@ shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
+shinkai_dsl = { path = "./shinkai-libs/shinkai-dsl" }

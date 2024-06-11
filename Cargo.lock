@@ -6404,10 +6404,14 @@ dependencies = [
 name = "shinkai_dsl"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "dashmap",
+ "futures",
  "pest",
  "pest_derive",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -6524,6 +6528,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_crypto_identities",
+ "shinkai_dsl",
  "shinkai_fs_mirror",
  "shinkai_message_primitives",
  "shinkai_tcp_relayer",

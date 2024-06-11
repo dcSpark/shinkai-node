@@ -3,6 +3,7 @@
 mod it {
     mod a0_subscription_manager_tests;
     mod agent_integration_tests;
+    mod workflow_integration_tests;
     mod cron_job_tests;
     mod crypto_payment_tests;
     mod db_agents_tests;

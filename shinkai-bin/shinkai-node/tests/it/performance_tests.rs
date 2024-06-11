@@ -47,22 +47,22 @@ fn create_message(
 // #[test]
 fn test_big_file_performance() {
     let node1_identity_name = "@@node1.shinkai";
-    let node2_identity_name = "@@node2.shinkai";
+    let _node2_identity_name = "@@node2.shinkai";
 
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_node2_identity_sk, _node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_node2_encryption_sk, _node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     {
         let start = Instant::now();
         let take_size = 1048; // 1kb
         let _ = create_message(
             take_size,
-            node1_identity_name.clone(),
+            node1_identity_name,
             node1_encryption_sk.clone(),
-            node1_encryption_pk.clone(),
+            node1_encryption_pk,
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();
@@ -78,9 +78,9 @@ fn test_big_file_performance() {
         let take_size = 50000; // 50kb
         let _ = create_message(
             take_size,
-            node1_identity_name.clone(),
+            node1_identity_name,
             node1_encryption_sk.clone(),
-            node1_encryption_pk.clone(),
+            node1_encryption_pk,
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();
@@ -96,9 +96,9 @@ fn test_big_file_performance() {
         let take_size = 10_000_000; // 10mb
         let _ = create_message(
             take_size,
-            node1_identity_name.clone(),
+            node1_identity_name,
             node1_encryption_sk.clone(),
-            node1_encryption_pk.clone(),
+            node1_encryption_pk,
             clone_signature_secret_key(&node1_identity_sk),
         );
         let duration = start.elapsed();

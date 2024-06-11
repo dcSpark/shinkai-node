@@ -198,6 +198,7 @@ pub struct JobMessage {
     pub content: String,
     pub files_inbox: String,
     pub parent: Option<String>,
+    pub workflow: Option<String>,
 }
 
 impl JobMessage {

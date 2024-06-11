@@ -1,8 +1,8 @@
 use pest::Parser;
 
 use crate::dsl_schemas::{
-    Action, ComparisonOperator, Expression, FunctionCall, Param, Rule, Step, StepBody, Workflow, WorkflowParser,
-    WorkflowValue,
+    Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, Rule, Step, StepBody, Workflow,
+    WorkflowParser, WorkflowValue,
 };
 
 pub fn parse_step_body(pair: pest::iterators::Pair<Rule>) -> StepBody {
@@ -32,7 +32,7 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
         Rule::action => {
             println!("Parsing action");
             StepBody::Action(parse_action(pair))
-        },
+        }
         Rule::condition => {
             println!("Parsing condition");
             let mut inner_pairs = pair.into_inner();
@@ -43,29 +43,61 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 condition: expression,
                 body: Box::new(body),
             }
-        },
+        }
         Rule::for_loop => {
             println!("Parsing for loop");
             let mut loop_inner_pairs = pair.into_inner();
             let var_pair = loop_inner_pairs.next().expect("Expected variable in for loop");
             let in_expr_pair = loop_inner_pairs.next().expect("Expected expression in for loop");
-            let action_pair = loop_inner_pairs.next().expect("Expected action in for loop");
+            let body_pair = loop_inner_pairs.next().expect("Expected action in for loop");
+
+            let in_expr = match in_expr_pair.as_rule() {
+                Rule::split_expression => {
+                    let mut split_inner_pairs = in_expr_pair.into_inner();
+                    let source = parse_param(split_inner_pairs.next().expect("Expected source in split expression"));
+                    println!("Source in split expression: {:?}", source);
+                    
+                    let delimiter_pair = split_inner_pairs.next().expect("Expected delimiter in split expression");
+                    println!("Delimiter in split expression: {:?}", delimiter_pair.as_str());
+                    let delimiter = delimiter_pair.as_str().trim_matches('"').to_string();
+                    
+                    ForLoopExpression::Split { source, delimiter }
+                }
+                Rule::range_expression => ForLoopExpression::Range {
+                    start: Box::new(parse_param(
+                        in_expr_pair
+                            .clone()
+                            .into_inner()
+                            .next()
+                            .expect("Expected start of range"),
+                    )),
+                    end: Box::new(parse_param(
+                        in_expr_pair.clone().into_inner().nth(1).expect("Expected end of range"),
+                    )),
+                },
+                _ => panic!("Unexpected rule in for loop expression: {:?}", in_expr_pair.as_rule()),
+            };
+
             StepBody::ForLoop {
                 var: var_pair.as_str().to_string(),
-                in_expr: parse_expression(in_expr_pair),
-                action: Box::new(parse_step_body_item(action_pair)),
+                in_expr,
+                body: Box::new(parse_step_body(body_pair)),
             }
-        },
+        }
         Rule::register_operation => {
             println!("Parsing register operation");
             let mut register_inner_pairs = pair.into_inner();
-            let register_pair = register_inner_pairs.next().expect("Expected register in register operation");
-            let value_pair = register_inner_pairs.next().expect("Expected value in register operation");
+            let register_pair = register_inner_pairs
+                .next()
+                .expect("Expected register in register operation");
+            let value_pair = register_inner_pairs
+                .next()
+                .expect("Expected value in register operation");
             StepBody::RegisterOperation {
                 register: register_pair.as_str().to_string(),
                 value: parse_workflow_value(value_pair),
             }
-        },
+        }
         _ => panic!("Unexpected rule in step body item: {:?}", pair.as_rule()),
     }
 }
@@ -81,7 +113,9 @@ pub fn parse_value_or_call(pair: pest::iterators::Pair<Rule>) -> WorkflowValue {
 pub fn parse_external_fn_call(pair: pest::iterators::Pair<Rule>) -> FunctionCall {
     println!("Parsing external function call");
     let mut inner_pairs = pair.into_inner();
-    let name_pair = inner_pairs.next().expect("Expected function name in external function call");
+    let name_pair = inner_pairs
+        .next()
+        .expect("Expected function name in external function call");
     let args = inner_pairs.map(parse_param).collect();
 
     FunctionCall {
@@ -221,7 +255,7 @@ pub fn parse_param(pair: pest::iterators::Pair<Rule>) -> Param {
 }
 
 fn identify_param_type(input: &str) -> &str {
-    if input.starts_with("\"") && input.ends_with("\"") {
+    if input.starts_with('"') && input.ends_with('"') {
         "string"
     } else if input.contains("..") {
         "range"
@@ -257,7 +291,7 @@ pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue 
     match pair.as_rule() {
         Rule::value => {
             // Directly parse the value based on its content
-            if input.starts_with("\"") && input.ends_with("\"") {
+            if input.starts_with('"') && input.ends_with('"') {
                 let stripped_string = input.trim_matches('"').to_string();
                 WorkflowValue::String(stripped_string)
             } else if input.parse::<i64>().is_ok() {
@@ -271,10 +305,8 @@ pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue 
             } else {
                 WorkflowValue::Identifier(input.to_string())
             }
-        },
-        Rule::external_fn_call => {
-            WorkflowValue::FunctionCall(parse_external_fn_call(pair))
-        },
+        }
+        Rule::external_fn_call => WorkflowValue::FunctionCall(parse_external_fn_call(pair)),
         _ => panic!("Unexpected rule in parse_workflow_value: {:?}", pair.as_rule()),
     }
 }
@@ -311,8 +343,8 @@ pub fn parse_workflow(dsl_input: &str) -> Result<Workflow, String> {
 
     Ok(Workflow {
         name: workflow_name,
-        version: version,
-        steps: steps,
+        version,
+        steps,
     })
 }
 

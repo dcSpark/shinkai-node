@@ -66,7 +66,8 @@ pub enum AgentError {
     FailedSerdeParsingJSONString(String, serde_json::Error),
     FailedSerdeParsingXMLString(String, minidom::Error),
     ShinkaiMessageBuilderError(String),
-    TokenLimit(String)
+    TokenLimit(String),
+    WorkflowExecutionError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -140,7 +141,7 @@ impl fmt::Display for AgentError {
             AgentError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
             AgentError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
             AgentError::TokenLimit(s) => write!(f, "{}", s),
-     
+            AgentError::WorkflowExecutionError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -204,6 +205,7 @@ impl AgentError {
             AgentError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
             AgentError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
             AgentError::TokenLimit(_) => "TokenLimit",
+            AgentError::WorkflowExecutionError(_) => "WorkflowExecutionError",
         };
 
         let error_message = format!("{}", self);
@@ -299,5 +301,11 @@ impl From<ModelCapabilitiesManagerError> for AgentError {
 impl From<VectorFSError> for AgentError {
     fn from(err: VectorFSError) -> AgentError {
         AgentError::VectorFS(err)
+    }
+}
+
+impl From<String> for AgentError {
+    fn from(err: String) -> AgentError {
+        AgentError::WorkflowExecutionError(err)
     }
 }

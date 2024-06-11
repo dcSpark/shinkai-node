@@ -1,8 +1,9 @@
+use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedAgent,
+    AgentLLMInterface, Ollama, OpenAI, SerializedAgent,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -14,15 +15,11 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use std::env;
 use std::time::Duration;
 use std::time::Instant;
-use super::utils::test_boilerplate::run_test_one_node_network;
 
-use super::utils;
 use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
@@ -31,7 +28,7 @@ use mockito::Server;
 #[test]
 #[ignore]
 fn job_image_analysis() {
-    init_default_tracing(); 
+    init_default_tracing();
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -178,7 +175,7 @@ fn job_image_analysis() {
                     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
                     .await
                     .unwrap();
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
@@ -228,6 +225,7 @@ fn job_image_analysis() {
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                     "",
+                    None,
                 )
                 .await;
 
