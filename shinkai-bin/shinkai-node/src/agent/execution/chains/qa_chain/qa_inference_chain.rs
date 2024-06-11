@@ -236,8 +236,8 @@ impl QAInferenceChain {
                 }
             };
 
-                // TODO: Local LLMs struggle to summarize AND decide if it's enough content, it should be a consecutive process to avoid this issue
-                Ok(summary)
+        // TODO: Local LLMs struggle to summarize AND decide if it's enough content, it should be a consecutive process to avoid this issue
+        Ok(summary)
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
         // let mut new_search_text = new_search_text.clone();
