@@ -1235,6 +1235,7 @@ impl PyShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         receiver: String,
         receiver_subidentity: String,
+        workflow: Option<String>
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let job_id_clone = job_id.clone();
@@ -1243,6 +1244,7 @@ impl PyShinkaiMessageBuilder {
                 content,
                 files_inbox,
                 parent: Some(parent),
+                workflow
             };
 
             let body = match serde_json::to_string(&job_message) {
