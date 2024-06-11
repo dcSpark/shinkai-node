@@ -39,7 +39,7 @@ impl JobPromptGenerator {
 
         // Add up to previous step results from history
         if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 10, 98, 4000);
+            prompt.add_step_history(step_history, 98);
         }
 
         prompt.add_content(
