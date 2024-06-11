@@ -6,7 +6,9 @@ mod tests {
     use async_trait::async_trait;
     use dashmap::DashMap;
     use shinkai_dsl::{
-        dsl_schemas::{Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, WorkflowValue},
+        dsl_schemas::{
+            Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, WorkflowValue,
+        },
         parser::parse_workflow,
         sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
     };
@@ -54,8 +56,28 @@ mod tests {
     #[async_trait]
     impl AsyncFunction for ConcatFunction {
         async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
-            let s1 = args[0].downcast_ref::<String>().unwrap();
-            let s2 = args[1].downcast_ref::<String>().unwrap();
+            if args.len() < 2 {
+                return Err(WorkflowError::FunctionError(
+                    "Not enough arguments for concat".to_string(),
+                ));
+            }
+
+            // Log the arguments received by the function
+            for (i, arg) in args.iter().enumerate() {
+                if let Some(value) = arg.downcast_ref::<String>() {
+                    println!("ConcatFunction Argument {}: {:?}", i, value);
+                } else {
+                    println!("ConcatFunction Argument {}: Failed to downcast", i);
+                }
+            }
+
+            let s1 = args[0]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::FunctionError("Failed to downcast arg[0] to String".to_string()))?;
+            let s2 = args[1]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::FunctionError("Failed to downcast arg[1] to String".to_string()))?;
+
             Ok(Box::new(format!("{}{}", s1, s2)))
         }
     }
@@ -184,8 +206,8 @@ mod tests {
         assert_eq!(*registers.get("$R1").unwrap(), "50"); // Assuming the result is stored back in "$R1"
     }
 
-    #[test]
-    fn test_evaluate_condition() {
+    #[tokio::test]
+    async fn test_evaluate_condition() {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let registers = DashMap::new();
@@ -200,6 +222,7 @@ mod tests {
 
         assert!(executor
             .evaluate_condition(&condition, &registers)
+            .await
             .expect("Failed to evaluate condition"));
     }
 
@@ -210,17 +233,17 @@ mod tests {
         let registers = DashMap::new();
 
         let loop_body = StepBody::RegisterOperation {
-            register: "$Sum".to_string(),
+            register: "$Last".to_string(),
             value: WorkflowValue::Identifier("$i".to_string()),
         };
 
         let for_loop = StepBody::ForLoop {
             var: "$i".to_string(),
-            in_expr: Expression::Range {
+            in_expr: ForLoopExpression::Range {
                 start: Box::new(Param::Number(1)),
                 end: Box::new(Param::Number(3)),
             },
-            action: Box::new(loop_body),
+            body: Box::new(loop_body),
         };
 
         executor
@@ -228,7 +251,35 @@ mod tests {
             .await
             .expect("Failed to execute for loop");
 
-        assert_eq!(registers.get("$Sum").unwrap().as_str(), "3"); // Assuming $Sum accumulates values of "$i"
+        assert_eq!(registers.get("$Last").unwrap().as_str(), "3"); // Assuming $Sum accumulates values of "$i"
+    }
+
+    #[tokio::test]
+    async fn test_for_loop_split_sum_execution() {
+        let functions = HashMap::new();
+        let executor = WorkflowEngine::new(&functions);
+        let registers = DashMap::new();
+
+        let loop_body = StepBody::RegisterOperation {
+            register: "$Last".to_string(),
+            value: WorkflowValue::Identifier("$item".to_string()),
+        };
+
+        let for_loop = StepBody::ForLoop {
+            var: "$item".to_string(),
+            in_expr: ForLoopExpression::Split {
+                source: Param::String("1,2,3".to_string()),
+                delimiter: ",".to_string(),
+            },
+            body: Box::new(loop_body),
+        };
+
+        executor
+            .execute_step_body(&for_loop, &registers)
+            .await
+            .expect("Failed to execute for loop");
+
+        assert_eq!(registers.get("$Last").unwrap().as_str(), "3"); // Assuming $Sum accumulates values of "$item"
     }
 
     #[test]
@@ -256,20 +307,20 @@ mod tests {
                 }
             }
             "#;
-    
+
             let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
-    
+
             // Create function mappings
             let mut functions: FunctionMap = HashMap::new();
             functions.insert("sum".to_string(), Box::new(SumFunction) as Box<dyn AsyncFunction>);
             functions.insert("divide".to_string(), Box::new(DivideFunction) as Box<dyn AsyncFunction>);
-    
+
             // Create the WorkflowEngine with the function mappings
             let engine = WorkflowEngine::new(&functions);
-    
+
             // Create the StepExecutor iterator
             let mut step_executor = engine.iter(&workflow);
-    
+
             // Execute the workflow step by step
             for (i, result) in step_executor.by_ref().enumerate() {
                 let registers = result.expect("Failed to execute step");
@@ -291,7 +342,8 @@ mod tests {
                         assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
                         assert_eq!(registers.get("$R2").unwrap().as_str(), "10");
                         assert_eq!(registers.get("$R3").unwrap().as_str(), "15");
-                        assert_eq!(registers.get("$R4").unwrap().as_str(), "4"); // 20 / 5
+                        assert_eq!(registers.get("$R4").unwrap().as_str(), "4");
+                        // 20 / 5
                     }
                     3 => {
                         assert_eq!(registers.get("$R1").unwrap().as_str(), "5");
@@ -317,7 +369,7 @@ mod tests {
         functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
 
         let executor = WorkflowEngine::new(&functions);
-        let mut registers = DashMap::new();
+        let registers = DashMap::new();
         registers.insert("$S1".to_string(), "Hello".to_string());
         registers.insert("$S2".to_string(), "World".to_string());
 
@@ -398,7 +450,10 @@ mod tests {
 
         // Create function mappings
         let mut functions: FunctionMap = HashMap::new();
-        functions.insert("clone".to_string(), Box::new(CloneWithDelayFunction) as Box<dyn AsyncFunction>);
+        functions.insert(
+            "clone".to_string(),
+            Box::new(CloneWithDelayFunction) as Box<dyn AsyncFunction>,
+        );
 
         // Create the WorkflowEngine with the function mappings
         let executor = WorkflowEngine::new(&functions);
@@ -412,5 +467,42 @@ mod tests {
         // Check the results
         assert_eq!(registers.get("$R1").unwrap().as_str(), "Clone this string");
         assert_eq!(registers.get("$R2").unwrap().as_str(), "Clone this string");
+    }
+
+    #[tokio::test]
+    async fn test_for_loop_with_split() {
+        let dsl_input = r#"
+    workflow MyProcess v0.1 {
+        step Initialize {
+            $R1 = "red,blue,green"
+            $R2 = ""
+        }
+        step SplitAndIterate {
+            for item in $R1.split(",") {
+                $R2 = call concat($R2, item)
+            }
+        }
+    }
+    "#;
+
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+        eprintln!("workflow: {:?}", workflow);
+
+        // Create function mappings
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
+
+        // Create the WorkflowEngine with the function mappings
+        let executor = WorkflowEngine::new(&functions);
+
+        // Execute the workflow
+        let registers = executor
+            .execute_workflow(&workflow)
+            .await
+            .expect("Failed to execute workflow");
+
+        // Check the results
+        assert_eq!(registers.get("$R1").unwrap().as_str(), "red,blue,green");
+        assert_eq!(registers.get("$R2").unwrap().as_str(), "redbluegreen");
     }
 }

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::time::Duration;
 use std::{any::Any, fmt};
 
 use async_trait::async_trait;
@@ -8,10 +7,9 @@ use dashmap::DashMap;
 use futures::Future;
 use tokio::runtime::Runtime;
 use tokio::task;
-use tokio::time::sleep;
 
 use crate::dsl_schemas::{
-    Action, ComparisonOperator, Expression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
+    Action, ComparisonOperator, Expression, ForLoopExpression, FunctionCall, Param, StepBody, Workflow, WorkflowValue,
 };
 
 /*
@@ -86,21 +84,38 @@ impl<'a> WorkflowEngine<'a> {
             match step_body {
                 StepBody::Action(action) => self.execute_action(action, registers).await,
                 StepBody::Condition { condition, body } => {
-                    if self.evaluate_condition(condition, registers)? {
+                    if self.evaluate_condition(condition, registers).await? {
                         self.execute_step_body(body, registers).await?;
                     }
                     Ok(())
                 }
-                StepBody::ForLoop { var, in_expr, action } => {
-                    if let Expression::Range { start, end } = in_expr {
-                        let start = self
-                            .evaluate_param(start.as_ref(), registers)
-                            .parse::<i32>()
-                            .unwrap_or(0);
-                        let end = self.evaluate_param(end.as_ref(), registers).parse::<i32>().unwrap_or(0);
-                        for i in start..=end {
-                            registers.insert(var.clone(), i.to_string());
-                            self.execute_step_body(action, registers).await?;
+                StepBody::ForLoop { var, in_expr, body } => {
+                    match in_expr {
+                        ForLoopExpression::Range { start, end } => {
+                            let start = self
+                                .evaluate_param(start.as_ref(), registers)
+                                .await?
+                                .parse::<i32>()
+                                .unwrap_or(0);
+                            let end = self
+                                .evaluate_param(end.as_ref(), registers)
+                                .await?
+                                .parse::<i32>()
+                                .unwrap_or(0);
+                            for i in start..=end {
+                                registers.insert(var.clone(), i.to_string());
+                                self.execute_step_body(body, registers).await?;
+                            }
+                        }
+                        ForLoopExpression::Split { source, delimiter } => {
+                            let source_value = self.evaluate_param(source, registers).await?;
+                            eprintln!("Splitting source: {}", source_value);
+                            let parts: Vec<&str> = source_value.split(delimiter).collect();
+                            for part in parts {
+                                eprintln!("Part: {}", part);
+                                registers.insert(var.clone(), part.to_string());
+                                self.execute_step_body(body, registers).await?;
+                            }
                         }
                     }
                     Ok(())
@@ -131,30 +146,46 @@ impl<'a> WorkflowEngine<'a> {
         println!("Executing action: {:?}", action);
         match action {
             Action::ExternalFnCall(FunctionCall { name, args }) => {
+                println!("Function call: {}", name);
                 if let Some(func) = self.functions.get(name) {
-                    let arg_values = args
-                        .iter()
-                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any + Send>)
-                        .collect();
+                    let arg_values =
+                        futures::future::join_all(args.iter().map(|arg| self.evaluate_param(arg, registers))).await;
 
-                    // debug
-                    eprintln!("execute_action> before tokio task");
-                    // Simulate a task with tokio::spawn
-                    let task_response = tokio::spawn(async move {
-                        eprintln!("inside tokio task");
-                        sleep(Duration::from_millis(100)).await;
-                        "Simulated task response".to_string()
-                    })
-                    .await
-                    .map_err(|e| WorkflowError::FunctionError(format!("Task failed: {:?}", e)))?;
-                    // end debug
-
-                    let result = func.call(arg_values).await?;
-                    if let Ok(result) = result.downcast::<String>() {
-                        if let Some(Param::Identifier(register_name)) = args.first() {
-                            registers.insert(register_name.clone(), (*result).clone());
+                    let mut resolved_args = Vec::new();
+                    for (i, arg) in arg_values.into_iter().enumerate() {
+                        match arg {
+                            Ok(value) => {
+                                println!("Argument {}: {:?}", i, value);
+                                resolved_args.push(Box::new(value) as Box<dyn Any + Send>);
+                            }
+                            Err(e) => {
+                                println!("Failed to evaluate argument {}: {:?}", i, e);
+                                return Err(e);
+                            }
                         }
                     }
+
+                    // Log the resolved arguments before calling the function
+                    for (i, arg) in resolved_args.iter().enumerate() {
+                        if let Some(value) = arg.downcast_ref::<String>() {
+                            println!("Resolved Argument {}: {:?}", i, value);
+                        } else {
+                            println!("Resolved Argument {}: Failed to downcast", i);
+                        }
+                    }
+
+                    eprintln!("Resolved args: {:?}", resolved_args);
+                    let result = func.call(resolved_args).await?;
+                    if let Some(result) = result.downcast_ref::<String>() {
+                        if let Some(Param::Identifier(register_name)) = args.first() {
+                            println!("Storing result in register {}: {:?}", register_name, result);
+                            registers.insert(register_name.clone(), result.clone());
+                        }
+                    } else {
+                        println!("Failed to downcast result: {:?}", result);
+                    }
+                } else {
+                    println!("Function {} not found", name);
                 }
                 Ok(())
             }
@@ -162,20 +193,15 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_condition(
+    pub async fn evaluate_condition(
         &self,
         expression: &Expression,
         registers: &DashMap<String, String>,
     ) -> Result<bool, WorkflowError> {
         match expression {
             Expression::Binary { left, operator, right } => {
-                let left_val = self
-                    .evaluate_param(left, registers)
-                    .parse::<i32>()
-                    .map_err(|_| WorkflowError::EvaluationError(format!("Failed to parse left operand: {:?}", left)))?;
-                let right_val = self.evaluate_param(right, registers).parse::<i32>().map_err(|_| {
-                    WorkflowError::EvaluationError(format!("Failed to parse right operand: {:?}", right))
-                })?;
+                let left_val = self.evaluate_param(left, registers).await?.parse::<i32>().unwrap_or(0);
+                let right_val = self.evaluate_param(right, registers).await?.parse::<i32>().unwrap_or(0);
                 let result = match operator {
                     ComparisonOperator::Less => left_val < right_val,
                     ComparisonOperator::Greater => left_val > right_val,
@@ -192,23 +218,22 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn evaluate_param(&self, param: &Param, registers: &DashMap<String, String>) -> String {
+    async fn evaluate_param(
+        &self,
+        param: &Param,
+        registers: &DashMap<String, String>,
+    ) -> Result<String, WorkflowError> {
         eprintln!("Evaluating param: {:?}", param);
         eprintln!("Registers: {:?}", registers);
-        match param {
+        let value = match param {
+            Param::String(s) => s.clone(),
             Param::Number(n) => n.to_string(),
-            Param::Identifier(id) | Param::Register(id) => registers.get(id).map(|v| v.value().clone()).unwrap_or_else(|| {
-                eprintln!(
-                    "Warning: Identifier/Register '{}' not found in registers, defaulting to 0",
-                    id
-                );
-                "0".to_string()
-            }),
-            _ => {
-                eprintln!("Warning: Unsupported parameter type, defaulting to 0");
-                "0".to_string()
-            }
-        }
+            Param::Boolean(b) => b.to_string(),
+            Param::Identifier(id) => registers.get(id).map(|v| v.clone()).unwrap_or_default(),
+            Param::Register(reg) => registers.get(reg).map(|v| v.clone()).unwrap_or_default(),
+            Param::Range(start, end) => format!("{}..{}", start, end),
+        };
+        Ok(value)
     }
 
     pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &DashMap<String, String>) -> String {
@@ -216,13 +241,34 @@ impl<'a> WorkflowEngine<'a> {
             WorkflowValue::String(s) => s.clone(),
             WorkflowValue::Number(n) => n.to_string(),
             WorkflowValue::Boolean(b) => b.to_string(),
-            WorkflowValue::Identifier(id) => registers.get(id).map(|v| v.value().clone()).unwrap_or_else(|| "0".to_string()),
+            WorkflowValue::Identifier(id) => registers
+                .get(id)
+                .map(|v| v.value().clone())
+                .unwrap_or_else(|| "0".to_string()),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
-                    let arg_values = args
-                        .iter()
-                        .map(|arg| Box::new(self.evaluate_param(arg, registers)) as Box<dyn Any + Send>)
-                        .collect();
+                    let mut arg_values = Vec::new();
+                    for arg in args {
+                        let evaluated_arg = self.evaluate_param(arg, registers).await;
+                        eprintln!("Evaluated arg: {:?}", evaluated_arg);
+                        match evaluated_arg {
+                            Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
+                            Err(e) => {
+                                eprintln!("Error evaluating argument: {}", e);
+                                return "0".to_string();
+                            }
+                        }
+                    }
+
+                    // Log the resolved arguments before calling the function
+                    for (i, arg) in arg_values.iter().enumerate() {
+                        if let Some(value) = arg.downcast_ref::<String>() {
+                            println!("Resolved Argument {}: {:?}", i, value);
+                        } else {
+                            println!("Resolved Argument {}: Failed to downcast", i);
+                        }
+                    }
+
                     let result = func.call(arg_values).await;
                     match result {
                         Ok(result) => {

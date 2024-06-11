@@ -124,11 +124,11 @@ impl AsyncFunction for InferenceFunction {
 
         let query_text = user_message.clone();
 
+        // If we need to search for nodes using the scope
         let scope_is_empty = full_job.scope().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
-        let mut summary_node_text = None;
         if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
+            let (ret, _summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
                 full_job.scope(),
@@ -141,7 +141,6 @@ impl AsyncFunction for InferenceFunction {
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
             ret_nodes = ret;
-            summary_node_text = summary;
         }
 
         let filled_prompt = JobPromptGenerator::qa_response_prompt_with_vector_search(
@@ -150,14 +149,12 @@ impl AsyncFunction for InferenceFunction {
             None,
             Some(query_text),
             Some(full_job.step_history.clone()),
-            max_tokens_in_prompt,
         );
 
         // Handle response_res without using the `?` operator
         let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone())
             .await
             .map_err(|e| {
-                eprintln!("Error calling inference agent markdown: {}", e);
                 WorkflowError::ExecutionError(e.to_string())
             })?;
 

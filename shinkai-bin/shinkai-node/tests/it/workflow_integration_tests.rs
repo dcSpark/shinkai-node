@@ -222,7 +222,7 @@ fn workflow_integration_test() {
                     &message,
                     "",
                     "",
-                    Some(workflow.to_string())
+                    Some(workflow.to_string()),
                 )
                 .await;
             }
@@ -299,32 +299,8 @@ fn workflow_integration_test() {
                 // println!("node1_all_profiles: {:?}", node2_last_messages);
                 assert!(node2_last_messages.len() == 1);
             }
-            {
-                // Send a scheduled message
-                // let message = "scheduled message".to_string();
-                // let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                // let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
-                // let future_time_2_secs = ShinkaiStringTime::generate_time_in_future_with_secs(2);
 
-                // let msg = ShinkaiMessageBuilder::new(
-                //     clone_static_secret_key(&node1_profile_encryption_sk),
-                //     clone_signature_secret_key(&node1_profile_identity_sk),
-                //     node1_encryption_pk,
-                // )
-                // .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-                // .external_metadata_with_schedule(node1_identity_name.to_string(), sender, future_time_2_secs)
-                // .message_raw_content(message.clone())
-                // .internal_metadata_with_inbox(
-                //     "".to_string(),
-                //     "".to_string(),
-                //     inbox_name.to_string(),
-                //     EncryptionMethod::None,
-                //     None,
-                // )
-                // .build();
-
-                abort_handler.abort();
-            }
+            abort_handler.abort();
         });
 
         // Wait for all tasks to complete
