@@ -181,12 +181,12 @@ impl SubPrompt {
         // Iterate through each node and add its text string to the prompt (which is the name of the VR)
         for node in nodes {
             if let Ok(content) = node.get_text_content() {
-                temp_prompt.add_content(content.to_string(), SubPromptType::System, subprompt_priority);
+                temp_prompt.add_content(content.to_string(), SubPromptType::ExtraContext, subprompt_priority);
             }
             if let Ok(resource) = node.get_vector_resource_content() {
                 temp_prompt.add_content(
                     resource.as_trait_object().name().to_string(),
-                    SubPromptType::System,
+                    SubPromptType::ExtraContext,
                     subprompt_priority,
                 );
             }

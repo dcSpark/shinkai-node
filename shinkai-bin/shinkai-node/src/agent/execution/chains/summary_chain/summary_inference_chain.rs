@@ -97,6 +97,7 @@ impl SummaryInferenceChain {
     /// An inference chain for summarizing every VR in the job's scope.
     #[async_recursion]
     #[instrument(skip(generator, vector_fs, db))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn start_summary_inference_chain(
         &self,
         db: Arc<ShinkaiDB>,
@@ -133,6 +134,7 @@ impl SummaryInferenceChain {
         if self.these_checked.score == highest_score_checked.score
             || self.this_checked.score == highest_score_checked.score
         {
+            #[allow(clippy::too_many_arguments)]
             Self::start_summarize_job_context_sub_chain(
                 db,
                 vector_fs,
@@ -162,6 +164,7 @@ impl SummaryInferenceChain {
     }
 
     /// Core logic which summarizes VRs in the job context.
+    #[allow(clippy::too_many_arguments)]
     async fn start_summarize_job_context_sub_chain(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -174,8 +177,8 @@ impl SummaryInferenceChain {
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
         let scope = full_job.scope();
-        let resource_count =
-            JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
+        // let resource_count =
+            // JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
 
         // Optimization TODO:
         // If a significant amount of VRs, simply search first to find the the top 5 most relevant and summarize them fully.
@@ -187,11 +190,8 @@ impl SummaryInferenceChain {
         let mut chunks = resource_stream.chunks(5);
 
         // For each chunk parallelize creating a detailed summary for each
-        let mut num_resources_processed = 0;
         let mut detailed_summaries = Vec::new();
         while let Some(resources) = chunks.next().await {
-            let resource_count = resources.len();
-
             // Create a future for each resource in the chunk
             let futures = resources.into_iter().map(|resource| {
                 Self::generate_detailed_summary_for_resource(
@@ -216,7 +216,6 @@ impl SummaryInferenceChain {
                     ),
                 }
             }
-            num_resources_processed += resource_count;
         }
 
         let joined_summaries = detailed_summaries
@@ -256,7 +255,6 @@ impl SummaryInferenceChain {
             resource_sub_prompts,
             resource_source,
         );
-        eprintln!("generate_detailed_summary_for_resource> Prompt: {:?}", prompt);
 
         // Extract the JSON from the inference response Result and proceed forward
         let response = JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await?;
