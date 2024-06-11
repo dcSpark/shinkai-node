@@ -1,12 +1,11 @@
 use crate::{
     agent::{error::AgentError, job::JobStepResult},
-    managers::model_capabilities_manager::{ModelCapabilitiesManager},
+    managers::model_capabilities_manager::ModelCapabilitiesManager,
 };
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
-use std::{collections::HashMap};
+use std::{collections::HashMap, fmt};
 use tiktoken_rs::ChatCompletionRequestMessage;
-
 
 pub struct JobPromptGenerator {}
 
@@ -26,15 +25,18 @@ pub enum SubPromptType {
     User,
     System,
     Assistant,
+    ExtraContext,
 }
 
-impl ToString for SubPromptType {
-    fn to_string(&self) -> String {
-        match self {
-            SubPromptType::User => "user".to_string(),
-            SubPromptType::System => "system".to_string(),
-            SubPromptType::Assistant => "assistant".to_string(),
-        }
+impl fmt::Display for SubPromptType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            SubPromptType::User => "user",
+            SubPromptType::System => "system",
+            SubPromptType::Assistant => "assistant",
+            SubPromptType::ExtraContext => "user",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -74,6 +76,11 @@ impl SubPrompt {
         }
     }
 
+    /// Checks if the SubPrompt content is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Generates a human/LLM-readable output string from the SubPrompt content
     pub fn generate_output_string(&self) -> String {
         match self {
@@ -88,7 +95,7 @@ impl SubPrompt {
                     )
                 }
             }
-            SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
+            SubPrompt::Asset(_, asset_type, _asset_content, asset_detail, _) => {
                 format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
             }
         }
@@ -124,7 +131,7 @@ impl SubPrompt {
 
     /// Trims the content inside of the subprompt to the specified length.
     pub fn trim_content_to_length(&mut self, max_length: usize) {
-        let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
+        let (_prompt_type, content, _type_) = self.extract_generic_subprompt_data();
         if content.len() > max_length {
             self.set_content(content.chars().take(max_length).collect());
         }
@@ -161,7 +168,6 @@ impl SubPrompt {
             return 0;
         }
 
-        
         ModelCapabilitiesManager::num_tokens_from_llama3(&[completion_message.clone()])
     }
 
@@ -175,12 +181,12 @@ impl SubPrompt {
         // Iterate through each node and add its text string to the prompt (which is the name of the VR)
         for node in nodes {
             if let Ok(content) = node.get_text_content() {
-                temp_prompt.add_content(content.to_string(), SubPromptType::System, subprompt_priority);
+                temp_prompt.add_content(content.to_string(), SubPromptType::ExtraContext, subprompt_priority);
             }
             if let Ok(resource) = node.get_vector_resource_content() {
                 temp_prompt.add_content(
                     resource.as_trait_object().name().to_string(),
-                    SubPromptType::System,
+                    SubPromptType::ExtraContext,
                     subprompt_priority,
                 );
             }
@@ -354,56 +360,15 @@ impl Prompt {
         self.add_sub_prompts(updated_sub_prompts);
     }
 
-    /// Adds previous results from step history into the Prompt, up to max_previous_history amount.
-    /// Of note does extra internal checks on max characters to make sure prompt doesn't get too big (amount returned/content length may be shortened).
+    /// Adds previous results from step history into the Prompt, up to max_tokens
     /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(
-        &mut self,
-        mut history: Vec<JobStepResult>,
-        max_previous_history: u64,
-        priority_value: u8,
-        max_characters_in_prompt: usize,
-    ) {
+    pub fn add_step_history(&mut self, history: Vec<JobStepResult>, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
-        let mut count = 0;
-        let mut sub_prompts_list = Vec::new();
-
-        // sub_prompts_list.push(SubPrompt::Content(
-        //     SubPromptType::System,
-        //     "Here are the previous conversation messages:".to_string(),
-        //     priority_value,
-        // ));
-
-        // Update max previous history if the max characters is under specific limits
-        let max_previous_history = if max_characters_in_prompt < 5000 {
-            1
-        } else {
-            max_previous_history
-        };
-
-        // Set a value for maximum step history prompt content based on max characters
-        let max_step_history_prompt_content = if max_characters_in_prompt < 5000 {
-            100
-        } else if max_characters_in_prompt < 33000 {
-            400
-        } else {
-            800
-        };
-
-        while let Some(step) = history.pop() {
-            if let Some(prompt) = step.get_result_prompt() {
-                for sub_prompt in prompt.sub_prompts {
-                    let mut sub_prompt = sub_prompt.clone();
-                    sub_prompt.trim_content_to_length(max_step_history_prompt_content);
-                    sub_prompts_list.push(sub_prompt);
-                }
-                count += 1;
-                if count >= max_previous_history {
-                    break;
-                }
-            }
-        }
-
+        let sub_prompts_list: Vec<SubPrompt> = history
+            .iter()
+            .filter_map(|step| step.get_result_prompt())
+            .flat_map(|prompt| prompt.sub_prompts.clone())
+            .collect();
         self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);
     }
 
@@ -460,17 +425,6 @@ impl Prompt {
         Ok(())
     }
 
-    fn generate_ebnf_response_string(&self, ebnf: &str, retry: bool) -> String {
-        if retry {
-            format!("An EBNF option to respond with: {} ", ebnf)
-        } else {
-            format!(
-                "Then respond using the following markdown formatting and absolutely nothing else: {} ",
-                ebnf
-            )
-        }
-    }
-
     /// Processes all sub-prompts into a single output String.
     pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
         let content = self
@@ -485,16 +439,74 @@ impl Prompt {
 
     /// Generates a tuple of a list of ChatCompletionRequestMessages and their token length,
     /// ready to be used with OpenAI inferencing.
+    // fn generate_chat_completion_messages(&self) -> (Vec<ChatCompletionRequestMessage>, usize) {
+    //     let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+    //     let mut current_length: usize = 0;
+
+    //     eprintln!("sub_prompts: {:?}", self.sub_prompts);
+
+    //     // Process all sub-prompts in their original order
+    //     for sub_prompt in &self.sub_prompts {
+    //         let new_message = sub_prompt.into_chat_completion_request_message();
+    //         // Nico: fix
+    //         current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+    //         tiktoken_messages.push(new_message);
+    //     }
+
+    //     (tiktoken_messages, current_length)
+    // }
     fn generate_chat_completion_messages(&self) -> (Vec<ChatCompletionRequestMessage>, usize) {
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
         let mut current_length: usize = 0;
 
-        // Process all sub-prompts in their original order
+        // Accumulator for ExtraContext content
+        let mut extra_context_content = String::new();
+        let mut processing_extra_context = false;
+
         for sub_prompt in &self.sub_prompts {
-            let new_message = sub_prompt.into_chat_completion_request_message();
-            // Nico: fix
-            current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
-            tiktoken_messages.push(new_message);
+            match sub_prompt {
+                // Accumulate ExtraContext content
+                SubPrompt::Content(SubPromptType::ExtraContext, content, _) => {
+                    extra_context_content.push_str(content);
+                    extra_context_content.push('\n');
+                    processing_extra_context = true;
+                }
+                _ => {
+                    // If we were processing ExtraContext, add it as a single System message
+                    if processing_extra_context {
+                        let extra_context_message = ChatCompletionRequestMessage {
+                            role: SubPromptType::System.to_string(),
+                            content: Some(extra_context_content.trim().to_string()),
+                            name: None,
+                            function_call: None,
+                        };
+                        current_length +=
+                            ModelCapabilitiesManager::num_tokens_from_llama3(&[extra_context_message.clone()]);
+                        tiktoken_messages.push(extra_context_message);
+
+                        // Reset the accumulator
+                        extra_context_content.clear();
+                        processing_extra_context = false;
+                    }
+
+                    // Process the current sub-prompt
+                    let new_message = sub_prompt.into_chat_completion_request_message();
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+                    tiktoken_messages.push(new_message);
+                }
+            }
+        }
+
+        // If there are any remaining ExtraContext sub-prompts, add them as a single message
+        if processing_extra_context && !extra_context_content.is_empty() {
+            let extra_context_message = ChatCompletionRequestMessage {
+                role: SubPromptType::System.to_string(),
+                content: Some(extra_context_content.trim().to_string()),
+                name: None,
+                function_call: None,
+            };
+            current_length += ModelCapabilitiesManager::num_tokens_from_llama3(&[extra_context_message.clone()]);
+            tiktoken_messages.push(extra_context_message);
         }
 
         (tiktoken_messages, current_length)
@@ -519,6 +531,7 @@ impl Prompt {
     }
 
     // Generates generic api messages as a single string.
+    // TODO: needs to be updated
     pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
         let limit = max_input_tokens.unwrap_or(4000_usize);
@@ -588,3 +601,63 @@ impl Prompt {
 //
 //
 //
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_chat_completion_messages() {
+        let sub_prompts = vec![
+            SubPrompt::Content(SubPromptType::System, "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the following markdown schema and nothing else:\n # Answer \nhere goes the answer\n".to_string(), 98),
+            SubPrompt::Content(SubPromptType::User, "summarize this".to_string(), 97),
+            SubPrompt::Content(SubPromptType::Assistant, "## What are the benefits of using Vector Resources ...\n\n".to_string(), 97),
+            SubPrompt::Content(SubPromptType::ExtraContext, "Here is a list of relevant new content provided for you to potentially use while answering:".to_string(), 97),
+            SubPrompt::Content(SubPromptType::ExtraContext, "- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00".to_string(), 97),
+            SubPrompt::Content(SubPromptType::ExtraContext, "- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string(), 97),
+            SubPrompt::Content(SubPromptType::User, "tell me more about Shinkai. Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n".to_string(), 100),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+
+        // Expected messages
+        let expected_messages = vec![
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the following markdown schema and nothing else:\n # Answer \nhere goes the answer\n".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "user".to_string(),
+                content: Some("summarize this".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "assistant".to_string(),
+                content: Some("## What are the benefits of using Vector Resources ...\n\n".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "system".to_string(),
+                content: Some("Here is a list of relevant new content provided for you to potentially use while answering:\n- FAQ Shinkai Overview What’s Shinkai? (Summary)  (Source: Shinkai - Ask Me Anything.docx, Section: ) 2024-05-05T00:33:00\n- Shinkai is a comprehensive super app designed to enhance how users interact with AI. It allows users to run AI locally, facilitating direct conversations with documents and managing files converted into AI embeddings for advanced semantic searches across user data. This local execution ensures privacy and efficiency, putting control directly in the user's hands.  (Source: Shinkai - Ask Me Anything.docx, Section: 2) 2024-05-05T00:33:00".to_string()),
+                name: None,
+                function_call: None,
+            },
+            ChatCompletionRequestMessage {
+                role: "user".to_string(),
+                content: Some("tell me more about Shinkai. Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n".to_string()),
+                name: None,
+                function_call: None,
+            },
+        ];
+
+        // Check if the generated messages match the expected messages
+        assert_eq!(messages, expected_messages);
+    }
+}

@@ -54,7 +54,7 @@ impl JobPromptGenerator {
 
         prompt.add_content(
             format!("We have selected the following tool to be used:\n\n{}", tool_summary),
-            SubPromptType::System,
+            SubPromptType::User,
             100,
         );
 
@@ -62,7 +62,7 @@ impl JobPromptGenerator {
             String::from(
                 "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
             ),
-            SubPromptType::System,
+            SubPromptType::User,
             100
         );
 
@@ -73,7 +73,7 @@ impl JobPromptGenerator {
 
                 "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
             ),
-            SubPromptType::System,
+            SubPromptType::User,
             100
         );
 
@@ -85,7 +85,7 @@ impl JobPromptGenerator {
     /// Prompt for having the LLM generate a PDDL plan given some tools
     pub fn pddl_plan_problem_generation_prompt(
         task: String,
-        pddl_domain: String,
+        _pddl_domain: String,
         tools: Vec<ShinkaiTool>,
         previous: Option<String>,
         previous_error: Option<String>,

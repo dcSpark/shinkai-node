@@ -422,7 +422,7 @@ impl ModelCapabilitiesManager {
                 4096
             }
             AgentLLMInterface::GenericAPI(_) => {
-                if Self::get_max_tokens(model) < 8500 {
+                if Self::get_max_tokens(model) <= 8000 {
                     2800
                 } else {
                     4096
@@ -438,7 +438,11 @@ impl ModelCapabilitiesManager {
             }
             AgentLLMInterface::Ollama(_) => {
                 // Fill in the appropriate logic for Ollama
-                4096
+                if Self::get_max_tokens(model) <= 8000 {
+                    2800
+                } else {
+                    4096
+                }
             }
             AgentLLMInterface::Groq(_) => {
                 // Fill in the appropriate logic for Ollama
