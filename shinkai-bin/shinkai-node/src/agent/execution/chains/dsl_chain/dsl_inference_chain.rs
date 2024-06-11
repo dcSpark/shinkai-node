@@ -7,6 +7,7 @@ use shinkai_dsl::{
     dsl_schemas::Workflow,
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 use crate::agent::{
@@ -61,12 +62,10 @@ impl<'a> InferenceChain for DslChain<'a> {
             }
         }
 
-        eprintln!("final_registers: {:?}", final_registers);
-
         let response_register = final_registers
             .get("$R1")
             .map(|r| r.clone())
-            .unwrap_or_else(|| String::new());
+            .unwrap_or_else(String::new);
         let new_contenxt = HashMap::new();
         Ok(InferenceChainResult::new(response_register, new_contenxt))
     }
@@ -119,10 +118,8 @@ impl AsyncFunction for InferenceFunction {
         let vector_fs = self.context.vector_fs.clone();
         let full_job = self.context.full_job.clone();
         let agent = self.context.agent.clone();
-        let execution_context = self.context.execution_context.clone();
         let generator = self.context.generator.clone();
         let user_profile = self.context.user_profile.clone();
-        let max_iterations = self.context.max_iterations;
         let max_tokens_in_prompt = self.context.max_tokens_in_prompt;
 
         let query_text = user_message.clone();
@@ -164,12 +161,14 @@ impl AsyncFunction for InferenceFunction {
                 WorkflowError::ExecutionError(e.to_string())
             })?;
 
-        eprintln!("response: {:?}", response.clone());
-        eprintln!("calling direct_extract_key_inference_response");
         let answer = JobManager::direct_extract_key_inference_response(response.clone(), "answer")
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
-        eprintln!("inference answer: {:?}", answer.clone());
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Inference Answer: {:?}", answer.clone()).as_str(),
+        );
 
         Ok(Box::new(answer))
     }

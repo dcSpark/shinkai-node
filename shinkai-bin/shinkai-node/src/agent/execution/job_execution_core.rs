@@ -10,7 +10,7 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
-use shinkai_dsl::sm_executor::{WorkflowEngine, WorkflowError};
+use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -38,8 +38,6 @@ use super::chains::inference_chain_trait::InferenceChainContext;
 use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
-    // TODO: here we should know if we need to process a specific workflow
-    // workflow can be for any message or message by message
     /// Processes a job message which will trigger a job step
     #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db))]
     pub async fn process_job_message_queued(
@@ -88,9 +86,7 @@ impl JobManager {
             &job_message.job_message,
             agent_found.clone(),
             full_job.clone(),
-            user_profile.clone(),
             clone_signature_secret_key(&identity_secret_key),
-            unstructured_api.clone(),
             generator.clone(),
             user_profile.clone(),
         )
@@ -103,7 +99,6 @@ impl JobManager {
         if workflow_found {
             return Ok(job_id);
         }
-        // TODO: continue
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
@@ -293,9 +288,7 @@ impl JobManager {
         job_message: &JobMessage,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
-        profile: ShinkaiName,
         identity_secret_key: SigningKey,
-        unstructured_api: UnstructuredAPI,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
     ) -> Result<bool, AgentError> {
@@ -325,20 +318,7 @@ impl JobManager {
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
-
-        // Functions
-        let mut functions = HashMap::new();
-        functions.insert(
-            "sum".to_string(),
-            Box::new(|args: Vec<Box<dyn Any>>| -> Result<Box<dyn Any>, WorkflowError> {
-                let x = args[0].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                let y = args[1].downcast_ref::<String>().unwrap().parse::<i32>().unwrap();
-                Ok(Box::new((x + y).to_string()))
-            }) as Box<dyn Fn(Vec<Box<dyn Any>>) -> Result<Box<dyn Any>, WorkflowError> + Send + Sync>,
-        );
-
-        // TODO: add inference fn
-
+        
         // Create the inference chain context
         let chain_context = InferenceChainContext::new(
             db.clone(),
@@ -353,7 +333,8 @@ impl JobManager {
             max_tokens_in_prompt,
             HashMap::new(),
         );
-
+        
+        // Available functions for the workflow
         let functions = HashMap::new();
 
         // Call the inference chain router to choose which chain to use, and call it
@@ -729,6 +710,7 @@ impl JobManager {
         };
 
         // Sort out the vrpacks from the rest
+        #[allow(clippy::type_complexity)]
         let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
             files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 
