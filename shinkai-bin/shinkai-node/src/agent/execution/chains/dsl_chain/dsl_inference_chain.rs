@@ -19,6 +19,8 @@ use crate::agent::{
     job_manager::JobManager,
 };
 
+use super::generic_functions;
+
 pub struct DslChain<'a> {
     pub context: InferenceChainContext,
     pub workflow: Workflow,
@@ -101,6 +103,15 @@ impl<'a> DslChain<'a> {
             }),
         );
     }
+
+    pub fn add_all_generic_functions(&mut self) {
+        self.add_generic_function("concat", generic_functions::concat_strings);
+        self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
+        self.add_generic_function("download_webpage", generic_functions::download_webpage);
+        self.add_generic_function("html_to_markdown", generic_functions::html_to_markdown);
+        // TODO: add for local search of nodes (embeddings)
+        // TODO: add for parse into chunks a text (so it fits in the context length of the model)
+    }
 }
 
 struct InferenceFunction {
@@ -154,9 +165,7 @@ impl AsyncFunction for InferenceFunction {
         // Handle response_res without using the `?` operator
         let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone())
             .await
-            .map_err(|e| {
-                WorkflowError::ExecutionError(e.to_string())
-            })?;
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
         let answer = JobManager::direct_extract_key_inference_response(response.clone(), "answer")
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;

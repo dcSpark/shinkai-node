@@ -342,20 +342,7 @@ impl JobManager {
 
         // Add the inference function to the functions map
         dsl_inference.add_inference_function();
-
-        // Add a generic function to concatenate strings
-        dsl_inference.add_generic_function("concat_strings", |args: Vec<Box<dyn Any + Send>>| {
-            if args.len() != 2 {
-                return Err(WorkflowError::InvalidArgument("Expected 2 arguments".to_string()));
-            }
-            let str1 = args[0]
-                .downcast_ref::<String>()
-                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-            let str2 = args[1]
-                .downcast_ref::<String>()
-                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-            Ok(Box::new(format!("{}{}", str1, str2)))
-        });
+        dsl_inference.add_all_generic_functions();
 
         // Execute the workflow using run_chain
         let inference_result = dsl_inference.run_chain().await?;

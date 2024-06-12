@@ -122,7 +122,7 @@ impl<'a> WorkflowEngine<'a> {
                 }
                 StepBody::RegisterOperation { register, value } => {
                     println!("Setting register {} to {:?}", register, value);
-                    let value = self.evaluate_workflow_value(value, registers).await;
+                    let value = self.evaluate_workflow_value(value, registers).await?;
                     println!("Value: {}", value);
                     registers.insert(register.clone(), value);
                     eprintln!("Registers: {:?}", registers);
@@ -182,10 +182,10 @@ impl<'a> WorkflowEngine<'a> {
                             registers.insert(register_name.clone(), result.clone());
                         }
                     } else {
-                        println!("Failed to downcast result: {:?}", result);
+                        return Err(WorkflowError::FunctionError("Failed to downcast result".to_string()));
                     }
                 } else {
-                    println!("Function {} not found", name);
+                    return Err(WorkflowError::FunctionError(format!("Function {} not found", name)));
                 }
                 Ok(())
             }
@@ -236,15 +236,19 @@ impl<'a> WorkflowEngine<'a> {
         Ok(value)
     }
 
-    pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &DashMap<String, String>) -> String {
+    pub async fn evaluate_workflow_value(
+        &self,
+        value: &WorkflowValue,
+        registers: &DashMap<String, String>,
+    ) -> Result<String, WorkflowError> {
         match value {
-            WorkflowValue::String(s) => s.clone(),
-            WorkflowValue::Number(n) => n.to_string(),
-            WorkflowValue::Boolean(b) => b.to_string(),
-            WorkflowValue::Identifier(id) => registers
+            WorkflowValue::String(s) => Ok(s.clone()),
+            WorkflowValue::Number(n) => Ok(n.to_string()),
+            WorkflowValue::Boolean(b) => Ok(b.to_string()),
+            WorkflowValue::Identifier(id) | WorkflowValue::Register(id) => registers
                 .get(id)
-                .map(|v| v.value().clone())
-                .unwrap_or_else(|| "0".to_string()),
+                .map(|v| Ok(v.value().clone()))
+                .unwrap_or_else(|| Err(WorkflowError::InvalidArgument(format!("Identifier {} not found", id)))),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
                     let mut arg_values = Vec::new();
@@ -255,7 +259,7 @@ impl<'a> WorkflowEngine<'a> {
                             Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
                             Err(e) => {
                                 eprintln!("Error evaluating argument: {}", e);
-                                return "0".to_string();
+                                return Err(e);
                             }
                         }
                     }
@@ -273,25 +277,34 @@ impl<'a> WorkflowEngine<'a> {
                     match result {
                         Ok(result) => {
                             if let Ok(result) = result.downcast::<String>() {
-                                (*result).clone()
+                                Ok((*result).clone())
                             } else {
                                 eprintln!("Function call to '{}' did not return a String.", name);
-                                "0".to_string()
+                                Err(WorkflowError::FunctionError(format!(
+                                    "Function call to '{}' did not return a String",
+                                    name
+                                )))
                             }
                         }
                         Err(err) => {
                             eprintln!("Error executing function '{}': {}", name, err);
-                            "0".to_string()
+                            Err(WorkflowError::FunctionError(format!(
+                                "Error executing function '{}': {}",
+                                name, err
+                            )))
                         }
                     }
                 } else {
                     eprintln!("Function '{}' not found.", name);
-                    "0".to_string()
+                    Err(WorkflowError::FunctionError(format!("Function '{}' not found", name)))
                 }
             }
             _ => {
                 eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
-                "0".to_string()
+                Err(WorkflowError::InvalidArgument(format!(
+                    "Unsupported workflow value type {:?}",
+                    value
+                )))
             }
         }
     }

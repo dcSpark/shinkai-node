@@ -62,15 +62,6 @@ mod tests {
                 ));
             }
 
-            // Log the arguments received by the function
-            for (i, arg) in args.iter().enumerate() {
-                if let Some(value) = arg.downcast_ref::<String>() {
-                    println!("ConcatFunction Argument {}: {:?}", i, value);
-                } else {
-                    println!("ConcatFunction Argument {}: Failed to downcast", i);
-                }
-            }
-
             let s1 = args[0]
                 .downcast_ref::<String>()
                 .ok_or_else(|| WorkflowError::FunctionError("Failed to downcast arg[0] to String".to_string()))?;
@@ -481,6 +472,7 @@ mod tests {
             for item in $R1.split(",") {
                 $R2 = call concat($R2, item)
             }
+            $R1 = $R2
         }
     }
     "#;
@@ -504,5 +496,35 @@ mod tests {
         // Check the results
         assert_eq!(registers.get("$R1").unwrap().as_str(), "red,blue,green");
         assert_eq!(registers.get("$R2").unwrap().as_str(), "redbluegreen");
+    }
+
+    #[tokio::test]
+    async fn test_register_assignment() {
+        let dsl_input = r#"
+        workflow MyProcess v0.1 {
+            step Initialize {
+                $R1 = "red,blue,green"
+                $R2 = $R1
+            }
+        }
+        "#;
+
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+
+        // Create function mappings
+        let functions: FunctionMap = HashMap::new();
+
+        // Create the WorkflowEngine with the function mappings
+        let executor = WorkflowEngine::new(&functions);
+
+        // Execute the workflow
+        let registers = executor
+            .execute_workflow(&workflow)
+            .await
+            .expect("Failed to execute workflow");
+
+        // Check the results
+        assert_eq!(registers.get("$R1").unwrap().as_str(), "red,blue,green");
+        assert_eq!(registers.get("$R2").unwrap().as_str(), "red,blue,green");
     }
 }
