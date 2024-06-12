@@ -121,7 +121,7 @@ impl<'a> WorkflowEngine<'a> {
                     Ok(())
                 }
                 StepBody::RegisterOperation { register, value } => {
-                    println!("Setting register {} to {:?}", register, value);
+                    println!("\nSetting register {} to {:?}", register, value);
                     let value = self.evaluate_workflow_value(value, registers).await?;
                     println!("Value: {}", value);
                     registers.insert(register.clone(), value);
@@ -223,7 +223,7 @@ impl<'a> WorkflowEngine<'a> {
         param: &Param,
         registers: &DashMap<String, String>,
     ) -> Result<String, WorkflowError> {
-        eprintln!("Evaluating param: {:?}", param);
+        eprintln!("\n\nEvaluating param: {:?}", param);
         eprintln!("Registers: {:?}", registers);
         let value = match param {
             Param::String(s) => s.clone(),
@@ -241,6 +241,7 @@ impl<'a> WorkflowEngine<'a> {
         value: &WorkflowValue,
         registers: &DashMap<String, String>,
     ) -> Result<String, WorkflowError> {
+        eprintln!("Evaluating workflow value: {:?}", value);
         match value {
             WorkflowValue::String(s) => Ok(s.clone()),
             WorkflowValue::Number(n) => Ok(n.to_string()),
@@ -309,12 +310,12 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn iter(&'a self, workflow: &'a Workflow) -> StepExecutor<'a> {
+    pub fn iter(&'a self, workflow: &'a Workflow, initial_registers: Option<DashMap<String, String>>) -> StepExecutor<'a> {
         StepExecutor {
             engine: self,
             workflow,
             current_step: 0,
-            registers: DashMap::new(),
+            registers: initial_registers.unwrap_or_default(),
         }
     }
 }
@@ -340,7 +341,7 @@ impl<'a> Iterator for StepExecutor<'a> {
                     if result.is_ok() {
                         result = Ok(self.registers.clone());
                     }
-                    eprintln!("Registers: {:?}", self.registers);
+                    eprintln!("Registers after Step: {:?}", self.registers);
                 });
             });
 

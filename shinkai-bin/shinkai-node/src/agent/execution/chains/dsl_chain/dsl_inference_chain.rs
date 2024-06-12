@@ -49,12 +49,16 @@ impl<'a> InferenceChain for DslChain<'a> {
 
     async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
         let engine = WorkflowEngine::new(&self.functions);
-        let executor = engine.iter(&self.workflow);
-        let mut final_registers = DashMap::new();
+        let mut final_registers = DashMap::new();        
+
+        // Inject user_message into $R0
+        final_registers.insert("$R0".to_string(), self.context.user_message.clone().original_user_message_string);
+        let executor = engine.iter(&self.workflow, Some(final_registers.clone()));
 
         for result in executor {
             match result {
                 Ok(registers) => {
+                    // Is this required if we are passing a dashmap reference?
                     final_registers = registers;
                 }
                 Err(e) => {
@@ -109,6 +113,10 @@ impl<'a> DslChain<'a> {
         self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
         self.add_generic_function("download_webpage", generic_functions::download_webpage);
         self.add_generic_function("html_to_markdown", generic_functions::html_to_markdown);
+        self.add_generic_function("fill_variable_in_md_template", generic_functions::fill_variable_in_md_template);
+        self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
+        self.add_generic_function("array_to_markdown_template", generic_functions::array_to_markdown_template);
+        self.add_generic_function("print_arg", generic_functions::print_arg);
         // TODO: add for local search of nodes (embeddings)
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }
@@ -125,6 +133,8 @@ impl AsyncFunction for InferenceFunction {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
+        eprintln!("InferenceFunction: {:?}", user_message);
+
         let db = self.context.db.clone();
         let vector_fs = self.context.vector_fs.clone();
         let full_job = self.context.full_job.clone();

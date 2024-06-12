@@ -88,9 +88,62 @@ pub fn html_to_markdown(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + 
     Ok(Box::new(markdown))
 }
 
+pub fn array_to_markdown_template(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() != 1 {
+        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
+    }
+    let input = args[0]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for input string".to_string()))?
+        .clone();
+
+    let array: Vec<&str> = input.split(',').collect();
+    let mut markdown = String::new();
+    for item in array {
+        markdown.push_str(&format!("## {}\n\n{{{{{}}}}}\n\n", item, item));
+    }
+
+    Ok(Box::new(markdown))
+}
+
+pub fn fill_variable_in_md_template(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() != 3 {
+        return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
+    }
+    let template = args[0]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for template".to_string()))?
+        .clone();
+    let variable = args[1]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for variable".to_string()))?
+        .clone();
+    let content = args[2]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for content".to_string()))?
+        .clone();
+
+    let placeholder = format!("{{{{{}}}}}", variable);
+    let filled_template = template.replace(&placeholder, &content);
+
+    Ok(Box::new(filled_template))
+}
+
+pub fn print_arg(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() != 1 {
+        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
+    }
+    let arg = args[0]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
+    
+    println!("print_arg: {}", arg);
+    Ok(Box::new(()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::generic_functions::html_to_markdown;
+    use super::{super::generic_functions::html_to_markdown, array_to_markdown_template, fill_variable_in_md_template};
     use std::any::Any;
 
     #[test]
@@ -108,6 +161,46 @@ mod tests {
                 assert!(markdown_str.contains("This is a paragraph."));
                 assert!(!markdown_str.contains("console.log"));
                 assert!(!markdown_str.contains("font-size"));
+            }
+            Err(e) => panic!("Test failed with error: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_array_to_markdown() {
+        let input = "red,blue,green".to_string();
+        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(input)];
+
+        let result = array_to_markdown_template(args);
+
+        match result {
+            Ok(markdown) => {
+                let markdown_str = markdown.downcast_ref::<String>().unwrap();
+                println!("Generated Markdown: {}", markdown_str);
+                assert!(markdown_str.contains("## red\n\n{{red}}\n\n"));
+                assert!(markdown_str.contains("## blue\n\n{{blue}}\n\n"));
+                assert!(markdown_str.contains("## green\n\n{{green}}\n\n"));
+            }
+            Err(e) => panic!("Test failed with error: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_fill_variable_in_md_template() {
+        let template = "## red\n\n{{red}}\n\n## blue\n\n{{blue}}\n\n## green\n\n{{green}}\n\n".to_string();
+        let variable = "red".to_string();
+        let content = "the blood is red".to_string();
+        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(template), Box::new(variable), Box::new(content)];
+
+        let result = fill_variable_in_md_template(args);
+
+        match result {
+            Ok(filled_template) => {
+                let filled_template_str = filled_template.downcast_ref::<String>().unwrap();
+                println!("Filled Template: {}", filled_template_str);
+                assert!(filled_template_str.contains("## red\n\nthe blood is red\n\n"));
+                assert!(filled_template_str.contains("## blue\n\n{{blue}}\n\n"));
+                assert!(filled_template_str.contains("## green\n\n{{green}}\n\n"));
             }
             Err(e) => panic!("Test failed with error: {:?}", e),
         }

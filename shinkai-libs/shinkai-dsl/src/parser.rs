@@ -94,7 +94,7 @@ pub fn parse_step_body_item(pair: pest::iterators::Pair<Rule>) -> StepBody {
                 .next()
                 .expect("Expected value in register operation");
             StepBody::RegisterOperation {
-                register: register_pair.as_str().to_string(),
+                register: register_pair.as_str().trim().to_string(),
                 value: parse_workflow_value(value_pair),
             }
         }

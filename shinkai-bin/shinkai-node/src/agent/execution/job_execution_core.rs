@@ -311,8 +311,6 @@ impl JobManager {
         );
         let start = Instant::now();
 
-        // TODO: get the fn that are going to be available for the workflow
-
         let job_id = full_job.job_id().to_string();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);

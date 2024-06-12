@@ -310,7 +310,7 @@ mod tests {
             let engine = WorkflowEngine::new(&functions);
 
             // Create the StepExecutor iterator
-            let mut step_executor = engine.iter(&workflow);
+            let mut step_executor = engine.iter(&workflow, None);
 
             // Execute the workflow step by step
             for (i, result) in step_executor.by_ref().enumerate() {
@@ -472,7 +472,6 @@ mod tests {
             for item in $R1.split(",") {
                 $R2 = call concat($R2, item)
             }
-            $R1 = $R2
         }
     }
     "#;
@@ -526,5 +525,119 @@ mod tests {
         // Check the results
         assert_eq!(registers.get("$R1").unwrap().as_str(), "red,blue,green");
         assert_eq!(registers.get("$R2").unwrap().as_str(), "red,blue,green");
+    }
+
+    #[test]
+    fn test_step_executor_with_dashmap() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let dsl_input = r#"
+            workflow MyProcess v0.1 {
+                step Initialize {
+                    $R1 = "red,blue,green"
+                    $R2 = ""
+                }
+                step SplitAndIterate {
+                    for item in $R1.split(",") {
+                        $R2 = call concat($R2, item)
+                    }
+                    $R1 = call concat($R2, $R0)
+                }
+            }
+            "#;
+
+            let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+
+            // Create function mappings
+            let mut functions: FunctionMap = HashMap::new();
+            functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
+
+            // Create the WorkflowEngine with the function mappings
+            let engine = WorkflowEngine::new(&functions);
+
+            // Create initial registers with $R0 value
+            let registers = DashMap::new();
+            registers.insert("$R0".to_string(), "hello".to_string());
+
+            // Create the StepExecutor iterator
+            let mut step_executor = engine.iter(&workflow, Some(registers));
+
+            // Execute the workflow step by step
+            for (i, result) in step_executor.by_ref().enumerate() {
+                let registers = result.expect("Failed to execute step");
+                println!("Iteration {}: {:?}", i, registers);
+                match i {
+                    0 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "red,blue,green");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "");
+                    }
+                    1 => {
+                        assert_eq!(registers.get("$R1").unwrap().as_str(), "redbluegreenhello");
+                        assert_eq!(registers.get("$R2").unwrap().as_str(), "redbluegreen");
+                    }
+                    _ => panic!("Unexpected iteration"),
+                }
+            }
+            // Check the final results
+            let final_registers = step_executor.registers;
+            assert_eq!(final_registers.get("$R1").unwrap().as_str(), "redbluegreenhello");
+            assert_eq!(final_registers.get("$R2").unwrap().as_str(), "redbluegreen");
+        });
+    }
+
+    #[test]
+    fn test_blog_post_outline_workflow() {
+        let dsl_input = r#"
+    workflow MyProcess v0.1 {
+        step Initialize {
+            $R1 = "Create an outline for a blog post about the topic of the user's message "
+            $R2 = "\n separate the sections using a comma e.g. red,green,blue"
+            $R3 = call concat($R1, $R0)
+            $R3 = call concat($R3, $R2)
+        }
+    }
+    "#;
+
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+
+        // Create function mappings
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert("concat".to_string(), Box::new(ConcatFunction) as Box<dyn AsyncFunction>);
+
+        // Create the WorkflowEngine with the function mappings
+        let engine = WorkflowEngine::new(&functions);
+
+        // Create initial registers with $R0 value
+        let registers = DashMap::new();
+        registers.insert("$R0".to_string(), "about Rust programming".to_string());
+
+        // Create the StepExecutor iterator
+        let mut step_executor = engine.iter(&workflow, Some(registers));
+
+        // Execute the workflow step by step
+        for (i, result) in step_executor.by_ref().enumerate() {
+            let registers = result.expect("Failed to execute step");
+            println!("Iteration {}: {:?}", i, registers);
+        }
+
+        // Check the results
+        // Check the final results
+        let final_registers = step_executor.registers;
+        assert_eq!(
+            final_registers.get("$R0").unwrap().as_str(),
+            "about Rust programming"
+        );
+        assert_eq!(
+            final_registers.get("$R1").unwrap().as_str(),
+            "Create an outline for a blog post about the topic of the user's message "
+        );
+        assert_eq!(
+            final_registers.get("$R2").unwrap().as_str(),
+            r"\n separate the sections using a comma e.g. red,green,blue"
+        );
+        assert_eq!(
+            final_registers.get("$R3").unwrap().as_str(),
+            r"Create an outline for a blog post about the topic of the user's message about Rust programming\n separate the sections using a comma e.g. red,green,blue"
+        );
     }
 }
