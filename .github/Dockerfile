@@ -1,6 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
-RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld
 
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -24,6 +24,8 @@ WORKDIR /app
 # Copy the Cargo.toml and Cargo.lock files to the container
 
 COPY . .
+
+ARG RUSTFLAGS=-Clink-arg=-fuse-ld=lld
 
 # Build the dependencies (cached)
 

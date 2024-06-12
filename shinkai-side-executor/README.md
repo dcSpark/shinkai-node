@@ -7,22 +7,24 @@ The project needs to link the pdfium static library which should be available as
 To build the project use the following command:
 
 ```sh
-PDFIUM_STATIC_LIB_PATH="path-to/pdfium-lib-directory" cargo build --release
-```
-
-For example:
-
-```sh
-PDFIUM_STATIC_LIB_PATH="$(pwd)/pdfium/mac-x64" cargo build --release
+cargo build --release
 ```
 
 **Note**: If you encounter linker errors run `cargo clean` in the root and in the side executor project, then rebuild the project.
+
+**Note**: Build the project in release mode or try to prevent running `ocrs` in debug mode since it will be extremely slow.
+
+Alternatively embed debug info to the release build by running:
+
+```sh
+RUSTFLAGS=-g cargo build --release
+```
 
 ### Building PDFium from source
 
 [Prerequisites](https://pdfium.googlesource.com/pdfium/)
 
-Run the follow script in the `pdfium` directory passing the `target_os` (`linux|mac|win`) and `target_cpu` (`arm64|x64`) as parameters:
+Run the follow script in the `pdfium` directory passing the `target_os` (`linux|mac|win`) and `target_cpu` (`arm64|x64`) as parameters to produce the static library:
 
 ```sh
 ./build.sh os cpu
@@ -107,5 +109,5 @@ cargo run --release -- pdf extract-to-text-groups --file=<PDF_FILE> --max-node-t
 ## Running tests
 
 ```sh
-PDFIUM_STATIC_LIB_PATH="path-to/pdfium-lib-directory" cargo test -- --test-threads=1
+cargo test -- --test-threads=1
 ```
