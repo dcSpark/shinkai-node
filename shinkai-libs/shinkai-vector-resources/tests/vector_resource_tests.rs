@@ -1213,7 +1213,7 @@ async fn local_html_parsing_test() {
     .unwrap();
 
     // Perform vector search
-    let query_string = "Compare Traditional Method and AI-based solutions".to_string();
+    let query_string = "Explain Benefits of AI in Video Processing".to_string();
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
     let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
@@ -1222,5 +1222,5 @@ async fn local_html_parsing_test() {
         .node
         .get_text_content()
         .unwrap()
-        .contains("Traditional Methods"));
+        .contains("Improved video analysis"));
 }
