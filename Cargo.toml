@@ -7,8 +7,7 @@ members = [
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-bin/*",
-  "shinkai-cli-tools/*",
-  "shinkai-side-executor"
+  "shinkai-cli-tools/*"
 ]
 resolver = "2"
 

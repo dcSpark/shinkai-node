@@ -25,7 +25,9 @@ WORKDIR /app
 
 COPY . .
 
-ARG RUSTFLAGS=-Clink-arg=-fuse-ld=lld
+# Download ocrs models
+
+RUN $(cd shinkai-bin/shinkai-executor/ocrs && ./download-models.sh)
 
 # Build the dependencies (cached)
 
