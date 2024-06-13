@@ -118,10 +118,12 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     match try_bind {
         Ok(_) => {
-            match check_and_download_dependencies().await {
-                Ok(_) => {}
-                Err(e) => eprintln!("Error downloading ocrs models: {:?}", e),
-            }
+            tokio::spawn(async {
+                match check_and_download_dependencies().await {
+                    Ok(_) => {}
+                    Err(e) => eprintln!("Error downloading ocrs models: {:?}", e),
+                }
+            });
 
             drop(try_bind);
             warp::serve(routes).run(address).await;
@@ -156,7 +158,7 @@ async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Err
     let detection_model = "text-detection.rten";
     let recognition_model = "text-recognition.rten";
 
-    if !std::path::Path::new(detection_model).exists() {
+    if !std::path::Path::new(&format!("ocrs/{}", detection_model)).exists() {
         println!("Downloading OCRS model {}", detection_model);
 
         let client = reqwest::Client::new();
@@ -171,7 +173,7 @@ async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Err
         file.write_all(&file_data)?;
     }
 
-    if !std::path::Path::new(recognition_model).exists() {
+    if !std::path::Path::new(&format!("ocrs/{}", recognition_model)).exists() {
         println!("Downloading OCRS model {}", recognition_model);
 
         let client = reqwest::Client::new();
