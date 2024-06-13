@@ -1,7 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, Ollama, OpenAI, SerializedAgent, ShinkaiBackend,
-};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -321,7 +319,6 @@ fn workflow_integration_test() {
     });
     rt.shutdown_background();
 }
-
 
 // #[test]
 fn workflow_complex_integration_test() {

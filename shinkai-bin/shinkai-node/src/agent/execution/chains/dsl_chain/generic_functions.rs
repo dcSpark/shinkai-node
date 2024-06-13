@@ -3,20 +3,37 @@ use scraper::{Html, Selector};
 use shinkai_dsl::sm_executor::WorkflowError;
 use std::any::Any;
 
-pub fn concat_strings(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
-    if args.len() != 2 {
-        return Err(WorkflowError::InvalidArgument("Expected 2 arguments".to_string()));
+use crate::agent::execution::chains::inference_chain_trait::InferenceChainContextTrait;
+
+// TODO: we need to generate description for each function (LLM processing?)
+// we need to extend the description with keywords maybe use RAKE as well
+// then we need to generate embeddings for them
+
+pub fn concat_strings(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err(WorkflowError::InvalidArgument("Expected 2 to 4 arguments".to_string()));
     }
-    let str1 = args[0]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-    let str2 = args[1]
-        .downcast_ref::<String>()
-        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-    Ok(Box::new(format!("{}{}", str1, str2)))
+
+    let mut concatenated_string = String::new();
+
+    for arg in args {
+        let str = arg
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
+        concatenated_string.push_str(str);
+    }
+
+    Ok(Box::new(concatenated_string))
 }
 
-pub fn search_and_replace(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn search_and_replace(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 3 {
         return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
     }
@@ -33,7 +50,11 @@ pub fn search_and_replace(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any 
     Ok(Box::new(text.replace(search, replace)))
 }
 
-pub fn download_webpage(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn download_webpage(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 1 {
         return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
     }
@@ -65,7 +86,11 @@ pub fn download_webpage(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + 
     Ok(Box::new(result))
 }
 
-pub fn html_to_markdown(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn html_to_markdown(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 1 {
         return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
     }
@@ -88,7 +113,11 @@ pub fn html_to_markdown(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + 
     Ok(Box::new(markdown))
 }
 
-pub fn array_to_markdown_template(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn array_to_markdown_template(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 1 {
         return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
     }
@@ -106,7 +135,11 @@ pub fn array_to_markdown_template(args: Vec<Box<dyn Any + Send>>) -> Result<Box<
     Ok(Box::new(markdown))
 }
 
-pub fn fill_variable_in_md_template(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn fill_variable_in_md_template(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 3 {
         return Err(WorkflowError::InvalidArgument("Expected 3 arguments".to_string()));
     }
@@ -129,20 +162,42 @@ pub fn fill_variable_in_md_template(args: Vec<Box<dyn Any + Send>>) -> Result<Bo
     Ok(Box::new(filled_template))
 }
 
-pub fn print_arg(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+#[allow(dead_code)]
+pub fn print_arg(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
     if args.len() != 1 {
         return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
     }
     let arg = args[0]
         .downcast_ref::<String>()
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
-    
+
     println!("print_arg: {}", arg);
     Ok(Box::new(()))
 }
 
+#[allow(dead_code)]
+pub fn return_error_message(
+    _context: &dyn InferenceChainContextTrait,
+    args: Vec<Box<dyn Any + Send>>,
+) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    if args.len() != 1 {
+        return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
+    }
+    let error_message = args[0]
+        .downcast_ref::<String>()
+        .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for error message".to_string()))?
+        .clone();
+
+    Err(WorkflowError::InvalidArgument(error_message))
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::agent::execution::chains::inference_chain_trait::MockInferenceChainContext;
+
     use super::{super::generic_functions::html_to_markdown, array_to_markdown_template, fill_variable_in_md_template};
     use std::any::Any;
 
@@ -150,8 +205,9 @@ mod tests {
     fn test_html_to_markdown() {
         let html_content = "<html><body><h1>Title</h1><p>This is a paragraph.</p><script>console.log('test');</script><style>body { font-size: 12px; }</style></body></html>";
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new(html_content.to_string())];
+        let context = MockInferenceChainContext::default();
 
-        let result = html_to_markdown(args);
+        let result = html_to_markdown(&context, args);
 
         match result {
             Ok(markdown) => {
@@ -170,8 +226,9 @@ mod tests {
     fn test_array_to_markdown() {
         let input = "red,blue,green".to_string();
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new(input)];
+        let context = MockInferenceChainContext::default();
 
-        let result = array_to_markdown_template(args);
+        let result = array_to_markdown_template(&context, args);
 
         match result {
             Ok(markdown) => {
@@ -191,8 +248,9 @@ mod tests {
         let variable = "red".to_string();
         let content = "the blood is red".to_string();
         let args: Vec<Box<dyn Any + Send>> = vec![Box::new(template), Box::new(variable), Box::new(content)];
+        let context = MockInferenceChainContext::default();
 
-        let result = fill_variable_in_md_template(args);
+        let result = fill_variable_in_md_template(&context, args);
 
         match result {
             Ok(filled_template) => {

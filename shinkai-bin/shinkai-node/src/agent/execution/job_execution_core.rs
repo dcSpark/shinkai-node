@@ -10,7 +10,6 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
-use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -25,7 +24,6 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
-use std::any::Any;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -79,7 +77,26 @@ impl JobManager {
         )
         .unwrap();
 
-        // If a workflow is found, processing job message is taken over by this alternate logic
+        // 1.- Processes any files which were sent with the job message
+        let process_files_result = JobManager::process_job_message_files_for_vector_resources(
+            db.clone(),
+            vector_fs.clone(),
+            &job_message.job_message,
+            agent_found.clone(),
+            &mut full_job,
+            user_profile.clone(),
+            None,
+            generator.clone(),
+            unstructured_api.clone(),
+        )
+        .await;
+        if let Err(e) = process_files_result {
+            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
+        }
+
+        eprintln!("execution job Full Job: {:?}", full_job);
+
+        // 2.- *If* a workflow is found, processing job message is taken over by this alternate logic
         let workflow_found_result = JobManager::should_process_workflow_for_tasks_take_over(
             db.clone(),
             vector_fs.clone(),
@@ -121,23 +138,6 @@ impl JobManager {
         }
 
         // Otherwise proceed forward with rest of logic.
-        // Processes any files which were sent with the job message
-        let process_files_result = JobManager::process_job_message_files_for_vector_resources(
-            db.clone(),
-            vector_fs.clone(),
-            &job_message.job_message,
-            agent_found.clone(),
-            &mut full_job,
-            user_profile.clone(),
-            None,
-            generator.clone(),
-            unstructured_api.clone(),
-        )
-        .await;
-        if let Err(e) = process_files_result {
-            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
-        }
-
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
             vector_fs.clone(),
@@ -304,23 +304,25 @@ impl JobManager {
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
             &format!("Prev Execution Context: {:?}", prev_execution_context),
         );
-        let start = Instant::now();
 
         let job_id = full_job.job_id().to_string();
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
-        
+
+        eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
+
         // Create the inference chain context
-        let chain_context = InferenceChainContext::new(
+        let mut chain_context = InferenceChainContext::new(
             db.clone(),
-            vector_fs,
+            vector_fs.clone(),
             full_job,
             parsed_user_message,
             agent,
@@ -331,9 +333,25 @@ impl JobManager {
             max_tokens_in_prompt,
             HashMap::new(),
         );
-        
+
+        // Note: we do this once so we are not re-reading the files multiple times for each operation
+        {
+            let files = {
+                let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
+                // Check if there was an error getting the files
+                match files_result {
+                    Ok(files) => files,
+                    Err(e) => return Err(AgentError::VectorFS(e)),
+                }
+            };
+
+            chain_context.update_raw_files(Some(files));
+        }
+
         // Available functions for the workflow
         let functions = HashMap::new();
+
+        // TODO: read from tooling storage what we may have available
 
         // Call the inference chain router to choose which chain to use, and call it
         let mut dsl_inference = DslChain::new(chain_context, workflow, functions);
@@ -343,12 +361,13 @@ impl JobManager {
         dsl_inference.add_all_generic_functions();
 
         // Execute the workflow using run_chain
+        let start = Instant::now();
         let inference_result = dsl_inference.run_chain().await?;
+        let duration = start.elapsed();
 
         let response = inference_result.response;
         let new_execution_context = inference_result.new_job_execution_context;
 
-        let duration = start.elapsed();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -357,6 +376,9 @@ impl JobManager {
 
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+
+        // TODO: can we extend it to add metadata somehow?
+        // TODO: What should be the structre of this metadata?
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id,
             response.to_string(),
@@ -429,6 +451,7 @@ impl JobManager {
                 );
 
                 let filename_lower = filename.to_lowercase();
+                // TODO: remove .jobkai support
                 if filename.ends_with(".jobkai") {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
@@ -577,6 +600,28 @@ impl JobManager {
                 ShinkaiLogLevel::Debug,
                 format!("Processing files_map: ... files: {}", job_message.files_inbox.len()).as_str(),
             );
+            eprintln!("Processing files_map: ... files: {}", job_message.files_inbox.len());
+            {
+                // Get the files from the DB
+                let files = {
+                    let files_result = vector_fs.db.get_all_files_from_inbox(job_message.files_inbox.clone());
+                    // Check if there was an error getting the files
+                    match files_result {
+                        Ok(files) => files,
+                        Err(e) => return Err(AgentError::VectorFS(e)),
+                    }
+                };
+
+                // Print out all the files
+                for (filename, _) in &files {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        &format!("File found: {}", filename),
+                    );
+                    eprintln!("File found: {}", filename);
+                }
+            }
             // TODO: later we should able to grab errors and return them to the user
             let new_scope_entries_result = JobManager::process_files_inbox(
                 db.clone(),

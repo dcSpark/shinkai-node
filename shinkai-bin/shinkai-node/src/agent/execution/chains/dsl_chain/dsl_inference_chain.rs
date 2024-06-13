@@ -1,6 +1,6 @@
 use std::{any::Any, collections::HashMap, fmt, marker::PhantomData};
 
-use crate::agent::job::JobLike;
+use crate::agent::{execution::chains::inference_chain_trait::InferenceChainContextTrait, job::JobLike};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use shinkai_dsl::{
@@ -97,26 +97,27 @@ impl<'a> DslChain<'a> {
 
     pub fn add_generic_function<F>(&mut self, name: &str, func: F)
     where
-        F: Fn(Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync + 'a,
+        F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync + 'a,
     {
         self.functions.insert(
             name.to_string(),
             Box::new(GenericFunction {
                 func,
+                context: Box::new(self.context.clone()) as Box<dyn InferenceChainContextTrait>,
                 _marker: PhantomData,
             }),
         );
     }
 
     pub fn add_all_generic_functions(&mut self) {
-        self.add_generic_function("concat", generic_functions::concat_strings);
-        self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
-        self.add_generic_function("download_webpage", generic_functions::download_webpage);
-        self.add_generic_function("html_to_markdown", generic_functions::html_to_markdown);
-        self.add_generic_function("fill_variable_in_md_template", generic_functions::fill_variable_in_md_template);
-        self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
-        self.add_generic_function("array_to_markdown_template", generic_functions::array_to_markdown_template);
-        self.add_generic_function("print_arg", generic_functions::print_arg);
+        // self.add_generic_function("concat", generic_functions::concat_strings);
+        // self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
+        // self.add_generic_function("download_webpage", generic_functions::download_webpage);
+        // self.add_generic_function("html_to_markdown", generic_functions::html_to_markdown);
+        // self.add_generic_function("fill_variable_in_md_template", generic_functions::fill_variable_in_md_template);
+        // self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
+        // self.add_generic_function("array_to_markdown_template", generic_functions::array_to_markdown_template);
+        // self.add_generic_function("print_arg", generic_functions::print_arg);
         // TODO: add for local search of nodes (embeddings)
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }
@@ -149,6 +150,7 @@ impl AsyncFunction for InferenceFunction {
         let scope_is_empty = full_job.scope().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
         if !scope_is_empty {
+            // TODO: this should also be a generic fn
             let (ret, _summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
@@ -190,20 +192,22 @@ impl AsyncFunction for InferenceFunction {
     }
 }
 
+#[allow(dead_code)]
 struct GenericFunction<F>
 where
-    F: Fn(Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
+    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
 {
     func: F,
+    context: Box<dyn InferenceChainContextTrait>,
     _marker: PhantomData<fn() -> F>,
 }
 
 #[async_trait]
 impl<F> AsyncFunction for GenericFunction<F>
 where
-    F: Fn(Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
+    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
 {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
-        (self.func)(args)
+        (self.func)(self.context.clone(), args)
     }
 }

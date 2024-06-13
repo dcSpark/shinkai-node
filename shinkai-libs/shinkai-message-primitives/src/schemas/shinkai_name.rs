@@ -4,8 +4,8 @@ use crate::{
 };
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{fmt, hash::Hasher};
 use std::hash::Hash;
+use std::{fmt, hash::Hasher};
 
 #[derive(Debug, Clone, Eq)]
 pub struct ShinkaiName {
@@ -446,13 +446,17 @@ impl ShinkaiName {
         }
 
         // Reconstruct the name
-        
 
         if parts.len() > 1 {
             format!("{}/{}", node_name, parts[1])
         } else {
             node_name
         }
+    }
+
+    pub fn default_testnet_localhost() -> Self {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string())
+            .expect("Failed to create default testnet localhost ShinkaiName")
     }
 }
 
@@ -511,6 +515,7 @@ impl Hash for ShinkaiName {
 }
 
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum ShinkaiNameError {
     MissingBody(String),
     MissingInternalMetadata(String),

@@ -111,56 +111,18 @@ impl SummaryInferenceChain {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, AgentError> {
-        // Perform the checks
-        let checks = vec![
-            self.this_checked.clone(),
-            self.these_checked.clone(),
-            self.message_history_checked.clone(),
-        ];
-        let highest_score_checked =
-            checks
-                .into_iter()
-                .filter(|check| check.passed_scoring)
-                .fold(ScoreResult::new_empty(), |acc, check| {
-                    if check.score > acc.score {
-                        check
-                    } else {
-                        acc
-                    }
-                });
-
-        // Later implement this alternative summary flow
-        // if message_history_check.1 == highest_score_check.1 {
-        if self.these_checked.score == highest_score_checked.score
-            || self.this_checked.score == highest_score_checked.score
-        {
-            #[allow(clippy::too_many_arguments)]
-            Self::start_summarize_job_context_sub_chain(
-                db,
-                vector_fs,
-                full_job,
-                user_message,
-                agent,
-                execution_context,
-                generator,
-                user_profile,
-                max_tokens_in_prompt,
-            )
-            .await
-        } else {
-            Self::start_summarize_job_context_sub_chain(
-                db,
-                vector_fs,
-                full_job,
-                user_message,
-                agent,
-                execution_context,
-                generator,
-                user_profile,
-                max_tokens_in_prompt,
-            )
-            .await
-        }
+        Self::start_summarize_job_context_sub_chain(
+            db,
+            vector_fs,
+            full_job,
+            user_message,
+            agent,
+            execution_context,
+            generator,
+            user_profile,
+            max_tokens_in_prompt,
+        )
+        .await
     }
 
     /// Core logic which summarizes VRs in the job context.
@@ -178,7 +140,7 @@ impl SummaryInferenceChain {
     ) -> Result<String, AgentError> {
         let scope = full_job.scope();
         // let resource_count =
-            // JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
+        // JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
 
         // Optimization TODO:
         // If a significant amount of VRs, simply search first to find the the top 5 most relevant and summarize them fully.
