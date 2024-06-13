@@ -1,8 +1,8 @@
 workflow  = { "workflow" ~ identifier ~ version ~ "{" ~ step+ ~ "}" }
 step      = { "step" ~ identifier ~ "{" ~ step_body ~ "}" }
-step_body = { (condition | register_operation | action | for_loop )+ }
+step_body = { (condition | register_operation | action | for_loop)+ }
 condition = { "if" ~ expression ~ "{" ~ step_body ~ "}" }
-for_loop  = { "for" ~ identifier ~ "in" ~ expression ~ "{" ~ action ~ "}" }
+for_loop  = { "for" ~ identifier ~ "in" ~ (split_expression | range_expression) ~ "{" ~ step_body ~ "}" }
 action    = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
 command   = { identifier }
 param     = { string | number | boolean | identifier | register }
@@ -16,9 +16,11 @@ register_operation = { register ~ "=" ~ (external_fn_call | value) }
 // New rule for register operations
 comparison_operator =  { "==" | "!=" | ">" | "<" | ">=" | "<=" }
 value               =  { string | number | boolean | identifier | register }
+split_expression    =  { (register | identifier | string) ~ ".split(" ~ delimiter ~ ")" }
 version             =  { "v" ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)* }
 identifier          = @{ (ASCII_ALPHANUMERIC | "_")+ }
 string              = _{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+delimiter           =  { "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
 number              = _{ ASCII_DIGIT+ }
 boolean             =  { "true" | "false" }
 WHITESPACE          = _{ " " | "\t" | "\n" | "\r" }

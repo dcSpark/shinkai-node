@@ -1,10 +1,6 @@
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::agent::{
-    execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage},
-};
-use shinkai_vector_resources::{
-    source::VRSourceReference,
-};
+use crate::agent::execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage};
+use shinkai_vector_resources::source::VRSourceReference;
 
 impl JobPromptGenerator {
     /// Prompt for creating a detailed summary of nodes from a Vector Resource
@@ -18,11 +14,15 @@ impl JobPromptGenerator {
 
         // Add the source if available
         if resource_source.is_none() {
-            prompt.add_content(String::from("Here is the content:"), SubPromptType::System, 100);
+            prompt.add_content(
+                "Here is the content to answer the user's question: --- start --- \n".to_string(),
+                SubPromptType::ExtraContext,
+                100,
+            );
         } else {
             prompt.add_content(
-                format!("Here is the content from {}: ", resource_source.format_source_string()),
-                SubPromptType::System,
+                format!("Here is the content from {} to answer the user's question: --- start --- \n", resource_source.format_source_string()),
+                SubPromptType::ExtraContext,
                 100,
             );
         }
@@ -30,14 +30,20 @@ impl JobPromptGenerator {
         // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
+        prompt.add_content(
+            "--- end ---".to_string(),
+            SubPromptType::ExtraContext,
+            100,
+        );
+
         let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics or chapters in the content (with 1-2 sentences describing each).\n Respond using the following markdown template and nothing else (no references). Don't forget to put all content under the top-level `# Answer`:\n";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        let markdown_message = r#"# Answer\n ## {{content title here}}\n\n{{introductory paragraph here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n"#;
+        let markdown_message = r#"# Answer \n ## {{content title here}}\n\n{{introductory paragraph here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
-        let task_message = "Do not respond with absolutely anything else, except with the above markdown template, filling it in with info to fulfill the user's summary request:\n";
-        prompt.add_content(task_message.to_string(), SubPromptType::System, 100);
+        let task_message = format!("Do not respond with absolutely anything else, except with the above markdown template, filling it in with info to fulfill the user's summary request: {}", user_message.original_user_message_string);
+        prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
         prompt
     }

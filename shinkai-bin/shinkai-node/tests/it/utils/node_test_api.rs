@@ -454,6 +454,7 @@ pub async fn api_message_job(
     content: &str,
     files_inbox: &str,
     parent: &str,
+    workflow: Option<String>,
 ) {
     {
         let job_message = ShinkaiMessageBuilder::job_message(
@@ -461,6 +462,7 @@ pub async fn api_message_job(
             content.to_string(),
             files_inbox.to_string(),
             parent.to_string(),
+            workflow,
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,

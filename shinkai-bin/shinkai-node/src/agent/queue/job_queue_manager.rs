@@ -317,6 +317,7 @@ mod tests {
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -346,6 +347,7 @@ mod tests {
                 content: "my content".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -355,6 +357,7 @@ mod tests {
                 content: "my content 2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -454,6 +457,7 @@ mod tests {
                 content: "content a1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -463,6 +467,7 @@ mod tests {
                 content: "content a2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -472,6 +477,7 @@ mod tests {
                 content: "content a3".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -482,6 +488,7 @@ mod tests {
                 content: "content b1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -492,6 +499,7 @@ mod tests {
                 content: "content c1".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
@@ -502,6 +510,7 @@ mod tests {
                 content: "content c2".to_string(),
                 files_inbox: "".to_string(),
                 parent: None,
+                workflow: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );

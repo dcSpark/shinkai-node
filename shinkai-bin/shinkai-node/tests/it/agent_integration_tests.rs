@@ -80,7 +80,7 @@ fn node_agent_registration() {
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "\n# Answer\n Hello there, how may I assist you today?"
+                    "content": "\n# Answer \n Hello there, how may I assist you today?"
                 },
                 "finish_reason": "stop"
             }],
@@ -223,6 +223,7 @@ fn node_agent_registration() {
                     &message,
                     "",
                     "",
+                    None,
                 )
                 .await;
             }
@@ -314,6 +315,7 @@ fn node_agent_registration() {
                     &message,
                     "",
                     "",
+                    None,
                 )
                 .await;
 
@@ -462,6 +464,7 @@ fn node_agent_registration() {
                     content: "testing old message".to_string(),
                     files_inbox: "".to_string(),
                     parent: None,
+                    workflow: None,
                 };
                 let body = serde_json::to_string(&job_message)
                     .map_err(|_| "Failed to serialize job message to JSON")

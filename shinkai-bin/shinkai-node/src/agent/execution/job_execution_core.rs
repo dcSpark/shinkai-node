@@ -1,4 +1,5 @@
 use crate::agent::error::AgentError;
+use crate::agent::execution::chains::inference_chain_trait::InferenceChain;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::parsing_helper::ParsingHelper;
@@ -8,6 +9,8 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Mode
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
+use shinkai_dsl::parser::parse_workflow;
+use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
@@ -22,12 +25,17 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
+use std::any::Any;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 
 use tracing::instrument;
+
+use super::chains::dsl_chain::dsl_inference_chain::DslChain;
+use super::chains::inference_chain_trait::InferenceChainContext;
+use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
@@ -70,6 +78,27 @@ impl JobManager {
             user_profile.profile_name.unwrap_or_default(),
         )
         .unwrap();
+
+        // If a workflow is found, processing job message is taken over by this alternate logic
+        let workflow_found_result = JobManager::should_process_workflow_for_tasks_take_over(
+            db.clone(),
+            vector_fs.clone(),
+            &job_message.job_message,
+            agent_found.clone(),
+            full_job.clone(),
+            clone_signature_secret_key(&identity_secret_key),
+            generator.clone(),
+            user_profile.clone(),
+        )
+        .await;
+
+        let workflow_found = match workflow_found_result {
+            Ok(found) => found,
+            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await,
+        };
+        if workflow_found {
+            return Ok(job_id);
+        }
 
         // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let jobkai_found_result = JobManager::should_process_job_files_for_tasks_take_over(
@@ -249,6 +278,128 @@ impl JobManager {
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
+    }
+
+    /// Temporary function to process the files in the job message for workflows
+    #[allow(clippy::too_many_arguments)]
+    pub async fn should_process_workflow_for_tasks_take_over(
+        db: Arc<ShinkaiDB>,
+        vector_fs: Arc<VectorFS>,
+        job_message: &JobMessage,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        identity_secret_key: SigningKey,
+        generator: RemoteEmbeddingGenerator,
+        user_profile: ShinkaiName,
+    ) -> Result<bool, AgentError> {
+        if job_message.workflow.is_none() {
+            return Ok(false);
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Workflow Inference chain - Processing Job: {:?}", full_job),
+        );
+
+        // Setup initial data to get ready to call a specific inference chain
+        let prev_execution_context = full_job.execution_context.clone();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Prev Execution Context: {:?}", prev_execution_context),
+        );
+        let start = Instant::now();
+
+        // TODO: get the fn that are going to be available for the workflow
+
+        let job_id = full_job.job_id().to_string();
+        let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+        let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
+        let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
+        
+        // Create the inference chain context
+        let chain_context = InferenceChainContext::new(
+            db.clone(),
+            vector_fs,
+            full_job,
+            parsed_user_message,
+            agent,
+            prev_execution_context,
+            generator,
+            user_profile.clone(),
+            2,
+            max_tokens_in_prompt,
+            HashMap::new(),
+        );
+        
+        // Available functions for the workflow
+        let functions = HashMap::new();
+
+        // Call the inference chain router to choose which chain to use, and call it
+        let mut dsl_inference = DslChain::new(chain_context, workflow, functions);
+
+        // Add the inference function to the functions map
+        dsl_inference.add_inference_function();
+
+        // Add a generic function to concatenate strings
+        dsl_inference.add_generic_function("concat_strings", |args: Vec<Box<dyn Any + Send>>| {
+            if args.len() != 2 {
+                return Err(WorkflowError::InvalidArgument("Expected 2 arguments".to_string()));
+            }
+            let str1 = args[0]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
+            let str2 = args[1]
+                .downcast_ref::<String>()
+                .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?;
+            Ok(Box::new(format!("{}{}", str1, str2)))
+        });
+
+        // Execute the workflow using run_chain
+        let inference_result = dsl_inference.run_chain().await?;
+
+        let response = inference_result.response;
+        let new_execution_context = inference_result.new_job_execution_context;
+
+        let duration = start.elapsed();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Time elapsed for inference chain processing is: {:?}", duration),
+        );
+
+        // Prepare data to save inference response to the DB
+        let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            job_id,
+            response.to_string(),
+            "".to_string(),
+            identity_secret_key_clone,
+            user_profile.get_node_name_string(),
+            user_profile.get_node_name_string(),
+        )
+        .map_err(|e| AgentError::ShinkaiMessageBuilderError(e.to_string()))?;
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
+        );
+
+        // Save response data to DB
+        db.add_step_history(
+            job_message.job_id.clone(),
+            job_message.content.clone(),
+            response.to_string(),
+            None,
+        )?;
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+            .await?;
+        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+
+        Ok(true)
     }
 
     /// Temporary function to process the files in the job message for tasks
@@ -559,6 +710,7 @@ impl JobManager {
         };
 
         // Sort out the vrpacks from the rest
+        #[allow(clippy::type_complexity)]
         let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
             files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 

@@ -1,9 +1,7 @@
 use super::prompts::{JobPromptGenerator, Prompt, SubPrompt, SubPromptAssetType, SubPromptType};
-use crate::{
-    agent::job::JobStepResult,
-};
+use crate::agent::job::JobStepResult;
 use lazy_static::lazy_static;
-use shinkai_vector_resources::vector_resource::{BaseVectorResource};
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 
 impl JobPromptGenerator {
     pub fn convert_resource_into_subprompts(resource: BaseVectorResource) -> Vec<SubPrompt> {
@@ -41,7 +39,7 @@ impl JobPromptGenerator {
 
         // Add up to previous step results from history
         if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 10, 98, 4000);
+            prompt.add_step_history(step_history, 98);
         }
 
         prompt.add_content(
@@ -86,13 +84,13 @@ impl JobPromptGenerator {
             .collect();
 
         prompt.add_content(
-            format!("Here is the answer to your request: `{}`", invalid_markdown),
-            SubPromptType::Assistant,
+            format!("Here is your previous response: `{}`", invalid_markdown),
+            SubPromptType::User,
             100,
         );
 
         let mut wrong_string =
-            r#"No that is wrong. I need it to be properly formatted as a markdown with the correct section names. "#
+            r#"It's formatted incorrectly. It needs to be properly formatted as markdown with the correct section names starting with \n # Answer. \n {{corrected_answer}}"#
                 .to_string();
 
         if let Some(md_def) = markdown_definitions.first() {
@@ -104,7 +102,7 @@ impl JobPromptGenerator {
         prompt.add_content(wrong_string, SubPromptType::User, 100);
 
         prompt.add_content(
-            r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else: \n\n"#.to_string(),
+            r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else \n # Answer \n{{your answer}}\n"#.to_string(),
             SubPromptType::User,
             100,
         );
@@ -127,14 +125,9 @@ impl JobPromptGenerator {
         }
         prompt.add_content(
             String::from(
-                "Summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum. Respond using the follow markdown template and nothing else:",
+                "Summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum. Respond using the follow markdown template and nothing else: # Summary\n{{summary}}\n",
             ),
             SubPromptType::User,
-            100,
-        );
-        prompt.add_ebnf(
-            String::from(r#"# Summary\n{{summary}}\n"#),
-            SubPromptType::System,
             100,
         );
 

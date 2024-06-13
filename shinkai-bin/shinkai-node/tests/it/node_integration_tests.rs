@@ -228,7 +228,7 @@ fn subidentity_registration() {
                     node1_commands_sender.clone(),
                     node1_profile_name,
                     node1_identity_name,
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     node1_device_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_device_identity_sk),
                     node1_profile_encryption_sk.clone(),
@@ -263,7 +263,7 @@ fn subidentity_registration() {
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_profile_encryption_pk.clone(),
+                    node1_profile_encryption_pk,
                 )
                 .message_raw_content(message_content.clone())
                 .no_body_encryption()
@@ -277,7 +277,7 @@ fn subidentity_registration() {
                 .external_metadata_with_other(
                     node1_identity_name.to_string(),
                     node2_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node2_subencryption_pk.clone()),
+                    encryption_public_key_to_string(node2_subencryption_pk),
                 )
                 .build()
                 .unwrap();
@@ -427,7 +427,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_subencryption_pk_2,
                 )
-                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
+                .set_optional_second_public_key_receiver_node(node1_encryption_pk)
                 .message_raw_content(message_content.clone())
                 .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
                 .message_schema_type(MessageSchemaType::TextContent)

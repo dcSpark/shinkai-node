@@ -91,10 +91,6 @@ pub async fn validate_message_main_logic(
                         })
                     }
                 };
-                eprintln!(
-                    "\n\nvalidate_message_main_logic> sender_encryption_pk: {:?}",
-                    encryption_public_key_to_string(sender_encryption_pk)
-                );
                 msg = match potentially_encrypted_msg
                     .clone()
                     .decrypt_outer_layer(encryption_secret_key, &sender_encryption_pk)

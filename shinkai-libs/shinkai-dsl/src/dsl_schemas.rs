@@ -23,7 +23,7 @@ pub struct Step {
 pub enum StepBody {
     Action(Action),
     Condition { condition: Expression, body: Box<StepBody> },
-    ForLoop { var: String, in_expr: Expression, action: Box<StepBody> },
+    ForLoop { var: String, in_expr: ForLoopExpression, body: Box<StepBody> },
     RegisterOperation { register: String, value: WorkflowValue },
     Composite(Vec<StepBody>),
 }
@@ -64,6 +64,18 @@ pub enum Expression {
         end: Box<Param>,
     },
     Simple(Box<Param>),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum ForLoopExpression {
+    Split {
+        source: Param,
+        delimiter: String,
+    },
+    Range {
+        start: Box<Param>,
+        end: Box<Param>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]

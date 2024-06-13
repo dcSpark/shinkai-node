@@ -2,44 +2,35 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use async_channel::{bounded, Receiver, Sender};
 use mockito::{Matcher, Mock};
-use serde_json::Value;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
+    AgentLLMInterface, OpenAI, SerializedAgent,
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-    ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair, EncryptionMethod,
-};
+use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
-};
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::agent::error::AgentError;
 use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr};
+use std::env;
+use std::time::Duration;
 use std::time::Instant;
-use std::{env, fs};
-use std::{net::SocketAddr, time::Duration};
 
-use super::utils;
 use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
+    api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
@@ -68,7 +59,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
         .match_body(Matcher::JsonString(request_body.to_string()))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(&response_body)
+        .with_body(response_body)
         .create();
     m
 }
@@ -84,7 +75,7 @@ fn planner_integration_test() {
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
             let node1_agent = env.node1_agent.clone();
-            let node1_encryption_pk = env.node1_encryption_pk.clone();
+            let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
@@ -132,9 +123,9 @@ fn planner_integration_test() {
                     // model_type: "gpt-3.5-turbo-1106".to_string(),
                 };
 
-                let generic_api = GenericAPI {
-                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
-                };
+                // let generic_api = GenericAPI {
+                //     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
+                // };
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
@@ -156,7 +147,7 @@ fn planner_integration_test() {
                 api_agent_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -173,7 +164,7 @@ fn planner_integration_test() {
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -187,7 +178,7 @@ fn planner_integration_test() {
                 let inboxes = api_get_all_inboxes_from_profile(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -200,7 +191,7 @@ fn planner_integration_test() {
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+                let message_content = aes_encryption_key_to_string(symmetrical_sk);
                 let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -218,7 +209,7 @@ fn planner_integration_test() {
                     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
                     .await
                     .unwrap();
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
                 eprintln!("\n\n### Sending Message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
@@ -313,7 +304,7 @@ fn planner_integration_test() {
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -322,6 +313,7 @@ fn planner_integration_test() {
                     &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                     "",
+                    None,
                 )
                 .await;
 
@@ -334,7 +326,7 @@ fn planner_integration_test() {
                 let inboxes = api_get_all_smart_inboxes_from_profile(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -390,7 +382,7 @@ fn planner_integration_test() {
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
+                    node1_encryption_pk,
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
@@ -399,6 +391,7 @@ fn planner_integration_test() {
                     "dummy message",
                     "",
                     "",
+                    None,
                 )
                 .await;
 
@@ -646,8 +639,4 @@ fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
     }
 
     Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))
-}
-
-fn json_value_to_string(json_val: &JsonValue) -> String {
-    json_val.to_string()
 }

@@ -2,7 +2,7 @@
 mod tests {
     use pest::Parser;
     use shinkai_dsl::{
-        dsl_schemas::{Action, ComparisonOperator, Expression, Param, Rule, StepBody, WorkflowParser, WorkflowValue},
+        dsl_schemas::{Action, ComparisonOperator, Expression, ForLoopExpression, Param, Rule, StepBody, WorkflowParser, WorkflowValue},
         parser::{parse_action, parse_expression, parse_step, parse_step_body, parse_step_body_item, parse_workflow},
     };
 
@@ -33,26 +33,43 @@ mod tests {
         let input = r#"step myStep { for var in 0..10 { command("doSomething") } }"#;
         let pair = WorkflowParser::parse(Rule::step, input).unwrap().next().unwrap();
         let result = parse_step(pair);
+        eprintln!("{:?}", result);
         assert!(result.is_ok());
         let step = result.unwrap();
         assert_eq!(step.name, "myStep");
         assert_eq!(step.body.len(), 1);
-        match step.body.first().unwrap() {
-            StepBody::ForLoop {
-                var,
-                in_expr: _,
-                action,
-            } => {
+
+        match &step.body[0] {
+            StepBody::ForLoop { var, in_expr, body } => {
                 assert_eq!(var, "var");
-                // Assuming parse_expression is correctly implemented to handle range expressions
-                match **action {
-                    StepBody::Action(_) => (),
-                    _ => panic!("Expected Action within ForLoop"),
+                match in_expr {
+                    ForLoopExpression::Range { start, end } => {
+                        match **start {
+                            Param::Number(start_value) => assert_eq!(start_value, 0),
+                            _ => panic!("Expected Number as start of range"),
+                        }
+                        match **end {
+                            Param::Number(end_value) => assert_eq!(end_value, 10),
+                            _ => panic!("Expected Number as end of range"),
+                        }
+                    }
+                    _ => panic!("Expected Range expression in ForLoop"),
+                }
+                match **body {
+                    StepBody::Action(Action::Command { ref command, ref params }) => {
+                        assert_eq!(command, "command");
+                        assert_eq!(params.len(), 1);
+                        match &params[0] {
+                            Param::String(ref s) => assert_eq!(s, "doSomething"),
+                            _ => panic!("Expected String parameter"),
+                        }
+                    }
+                    _ => panic!("Expected Command action within ForLoop"),
                 }
             }
-            _ => panic!("Expected ForLoop"),
+            _ => panic!("Expected ForLoop in step body"),
         }
-    }
+    } 
 
     #[test]
     fn test_parse_action_command() {
@@ -194,12 +211,12 @@ mod tests {
         assert_eq!(workflow.name, "complexWorkflow");
         assert_eq!(workflow.version, "v2.0");
         assert_eq!(workflow.steps.len(), 3);
-
+    
         // Check first step
         let step_one = &workflow.steps[0];
         assert_eq!(step_one.name, "stepOne");
         assert_eq!(step_one.body.len(), 1);
-
+    
         // Check second step
         let step_two = &workflow.steps[1];
         assert_eq!(step_two.name, "stepTwo");
@@ -207,18 +224,31 @@ mod tests {
         match step_two.body.first().unwrap() {
             StepBody::ForLoop {
                 var,
-                in_expr: _,
-                action,
+                in_expr,
+                body,
             } => {
                 assert_eq!(var, "i");
-                match **action {
+                match in_expr {
+                    ForLoopExpression::Range { start, end } => {
+                        match **start {
+                            Param::Number(start_value) => assert_eq!(start_value, 1),
+                            _ => panic!("Expected Number as start of range"),
+                        }
+                        match **end {
+                            Param::Number(end_value) => assert_eq!(end_value, 5),
+                            _ => panic!("Expected Number as end of range"),
+                        }
+                    }
+                    _ => panic!("Expected Range expression in ForLoop"),
+                }
+                match **body {
                     StepBody::Action(_) => (),
                     _ => panic!("Expected Action within ForLoop"),
                 }
             }
             _ => panic!("Expected ForLoop"),
         }
-
+    
         // Check third step
         let step_three = &workflow.steps[2];
         assert_eq!(step_three.name, "stepThree");

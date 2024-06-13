@@ -1,6 +1,6 @@
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
-use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::agent::providers::shared::ollama::{ollama_conversation_prepare_messages, OllamaAPIStreamingResponse};
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::shared_model_logic::parse_markdown_to_json;
@@ -39,11 +39,11 @@ impl LLMProvider for Ollama {
         model: AgentLLMInterface,
     ) -> Result<LLMInferenceResponse, AgentError> {
         if let Some(base_url) = url {
-            let url = format!("{}{}", base_url, "/api/generate");
-            let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
-            let (messages_string, asset_content) = match messages_result.value {
-                PromptResultEnum::Text(v) => (v, None),
-                PromptResultEnum::ImageAnalysis(v, i) => (v, Some(i)),
+            let url = format!("{}{}", base_url, "/api/chat");
+
+            let messages_result = ollama_conversation_prepare_messages(&model, prompt)?;
+            let messages_json = match messages_result.value {
+                PromptResultEnum::Value(v) => v,
                 _ => {
                     return Err(AgentError::UnexpectedPromptResultVariant(
                         "Expected Value variant in PromptResultEnum".to_string(),
@@ -54,21 +54,21 @@ impl LLMProvider for Ollama {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Info,
-                format!("Messages JSON: {:?}", messages_string).as_str(),
+                format!("Messages JSON: {:?}", messages_json).as_str(),
             );
+            // // Print messages_json as a pretty JSON string
+            // match serde_json::to_string_pretty(&messages_json) {
+            //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+            //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+            // };
 
-            let mut payload = json!({
+            let payload = json!({
                 "model": self.model_type,
-                "prompt": messages_string,
+                "messages": messages_json,
                 "stream": true, // Yeah let's go wild and stream the response
                 // Include any other optional parameters as needed
                 // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
             });
-
-            if let Some(asset_content) = asset_content {
-                let asset_content_str = asset_content.to_string();
-                payload["images"] = json!([asset_content_str]);
-            }
 
             let mut payload_log = payload.clone();
             truncate_image_content_in_payload(&mut payload_log);
@@ -101,12 +101,9 @@ impl LLMProvider for Ollama {
                         match data_resp {
                             Ok(data) => {
                                 previous_json_chunk = "".to_string();
-                                if let Some(response) = data.response.as_str() {
-                                    response_text.push_str(response);
-                                }
+                                response_text.push_str(&data.message.content);
                             }
                             Err(e) => {
-                                // eprintln!("Failed to parse line: {:?}", e);
                                 previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }

@@ -53,6 +53,7 @@ pub struct InferenceChainContext {
 }
 
 impl InferenceChainContext {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
