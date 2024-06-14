@@ -23,6 +23,9 @@ fn main() {
 
     #[cfg(feature = "static")]
     {
+        println!("cargo:rustc-link-search=native={}", pdfium_lib_path.display());
+        println!("cargo:rustc-link-lib=static=pdfium");
+
         #[cfg(target_os = "linux")]
         println!("cargo:rustc-link-lib=dylib=stdc++");
 
@@ -31,9 +34,6 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=c++");
             println!("cargo:rustc-link-lib=framework=CoreGraphics");
         }
-
-        println!("cargo:rustc-link-lib=static=pdfium");
-        println!("cargo:rustc-link-search=native={}", pdfium_lib_path.display());
     }
 
     #[cfg(not(feature = "static"))]
