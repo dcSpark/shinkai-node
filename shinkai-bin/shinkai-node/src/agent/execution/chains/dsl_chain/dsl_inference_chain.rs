@@ -110,14 +110,36 @@ impl<'a> DslChain<'a> {
     }
 
     pub fn add_all_generic_functions(&mut self) {
-        // self.add_generic_function("concat", generic_functions::concat_strings);
-        // self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
-        // self.add_generic_function("download_webpage", generic_functions::download_webpage);
-        // self.add_generic_function("html_to_markdown", generic_functions::html_to_markdown);
-        // self.add_generic_function("fill_variable_in_md_template", generic_functions::fill_variable_in_md_template);
-        // self.add_generic_function("search_and_replace", generic_functions::search_and_replace);
-        // self.add_generic_function("array_to_markdown_template", generic_functions::array_to_markdown_template);
-        // self.add_generic_function("print_arg", generic_functions::print_arg);
+        self.add_generic_function("concat", |context, args| {
+            generic_functions::concat_strings(&*context, args)
+        });
+        self.add_generic_function("search_and_replace", |context, args| {
+            generic_functions::search_and_replace(&*context, args)
+        });
+        self.add_generic_function("download_webpage", |context, args| {
+            generic_functions::download_webpage(&*context, args)
+        });
+        self.add_generic_function("html_to_markdown", |context, args| {
+            generic_functions::html_to_markdown(&*context, args)
+        });
+        self.add_generic_function("fill_variable_in_md_template", |context, args| {
+            generic_functions::fill_variable_in_md_template(&*context, args)
+        });
+        self.add_generic_function("array_to_markdown_template", |context, args| {
+            generic_functions::array_to_markdown_template(&*context, args)
+        });
+        self.add_generic_function("print_arg", |context, args| {
+            generic_functions::print_arg(&*context, args)
+        });
+        self.add_generic_function("count_files_from_input", |context, args| {
+            generic_functions::count_files_from_input(&*context, args)
+        });
+        self.add_generic_function("retrieve_file_from_input", |context, args| {
+            generic_functions::retrieve_file_from_input(&*context, args)
+        });
+        self.add_generic_function("extract_and_map_csv_column", |context, args| {
+            generic_functions::extract_and_map_csv_column(&*context, args)
+        });
         // TODO: add for local search of nodes (embeddings)
         // TODO: add for parse into chunks a text (so it fits in the context length of the model)
     }

@@ -222,6 +222,7 @@ mod tests {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let registers = DashMap::new();
+        let logs = DashMap::new();
 
         let loop_body = StepBody::RegisterOperation {
             register: "$Last".to_string(),
@@ -238,7 +239,7 @@ mod tests {
         };
 
         executor
-            .execute_step_body(&for_loop, &registers)
+            .execute_step_body("step_name", &for_loop, &registers, &logs)
             .await
             .expect("Failed to execute for loop");
 
@@ -250,6 +251,7 @@ mod tests {
         let functions = HashMap::new();
         let executor = WorkflowEngine::new(&functions);
         let registers = DashMap::new();
+        let logs = DashMap::new();
 
         let loop_body = StepBody::RegisterOperation {
             register: "$Last".to_string(),
@@ -266,7 +268,7 @@ mod tests {
         };
 
         executor
-            .execute_step_body(&for_loop, &registers)
+            .execute_step_body("step_name", &for_loop, &registers, &logs)
             .await
             .expect("Failed to execute for loop");
 
@@ -623,10 +625,7 @@ mod tests {
         // Check the results
         // Check the final results
         let final_registers = step_executor.registers;
-        assert_eq!(
-            final_registers.get("$R0").unwrap().as_str(),
-            "about Rust programming"
-        );
+        assert_eq!(final_registers.get("$R0").unwrap().as_str(), "about Rust programming");
         assert_eq!(
             final_registers.get("$R1").unwrap().as_str(),
             "Create an outline for a blog post about the topic of the user's message "
@@ -639,5 +638,29 @@ mod tests {
             final_registers.get("$R3").unwrap().as_str(),
             r"Create an outline for a blog post about the topic of the user's message about Rust programming\n separate the sections using a comma e.g. red,green,blue"
         );
+
+        // Assert logs
+        let expected_logs = [
+            r#"Setting register $R1 to "Create an outline for a blog post about the topic of the user's message ""#,
+            r#"Composite body 0: "RegisterOperation { register: \"$R1\", value: String(\"Create an outline for a blog post about the topic of the user's message \") }""#,
+            r#"Setting register $R2 to "\\n separate the sections using a comma e.g. red,green,blue""#,
+            r#"Composite body 1: "RegisterOperation { register: \"$R2\", value: String(\"\\\\n separate the sections using a comma e.g. red,green,blue\") }""#,
+            r#"Setting register $R3 to "Create an outline for a blog post about the topic of the user's message about Rust programming""#,
+            r#"Composite body 2: "RegisterOperation { register: \"$R3\", value: FunctionCall(FunctionCall { name: \"concat\", args: [Register(\"$R1\"), Register(\"$R0\")] }) }""#,
+            r#"Setting register $R3 to "Create an outline for a blog post about the topic of the user's message about Rust programming\\n separate the sections using a comma e.g. red,green,blue""#,
+            r#"Composite body 3: "RegisterOperation { register: \"$R3\", value: FunctionCall(FunctionCall { name: \"concat\", args: [Register(\"$R3\"), Register(\"$R2\")] }) }""#,
+        ];
+        let log_values: Vec<String> = step_executor
+            .logs
+            .get("Initialize")
+            .unwrap()
+            .iter()
+            .map(|v| v.to_string())
+            .collect();
+
+        // Compare logs using a loop
+        for (i, (actual_log, expected_log)) in log_values.iter().zip(expected_logs.iter()).enumerate() {
+            assert_eq!(actual_log, expected_log, "Mismatch at index {}", i);
+        }
     }
 }

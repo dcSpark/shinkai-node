@@ -21,6 +21,7 @@ impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
     /// Attempts to take at least 1 proximity group per keyword that is from a VR different than the highest scored node, to encourage wider diversity in results.
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
+    #[allow(clippy::too_many_arguments)]
     pub async fn keyword_chained_job_scope_vector_search(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,

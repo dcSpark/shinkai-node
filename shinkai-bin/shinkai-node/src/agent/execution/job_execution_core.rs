@@ -345,7 +345,7 @@ impl JobManager {
                 }
             };
 
-            chain_context.update_raw_files(Some(files));
+            chain_context.update_raw_files(Some(files.into()));
         }
 
         // Available functions for the workflow

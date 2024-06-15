@@ -33,10 +33,12 @@ pub trait InferenceChain: Send + Sync {
     }
 }
 
+pub type RawFiles = Option<Arc<Vec<(String, Vec<u8>)>>>;
+
 /// Trait for InferenceChainContext to facilitate mocking for tests.
 pub trait InferenceChainContextTrait: Send + Sync {
     fn update_max_iterations(&mut self, new_max_iterations: u64);
-    fn update_raw_files(&mut self, new_raw_files: Option<Vec<(String, Vec<u8>)>>);
+    fn update_raw_files(&mut self, new_raw_files: RawFiles);
 
     fn db(&self) -> Arc<ShinkaiDB>;
     fn vector_fs(&self) -> Arc<VectorFS>;
@@ -50,7 +52,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn iteration_count(&self) -> u64;
     fn max_tokens_in_prompt(&self) -> usize;
     fn score_results(&self) -> &HashMap<String, ScoreResult>;
-    fn raw_files(&self) -> &Option<Vec<(String, Vec<u8>)>>;
+    fn raw_files(&self) -> &RawFiles;
 
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
@@ -66,7 +68,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.max_iterations = new_max_iterations;
     }
 
-    fn update_raw_files(&mut self, new_raw_files: Option<Vec<(String, Vec<u8>)>>) {
+    fn update_raw_files(&mut self, new_raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>) {
         self.raw_files = new_raw_files;
     }
 
@@ -118,7 +120,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         &self.score_results
     }
 
-    fn raw_files(&self) -> &Option<Vec<(String, Vec<u8>)>> {
+    fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
         &self.raw_files
     }
 
@@ -144,7 +146,7 @@ pub struct InferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub score_results: HashMap<String, ScoreResult>,
-    pub raw_files: Option<Vec<(String, Vec<u8>)>>,
+    pub raw_files: RawFiles,
 }
 
 impl InferenceChainContext {
@@ -185,7 +187,7 @@ impl InferenceChainContext {
     }
 
     /// Updates the raw files for this context
-    pub fn update_raw_files(&mut self, new_raw_files: Option<Vec<(String, Vec<u8>)>>) {
+    pub fn update_raw_files(&mut self, new_raw_files: RawFiles) {
         self.raw_files = new_raw_files;
     }
 }
@@ -253,7 +255,7 @@ pub struct MockInferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub score_results: HashMap<String, ScoreResult>,
-    pub raw_files: Option<Vec<(String, Vec<u8>)>>,
+    pub raw_files: RawFiles,
 }
 
 impl MockInferenceChainContext {
@@ -266,7 +268,7 @@ impl MockInferenceChainContext {
         iteration_count: u64,
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
-        raw_files: Option<Vec<(String, Vec<u8>)>>,
+        raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
     ) -> Self {
         Self {
             user_message,
@@ -306,7 +308,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.max_iterations = new_max_iterations;
     }
 
-    fn update_raw_files(&mut self, new_raw_files: Option<Vec<(String, Vec<u8>)>>) {
+    fn update_raw_files(&mut self, new_raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>) {
         self.raw_files = new_raw_files;
     }
 
@@ -358,7 +360,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         &self.score_results
     }
 
-    fn raw_files(&self) -> &Option<Vec<(String, Vec<u8>)>> {
+    fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
         &self.raw_files
     }
 
