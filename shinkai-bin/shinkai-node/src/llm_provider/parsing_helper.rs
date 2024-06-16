@@ -1,4 +1,4 @@
-use super::error::AgentError;
+use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
@@ -24,7 +24,7 @@ impl ParsingHelper {
         text_groups: &Vec<TextGroup>,
         agent: SerializedAgent,
         max_node_text_size: u64,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
@@ -86,7 +86,7 @@ impl ParsingHelper {
         max_node_text_size: u64,
         unstructured_api: UnstructuredAPI,
         distribution_info: DistributionInfo,
-    ) -> Result<BaseVectorResource, AgentError> {
+    ) -> Result<BaseVectorResource, LLMProviderError> {
         let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
         let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
         let text_groups = ShinkaiFileParser::process_file_into_text_groups(
@@ -132,7 +132,7 @@ impl ParsingHelper {
         generator: &dyn EmbeddingGenerator,
         agent: Option<SerializedAgent>,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<Vec<(String, VRKai)>, AgentError> {
+    ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
         #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (
             Vec<(String, Vec<u8>, DistributionInfo)>,

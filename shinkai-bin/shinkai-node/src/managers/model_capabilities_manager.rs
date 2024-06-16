@@ -1,6 +1,6 @@
 use crate::{
     llm_provider::{
-        error::AgentError,
+        error::LLMProviderError,
         execution::prompts::prompts::Prompt,
         providers::shared::{
             openai::openai_prepare_messages,
@@ -34,8 +34,8 @@ impl std::fmt::Display for ModelCapabilitiesManagerError {
     }
 }
 
-impl From<AgentError> for ModelCapabilitiesManagerError {
-    fn from(error: AgentError) -> Self {
+impl From<LLMProviderError> for ModelCapabilitiesManagerError {
+    fn from(error: LLMProviderError) -> Self {
         ModelCapabilitiesManagerError::GeneralError(error.to_string())
     }
 }

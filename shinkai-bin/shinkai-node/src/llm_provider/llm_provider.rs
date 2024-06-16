@@ -1,4 +1,4 @@
-use super::error::AgentError;
+use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::{Prompt, SubPromptType};
 use super::parsing_helper::ParsingHelper;
@@ -57,7 +57,7 @@ impl LLMProvider {
 
     /// Inferences an LLM locally based on info held in the Agent
     /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait to unify local with remote interface.
-    async fn inference_locally(&self, content: String) -> Result<LLMInferenceResponse, AgentError> {
+    async fn inference_locally(&self, content: String) -> Result<LLMInferenceResponse, LLMProviderError> {
         // Here we run our GPU-intensive task on a separate thread
         let handle = tokio::task::spawn_blocking(move || {
             let mut map = Map::new();
@@ -70,14 +70,14 @@ impl LLMProvider {
 
         match handle.await {
             Ok(response) => Ok(LLMInferenceResponse::new(content, response)),
-            Err(_e) => Err(AgentError::InferenceFailed),
+            Err(_e) => Err(LLMProviderError::InferenceFailed),
         }
     }
 
     /// Inferences the LLM model tied to the agent to get a response back.
     /// We automatically  parse the JSON object out of the response into a JsonValue, perform retries,
     /// and error if no object is found after everything.
-    pub async fn inference_markdown(&self, prompt: Prompt) -> Result<LLMInferenceResponse, AgentError> {
+    pub async fn inference_markdown(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
         let mut response = self.internal_inference_matching_model(prompt.clone()).await;
         let mut attempts = 0;
 
@@ -90,7 +90,7 @@ impl LLMProvider {
             let priority = attempts;
 
             // If serde failed parsing the json string, then use advanced retrying
-            if let AgentError::FailedSerdeParsingJSONString(response_markdown, serde_error) = err {
+            if let LLMProviderError::FailedSerdeParsingJSONString(response_markdown, serde_error) = err {
                 new_prompt.add_content(
                     "Here is your markdown answer:".to_string(),
                     SubPromptType::Assistant,
@@ -120,7 +120,7 @@ impl LLMProvider {
         Ok(final_response)
     }
 
-    async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<LLMInferenceResponse, AgentError> {
+    async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
                 openai

@@ -11,7 +11,7 @@ use tokio::task::JoinError;
 
 
 #[derive(Debug)]
-pub enum AgentError {
+pub enum LLMProviderError {
     UrlNotSet,
     ApiKeyNotSet,
     ReqwestError(reqwest::Error),
@@ -29,7 +29,7 @@ pub enum AgentError {
     ShinkaiDB(ShinkaiDBError),
     VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
-    AgentNotFound,
+    LLMProviderNotFound,
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
     JSONSerializationError(String),
@@ -47,9 +47,9 @@ pub enum AgentError {
     WebScrapingFailed(String),
     InvalidCronExecutionChainStage(String),
     AnyhowError(AnyhowError),
-    AgentMissingCapabilities(String),
+    LLMProviderMissingCapabilities(String),
     UnexpectedPromptResult(String),
-    AgentsCapabilitiesManagerError(ModelCapabilitiesManagerError),
+    LLMProviderCapabilitiesManagerError(ModelCapabilitiesManagerError),
     UnexpectedPromptResultVariant(String),
     ImageContentNotFound(String),
     NetworkError(String),
@@ -70,142 +70,142 @@ pub enum AgentError {
     WorkflowExecutionError(String),
 }
 
-impl fmt::Display for AgentError {
+impl fmt::Display for LLMProviderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            AgentError::UrlNotSet => write!(f, "URL is not set"),
-            AgentError::ApiKeyNotSet => write!(f, "API Key not set"),
-            AgentError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
-            AgentError::MissingInitialStepInExecutionPlan => write!(
+            LLMProviderError::UrlNotSet => write!(f, "URL is not set"),
+            LLMProviderError::ApiKeyNotSet => write!(f, "API Key not set"),
+            LLMProviderError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
+            LLMProviderError::MissingInitialStepInExecutionPlan => write!(
                 f,
                 "The provided execution plan does not have an InitialExecutionStep as its first element."
             ),
-            AgentError::FailedExtractingJSONObjectFromResponse(s) => {
+            LLMProviderError::FailedExtractingJSONObjectFromResponse(s) => {
                 write!(f, "Could not find JSON Object in the LLM's response: {}", s)
             }
-            AgentError::InferenceFailed => {
+            LLMProviderError::InferenceFailed => {
                 write!(f, "Failed inferencing and getting a valid response from the local LLM")
             }
-            AgentError::UserPromptMissingEBNFDefinition => {
+            LLMProviderError::UserPromptMissingEBNFDefinition => {
                 write!(f, "At least 1 EBNF subprompt must be defined for the user message.")
             }
-            AgentError::NotAJobMessage => write!(f, "Message is not a job message"),
-            AgentError::JobNotFound => write!(f, "Job not found"),
-            AgentError::JobCreationDeserializationFailed => {
+            LLMProviderError::NotAJobMessage => write!(f, "Message is not a job message"),
+            LLMProviderError::JobNotFound => write!(f, "Job not found"),
+            LLMProviderError::JobCreationDeserializationFailed => {
                 write!(f, "Failed to deserialize JobCreationInfo message")
             }
-            AgentError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
-            AgentError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
-            AgentError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
-            AgentError::IO(err) => write!(f, "IO error: {}", err),
-            AgentError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
-            AgentError::VectorFS(err) => write!(f, "VectorFS error: {}", err),
-            AgentError::AgentNotFound => write!(f, "Agent not found"),
-            AgentError::ContentParseFailed => write!(f, "Failed to parse content"),
-            AgentError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
-            AgentError::InferenceJSONResponseMissingField(s) => {
+            LLMProviderError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
+            LLMProviderError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
+            LLMProviderError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
+            LLMProviderError::IO(err) => write!(f, "IO error: {}", err),
+            LLMProviderError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
+            LLMProviderError::VectorFS(err) => write!(f, "VectorFS error: {}", err),
+            LLMProviderError::LLMProviderNotFound => write!(f, "Agent not found"),
+            LLMProviderError::ContentParseFailed => write!(f, "Failed to parse content"),
+            LLMProviderError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
+            LLMProviderError::InferenceJSONResponseMissingField(s) => {
                 write!(f, "Response from LLM does not include needed key/field: {}", s)
             }
-            AgentError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
-            AgentError::VectorResource(err) => write!(f, "VectorResource error: {}", err),
-            AgentError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
-            AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
-            AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
-            AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
-            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this user_message: {}", s),
-            AgentError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
-            AgentError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
-            AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
-            AgentError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
-            AgentError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
-            AgentError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
-            AgentError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
-            AgentError::AnyhowError(err) => write!(f, "{}", err),
-            AgentError::AgentMissingCapabilities(s) => write!(f, "Agent is missing capabilities: {}", s),
-            AgentError::UnexpectedPromptResult(s) => write!(f, "Unexpected prompt result: {}", s),
-            AgentError::AgentsCapabilitiesManagerError(err) => write!(f, "AgentsCapabilitiesManager error: {}", err),
-            AgentError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
-            AgentError::ImageContentNotFound(s) => write!(f, "Image content not found: {}", s),
-            AgentError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
-            AgentError::NetworkError(s) => write!(f, "Network error: {}", s),
-            AgentError::InvalidModelType(s) => write!(f, "Invalid model type: {}", s),
-            AgentError::ShinkaiBackendInvalidAuthentication(s) => write!(f, "Shinkai Backend Invalid Authentication: {}", s),
-            AgentError::ShinkaiBackendInvalidConfiguration(s) => write!(f, "Shinkai Backend Invalid configuration: {}", s),
-            AgentError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference Limit Reached: {}", s),
-            AgentError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI Provider Error: {}", s),
-            AgentError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected Status Code: {}", code),
-            AgentError::ShinkaiBackendUnexpectedError(e) => write!(f, "Shinkai Backend Unexpected Error: {}", e),
-            AgentError::LLMServiceInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
-            AgentError::LLMServiceUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
-            AgentError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
-            AgentError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
-            AgentError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
-            AgentError::TokenLimit(s) => write!(f, "{}", s),
-            AgentError::WorkflowExecutionError(s) => write!(f, "{}", s),
+            LLMProviderError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
+            LLMProviderError::VectorResource(err) => write!(f, "VectorResource error: {}", err),
+            LLMProviderError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
+            LLMProviderError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
+            LLMProviderError::SerdeError(err) => write!(f, "Serde error: {}", err),
+            LLMProviderError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
+            LLMProviderError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this user_message: {}", s),
+            LLMProviderError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
+            LLMProviderError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
+            LLMProviderError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
+            LLMProviderError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
+            LLMProviderError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
+            LLMProviderError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
+            LLMProviderError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
+            LLMProviderError::AnyhowError(err) => write!(f, "{}", err),
+            LLMProviderError::LLMProviderMissingCapabilities(s) => write!(f, "LLMProvider is missing capabilities: {}", s),
+            LLMProviderError::UnexpectedPromptResult(s) => write!(f, "Unexpected prompt result: {}", s),
+            LLMProviderError::LLMProviderCapabilitiesManagerError(err) => write!(f, "LLMProviderCapabilitiesManager error: {}", err),
+            LLMProviderError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
+            LLMProviderError::ImageContentNotFound(s) => write!(f, "Image content not found: {}", s),
+            LLMProviderError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
+            LLMProviderError::NetworkError(s) => write!(f, "Network error: {}", s),
+            LLMProviderError::InvalidModelType(s) => write!(f, "Invalid model type: {}", s),
+            LLMProviderError::ShinkaiBackendInvalidAuthentication(s) => write!(f, "Shinkai Backend Invalid Authentication: {}", s),
+            LLMProviderError::ShinkaiBackendInvalidConfiguration(s) => write!(f, "Shinkai Backend Invalid configuration: {}", s),
+            LLMProviderError::ShinkaiBackendInferenceLimitReached(s) => write!(f, "Shinkai Backend Inference Limit Reached: {}", s),
+            LLMProviderError::ShinkaiBackendAIProviderError(s) => write!(f, "Shinkai Backend AI Provider Error: {}", s),
+            LLMProviderError::ShinkaiBackendUnexpectedStatusCode(code) => write!(f, "Shinkai Backend Unexpected Status Code: {}", code),
+            LLMProviderError::ShinkaiBackendUnexpectedError(e) => write!(f, "Shinkai Backend Unexpected Error: {}", e),
+            LLMProviderError::LLMServiceInferenceLimitReached(s) => write!(f, "LLM Provider Inference Limit Reached: {}", s),
+            LLMProviderError::LLMServiceUnexpectedError(e) => write!(f, "LLM Provider Unexpected Error: {}", e),
+            LLMProviderError::FailedSerdeParsingJSONString(s, err) => write!(f, "Failed parsing JSON string: `{}`. Fix the following Serde error: {}", s, err),
+            LLMProviderError::FailedSerdeParsingXMLString(s, err) => write!(f, "Failed parsing XML string: `{}`. Fix the following Serde error: {}", s, err),
+            LLMProviderError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
+            LLMProviderError::TokenLimit(s) => write!(f, "{}", s),
+            LLMProviderError::WorkflowExecutionError(s) => write!(f, "{}", s),
         }
     }
 }
 
-impl AgentError {
+impl LLMProviderError {
     /// Encodes the error as a JSON string that is easily parsable by frontends
     pub fn to_error_json(&self) -> String {
         let error_name = match self {
-            AgentError::UrlNotSet => "UrlNotSet",
-            AgentError::ApiKeyNotSet => "ApiKeyNotSet",
-            AgentError::ReqwestError(_) => "ReqwestError",
-            AgentError::MissingInitialStepInExecutionPlan => "MissingInitialStepInExecutionPlan",
-            AgentError::FailedExtractingJSONObjectFromResponse(_) => "FailedExtractingJSONObjectFromResponse",
-            AgentError::InferenceFailed => "InferenceFailed",
-            AgentError::UserPromptMissingEBNFDefinition => "UserPromptMissingEBNFDefinition",
-            AgentError::NotAJobMessage => "NotAJobMessage",
-            AgentError::JobNotFound => "JobNotFound",
-            AgentError::JobCreationDeserializationFailed => "JobCreationDeserializationFailed",
-            AgentError::JobMessageDeserializationFailed => "JobMessageDeserializationFailed",
-            AgentError::JobPreMessageDeserializationFailed => "JobPreMessageDeserializationFailed",
-            AgentError::MessageTypeParseFailed => "MessageTypeParseFailed",
-            AgentError::IO(_) => "IO",
-            AgentError::ShinkaiDB(_) => "ShinkaiDB",
-            AgentError::VectorFS(_) => "VectorFS",
-            AgentError::ShinkaiNameError(_) => "ShinkaiNameError",
-            AgentError::AgentNotFound => "AgentNotFound",
-            AgentError::ContentParseFailed => "ContentParseFailed",
-            AgentError::InferenceJSONResponseMissingField(_) => "InferenceJSONResponseMissingField",
-            AgentError::JSONSerializationError(_) => "JSONSerializationError",
-            AgentError::VectorResource(_) => "VectorResource",
-            AgentError::InvalidSubidentity(_) => "InvalidSubidentity",
-            AgentError::InvalidProfileSubidentity(_) => "InvalidProfileSubidentity",
-            AgentError::SerdeError(_) => "SerdeError",
-            AgentError::TaskJoinError(_) => "TaskJoinError",
-            AgentError::InferenceRecursionLimitReached(_) => "InferenceRecursionLimitReached",
-            AgentError::TokenizationError(_) => "TokenizationError",
-            AgentError::JobDequeueFailed(_) => "JobDequeueFailed",
-            AgentError::ShinkaiMessage(_) => "ShinkaiMessage",
-            AgentError::InboxNameError(_) => "InboxNameError",
-            AgentError::InvalidCronCreationChainStage(_) => "InvalidCronCreationChainStage",
-            AgentError::WebScrapingFailed(_) => "WebScrapingFailed",
-            AgentError::InvalidCronExecutionChainStage(_) => "InvalidCronExecutionChainStage",
-            AgentError::AnyhowError(_) => "AnyhowError",
-            AgentError::AgentMissingCapabilities(_) => "AgentMissingCapabilities",
-            AgentError::UnexpectedPromptResult(_) => "UnexpectedPromptResult",
-            AgentError::AgentsCapabilitiesManagerError(_) => "AgentsCapabilitiesManagerError",
-            AgentError::UnexpectedPromptResultVariant(_) => "UnexpectedPromptResultVariant",
-            AgentError::ImageContentNotFound(_) => "ImageContentNotFound",
-            AgentError::NetworkError(_) => "NetworkError",
-            AgentError::NoUserProfileFound => "NoUserProfileFound",
-            AgentError::InvalidModelType(_) => "InvalidModelType",
-            AgentError::ShinkaiBackendInvalidAuthentication(_) => "ShinkaiBackendInvalidAuthentication",
-            AgentError::ShinkaiBackendInvalidConfiguration(_) => "ShinkaiBackendInvalidConfiguration",
-            AgentError::ShinkaiBackendInferenceLimitReached(_) => "ShinkaiBackendInferenceLimitReached",
-            AgentError::ShinkaiBackendAIProviderError(_) => "ShinkaiBackendAIProviderError",
-            AgentError::ShinkaiBackendUnexpectedStatusCode(_) => "ShinkaiBackendUnexpectedStatusCode",
-            AgentError::ShinkaiBackendUnexpectedError(_) => "ShinkaiBackendUnexpectedError",
-            AgentError::LLMServiceInferenceLimitReached(_) => "LLMServiceInferenceLimitReached",
-            AgentError::LLMServiceUnexpectedError(_) => "LLMServiceUnexpectedError",
-            AgentError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
-            AgentError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
-            AgentError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
-            AgentError::TokenLimit(_) => "TokenLimit",
-            AgentError::WorkflowExecutionError(_) => "WorkflowExecutionError",
+            LLMProviderError::UrlNotSet => "UrlNotSet",
+            LLMProviderError::ApiKeyNotSet => "ApiKeyNotSet",
+            LLMProviderError::ReqwestError(_) => "ReqwestError",
+            LLMProviderError::MissingInitialStepInExecutionPlan => "MissingInitialStepInExecutionPlan",
+            LLMProviderError::FailedExtractingJSONObjectFromResponse(_) => "FailedExtractingJSONObjectFromResponse",
+            LLMProviderError::InferenceFailed => "InferenceFailed",
+            LLMProviderError::UserPromptMissingEBNFDefinition => "UserPromptMissingEBNFDefinition",
+            LLMProviderError::NotAJobMessage => "NotAJobMessage",
+            LLMProviderError::JobNotFound => "JobNotFound",
+            LLMProviderError::JobCreationDeserializationFailed => "JobCreationDeserializationFailed",
+            LLMProviderError::JobMessageDeserializationFailed => "JobMessageDeserializationFailed",
+            LLMProviderError::JobPreMessageDeserializationFailed => "JobPreMessageDeserializationFailed",
+            LLMProviderError::MessageTypeParseFailed => "MessageTypeParseFailed",
+            LLMProviderError::IO(_) => "IO",
+            LLMProviderError::ShinkaiDB(_) => "ShinkaiDB",
+            LLMProviderError::VectorFS(_) => "VectorFS",
+            LLMProviderError::ShinkaiNameError(_) => "ShinkaiNameError",
+            LLMProviderError::LLMProviderNotFound => "LLMProviderNotFound",
+            LLMProviderError::ContentParseFailed => "ContentParseFailed",
+            LLMProviderError::InferenceJSONResponseMissingField(_) => "InferenceJSONResponseMissingField",
+            LLMProviderError::JSONSerializationError(_) => "JSONSerializationError",
+            LLMProviderError::VectorResource(_) => "VectorResource",
+            LLMProviderError::InvalidSubidentity(_) => "InvalidSubidentity",
+            LLMProviderError::InvalidProfileSubidentity(_) => "InvalidProfileSubidentity",
+            LLMProviderError::SerdeError(_) => "SerdeError",
+            LLMProviderError::TaskJoinError(_) => "TaskJoinError",
+            LLMProviderError::InferenceRecursionLimitReached(_) => "InferenceRecursionLimitReached",
+            LLMProviderError::TokenizationError(_) => "TokenizationError",
+            LLMProviderError::JobDequeueFailed(_) => "JobDequeueFailed",
+            LLMProviderError::ShinkaiMessage(_) => "ShinkaiMessage",
+            LLMProviderError::InboxNameError(_) => "InboxNameError",
+            LLMProviderError::InvalidCronCreationChainStage(_) => "InvalidCronCreationChainStage",
+            LLMProviderError::WebScrapingFailed(_) => "WebScrapingFailed",
+            LLMProviderError::InvalidCronExecutionChainStage(_) => "InvalidCronExecutionChainStage",
+            LLMProviderError::AnyhowError(_) => "AnyhowError",
+            LLMProviderError::LLMProviderMissingCapabilities(_) => "LLMProviderMissingCapabilities",
+            LLMProviderError::UnexpectedPromptResult(_) => "UnexpectedPromptResult",
+            LLMProviderError::LLMProviderCapabilitiesManagerError(_) => "LLMProviderCapabilitiesManagerError",
+            LLMProviderError::UnexpectedPromptResultVariant(_) => "UnexpectedPromptResultVariant",
+            LLMProviderError::ImageContentNotFound(_) => "ImageContentNotFound",
+            LLMProviderError::NetworkError(_) => "NetworkError",
+            LLMProviderError::NoUserProfileFound => "NoUserProfileFound",
+            LLMProviderError::InvalidModelType(_) => "InvalidModelType",
+            LLMProviderError::ShinkaiBackendInvalidAuthentication(_) => "ShinkaiBackendInvalidAuthentication",
+            LLMProviderError::ShinkaiBackendInvalidConfiguration(_) => "ShinkaiBackendInvalidConfiguration",
+            LLMProviderError::ShinkaiBackendInferenceLimitReached(_) => "ShinkaiBackendInferenceLimitReached",
+            LLMProviderError::ShinkaiBackendAIProviderError(_) => "ShinkaiBackendAIProviderError",
+            LLMProviderError::ShinkaiBackendUnexpectedStatusCode(_) => "ShinkaiBackendUnexpectedStatusCode",
+            LLMProviderError::ShinkaiBackendUnexpectedError(_) => "ShinkaiBackendUnexpectedError",
+            LLMProviderError::LLMServiceInferenceLimitReached(_) => "LLMServiceInferenceLimitReached",
+            LLMProviderError::LLMServiceUnexpectedError(_) => "LLMServiceUnexpectedError",
+            LLMProviderError::FailedSerdeParsingJSONString(_, _) => "FailedSerdeParsingJSONString",
+            LLMProviderError::FailedSerdeParsingXMLString(_, _) => "FailedSerdeParsingXMLString",
+            LLMProviderError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
+            LLMProviderError::TokenLimit(_) => "TokenLimit",
+            LLMProviderError::WorkflowExecutionError(_) => "WorkflowExecutionError",
         };
 
         let error_message = format!("{}", self);
@@ -221,91 +221,91 @@ impl AgentError {
 
 
 
-impl From<AnyhowError> for AgentError {
+impl From<AnyhowError> for LLMProviderError {
     fn from(error: AnyhowError) -> Self {
-        AgentError::AnyhowError(error)
+        LLMProviderError::AnyhowError(error)
     }
 }
 
-impl std::error::Error for AgentError {
+impl std::error::Error for LLMProviderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            AgentError::ReqwestError(err) => Some(err),
-            AgentError::ShinkaiDB(err) => Some(err),
-            AgentError::ShinkaiNameError(err) => Some(err),
+            LLMProviderError::ReqwestError(err) => Some(err),
+            LLMProviderError::ShinkaiDB(err) => Some(err),
+            LLMProviderError::ShinkaiNameError(err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl From<reqwest::Error> for AgentError {
-    fn from(err: reqwest::Error) -> AgentError {
-        AgentError::ReqwestError(err)
+impl From<reqwest::Error> for LLMProviderError {
+    fn from(err: reqwest::Error) -> LLMProviderError {
+        LLMProviderError::ReqwestError(err)
     }
 }
 
-impl From<ShinkaiDBError> for AgentError {
-    fn from(err: ShinkaiDBError) -> AgentError {
-        AgentError::ShinkaiDB(err)
+impl From<ShinkaiDBError> for LLMProviderError {
+    fn from(err: ShinkaiDBError) -> LLMProviderError {
+        LLMProviderError::ShinkaiDB(err)
     }
 }
 
-impl From<ShinkaiNameError> for AgentError {
-    fn from(err: ShinkaiNameError) -> AgentError {
-        AgentError::ShinkaiNameError(err)
+impl From<ShinkaiNameError> for LLMProviderError {
+    fn from(err: ShinkaiNameError) -> LLMProviderError {
+        LLMProviderError::ShinkaiNameError(err)
     }
 }
 
-impl From<Box<dyn std::error::Error>> for AgentError {
-    fn from(err: Box<dyn std::error::Error>) -> AgentError {
-        AgentError::IO(err.to_string())
+impl From<Box<dyn std::error::Error>> for LLMProviderError {
+    fn from(err: Box<dyn std::error::Error>) -> LLMProviderError {
+        LLMProviderError::IO(err.to_string())
     }
 }
 
-impl From<serde_json::Error> for AgentError {
-    fn from(err: serde_json::Error) -> AgentError {
-        AgentError::JSONSerializationError(err.to_string())
+impl From<serde_json::Error> for LLMProviderError {
+    fn from(err: serde_json::Error) -> LLMProviderError {
+        LLMProviderError::JSONSerializationError(err.to_string())
     }
 }
 
-impl From<VRError> for AgentError {
+impl From<VRError> for LLMProviderError {
     fn from(error: VRError) -> Self {
-        AgentError::VectorResource(error)
+        LLMProviderError::VectorResource(error)
     }
 }
 
-impl From<JoinError> for AgentError {
-    fn from(err: JoinError) -> AgentError {
-        AgentError::TaskJoinError(err.to_string())
+impl From<JoinError> for LLMProviderError {
+    fn from(err: JoinError) -> LLMProviderError {
+        LLMProviderError::TaskJoinError(err.to_string())
     }
 }
 
-impl From<ShinkaiMessageError> for AgentError {
+impl From<ShinkaiMessageError> for LLMProviderError {
     fn from(error: ShinkaiMessageError) -> Self {
-        AgentError::ShinkaiMessage(error)
+        LLMProviderError::ShinkaiMessage(error)
     }
 }
 
-impl From<InboxNameError> for AgentError {
+impl From<InboxNameError> for LLMProviderError {
     fn from(error: InboxNameError) -> Self {
-        AgentError::InboxNameError(error)
+        LLMProviderError::InboxNameError(error)
     }
 }
 
-impl From<ModelCapabilitiesManagerError> for AgentError {
+impl From<ModelCapabilitiesManagerError> for LLMProviderError {
     fn from(error: ModelCapabilitiesManagerError) -> Self {
-        AgentError::AgentsCapabilitiesManagerError(error)
+        LLMProviderError::LLMProviderCapabilitiesManagerError(error)
     }
 }
 
-impl From<VectorFSError> for AgentError {
-    fn from(err: VectorFSError) -> AgentError {
-        AgentError::VectorFS(err)
+impl From<VectorFSError> for LLMProviderError {
+    fn from(err: VectorFSError) -> LLMProviderError {
+        LLMProviderError::VectorFS(err)
     }
 }
 
-impl From<String> for AgentError {
-    fn from(err: String) -> AgentError {
-        AgentError::WorkflowExecutionError(err)
+impl From<String> for LLMProviderError {
+    fn from(err: String) -> LLMProviderError {
+        LLMProviderError::WorkflowExecutionError(err)
     }
 }

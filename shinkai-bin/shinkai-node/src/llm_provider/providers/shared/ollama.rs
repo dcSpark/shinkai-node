@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInter
 use tiktoken_rs::ChatCompletionRequestMessage;
 
 use crate::{
-    llm_provider::{error::AgentError, execution::prompts::prompts::Prompt},
+    llm_provider::{error::LLMProviderError, execution::prompts::prompts::Prompt},
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
 
@@ -48,7 +48,7 @@ pub struct OllamaMessage {
 pub fn ollama_conversation_prepare_messages(
     model: &AgentLLMInterface,
     prompt: Prompt,
-) -> Result<PromptResult, AgentError> {
+) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
@@ -72,7 +72,7 @@ pub fn ollama_conversation_prepare_messages(
 /// Converts ChatCompletionRequestMessages to OllamaMessage
 fn from_chat_completion_messages(
     chat_completion_messages: Vec<ChatCompletionRequestMessage>,
-) -> Result<Vec<OllamaMessage>, AgentError> {
+) -> Result<Vec<OllamaMessage>, LLMProviderError> {
     let mut messages: Vec<OllamaMessage> = Vec::new();
     let mut iter = chat_completion_messages.into_iter().peekable();
 

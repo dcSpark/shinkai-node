@@ -1,4 +1,4 @@
-use super::{llm_provider::LLMProvider, error::AgentError};
+use super::{llm_provider::LLMProvider, error::LLMProviderError};
 use crate::tools::router::ShinkaiTool;
 use std::collections::HashMap;
 
@@ -20,7 +20,7 @@ pub struct PlanExecutor<'a> {
 }
 
 impl<'a> PlanExecutor<'a> {
-    pub fn new(agent: &'a LLMProvider, execution_plan: &Vec<ExecutionStep>) -> Result<Self, AgentError> {
+    pub fn new(agent: &'a LLMProvider, execution_plan: &Vec<ExecutionStep>) -> Result<Self, LLMProviderError> {
         match execution_plan.first() {
             Some(ExecutionStep::Initial(initial_step)) => {
                 let mut execution_plan = execution_plan.to_vec();
@@ -35,14 +35,14 @@ impl<'a> PlanExecutor<'a> {
                     inference_trace: vec![],
                 })
             }
-            _ => Err(AgentError::MissingInitialStepInExecutionPlan),
+            _ => Err(LLMProviderError::MissingInitialStepInExecutionPlan),
         }
     }
 
     // TODO: Properly implement this once we have jobs update for context + agent infernece/use tool
     /// Executes the plan step-by-step, performing all inferencing & tool calls.
     /// All content sent for inferencing and all responses from the LLM are saved in self.inference_trace
-    pub async fn execute_plan(&mut self) -> Result<(), AgentError> {
+    pub async fn execute_plan(&mut self) -> Result<(), LLMProviderError> {
         for step in &self.execution_plan {
             match step {
                 ExecutionStep::Inference(_inference_step) => {

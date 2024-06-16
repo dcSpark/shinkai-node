@@ -3,7 +3,7 @@ use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAg
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    llm_provider::{error::AgentError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
+    llm_provider::{error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
     db::ShinkaiDB,
 };
 
@@ -32,14 +32,14 @@ impl JobManager {
         image: String,
         iteration_count: u64,
         max_iterations: u64,
-    ) -> Result<(String, HashMap<String, String>), AgentError> {
+    ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached("Image Analysis".to_string()));
+            return Err(LLMProviderError::InferenceRecursionLimitReached("Image Analysis".to_string()));
         }
 
         let agent = match agent_found {
             Some(agent) => agent,
-            None => return Err(AgentError::AgentNotFound),
+            None => return Err(LLMProviderError::LLMProviderNotFound),
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
@@ -50,7 +50,7 @@ impl JobManager {
             new_execution_context.insert("previous_step_response".to_string(), answer_str.clone());
             Ok((answer_str, new_execution_context))
         } else {
-            Err(AgentError::InferenceFailed)
+            Err(LLMProviderError::InferenceFailed)
         }
     }
 }

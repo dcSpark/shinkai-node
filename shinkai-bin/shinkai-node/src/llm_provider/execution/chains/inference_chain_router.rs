@@ -2,7 +2,7 @@ use super::inference_chain_trait::{InferenceChain, InferenceChainContext, Infere
 use super::qa_chain::qa_inference_chain::QAInferenceChain;
 use super::summary_chain::summary_inference_chain::SummaryInferenceChain;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobStepResult};
 use crate::llm_provider::job_manager::JobManager;
@@ -55,10 +55,10 @@ impl JobManager {
         prev_execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
-    ) -> Result<InferenceChainResult, AgentError> {
+    ) -> Result<InferenceChainResult, LLMProviderError> {
         // Initializations
         let mut inference_result = InferenceChainResult::new_empty();
-        let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
+        let agent = agent_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let job_scope_contains_significant_content = full_job.scope.contains_significant_content();

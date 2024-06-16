@@ -2,7 +2,7 @@ use super::chain_detection_embeddings::{
     top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
     top_score_summarize_this_embeddings,
 };
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_router::InferenceChainDecision;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainResult, ScoreResult,
@@ -73,7 +73,7 @@ impl InferenceChain for SummaryInferenceChain {
         &mut self.context
     }
 
-    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = self
             .start_summary_inference_chain(
                 self.context.db.clone(),
@@ -110,7 +110,7 @@ impl SummaryInferenceChain {
         user_profile: ShinkaiName,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         Self::start_summarize_job_context_sub_chain(
             db,
             vector_fs,
@@ -137,7 +137,7 @@ impl SummaryInferenceChain {
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_tokens_in_prompt: usize,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let scope = full_job.scope();
         // let resource_count =
         // JobManager::count_number_of_resources_in_job_scope(vector_fs.clone(), &user_profile, scope).await?;
@@ -203,7 +203,7 @@ impl SummaryInferenceChain {
         agent: SerializedAgent,
         max_tokens_in_prompt: usize,
         attempt_count: u64,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
         // TODO: Make sure the whole document gets parsed into chunks that fit the LLMs max tokens minus some front buffer for the actual prompt
@@ -415,7 +415,7 @@ async fn these_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
-) -> Result<ScoreResult, AgentError> {
+) -> Result<ScoreResult, LLMProviderError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
@@ -435,7 +435,7 @@ async fn this_check(
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
     step_history: &Vec<JobStepResult>,
-) -> Result<ScoreResult, AgentError> {
+) -> Result<ScoreResult, LLMProviderError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
@@ -471,7 +471,7 @@ async fn other_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
     job_scope: &JobScope,
-) -> Result<ScoreResult, AgentError> {
+) -> Result<ScoreResult, LLMProviderError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)
@@ -489,7 +489,7 @@ async fn other_check(
 async fn message_history_check(
     generator: &RemoteEmbeddingGenerator,
     user_message: &ParsedUserMessage,
-) -> Result<ScoreResult, AgentError> {
+) -> Result<ScoreResult, LLMProviderError> {
     // Get user message embedding, without code blocks for clarity in task
     let user_message_embedding = user_message
         .generate_embedding_filtered(generator.clone(), false, true)

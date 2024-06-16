@@ -9,7 +9,7 @@ use crate::vector_fs::vector_fs_error::VectorFSError;
 pub enum NetworkJobQueueError {
     JobDequeueFailed(String),
     ContentParseFailed,
-    AgentNotFound,
+    LLMProviderNotFound,
     NotAJobMessage,
     DatabaseError(String),
     Other(String), // For any other errors not covered above
@@ -32,7 +32,7 @@ impl fmt::Display for NetworkJobQueueError {
                 write!(f, "Failed to dequeue job with ID: {}", job_id)
             }
             NetworkJobQueueError::ContentParseFailed => write!(f, "Failed to parse job content"),
-            NetworkJobQueueError::AgentNotFound => write!(f, "Agent not found"),
+            NetworkJobQueueError::LLMProviderNotFound => write!(f, "LLMProvider not found"),
             NetworkJobQueueError::NotAJobMessage => write!(f, "Not a job message"),
             NetworkJobQueueError::DatabaseError(ref err) => write!(f, "Database error: {}", err),
             NetworkJobQueueError::Other(ref err) => write!(f, "Error: {}", err),

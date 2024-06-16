@@ -1,5 +1,5 @@
 use super::{
-    error::AgentError,
+    error::LLMProviderError,
     execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
 };
 use async_trait::async_trait;
@@ -18,8 +18,8 @@ pub mod shinkai_backend;
 #[async_trait]
 pub trait LLMService {
     // type Response;
-    // fn parse_response(response_body: &str) -> Result<Self::Response, AgentError>;
-    // fn extract_content(response: &Self::Response) -> Result<JsonValue, AgentError>;
+    // fn parse_response(response_body: &str) -> Result<Self::Response, LLMProviderError>;
+    // fn extract_content(response: &Self::Response) -> Result<JsonValue, LLMProviderError>;
     async fn call_api(
         &self,
         client: &Client,
@@ -27,22 +27,22 @@ pub trait LLMService {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<LLMInferenceResponse, AgentError>;
+    ) -> Result<LLMInferenceResponse, LLMProviderError>;
 
     /// Given an input string, parses the first XML object that it finds.
-    fn extract_first_xml_object_into_json_value(s: &str) -> Result<JsonValue, AgentError> {
+    fn extract_first_xml_object_into_json_value(s: &str) -> Result<JsonValue, LLMProviderError> {
         let xml_strings = Self::internal_extract_xml_strings(s);
         if let Ok(xml_strings) = xml_strings {
             let first_string = xml_strings[0].clone(); // Should be safe as we already checked for empty when extracting the strings
             let conf = Config::new_with_defaults();
             let json = xml_string_to_json(first_string, &conf);
-            json.or(Err(AgentError::FailedSerdeParsingXMLString(
+            json.or(Err(LLMProviderError::FailedSerdeParsingXMLString(
                 s.to_string(),
                 minidom::Error::InvalidElement,
             )))
         } else {
             xml_strings?;
-            Err(AgentError::ContentParseFailed)
+            Err(LLMProviderError::ContentParseFailed)
         }
 
         // match xml_strings {
@@ -54,7 +54,7 @@ pub trait LLMService {
         //         match internal_extract_json_string(&cleaned_json_string) {
         //             Ok(re_json_str) => match serde_json::from_str(&re_json_str) {
         //                 Ok(obj) => Ok(obj),
-        //                 Err(e) => Err(AgentError::FailedSerdeParsingXMLString(re_json_str, _e)),
+        //                 Err(e) => Err(LLMProviderError::FailedSerdeParsingXMLString(re_json_str, _e)),
         //             },
         //             Err(e) => Err(e),
         //         }
@@ -65,7 +65,7 @@ pub trait LLMService {
     }
 
     /// Attempts to extract out all top-level XML strings from the input by matching start and end tags and returns them as separate strings.
-    fn internal_extract_xml_strings(s: &str) -> Result<Vec<String>, AgentError> {
+    fn internal_extract_xml_strings(s: &str) -> Result<Vec<String>, LLMProviderError> {
         let mut xml_strings = Vec::new();
         let mut tag_start = None;
         let mut current_tag = None;
@@ -115,7 +115,7 @@ pub trait LLMService {
         }
 
         if xml_strings.is_empty() {
-            Err(AgentError::FailedSerdeParsingXMLString(
+            Err(LLMProviderError::FailedSerdeParsingXMLString(
                 s.to_string(),
                 minidom::Error::InvalidElement,
             ))
@@ -126,7 +126,7 @@ pub trait LLMService {
 
     /// Given an input string, parses the largest JSON object that it finds. Largest allows us to skip over
     /// cases where LLMs repeat your schema or post other broken/smaller json objects for whatever reason.
-    fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
+    fn extract_largest_json_object(s: &str) -> Result<JsonValue, LLMProviderError> {
         match internal_extract_json_string(s) {
             Ok(json_str) => match serde_json::from_str(&json_str) {
                 Ok(json_val) => Ok(json_val),
@@ -136,7 +136,7 @@ pub trait LLMService {
                     match internal_extract_json_string(&cleaned_json_string) {
                         Ok(re_json_str) => match serde_json::from_str(&re_json_str) {
                             Ok(obj) => Ok(obj),
-                            Err(e) => Err(AgentError::FailedSerdeParsingJSONString(re_json_str, e)),
+                            Err(e) => Err(LLMProviderError::FailedSerdeParsingJSONString(re_json_str, e)),
                         },
                         Err(e) => Err(e),
                     }
@@ -219,7 +219,7 @@ fn replace_single_quotes(s: &str) -> String {
 }
 
 /// Attempts to extract out all json strings from the input by matching braces and returns the longest one.
-fn internal_extract_json_string(s: &str) -> Result<String, AgentError> {
+fn internal_extract_json_string(s: &str) -> Result<String, LLMProviderError> {
     let mut depth = 0;
     let mut start = None;
     let mut json_strings = Vec::new();
@@ -240,7 +240,7 @@ fn internal_extract_json_string(s: &str) -> Result<String, AgentError> {
                         json_strings.push(s[start_index..=i].to_string());
                         start = None; // Reset start for the next JSON string
                     } else {
-                        return Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()));
+                        return Err(LLMProviderError::FailedExtractingJSONObjectFromResponse(s.to_string()));
                     }
                 }
             }
@@ -251,7 +251,7 @@ fn internal_extract_json_string(s: &str) -> Result<String, AgentError> {
     // Return the longest JSON string
     match json_strings.into_iter().max_by_key(|jstr| jstr.len()) {
         Some(longest_json_string) => Ok(longest_json_string),
-        None => Err(AgentError::FailedExtractingJSONObjectFromResponse(
+        None => Err(LLMProviderError::FailedExtractingJSONObjectFromResponse(
             s.to_string() + " - No JSON strings found",
         )),
     }

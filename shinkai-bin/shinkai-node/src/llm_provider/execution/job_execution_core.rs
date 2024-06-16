@@ -1,4 +1,4 @@
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChain;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
@@ -46,7 +46,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
         let job_id = job_message.job_message.job_id.clone();
@@ -66,7 +66,7 @@ impl JobManager {
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
-                return Self::handle_error(&db, None, &job_id, &identity_secret_key, AgentError::NoUserProfileFound)
+                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound)
                     .await
             }
         };
@@ -161,8 +161,8 @@ impl JobManager {
         user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
-        error: AgentError,
-    ) -> Result<String, AgentError> {
+        error: LLMProviderError,
+    ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Error,
@@ -206,7 +206,7 @@ impl JobManager {
         agent_found: Option<SerializedAgent>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), LLMProviderError> {
         let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
         shinkai_log(
@@ -256,7 +256,7 @@ impl JobManager {
             profile_name.clone(),
             profile_name.clone(),
         )
-        .map_err(|e| AgentError::ShinkaiMessageBuilderError(e.to_string()))?;
+        .map_err(|e| LLMProviderError::ShinkaiMessageBuilderError(e.to_string()))?;
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -289,7 +289,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
-    ) -> Result<bool, AgentError> {
+    ) -> Result<bool, LLMProviderError> {
         if job_message.workflow.is_none() {
             return Ok(false);
         }
@@ -310,7 +310,7 @@ impl JobManager {
         );
 
         let job_id = full_job.job_id().to_string();
-        let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
+        let agent = agent_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
@@ -339,7 +339,7 @@ impl JobManager {
                 // Check if there was an error getting the files
                 match files_result {
                     Ok(files) => files,
-                    Err(e) => return Err(AgentError::VectorFS(e)),
+                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
                 }
             };
 
@@ -385,7 +385,7 @@ impl JobManager {
             user_profile.get_node_name_string(),
             user_profile.get_node_name_string(),
         )
-        .map_err(|e| AgentError::ShinkaiMessageBuilderError(e.to_string()))?;
+        .map_err(|e| LLMProviderError::ShinkaiMessageBuilderError(e.to_string()))?;
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -418,7 +418,7 @@ impl JobManager {
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<bool, AgentError> {
+    ) -> Result<bool, LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -436,7 +436,7 @@ impl JobManager {
                 // Check if there was an error getting the files
                 match files_result {
                     Ok(files) => files,
-                    Err(e) => return Err(AgentError::VectorFS(e)),
+                    Err(e) => return Err(LLMProviderError::VectorFS(e)),
                 }
             };
 
@@ -468,7 +468,7 @@ impl JobManager {
                                 ShinkaiLogLevel::Error,
                                 &format!("Error parsing KaiJobFile: {}", e),
                             );
-                            return Err(AgentError::AgentNotFound);
+                            return Err(LLMProviderError::LLMProviderNotFound);
                         }
                     };
                     shinkai_log(
@@ -522,7 +522,7 @@ impl JobManager {
                                 ShinkaiLogLevel::Error,
                                 "Unexpected schema type in KaiJobFile",
                             );
-                            return Err(AgentError::AgentNotFound);
+                            return Err(LLMProviderError::LLMProviderNotFound);
                         }
                     }
                 } else if filename_lower.ends_with(".png")
@@ -546,7 +546,7 @@ impl JobManager {
                             ShinkaiLogLevel::Error,
                             "Agent does not have ImageAnalysis capability",
                         );
-                        return Err(AgentError::AgentMissingCapabilities(
+                        return Err(LLMProviderError::LLMProviderMissingCapabilities(
                             "Agent does not have ImageAnalysis capability".to_string(),
                         ));
                     }
@@ -591,7 +591,7 @@ impl JobManager {
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -606,7 +606,7 @@ impl JobManager {
                     // Check if there was an error getting the files
                     match files_result {
                         Ok(files) => files,
-                        Err(e) => return Err(AgentError::VectorFS(e)),
+                        Err(e) => return Err(LLMProviderError::VectorFS(e)),
                     }
                 };
 
@@ -723,7 +723,7 @@ impl JobManager {
         save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
+    ) -> Result<HashMap<String, ScopeEntry>, LLMProviderError> {
         // Create the RemoteEmbeddingGenerator instance
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
@@ -733,7 +733,7 @@ impl JobManager {
             // Check if there was an error getting the files
             match files_result {
                 Ok(files) => files,
-                Err(e) => return Err(AgentError::VectorFS(e)),
+                Err(e) => return Err(LLMProviderError::VectorFS(e)),
             }
         };
 

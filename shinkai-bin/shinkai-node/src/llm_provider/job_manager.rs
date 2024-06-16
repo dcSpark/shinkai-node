@@ -1,4 +1,4 @@
-use super::error::AgentError;
+use super::error::LLMProviderError;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::llm_provider::llm_provider::LLMProvider;
 use crate::llm_provider::job::JobLike;
@@ -148,7 +148,7 @@ impl JobManager {
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
-            ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send>>
+            ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
             + 'static,
@@ -245,7 +245,7 @@ impl JobManager {
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
                                         result
                                     } else {
-                                        Err(AgentError::JobDequeueFailed(job_id.clone()))
+                                        Err(LLMProviderError::JobDequeueFailed(job_id.clone()))
                                     }
                                 };
 
@@ -290,7 +290,7 @@ impl JobManager {
         });
     }
 
-    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
+    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, LLMProviderError> {
         let profile = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
 
         if self.is_job_message(message.clone()) {
@@ -304,29 +304,29 @@ impl JobManager {
                                     let agent_name =
                                         ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                                     let agent_id =
-                                        agent_name.get_agent_name_string().ok_or(AgentError::AgentNotFound)?;
+                                        agent_name.get_agent_name_string().ok_or(LLMProviderError::LLMProviderNotFound)?;
                                     let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| AgentError::ContentParseFailed)?;
+                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }
                                 MessageSchemaType::JobMessageSchema => {
                                     let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| AgentError::ContentParseFailed)?;
+                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
                                     self.add_to_job_processing_queue(message, job_message).await
                                 }
                                 _ => {
                                     // Handle Empty message type if needed, or return an error if it's not a valid job message
-                                    Err(AgentError::NotAJobMessage)
+                                    Err(LLMProviderError::NotAJobMessage)
                                 }
                             }
                         }
-                        _ => Err(AgentError::NotAJobMessage),
+                        _ => Err(LLMProviderError::NotAJobMessage),
                     }
                 }
-                _ => Err(AgentError::NotAJobMessage),
+                _ => Err(LLMProviderError::NotAJobMessage),
             }
         } else {
-            Err(AgentError::NotAJobMessage)
+            Err(LLMProviderError::NotAJobMessage)
         }
     }
 
@@ -351,7 +351,7 @@ impl JobManager {
         job_creation: JobCreationInfo,
         profile: &ShinkaiName,
         agent_id: &String,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         // TODO: add job_id to agent so it's aware
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
@@ -359,7 +359,7 @@ impl JobManager {
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
             match db_arc.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden) {
                 Ok(_) => (),
-                Err(err) => return Err(AgentError::ShinkaiDB(err)),
+                Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };
 
             match db_arc.get_job(&job_id) {
@@ -388,12 +388,12 @@ impl JobManager {
 
                     let job_id_to_return = match agent_found {
                         Some(_) => Ok(job_id.clone()),
-                        None => Err(anyhow::Error::new(AgentError::AgentNotFound)),
+                        None => Err(anyhow::Error::new(LLMProviderError::LLMProviderNotFound)),
                     };
 
-                    job_id_to_return.map_err(|_| AgentError::AgentNotFound)
+                    job_id_to_return.map_err(|_| LLMProviderError::LLMProviderNotFound)
                 }
-                Err(err) => Err(AgentError::ShinkaiDB(err)),
+                Err(err) => Err(LLMProviderError::ShinkaiDB(err)),
             }
         }
     }
@@ -402,17 +402,17 @@ impl JobManager {
         &mut self,
         message: ShinkaiMessage,
         job_message: JobMessage,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         // Verify identity/profile match
         let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
         let sender_subidentity = match sender_subidentity_result {
             Ok(subidentity) => subidentity,
-            Err(e) => return Err(AgentError::InvalidSubidentity(e)),
+            Err(e) => return Err(LLMProviderError::InvalidSubidentity(e)),
         };
         let profile_result = sender_subidentity.extract_profile();
         let profile = match profile_result {
             Ok(profile) => profile,
-            Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
+            Err(e) => return Err(LLMProviderError::InvalidProfileSubidentity(e.to_string())),
         };
 
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -441,7 +441,7 @@ impl JobManager {
         &mut self,
         job_message: &JobMessage,
         profile: &ShinkaiName,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone());
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;

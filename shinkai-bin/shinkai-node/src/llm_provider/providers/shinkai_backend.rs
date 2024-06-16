@@ -1,7 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
-use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMService;
@@ -45,7 +45,7 @@ impl LLMService for ShinkaiBackend {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<LLMInferenceResponse, AgentError> {
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);
             if let Some(key) = api_key {
@@ -58,14 +58,14 @@ impl LLMService for ShinkaiBackend {
                         match result.value {
                             PromptResultEnum::Value(v) => v,
                             _ => {
-                                return Err(AgentError::UnexpectedPromptResultVariant(
+                                return Err(LLMProviderError::UnexpectedPromptResultVariant(
                                     "Expected Value variant in PromptResultEnum".to_string(),
                                 ))
                             }
                         }
                     }
                     _ => {
-                        return Err(AgentError::InvalidModelType(format!(
+                        return Err(LLMProviderError::InvalidModelType(format!(
                             "Unsupported model type: {:?}",
                             self.model_type()
                         )))
@@ -131,18 +131,18 @@ impl LLMService for ShinkaiBackend {
                         if let Some(status_code) = value.get("statusCode").and_then(|code| code.as_u64()) {
                             let resp_message = value.get("message").and_then(|m| m.as_str()).unwrap_or_default();
                             return Err(match status_code {
-                                401 => AgentError::ShinkaiBackendInvalidAuthentication(resp_message.to_string()),
-                                403 => AgentError::ShinkaiBackendInvalidConfiguration(resp_message.to_string()),
-                                429 => AgentError::ShinkaiBackendInferenceLimitReached(resp_message.to_string()),
-                                500 => AgentError::ShinkaiBackendAIProviderError(resp_message.to_string()),
-                                _ => AgentError::ShinkaiBackendUnexpectedStatusCode(status_code),
+                                401 => LLMProviderError::ShinkaiBackendInvalidAuthentication(resp_message.to_string()),
+                                403 => LLMProviderError::ShinkaiBackendInvalidConfiguration(resp_message.to_string()),
+                                429 => LLMProviderError::ShinkaiBackendInferenceLimitReached(resp_message.to_string()),
+                                500 => LLMProviderError::ShinkaiBackendAIProviderError(resp_message.to_string()),
+                                _ => LLMProviderError::ShinkaiBackendUnexpectedStatusCode(status_code),
                             });
                         }
 
                         // TODO: refactor parsing logic so it's reusable
                         // If not an error, but actual response
                         if self.model_type().contains("vision") {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -175,7 +175,7 @@ impl LLMService for ShinkaiBackend {
                                 }
                             }
                         } else {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -211,14 +211,14 @@ impl LLMService for ShinkaiBackend {
                             ShinkaiLogLevel::Error,
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        Err(LLMProviderError::SerdeError(e))
                     }
                 }
             } else {
-                Err(AgentError::ApiKeyNotSet)
+                Err(LLMProviderError::ApiKeyNotSet)
             }
         } else {
-            Err(AgentError::UrlNotSet)
+            Err(LLMProviderError::UrlNotSet)
         }
     }
 }

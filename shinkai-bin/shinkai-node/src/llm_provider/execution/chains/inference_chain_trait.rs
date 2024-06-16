@@ -1,5 +1,5 @@
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
-use crate::llm_provider::{error::AgentError, job::Job};
+use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
@@ -19,11 +19,11 @@ pub trait InferenceChain: Send + Sync {
     fn chain_context(&mut self) -> &mut InferenceChainContext;
 
     /// Starts the inference chain
-    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError>;
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError>;
 
     /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,
     /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
-    async fn recurse_chain(&mut self, backup_result: InferenceChainResult) -> Result<InferenceChainResult, AgentError> {
+    async fn recurse_chain(&mut self, backup_result: InferenceChainResult) -> Result<InferenceChainResult, LLMProviderError> {
         let context = self.chain_context();
         if context.iteration_count >= context.max_iterations {
             return Ok(backup_result);

@@ -1,5 +1,5 @@
 use crate::{
-    llm_provider::{error::AgentError, job::JobStepResult},
+    llm_provider::{error::LLMProviderError, job::JobStepResult},
     managers::model_capabilities_manager::ModelCapabilitiesManager,
 };
 use serde::{Deserialize, Serialize};
@@ -225,11 +225,11 @@ impl Prompt {
         }
     }
 
-    pub fn to_json(&self) -> Result<String, AgentError> {
+    pub fn to_json(&self) -> Result<String, LLMProviderError> {
         Ok(serde_json::to_string(self)?)
     }
 
-    pub fn from_json(json: &str) -> Result<Self, AgentError> {
+    pub fn from_json(json: &str) -> Result<Self, LLMProviderError> {
         Ok(serde_json::from_str(json)?)
     }
 
@@ -414,19 +414,19 @@ impl Prompt {
 
     /// Validates that there is at least one EBNF sub-prompt to ensure
     /// the LLM knows what to output.
-    pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
+    pub fn check_ebnf_included(&self) -> Result<(), LLMProviderError> {
         if !self
             .sub_prompts
             .iter()
             .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _, _, _)))
         {
-            return Err(AgentError::UserPromptMissingEBNFDefinition);
+            return Err(LLMProviderError::UserPromptMissingEBNFDefinition);
         }
         Ok(())
     }
 
     /// Processes all sub-prompts into a single output String.
-    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+    pub fn generate_single_output_string(&self) -> Result<String, LLMProviderError> {
         let content = self
             .sub_prompts
             .iter()
@@ -516,7 +516,7 @@ impl Prompt {
     pub fn generate_openai_messages(
         &self,
         max_prompt_tokens: Option<usize>,
-    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
+    ) -> Result<Vec<ChatCompletionRequestMessage>, LLMProviderError> {
         // We take about half of a default total 4097 if none is provided as a backup (should never happen)
         let limit = max_prompt_tokens.unwrap_or(2700_usize);
 
@@ -532,7 +532,7 @@ impl Prompt {
 
     // Generates generic api messages as a single string.
     // TODO: needs to be updated
-    pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, AgentError> {
+    pub fn generate_genericapi_messages(&self, max_input_tokens: Option<usize>) -> Result<String, LLMProviderError> {
         // let limit = max_input_tokens.unwrap_or(4000 as usize);
         let limit = max_input_tokens.unwrap_or(4000_usize);
         let mut prompt_copy = self.clone();

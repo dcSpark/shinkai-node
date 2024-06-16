@@ -1,4 +1,4 @@
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
@@ -76,7 +76,7 @@ impl OpenAIApiMessage {
     /// Converts ChatCompletionRequestMessages to OpenAIApiMessages
     pub fn from_chat_completion_messages(
         chat_completion_messages: Vec<ChatCompletionRequestMessage>,
-    ) -> Result<Vec<OpenAIApiMessage>, AgentError> {
+    ) -> Result<Vec<OpenAIApiMessage>, LLMProviderError> {
         let messages: Vec<OpenAIApiMessage> = chat_completion_messages
             .into_iter()
             .filter_map(|message| {
@@ -131,7 +131,7 @@ pub struct ApiPayload {
     max_tokens: usize,
 }
 
-pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, AgentError> {
+pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images

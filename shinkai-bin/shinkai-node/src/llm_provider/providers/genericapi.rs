@@ -2,7 +2,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceR
 use crate::llm_provider::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
-use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::togetherai::TogetherAPIResponse;
 use super::LLMService;
 use async_trait::async_trait;
@@ -22,7 +22,7 @@ impl LLMService for GenericAPI {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<LLMInferenceResponse, AgentError> {
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/inference");
@@ -123,14 +123,14 @@ impl LLMService for GenericAPI {
                             ShinkaiLogLevel::Error,
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        Err(LLMProviderError::SerdeError(e))
                     }
                 }
             } else {
-                Err(AgentError::ApiKeyNotSet)
+                Err(LLMProviderError::ApiKeyNotSet)
             }
         } else {
-            Err(AgentError::UrlNotSet)
+            Err(LLMProviderError::UrlNotSet)
         }
     }
 }

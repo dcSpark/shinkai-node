@@ -1,4 +1,4 @@
-use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
@@ -44,7 +44,7 @@ impl LLMService for OpenAI {
         api_key: Option<&String>,
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<LLMInferenceResponse, AgentError> {
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
@@ -54,7 +54,7 @@ impl LLMService for OpenAI {
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
                     _ => {
-                        return Err(AgentError::UnexpectedPromptResultVariant(
+                        return Err(LLMProviderError::UnexpectedPromptResultVariant(
                             "Expected Value variant in PromptResultEnum".to_string(),
                         ))
                     }
@@ -115,14 +115,14 @@ impl LLMService for OpenAI {
 
                             return Err(match code {
                                 Some("rate_limit_exceeded") => {
-                                    AgentError::LLMServiceInferenceLimitReached(formatted_error.to_string())
+                                    LLMProviderError::LLMServiceInferenceLimitReached(formatted_error.to_string())
                                 }
-                                _ => AgentError::LLMServiceUnexpectedError(formatted_error.to_string()),
+                                _ => LLMProviderError::LLMServiceUnexpectedError(formatted_error.to_string()),
                             });
                         }
 
                         if self.model_type.contains("vision") {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -155,7 +155,7 @@ impl LLMService for OpenAI {
                                 }
                             }
                         } else {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -191,14 +191,14 @@ impl LLMService for OpenAI {
                             ShinkaiLogLevel::Error,
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
-                        Err(AgentError::SerdeError(e))
+                        Err(LLMProviderError::SerdeError(e))
                     }
                 }
             } else {
-                Err(AgentError::ApiKeyNotSet)
+                Err(LLMProviderError::ApiKeyNotSet)
             }
         } else {
-            Err(AgentError::UrlNotSet)
+            Err(LLMProviderError::UrlNotSet)
         }
     }
 }

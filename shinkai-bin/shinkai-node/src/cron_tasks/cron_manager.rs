@@ -46,7 +46,7 @@ use shinkai_message_primitives::{
 use tokio::sync::Mutex;
 
 use crate::{
-    llm_provider::{error::AgentError, job_manager::JobManager},
+    llm_provider::{error::LLMProviderError, job_manager::JobManager},
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
     planner::kai_files::{KaiJobFile, KaiSchemaType},
     schemas::inbox_permission::InboxPermission, vector_fs::vector_fs::VectorFS,
@@ -70,8 +70,8 @@ pub enum CronManagerError {
     InboxError(InboxNameError),
 }
 
-impl From<AgentError> for CronManagerError {
-    fn from(error: AgentError) -> Self {
+impl From<LLMProviderError> for CronManagerError {
+    fn from(error: LLMProviderError) -> Self {
         CronManagerError::JobCreationError(error.to_string())
     }
 }

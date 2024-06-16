@@ -1,6 +1,6 @@
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
@@ -237,11 +237,11 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
         state: Option<CronCreationState>,
-    ) -> Result<CronCreationChainResponse, AgentError> {
+    ) -> Result<CronCreationChainResponse, LLMProviderError> {
         println!("start_cron_creation_chain>  message: {:?}", user_message);
 
         if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
+            return Err(LLMProviderError::InferenceRecursionLimitReached(user_message.clone()));
         }
 
         // TODO: we need the vector search for the tools
@@ -291,7 +291,7 @@ impl JobManager {
                 (filled_pddl_domain_prompt, "pddl_plan_domain", "pddl_problem")
             }
             _ => {
-                return Err(AgentError::InvalidCronCreationChainStage(
+                return Err(LLMProviderError::InvalidCronCreationChainStage(
                     state.as_ref().unwrap().stage.clone(),
                 ))
             }

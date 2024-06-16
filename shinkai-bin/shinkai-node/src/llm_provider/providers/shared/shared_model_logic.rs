@@ -8,7 +8,7 @@ use shinkai_message_primitives::{
 
 use crate::{
     llm_provider::{
-        error::AgentError,
+        error::LLMProviderError,
         execution::prompts::prompts::{Prompt, SubPrompt},
     },
     managers::model_capabilities_manager::{
@@ -21,7 +21,7 @@ pub fn llama_prepare_messages(
     _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
-) -> Result<PromptResult, AgentError> {
+) -> Result<PromptResult, LLMProviderError> {
     let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
 
     let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
@@ -37,7 +37,7 @@ pub fn llava_prepare_messages(
     _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
-) -> Result<PromptResult, AgentError> {
+) -> Result<PromptResult, LLMProviderError> {
     let messages_string = prompt.generate_genericapi_messages(Some(total_tokens))?;
 
     if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
@@ -63,11 +63,11 @@ pub fn llava_prepare_messages(
             ShinkaiLogLevel::Error,
             format!("Image content not found: {:?}", messages_string).as_str(),
         );
-        Err(AgentError::ImageContentNotFound("Image content not found".to_string()))
+        Err(LLMProviderError::ImageContentNotFound("Image content not found".to_string()))
     }
 }
 
-pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, AgentError> {
+pub fn parse_markdown_to_json(markdown: &str) -> Result<JsonValue, LLMProviderError> {
     let mut markdown = markdown;
 
     // Check if the text starts with "```markdown" and remove it along with the ending triple quotes

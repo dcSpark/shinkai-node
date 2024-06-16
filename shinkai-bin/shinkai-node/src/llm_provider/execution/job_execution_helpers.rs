@@ -2,7 +2,7 @@ use super::chains::inference_chain_trait::LLMInferenceResponse;
 use super::prompts::prompts::{JobPromptGenerator, Prompt};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_provider::LLMProvider;
@@ -25,7 +25,7 @@ impl JobManager {
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
         retry_attempts: u64,
-    ) -> Result<HashMap<String, String>, AgentError> {
+    ) -> Result<HashMap<String, String>, LLMProviderError> {
         let (value, _) = JobManager::advanced_extract_multi_keys_from_inference_response_with_json(
             agent.clone(),
             response.clone(),
@@ -49,7 +49,7 @@ impl JobManager {
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
         retry_attempts: u64,
-    ) -> Result<(HashMap<String, String>, LLMInferenceResponse), AgentError> {
+    ) -> Result<(HashMap<String, String>, LLMInferenceResponse), LLMProviderError> {
         let mut result_map = HashMap::new();
         let mut new_response = response.clone();
 
@@ -77,7 +77,7 @@ impl JobManager {
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
         retry_attempts: u64,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_new_response(
             agent.clone(),
             response.clone(),
@@ -99,9 +99,9 @@ impl JobManager {
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
         retry_attempts: u64,
-    ) -> Result<(String, LLMInferenceResponse), AgentError> {
+    ) -> Result<(String, LLMInferenceResponse), LLMProviderError> {
         if potential_keys.is_empty() {
-            return Err(AgentError::InferenceJSONResponseMissingField(
+            return Err(LLMProviderError::InferenceJSONResponseMissingField(
                 "No keys supplied to attempt to extract".to_string(),
             ));
         }
@@ -129,7 +129,7 @@ impl JobManager {
             }
         }
 
-        Err(AgentError::InferenceJSONResponseMissingField(potential_keys.join(", ")))
+        Err(LLMProviderError::InferenceJSONResponseMissingField(potential_keys.join(", ")))
     }
 
     /// Attempts to extract a String using the provided key in the JSON response.
@@ -138,7 +138,7 @@ impl JobManager {
     pub fn direct_extract_key_inference_response(
         response: LLMInferenceResponse,
         key: &str,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let response_json = response.json;
         let keys_to_try = [
             key.to_string(),
@@ -183,7 +183,7 @@ impl JobManager {
             }
         }
 
-        Err(AgentError::InferenceJSONResponseMissingField(key.to_string()))
+        Err(LLMProviderError::InferenceJSONResponseMissingField(key.to_string()))
     }
 
     /// Inferences the Agent's LLM with the given markdown prompt. Automatically validates the response is
@@ -191,7 +191,7 @@ impl JobManager {
     pub async fn inference_agent_markdown(
         agent: SerializedAgent,
         filled_prompt: Prompt,
-    ) -> Result<LLMInferenceResponse, AgentError> {
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let agent_cloned = agent.clone();
         let prompt_cloned = filled_prompt.clone();
 
@@ -216,7 +216,7 @@ impl JobManager {
     pub async fn fetch_relevant_job_data(
         job_id: &str,
         db: Arc<ShinkaiDB>,
-    ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), AgentError> {
+    ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), LLMProviderError> {
         // Fetch the job
         let full_job = { db.get_job(job_id)? };
 
@@ -327,7 +327,7 @@ async fn internal_fix_markdown_to_include_proper_key(
     invalid_markdown: String,
     original_prompt: Prompt,
     key_to_correct: String,
-) -> Result<LLMInferenceResponse, AgentError> {
+) -> Result<LLMInferenceResponse, LLMProviderError> {
     let response = tokio::spawn(async move {
         let agent = LLMProvider::from_serialized_agent(agent);
         let prompt = JobPromptGenerator::basic_fix_markdown_to_include_proper_key(
@@ -346,7 +346,7 @@ async fn internal_fix_markdown_to_include_proper_key(
         Ok(res) => res?,
         Err(e) => {
             eprintln!("Task panicked with error: {:?}", e);
-            return Err(AgentError::InferenceFailed);
+            return Err(LLMProviderError::InferenceFailed);
         }
     };
 

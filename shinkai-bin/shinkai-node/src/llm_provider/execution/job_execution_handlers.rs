@@ -18,7 +18,7 @@ use shinkai_vector_resources::{file_parser::unstructured_api::UnstructuredAPI, u
 
 use crate::{
     llm_provider::{
-        error::AgentError, execution::chains::inference_chain_router::InferenceChainDecision, job::Job,
+        error::LLMProviderError, execution::chains::inference_chain_router::InferenceChainDecision, job::Job,
         job_manager::JobManager,
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
@@ -39,7 +39,7 @@ impl JobManager {
         cron_task_request: CronTaskRequest,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
-    ) -> Result<bool, AgentError> {
+    ) -> Result<bool, LLMProviderError> {
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
 
@@ -65,7 +65,7 @@ impl JobManager {
 
         let agg_response = cron_task_response.to_string();
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
-        let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
+        let agent = agent_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
 
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJobRequestResponse(cron_task_response.clone()),
@@ -117,7 +117,7 @@ impl JobManager {
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
         unstructured_api: UnstructuredAPI,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
         // Create a new instance of the WebScraper
@@ -241,7 +241,7 @@ impl JobManager {
                     ShinkaiLogLevel::Error,
                     format!("Web scraping failed: {:?}", e).as_str(),
                 );
-                return Err(AgentError::WebScrapingFailed("Your error message".into()));
+                return Err(LLMProviderError::WebScrapingFailed("Your error message".into()));
             }
         }
         Ok(())
@@ -258,7 +258,7 @@ impl JobManager {
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
         file_extension: String,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
         let base64_image = match &agent_found {
@@ -324,7 +324,7 @@ impl JobManager {
         vector_fs: Arc<VectorFS>,
         file_name_no_ext: String,
         kai_file: KaiJobFile,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         let inbox_name = random_string();
 
         // Create the inbox
@@ -344,7 +344,7 @@ impl JobManager {
                 )?;
                 Ok(inbox_name)
             }
-            Err(err) => Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
+            Err(err) => Err(LLMProviderError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
         }
     }
 }

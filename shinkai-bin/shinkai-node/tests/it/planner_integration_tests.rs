@@ -18,7 +18,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::llm_provider::error::AgentError;
+use shinkai_node::llm_provider::error::LLMProviderError;
 use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
@@ -613,7 +613,7 @@ fn create_openai_mock_3(server: &mut mockito::Server) -> Mock {
     )
 }
 
-fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
+fn extract_largest_json_object(s: &str) -> Result<JsonValue, LLMProviderError> {
     let mut depth = 0;
     let mut start = None;
 
@@ -630,7 +630,7 @@ fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
                 if depth == 0 {
                     let json_str = &s[start.unwrap()..=i];
                     let json_val: JsonValue = serde_json::from_str(json_str)
-                        .map_err(|_| AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))?;
+                        .map_err(|_| LLMProviderError::FailedExtractingJSONObjectFromResponse(s.to_string()))?;
                     return Ok(json_val);
                 }
             }
@@ -638,5 +638,5 @@ fn extract_largest_json_object(s: &str) -> Result<JsonValue, AgentError> {
         }
     }
 
-    Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))
+    Err(LLMProviderError::FailedExtractingJSONObjectFromResponse(s.to_string()))
 }

@@ -1,4 +1,4 @@
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainResult, LLMInferenceResponse,
 };
@@ -36,7 +36,7 @@ impl InferenceChain for QAInferenceChain {
         &mut self.context
     }
 
-    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = QAInferenceChain::start_qa_inference_chain(
             self.context.db.clone(),
             self.context.vector_fs.clone(),
@@ -86,7 +86,7 @@ impl QAInferenceChain {
         iteration_count: u64,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -147,10 +147,10 @@ impl QAInferenceChain {
         let response_res = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
-        if let Err(AgentError::LLMServiceInferenceLimitReached(e)) = &response_res {
-            return Err(AgentError::LLMServiceInferenceLimitReached(e.to_string()));
-        } else if let Err(AgentError::LLMServiceUnexpectedError(e)) = &response_res {
-            return Err(AgentError::LLMServiceUnexpectedError(e.to_string()));
+        if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
+            return Err(LLMProviderError::LLMServiceInferenceLimitReached(e.to_string()));
+        } else if let Err(LLMProviderError::LLMServiceUnexpectedError(e)) = &response_res {
+            return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
         } else if response_res.is_err() {
             return no_json_object_retry_logic(
                 response_res,
@@ -185,7 +185,7 @@ impl QAInferenceChain {
                 if let Some(summary_str) = &summary_text {
                     return Ok(summary_str.to_string());
                 } else {
-                    return Err(AgentError::InferenceRecursionLimitReached(user_message.clone()));
+                    return Err(LLMProviderError::InferenceRecursionLimitReached(user_message.clone()));
                 }
             }
         }
@@ -231,7 +231,7 @@ impl QAInferenceChain {
                             "summary"
                         ),
                     );
-                    // return Err(AgentError::InferenceJSONResponseMissingField("summary".to_string()));
+                    // return Err(LLMProviderError::InferenceJSONResponseMissingField("summary".to_string()));
                     return Ok(response.original_response_string);
                 }
             };
@@ -280,7 +280,7 @@ impl QAInferenceChain {
 
 #[allow(clippy::too_many_arguments)]
 async fn no_json_object_retry_logic(
-    response: Result<LLMInferenceResponse, AgentError>,
+    response: Result<LLMInferenceResponse, LLMProviderError>,
     db: Arc<ShinkaiDB>,
     vector_fs: Arc<VectorFS>,
     full_job: Job,
@@ -294,7 +294,7 @@ async fn no_json_object_retry_logic(
     iteration_count: u64,
     max_iterations: u64,
     max_tokens_in_prompt: usize,
-) -> Result<String, AgentError> {
+) -> Result<String, LLMProviderError> {
     if let Err(e) = &response {
         // If still more iterations left, then recurse to try one more time, using summary as the new search text to likely get different LLM output
         if iteration_count < max_iterations {
@@ -350,5 +350,5 @@ async fn no_json_object_retry_logic(
             return Ok(summary_answer);
         }
     }
-    Err(AgentError::InferenceFailed)
+    Err(LLMProviderError::InferenceFailed)
 }

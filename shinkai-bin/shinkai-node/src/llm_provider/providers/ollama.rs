@@ -2,7 +2,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceR
 use crate::llm_provider::providers::shared::ollama::{ollama_conversation_prepare_messages, OllamaAPIStreamingResponse};
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
-use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
+use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMService;
 use async_trait::async_trait;
@@ -37,7 +37,7 @@ impl LLMService for Ollama {
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
         model: AgentLLMInterface,
-    ) -> Result<LLMInferenceResponse, AgentError> {
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
 
@@ -45,7 +45,7 @@ impl LLMService for Ollama {
             let messages_json = match messages_result.value {
                 PromptResultEnum::Value(v) => v,
                 _ => {
-                    return Err(AgentError::UnexpectedPromptResultVariant(
+                    return Err(LLMProviderError::UnexpectedPromptResultVariant(
                         "Expected Value variant in PromptResultEnum".to_string(),
                     ))
                 }
@@ -115,7 +115,7 @@ impl LLMService for Ollama {
                             ShinkaiLogLevel::Error,
                             format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
                         );
-                        return Err(AgentError::NetworkError(e.to_string()));
+                        return Err(LLMProviderError::NetworkError(e.to_string()));
                     }
                 }
             }
@@ -145,7 +145,7 @@ impl LLMService for Ollama {
                 }
             }
         } else {
-            Err(AgentError::UrlNotSet)
+            Err(LLMProviderError::UrlNotSet)
         }
     }
 }

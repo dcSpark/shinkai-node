@@ -1,6 +1,6 @@
 use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
-use crate::llm_provider::error::AgentError;
+use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::{
     chains::inference_chain_router::InferenceChainDecision, prompts::prompts::JobPromptGenerator,
 };
@@ -41,9 +41,9 @@ impl JobManager {
         web_content: String,      // where
         iteration_count: u64,
         max_iterations: u64,
-    ) -> Result<String, AgentError> {
+    ) -> Result<String, LLMProviderError> {
         if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(task_description.clone()));
+            return Err(LLMProviderError::InferenceRecursionLimitReached(task_description.clone()));
         }
 
         let web_prompt = JobPromptGenerator::cron_subtask(task_description.clone(), web_content.clone());
@@ -52,7 +52,7 @@ impl JobManager {
         if let Ok(answer_str) = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer") {
             Ok(answer_str)
         } else {
-            Err(AgentError::InferenceFailed)
+            Err(LLMProviderError::InferenceFailed)
         }
     }
 
@@ -71,9 +71,9 @@ impl JobManager {
         iteration_count: u64,
         max_iterations: u64,
         state: Option<CronExecutionState>,
-    ) -> Result<CronExecutionChainResponse, AgentError> {
+    ) -> Result<CronExecutionChainResponse, LLMProviderError> {
         if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(task_description.clone()));
+            return Err(LLMProviderError::InferenceRecursionLimitReached(task_description.clone()));
         }
 
         let (filled_prompt, _response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
@@ -100,7 +100,7 @@ impl JobManager {
                 (filled_match_with_links_prompt, "matched_links", "")
             }
             _ => {
-                return Err(AgentError::InvalidCronExecutionChainStage(
+                return Err(LLMProviderError::InvalidCronExecutionChainStage(
                     state.as_ref().map(|s| s.stage.clone()).unwrap_or_default(),
                 ))
             }
@@ -158,7 +158,7 @@ impl JobManager {
                 .await;
             }
         } else {
-            return Err(AgentError::InferenceFailed);
+            return Err(LLMProviderError::InferenceFailed);
         }
     }
 
@@ -174,7 +174,7 @@ impl JobManager {
         cron_task_request: CronTaskRequest,
         prev_execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
-    ) -> Result<(CronCreationChainResponse, HashMap<String, String>), AgentError> {
+    ) -> Result<(CronCreationChainResponse, HashMap<String, String>), LLMProviderError> {
         // TODO: this part is very similar to the above function so it is easier to merge them.
         let chosen_chain = InferenceChainDecision::new_no_results("cron_creation_chain".to_string());
         let mut inference_response_content = CronCreationChainResponse::default();
@@ -198,7 +198,7 @@ impl JobManager {
                 )
                 .await?;
             } else {
-                return Err(AgentError::AgentNotFound);
+                return Err(LLMProviderError::LLMProviderNotFound);
             }
         }
         Ok((inference_response_content, new_execution_context))
@@ -215,7 +215,7 @@ impl JobManager {
         prev_execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
         chosen_chain: InferenceChainDecision,
-    ) -> Result<(String, HashMap<String, String>), AgentError> {
+    ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         let mut inference_response_content: String = String::new();
         let mut new_execution_context = HashMap::new();
 
@@ -238,7 +238,7 @@ impl JobManager {
                 .await?;
                 inference_response_content = response.summary;
             } else {
-                return Err(AgentError::AgentNotFound);
+                return Err(LLMProviderError::LLMProviderNotFound);
             }
         } else if chosen_chain.chain_id == *"cron_execution_chain_subtask" {
             if let Some(agent) = agent_found {
@@ -257,7 +257,7 @@ impl JobManager {
 
                 new_execution_context.insert("previous_step_response".to_string(), inference_response_content.clone());
             } else {
-                return Err(AgentError::AgentNotFound);
+                return Err(LLMProviderError::LLMProviderNotFound);
             }
         }
         Ok((inference_response_content, new_execution_context))

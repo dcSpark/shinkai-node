@@ -11,7 +11,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 use crate::llm_provider::{
-    error::AgentError,
+    error::LLMProviderError,
     execution::{
         chains::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult},
         prompts::prompts::JobPromptGenerator,
@@ -47,7 +47,7 @@ impl<'a> InferenceChain for DslChain<'a> {
         &mut self.context
     }
 
-    async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
+    async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let engine = WorkflowEngine::new(&self.functions);
         let mut final_registers = DashMap::new();        
         let logs = DashMap::new();        
@@ -64,7 +64,7 @@ impl<'a> InferenceChain for DslChain<'a> {
                 }
                 Err(e) => {
                     eprintln!("Error in workflow engine: {}", e);
-                    return Err(AgentError::WorkflowExecutionError(e.to_string()));
+                    return Err(LLMProviderError::WorkflowExecutionError(e.to_string()));
                 }
             }
         }
