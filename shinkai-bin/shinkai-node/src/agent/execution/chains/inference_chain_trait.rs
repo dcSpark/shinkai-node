@@ -33,6 +33,102 @@ pub trait InferenceChain: Send + Sync {
     }
 }
 
+pub type RawFiles = Option<Arc<Vec<(String, Vec<u8>)>>>;
+
+/// Trait for InferenceChainContext to facilitate mocking for tests.
+pub trait InferenceChainContextTrait: Send + Sync {
+    fn update_max_iterations(&mut self, new_max_iterations: u64);
+    fn update_raw_files(&mut self, new_raw_files: RawFiles);
+
+    fn db(&self) -> Arc<ShinkaiDB>;
+    fn vector_fs(&self) -> Arc<VectorFS>;
+    fn full_job(&self) -> &Job;
+    fn user_message(&self) -> &ParsedUserMessage;
+    fn agent(&self) -> &SerializedAgent;
+    fn execution_context(&self) -> &HashMap<String, String>;
+    fn generator(&self) -> &RemoteEmbeddingGenerator;
+    fn user_profile(&self) -> &ShinkaiName;
+    fn max_iterations(&self) -> u64;
+    fn iteration_count(&self) -> u64;
+    fn max_tokens_in_prompt(&self) -> usize;
+    fn score_results(&self) -> &HashMap<String, ScoreResult>;
+    fn raw_files(&self) -> &RawFiles;
+
+    fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
+}
+
+impl Clone for Box<dyn InferenceChainContextTrait> {
+    fn clone(&self) -> Box<dyn InferenceChainContextTrait> {
+        self.clone_box()
+    }
+}
+
+impl InferenceChainContextTrait for InferenceChainContext {
+    fn update_max_iterations(&mut self, new_max_iterations: u64) {
+        self.max_iterations = new_max_iterations;
+    }
+
+    fn update_raw_files(&mut self, new_raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>) {
+        self.raw_files = new_raw_files;
+    }
+
+    fn db(&self) -> Arc<ShinkaiDB> {
+        Arc::clone(&self.db)
+    }
+
+    fn vector_fs(&self) -> Arc<VectorFS> {
+        Arc::clone(&self.vector_fs)
+    }
+
+    fn full_job(&self) -> &Job {
+        &self.full_job
+    }
+
+    fn user_message(&self) -> &ParsedUserMessage {
+        &self.user_message
+    }
+
+    fn agent(&self) -> &SerializedAgent {
+        &self.agent
+    }
+
+    fn execution_context(&self) -> &HashMap<String, String> {
+        &self.execution_context
+    }
+
+    fn generator(&self) -> &RemoteEmbeddingGenerator {
+        &self.generator
+    }
+
+    fn user_profile(&self) -> &ShinkaiName {
+        &self.user_profile
+    }
+
+    fn max_iterations(&self) -> u64 {
+        self.max_iterations
+    }
+
+    fn iteration_count(&self) -> u64 {
+        self.iteration_count
+    }
+
+    fn max_tokens_in_prompt(&self) -> usize {
+        self.max_tokens_in_prompt
+    }
+
+    fn score_results(&self) -> &HashMap<String, ScoreResult> {
+        &self.score_results
+    }
+
+    fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
+        &self.raw_files
+    }
+
+    fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
+        Box::new(self.clone())
+    }
+}
+
 /// Struct that represents the generalized context available to all chains as input. Note not all chains require
 /// using all fields in this struct, but they are available nonetheless.
 #[derive(Debug, Clone)]
@@ -50,6 +146,7 @@ pub struct InferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub score_results: HashMap<String, ScoreResult>,
+    pub raw_files: RawFiles,
 }
 
 impl InferenceChainContext {
@@ -80,12 +177,18 @@ impl InferenceChainContext {
             iteration_count: 1,
             max_tokens_in_prompt,
             score_results,
+            raw_files: None,
         }
     }
 
     /// Updates the maximum number of iterations allowed for this chain
     pub fn update_max_iterations(&mut self, new_max_iterations: u64) {
         self.max_iterations = new_max_iterations;
+    }
+
+    /// Updates the raw files for this context
+    pub fn update_raw_files(&mut self, new_raw_files: RawFiles) {
+        self.raw_files = new_raw_files;
     }
 }
 
@@ -139,6 +242,144 @@ impl LLMInferenceResponse {
         Self {
             original_response_string,
             json,
+        }
+    }
+}
+
+/// A Mock implementation of the InferenceChainContextTrait for testing purposes.
+pub struct MockInferenceChainContext {
+    pub user_message: ParsedUserMessage,
+    pub execution_context: HashMap<String, String>,
+    pub user_profile: ShinkaiName,
+    pub max_iterations: u64,
+    pub iteration_count: u64,
+    pub max_tokens_in_prompt: usize,
+    pub score_results: HashMap<String, ScoreResult>,
+    pub raw_files: RawFiles,
+}
+
+impl MockInferenceChainContext {
+    #[allow(clippy::complexity)]
+    pub fn new(
+        user_message: ParsedUserMessage,
+        execution_context: HashMap<String, String>,
+        user_profile: ShinkaiName,
+        max_iterations: u64,
+        iteration_count: u64,
+        max_tokens_in_prompt: usize,
+        score_results: HashMap<String, ScoreResult>,
+        raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
+    ) -> Self {
+        Self {
+            user_message,
+            execution_context,
+            user_profile,
+            max_iterations,
+            iteration_count,
+            max_tokens_in_prompt,
+            score_results,
+            raw_files,
+        }
+    }
+}
+
+impl Default for MockInferenceChainContext {
+    fn default() -> Self {
+        let user_message = ParsedUserMessage {
+            original_user_message_string: "".to_string(),
+            elements: vec![],
+        };
+        let user_profile = ShinkaiName::default_testnet_localhost();
+        Self {
+            user_message,
+            execution_context: HashMap::new(),
+            user_profile,
+            max_iterations: 10,
+            iteration_count: 0,
+            max_tokens_in_prompt: 1000,
+            score_results: HashMap::new(),
+            raw_files: None,
+        }
+    }
+}
+
+impl InferenceChainContextTrait for MockInferenceChainContext {
+    fn update_max_iterations(&mut self, new_max_iterations: u64) {
+        self.max_iterations = new_max_iterations;
+    }
+
+    fn update_raw_files(&mut self, new_raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>) {
+        self.raw_files = new_raw_files;
+    }
+
+    fn db(&self) -> Arc<ShinkaiDB> {
+        unimplemented!()
+    }
+
+    fn vector_fs(&self) -> Arc<VectorFS> {
+        unimplemented!()
+    }
+
+    fn full_job(&self) -> &Job {
+        unimplemented!()
+    }
+
+    fn user_message(&self) -> &ParsedUserMessage {
+        &self.user_message
+    }
+
+    fn agent(&self) -> &SerializedAgent {
+        unimplemented!()
+    }
+
+    fn execution_context(&self) -> &HashMap<String, String> {
+        &self.execution_context
+    }
+
+    fn generator(&self) -> &RemoteEmbeddingGenerator {
+        unimplemented!()
+    }
+
+    fn user_profile(&self) -> &ShinkaiName {
+        &self.user_profile
+    }
+
+    fn max_iterations(&self) -> u64 {
+        self.max_iterations
+    }
+
+    fn iteration_count(&self) -> u64 {
+        self.iteration_count
+    }
+
+    fn max_tokens_in_prompt(&self) -> usize {
+        self.max_tokens_in_prompt
+    }
+
+    fn score_results(&self) -> &HashMap<String, ScoreResult> {
+        &self.score_results
+    }
+
+    fn raw_files(&self) -> &Option<Arc<Vec<(String, Vec<u8>)>>> {
+        &self.raw_files
+    }
+
+    fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for MockInferenceChainContext {
+    fn clone(&self) -> Self {
+        Self {
+            user_message: self.user_message.clone(),
+            execution_context: self.execution_context.clone(),
+            user_profile: self.user_profile.clone(),
+            max_iterations: self.max_iterations,
+            iteration_count: self.iteration_count,
+            max_tokens_in_prompt: self.max_tokens_in_prompt,
+            score_results: self.score_results.clone(),
+            raw_files: self.raw_files.clone(),
         }
     }
 }

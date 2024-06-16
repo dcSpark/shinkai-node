@@ -4,8 +4,8 @@ use crate::{
 };
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{fmt, hash::Hasher};
 use std::hash::Hash;
+use std::{fmt, hash::Hasher};
 
 #[derive(Debug, Clone, Eq)]
 pub struct ShinkaiName {
@@ -200,6 +200,7 @@ impl ShinkaiName {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn from_node_name(node_name: String) -> Result<Self, ShinkaiNameError> {
         // Ensure the node_name has no forward slashes
         if node_name.contains('/') {
@@ -224,6 +225,7 @@ impl ShinkaiName {
         Self::new(full_identity_name)
     }
 
+    #[allow(dead_code)]
     pub fn from_node_and_profile_names_and_type_and_name(
         node_name: String,
         profile_name: String,
@@ -334,6 +336,7 @@ impl ShinkaiName {
     }
 
     // This method checks if a name is a valid node identity name and doesn't contain subidentities
+    #[allow(dead_code)]
     fn is_valid_node_identity_name_and_no_subidentities(name: &String) -> bool {
         // A node name is valid if it starts with '@@', ends with a valid ending, and doesn't contain '/'
         name.starts_with("@@")
@@ -355,6 +358,7 @@ impl ShinkaiName {
             .all(|(self_part, other_part)| self_part == other_part)
     }
 
+    #[allow(dead_code)]
     pub fn has_profile(&self) -> bool {
         self.profile_name.is_some()
     }
@@ -377,14 +381,17 @@ impl ShinkaiName {
         self.profile_name.is_none() && self.subidentity_type.is_none()
     }
 
+    #[allow(dead_code)]
     pub fn get_profile_name_string(&self) -> Option<String> {
         self.profile_name.clone()
     }
 
+    #[allow(dead_code)]
     pub fn get_node_name_string(&self) -> String {
         self.node_name.clone()
     }
 
+    #[allow(dead_code)]
     pub fn get_device_name_string(&self) -> Option<String> {
         if self.has_device() {
             self.subidentity_name.clone()
@@ -393,6 +400,7 @@ impl ShinkaiName {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_agent_name_string(&self) -> Option<String> {
         if self.has_agent() {
             self.subidentity_name.clone()
@@ -401,11 +409,13 @@ impl ShinkaiName {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_fullname_string_without_node_name(&self) -> Option<String> {
         let parts: Vec<&str> = self.full_name.splitn(2, '/').collect();
         parts.get(1).map(|s| s.to_string())
     }
 
+    #[allow(dead_code)]
     pub fn extract_profile(&self) -> Result<Self, &'static str> {
         if self.has_no_subidentities() {
             return Err("This ShinkaiName does not include a profile.");
@@ -420,6 +430,7 @@ impl ShinkaiName {
         })
     }
 
+    #[allow(dead_code)]
     pub fn extract_node(&self) -> Self {
         Self {
             full_name: self.node_name.clone(),
@@ -446,13 +457,17 @@ impl ShinkaiName {
         }
 
         // Reconstruct the name
-        
 
         if parts.len() > 1 {
             format!("{}/{}", node_name, parts[1])
         } else {
             node_name
         }
+    }
+
+    pub fn default_testnet_localhost() -> Self {
+        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string())
+            .expect("Failed to create default testnet localhost ShinkaiName")
     }
 }
 
@@ -511,6 +526,7 @@ impl Hash for ShinkaiName {
 }
 
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum ShinkaiNameError {
     MissingBody(String),
     MissingInternalMetadata(String),

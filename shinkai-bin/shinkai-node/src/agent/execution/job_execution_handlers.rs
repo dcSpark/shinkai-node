@@ -29,6 +29,7 @@ use crate::{
 
 impl JobManager {
     /// Processes the provided message & job data, routes them to a specific inference chain,
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_cron_job_request(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
@@ -107,6 +108,7 @@ impl JobManager {
     }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_cron_job(
         db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,
@@ -246,6 +248,7 @@ impl JobManager {
     }
 
     /// Processes the provided image file
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_image_file(
         db: Arc<ShinkaiDB>,
         agent_found: Option<SerializedAgent>,

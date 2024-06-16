@@ -1,6 +1,6 @@
 use super::error::AgentError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use super::execution::prompts::prompts::{JobPromptGenerator};
+use super::execution::prompts::prompts::JobPromptGenerator;
 use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use regex::Regex;
@@ -133,6 +133,7 @@ impl ParsingHelper {
         agent: Option<SerializedAgent>,
         unstructured_api: UnstructuredAPI,
     ) -> Result<Vec<(String, VRKai)>, AgentError> {
+        #[allow(clippy::type_complexity)]
         let (vrkai_files, other_files): (
             Vec<(String, Vec<u8>, DistributionInfo)>,
             Vec<(String, Vec<u8>, DistributionInfo)>,
@@ -183,11 +184,6 @@ impl ParsingHelper {
         }
 
         Ok(processed_vrkais)
-    }
-
-    /// Generates Blake3 hash of the input data.
-    fn generate_data_hash_blake3(content: &[u8]) -> String {
-        ShinkaiFileParser::generate_data_hash(content)
     }
 
     /// Cleaning method for the LLM response JSON object, after its been parsed from the markdown string.
