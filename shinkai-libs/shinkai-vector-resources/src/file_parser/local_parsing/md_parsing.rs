@@ -68,7 +68,7 @@ impl LocalFileParser {
             NodeValue::Text(ref text) => match processed_node_type {
                 NodeValue::Heading(ref heading) => {
                     // Push previous text to a text group
-                    Self::push_text_group_by_depth(
+                    ShinkaiFileParser::push_text_group_by_depth(
                         &mut text_groups,
                         heading_parents.len(),
                         current_text.clone(),
@@ -99,7 +99,7 @@ impl LocalFileParser {
 
                     // Create a new text group for the heading
                     // Upcoming content will be added to its subgroups
-                    Self::push_text_group_by_depth(
+                    ShinkaiFileParser::push_text_group_by_depth(
                         &mut text_groups,
                         heading_depth,
                         text.to_string(),
@@ -164,7 +164,7 @@ impl LocalFileParser {
             }
             // split text groups by ---
             NodeValue::ThematicBreak => {
-                Self::push_text_group_by_depth(
+                ShinkaiFileParser::push_text_group_by_depth(
                     &mut text_groups,
                     heading_parents.len(),
                     current_text.clone(),
@@ -176,7 +176,7 @@ impl LocalFileParser {
         });
 
         // Push the last text group
-        Self::push_text_group_by_depth(
+        ShinkaiFileParser::push_text_group_by_depth(
             &mut text_groups,
             heading_parents.len(),
             current_text.clone(),
@@ -184,57 +184,5 @@ impl LocalFileParser {
         );
 
         Ok(text_groups)
-    }
-
-    // Creates a new text group and nests it under the last group at the given depth.
-    // It splits text groups into chunks if needed and parses metadata in the text.
-    pub fn push_text_group_by_depth(
-        text_groups: &mut Vec<TextGroup>,
-        depth: usize,
-        text: String,
-        max_node_text_size: u64,
-    ) {
-        if !text.is_empty() {
-            let mut created_text_groups = Vec::new();
-            let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
-
-            if parsed_text.len() as u64 > max_node_text_size {
-                let chunks = if parsed_any_metadata {
-                    ShinkaiFileParser::split_into_chunks_with_metadata(&text, max_node_text_size as usize)
-                } else {
-                    ShinkaiFileParser::split_into_chunks(&text, max_node_text_size as usize)
-                };
-
-                for chunk in chunks {
-                    let (parsed_chunk, metadata, _) = ShinkaiFileParser::parse_and_extract_metadata(&chunk);
-                    created_text_groups.push(TextGroup::new(parsed_chunk, metadata, vec![], None));
-                }
-            } else {
-                created_text_groups.push(TextGroup::new(parsed_text, metadata, vec![], None));
-            }
-
-            if depth > 0 {
-                let mut parent_group = text_groups.last_mut();
-                for _ in 1..depth {
-                    if let Some(last_group) = parent_group {
-                        parent_group = last_group.sub_groups.last_mut();
-                    }
-                }
-
-                if let Some(last_group) = parent_group {
-                    for text_group in created_text_groups {
-                        last_group.push_sub_group(text_group);
-                    }
-                } else {
-                    for text_group in created_text_groups {
-                        text_groups.push(text_group);
-                    }
-                }
-            } else {
-                for text_group in created_text_groups {
-                    text_groups.push(text_group);
-                }
-            }
-        }
     }
 }
