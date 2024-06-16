@@ -254,7 +254,7 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
         my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
         node = "@@node1.shinkai"
-        agent = shinkai_message_pyo3.PySerializedAgent.new_with_defaults(
+        agent = shinkai_message_pyo3.PySerializedLLMProvider.new_with_defaults(
             full_identity_name="@@node1.shinkai",
             id="agent1",
             external_url="http://example.com",

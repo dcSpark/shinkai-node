@@ -17,7 +17,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -104,7 +104,7 @@ impl SummaryInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -132,7 +132,7 @@ impl SummaryInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -200,7 +200,7 @@ impl SummaryInferenceChain {
         resource: BaseVectorResource,
         generator: RemoteEmbeddingGenerator,
         user_message: ParsedUserMessage,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         max_tokens_in_prompt: usize,
         attempt_count: u64,
     ) -> Result<String, LLMProviderError> {

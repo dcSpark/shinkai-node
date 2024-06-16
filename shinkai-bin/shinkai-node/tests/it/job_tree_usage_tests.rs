@@ -1,8 +1,8 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedAgent,
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
+    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -111,7 +111,7 @@ fn job_tree_usage_tests() {
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,

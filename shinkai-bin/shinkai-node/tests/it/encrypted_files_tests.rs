@@ -2,8 +2,8 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, OpenAI, SerializedAgent,
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
+    AgentLLMInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
@@ -114,7 +114,7 @@ fn sandwich_messages_with_files_test() {
                 //     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 // };
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,

@@ -31,7 +31,7 @@ use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::SerializedAgent,
+        agents::serialized_llm_provider::SerializedLLMProvider,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
@@ -628,7 +628,7 @@ impl Node {
         encryption_public_key: EncryptionPublicKey,
         identity_public_key: VerifyingKey,
         identity_secret_key: SigningKey,
-        initial_agents: Vec<SerializedAgent>,
+        initial_agents: Vec<SerializedLLMProvider>,
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -1893,7 +1893,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = Self::validate_message(
             encryption_secret_key,
@@ -2298,7 +2298,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<SerializedAgent>(
+        let (input_payload, requester_name) = match Self::validate_and_extract_payload::<SerializedLLMProvider>(
             node_name,
             identity_manager.clone(),
             encryption_secret_key,

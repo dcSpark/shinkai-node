@@ -7,7 +7,7 @@ use crate::llm_provider::execution::{
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use std::result::Result::Ok;
@@ -34,7 +34,7 @@ impl JobManager {
     pub async fn start_cron_execution_chain_for_subtask(
         _db: Arc<ShinkaiDB>,
         _full_job: Job,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         _execution_context: HashMap<String, String>,
         _user_profile: Option<ShinkaiName>,
         task_description: String, // what
@@ -62,7 +62,7 @@ impl JobManager {
     pub async fn start_cron_execution_chain_for_main_task(
         db: Arc<ShinkaiDB>,
         full_job: Job,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
         task_description: String, // what
@@ -168,7 +168,7 @@ impl JobManager {
     #[instrument(skip(db))]
     pub async fn alt_inference_chain_router(
         db: Arc<ShinkaiDB>,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         job_message: JobMessage,
         cron_task_request: CronTaskRequest,
@@ -207,7 +207,7 @@ impl JobManager {
     #[instrument(skip(db, chosen_chain))]
     pub async fn cron_inference_chain_router_summary(
         db: Arc<ShinkaiDB>,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         task_description: String,
         web_content: String,

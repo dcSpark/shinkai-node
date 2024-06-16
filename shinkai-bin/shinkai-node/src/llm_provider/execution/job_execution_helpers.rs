@@ -7,7 +7,7 @@ use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_provider::LLMProvider;
 use serde_json::{Map, Value as JsonValue};
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ impl JobManager {
     /// Returns a Hashmap using the same expected keys as the potential keys hashmap, but the values are the String found (the first matching of each).
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response(
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
@@ -44,7 +44,7 @@ impl JobManager {
     /// Also returns the response result (which will be new if at least one inference retry was done).
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response_with_json(
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
@@ -72,7 +72,7 @@ impl JobManager {
     /// Also tries variants of each potential key using capitalization/casing.
     /// Returns the String found at the first matching key.
     pub async fn advanced_extract_key_from_inference_response(
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
@@ -94,7 +94,7 @@ impl JobManager {
     /// Also tries variants of each potential key using capitalization/casing.
     /// Returns a tuple of the String found at the first matching key + the (potentially new) response markdown parsed to JSON (new if retry was done).
     pub async fn advanced_extract_key_from_inference_response_with_new_response(
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
@@ -189,7 +189,7 @@ impl JobManager {
     /// Inferences the Agent's LLM with the given markdown prompt. Automatically validates the response is
     /// a valid markdown, and processes it into a json.
     pub async fn inference_agent_markdown(
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         filled_prompt: Prompt,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let agent_cloned = agent.clone();
@@ -216,7 +216,7 @@ impl JobManager {
     pub async fn fetch_relevant_job_data(
         job_id: &str,
         db: Arc<ShinkaiDB>,
-    ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), LLMProviderError> {
+    ) -> Result<(Job, Option<SerializedLLMProvider>, String, Option<ShinkaiName>), LLMProviderError> {
         // Fetch the job
         let full_job = { db.get_job(job_id)? };
 
@@ -238,7 +238,7 @@ impl JobManager {
         Ok((full_job, agent_found, profile_name, user_profile))
     }
 
-    pub async fn get_all_agents(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub async fn get_all_agents(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
         db.get_all_agents()
     }
 
@@ -323,7 +323,7 @@ fn to_dash_case(s: &str) -> String {
 
 /// Inferences the LLM again asking it to take its previous answer and make sure it responds with markdown and include the required key.
 async fn internal_fix_markdown_to_include_proper_key(
-    agent: SerializedAgent,
+    agent: SerializedLLMProvider,
     invalid_markdown: String,
     original_prompt: Prompt,
     key_to_correct: String,

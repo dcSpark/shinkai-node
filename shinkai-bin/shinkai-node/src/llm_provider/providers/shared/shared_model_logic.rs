@@ -2,7 +2,7 @@ use regex::Regex;
 use serde_json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
-    schemas::agents::serialized_agent::AgentLLMInterface,
+    schemas::agents::serialized_llm_provider::AgentLLMInterface,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 

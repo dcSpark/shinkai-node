@@ -1,5 +1,5 @@
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
@@ -25,7 +25,7 @@ impl JobManager {
     pub async fn image_analysis_chain(
         _db: Arc<ShinkaiDB>,
         _full_job: Job,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         _execution_context: HashMap<String, String>,
         _user_profile: Option<ShinkaiName>,
         task: String,

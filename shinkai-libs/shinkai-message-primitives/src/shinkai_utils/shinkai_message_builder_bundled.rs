@@ -4,7 +4,7 @@ use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -520,7 +520,7 @@ impl ShinkaiMessageBuilder {
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         sender_subidentity: ShinkaiNameString,
         sender: ShinkaiNameString,
         receiver: ShinkaiNameString,

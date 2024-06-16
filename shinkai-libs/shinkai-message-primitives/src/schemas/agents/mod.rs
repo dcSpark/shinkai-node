@@ -1,1 +1,1 @@
-pub mod serialized_agent;
+pub mod serialized_llm_provider;

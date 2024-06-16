@@ -28,7 +28,7 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
@@ -233,7 +233,7 @@ pub enum NodeCommand {
         res: Sender<Result<String, APIError>>,
     },
     AddAgent {
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         profile: ShinkaiName,
         res: Sender<String>,
     },
@@ -243,7 +243,7 @@ pub enum NodeCommand {
     },
     APIAvailableAgents {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
     },
     APIRemoveAgent {
         msg: ShinkaiMessage,
@@ -255,7 +255,7 @@ pub enum NodeCommand {
     },
     AvailableAgents {
         full_profile_name: String,
-        res: Sender<Result<Vec<SerializedAgent>, String>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
     },
     APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
@@ -453,7 +453,7 @@ pub struct Node {
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
-    pub initial_agents: Vec<SerializedAgent>,
+    pub initial_agents: Vec<SerializedLLMProvider>,
     // The Job manager
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
@@ -495,7 +495,7 @@ impl Node {
         secrets_file_path: String,
         proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
-        initial_agents: Vec<SerializedAgent>,
+        initial_agents: Vec<SerializedLLMProvider>,
         js_toolkit_executor_remote: Option<String>,
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,

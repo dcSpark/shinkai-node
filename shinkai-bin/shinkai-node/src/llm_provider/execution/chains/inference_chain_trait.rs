@@ -4,7 +4,7 @@ use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, sync::Arc};
@@ -44,7 +44,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
-    fn agent(&self) -> &SerializedAgent;
+    fn agent(&self) -> &SerializedLLMProvider;
     fn execution_context(&self) -> &HashMap<String, String>;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
     fn user_profile(&self) -> &ShinkaiName;
@@ -88,7 +88,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         &self.user_message
     }
 
-    fn agent(&self) -> &SerializedAgent {
+    fn agent(&self) -> &SerializedLLMProvider {
         &self.agent
     }
 
@@ -137,7 +137,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
-    pub agent: SerializedAgent,
+    pub agent: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
@@ -156,7 +156,7 @@ impl InferenceChainContext {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -328,7 +328,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         &self.user_message
     }
 
-    fn agent(&self) -> &SerializedAgent {
+    fn agent(&self) -> &SerializedLLMProvider {
         unimplemented!()
     }
 

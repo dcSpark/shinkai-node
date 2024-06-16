@@ -4,7 +4,7 @@ use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+        agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message_schemas::JobMessage,
@@ -33,7 +33,7 @@ impl JobManager {
     pub async fn handle_cron_job_request(
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         job_message: JobMessage,
         cron_task_request: CronTaskRequest,
@@ -111,7 +111,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_cron_job(
         db: Arc<ShinkaiDB>,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         cron_job: CronTask,
         profile: ShinkaiName,
@@ -251,7 +251,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_image_file(
         db: Arc<ShinkaiDB>,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         task: String,
         content: Vec<u8>,

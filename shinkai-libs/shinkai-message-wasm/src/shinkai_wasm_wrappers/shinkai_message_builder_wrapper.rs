@@ -6,7 +6,7 @@ use crate::shinkai_wasm_wrappers::{
 use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
         APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
         JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
@@ -667,7 +667,7 @@ impl ShinkaiMessageBuilderWrapper {
         recipient: ShinkaiNameString,
         recipient_subidentity: String,
     ) -> Result<String, JsValue> {
-        let agent: SerializedAgent =
+        let agent: SerializedLLMProvider =
             serde_json::from_str(agent_json).map_err(|_| "Failed to deserialize agent from JSON")?;
 
         let add_agent_request = APIAddAgentRequest { agent };

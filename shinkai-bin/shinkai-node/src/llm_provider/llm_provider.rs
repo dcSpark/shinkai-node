@@ -6,7 +6,7 @@ use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::{
-    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 
@@ -185,7 +185,7 @@ impl LLMProvider {
 }
 
 impl LLMProvider {
-    pub fn from_serialized_agent(serialized_agent: SerializedAgent) -> Self {
+    pub fn from_serialized_agent(serialized_agent: SerializedLLMProvider) -> Self {
         Self::new(
             serialized_agent.id,
             serialized_agent.full_identity_name,

@@ -1,10 +1,10 @@
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 
 use super::llm_provider::LLMProvider;
 
-impl From<LLMProvider> for SerializedAgent {
+impl From<LLMProvider> for SerializedLLMProvider {
     fn from(agent: LLMProvider) -> Self {
-        SerializedAgent {
+        SerializedLLMProvider {
             id: agent.id,
             full_identity_name: agent.full_identity_name,
             perform_locally: agent.perform_locally,

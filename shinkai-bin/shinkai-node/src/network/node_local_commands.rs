@@ -12,7 +12,7 @@ use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use log::error;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName},
+    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
@@ -303,7 +303,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         profile: &ShinkaiName,
         res: Sender<String>,
     ) {
@@ -320,7 +320,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         node_name: &ShinkaiName,
         full_profile_name: String,
-        res: Sender<Result<Vec<SerializedAgent>, String>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
     ) {
         match Self::internal_get_agents_for_profile(db, node_name.clone().node_name, full_profile_name).await {
             Ok(agents) => {

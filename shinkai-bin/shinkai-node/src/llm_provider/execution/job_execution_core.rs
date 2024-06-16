@@ -10,7 +10,7 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -203,7 +203,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         job_message: JobMessage,
         full_job: Job,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<(), LLMProviderError> {
@@ -284,7 +284,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -413,7 +413,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: Job,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
@@ -585,7 +585,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedAgent>,
+        agent_found: Option<SerializedLLMProvider>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,
@@ -717,7 +717,7 @@ impl JobManager {
     pub async fn process_files_inbox(
         _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
-        agent: Option<SerializedAgent>,
+        agent: Option<SerializedLLMProvider>,
         files_inbox: String,
         _profile: ShinkaiName,
         save_to_vector_fs_folder: Option<VRPath>,

@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct SerializedAgent {
+pub struct SerializedLLMProvider {
     pub id: String,
     pub full_identity_name: ShinkaiName,
     pub perform_locally: bool, // TODO: Remove this and update libs

@@ -1,7 +1,7 @@
 use ed25519_dalek::VerifyingKey;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -93,7 +93,7 @@ pub enum Identity {
     // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),
     // IdentityType::Agent
-    Agent(SerializedAgent),
+    Agent(SerializedLLMProvider),
     // IdentityType::Device
     Device(DeviceIdentity),
 }
@@ -312,7 +312,7 @@ impl fmt::Debug for Identity {
                 write!(f, "Standard({})", std_identity)
             }
             Identity::Agent(agent) => {
-                // Assuming you have implemented Debug for SerializedAgent
+                // Assuming you have implemented Debug for SerializedLLMProvider
                 write!(f, "Agent({:?})", agent)
             }
             Identity::Device(device) => {

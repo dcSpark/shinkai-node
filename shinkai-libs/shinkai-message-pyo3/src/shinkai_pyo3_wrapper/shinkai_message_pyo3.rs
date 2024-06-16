@@ -1,13 +1,18 @@
 use pyo3::{exceptions::PyValueError, prelude::*, types::PyDict};
-use shinkai_message_primitives::{
-    shinkai_message::shinkai_message::{
-        EncryptedShinkaiBody, ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage, ShinkaiVersion, InternalMetadata,
-    },
-    shinkai_utils::encryption::EncryptionMethod,
+use shinkai_message_primitives::shinkai_message::shinkai_message::{
+    ExternalMetadata, InternalMetadata, ShinkaiMessage,
 };
-
-use crate::shinkai_pyo3_utils::{pyo3_agent_llm_interface::PyAgentLLMInterface, pyo3_job_scope::PyJobScope, pyo3_serialized_agent::PySerializedAgent, pyo3_shinkai_name::PyShinkaiName, pyo3_subscription::{PyFolderSubscription, PyPaymentOption}};
-use super::{shinkai_builder_pyo3::PyShinkaiMessageBuilder, encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType};
+use crate::shinkai_pyo3_utils::pyo3_serialized_llm_provider::PySerializedLLMProvider;
+use super::{
+    encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
+    shinkai_builder_pyo3::PyShinkaiMessageBuilder,
+};
+use crate::shinkai_pyo3_utils::{
+    pyo3_llm_provider_interface::PyAgentLLMInterface,
+    pyo3_job_scope::PyJobScope,
+    pyo3_shinkai_name::PyShinkaiName,
+    pyo3_subscription::{PyFolderSubscription, PyPaymentOption},
+};
 
 #[pymodule]
 fn shinkai_message_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -18,7 +23,7 @@ fn shinkai_message_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyEncryptionMethod>()?;
     m.add_class::<PyJobScope>()?;
     m.add_class::<PyAgentLLMInterface>()?;
-    m.add_class::<PySerializedAgent>()?;
+    m.add_class::<PySerializedLLMProvider>()?;
     m.add_class::<PyShinkaiName>()?;
     m.add_class::<PyMessageSchemaType>()?;
     m.add_class::<PyFolderSubscription>()?;

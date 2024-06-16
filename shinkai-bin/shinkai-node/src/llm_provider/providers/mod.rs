@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use quickxml_to_serde::{xml_string_to_json, Config};
 use reqwest::Client;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
 
 pub mod genericapi;
 pub mod groq;

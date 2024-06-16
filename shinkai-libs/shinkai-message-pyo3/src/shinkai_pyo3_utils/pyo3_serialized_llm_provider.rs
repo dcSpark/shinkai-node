@@ -3,22 +3,22 @@ use pyo3::types::PyDict;
 use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
 use serde_json::Error as SerdeError;
-use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::str::FromStr;
 
-use super::pyo3_agent_llm_interface::PyAgentLLMInterface;
+use super::pyo3_llm_provider_interface::PyAgentLLMInterface;
 use super::pyo3_shinkai_name::PyShinkaiName;
 
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct PySerializedAgent {
-    pub inner: SerializedAgent,
+pub struct PySerializedLLMProvider {
+    pub inner: SerializedLLMProvider,
 }
 
 #[pymethods]
-impl PySerializedAgent {
+impl PySerializedLLMProvider {
     #[new]
     pub fn new(kwargs: Option<&PyDict>) -> PyResult<Self> {
         let full_identity_name = kwargs
@@ -60,7 +60,7 @@ impl PySerializedAgent {
             .unwrap_or_else(|| Vec::new());
 
         Ok(Self {
-            inner: SerializedAgent {
+            inner: SerializedLLMProvider {
                 id,
                 full_identity_name,
                 perform_locally,
@@ -82,11 +82,13 @@ impl PySerializedAgent {
         model: String,
         api_key: Option<String>,
     ) -> PyResult<Self> {
-        let full_identity_name = ShinkaiName::new(full_identity_name).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-        let model = AgentLLMInterface::from_str(&model).map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid model"))?;
+        let full_identity_name =
+            ShinkaiName::new(full_identity_name).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        let model = AgentLLMInterface::from_str(&model)
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid model"))?;
 
         Ok(Self {
-            inner: SerializedAgent {
+            inner: SerializedLLMProvider {
                 id,
                 full_identity_name,
                 perform_locally: false,
@@ -102,7 +104,7 @@ impl PySerializedAgent {
 
     #[staticmethod]
     pub fn from_json_str(s: &str) -> PyResult<Self> {
-        let inner: Result<SerializedAgent, SerdeError> = serde_json::from_str(s);
+        let inner: Result<SerializedLLMProvider, SerdeError> = serde_json::from_str(s);
         match inner {
             Ok(agent) => Ok(Self { inner: agent }),
             Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),

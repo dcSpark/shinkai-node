@@ -12,7 +12,7 @@ fn setup() {
 mod tests {
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
+            agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider},
             shinkai_name::ShinkaiName,
         },
         shinkai_utils::shinkai_logging::init_default_tracing,
@@ -35,8 +35,8 @@ mod tests {
         let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
         let profile = identity.extract_profile().unwrap();
 
-        // Create an instance of SerializedAgent
-        let test_agent = SerializedAgent {
+        // Create an instance of SerializedLLMProvider
+        let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
             perform_locally: false,
@@ -105,8 +105,8 @@ mod tests {
         let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
         let profile = identity.extract_profile().unwrap();
 
-        // Create an instance of SerializedAgent
-        let test_agent = SerializedAgent {
+        // Create an instance of SerializedLLMProvider
+        let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
             perform_locally: false,
@@ -157,7 +157,7 @@ mod tests {
         let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/test_name".to_string()).unwrap();
         let profile = identity.extract_profile().unwrap();
 
-        let test_agent = SerializedAgent {
+        let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
             perform_locally: false,
@@ -197,7 +197,7 @@ mod tests {
         let profile = identity.extract_profile().unwrap();
         eprintln!("Profile: {:?}", profile);
 
-        let test_agent = SerializedAgent {
+        let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
             full_identity_name: identity,
             perform_locally: false,

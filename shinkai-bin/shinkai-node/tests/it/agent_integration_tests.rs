@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, Ollama, OpenAI, SerializedAgent, ShinkaiBackend,
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
+    AgentLLMInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -112,7 +112,7 @@ fn node_agent_registration() {
 
         let _shinkai_backend = ShinkaiBackend::new("gpt-4-1106-preview");
 
-        let agent = SerializedAgent {
+        let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,

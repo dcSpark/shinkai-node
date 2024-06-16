@@ -10,7 +10,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
@@ -77,7 +77,7 @@ impl QAInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -285,7 +285,7 @@ async fn no_json_object_retry_logic(
     vector_fs: Arc<VectorFS>,
     full_job: Job,
     user_message: String,
-    agent: SerializedAgent,
+    agent: SerializedLLMProvider,
     execution_context: HashMap<String, String>,
     generator: RemoteEmbeddingGenerator,
     user_profile: ShinkaiName,

@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
 use shinkai_message_primitives::schemas::{
-    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 use wasm_bindgen::prelude::*;
 
-pub trait SerializedAgentJsValueConversion {
+pub trait SerializedLLMProviderJsValueConversion {
     fn from_jsvalue(j: &JsValue) -> Result<Self, JsValue>
     where
         Self: Sized;
@@ -15,6 +15,7 @@ pub trait SerializedAgentJsValueConversion {
     fn from_json_str(s: &str) -> Result<Self, JsValue>
     where
         Self: Sized;
+    #[allow(clippy::too_many_arguments)]
     fn from_strings(
         id: String,
         full_identity_name: String,
@@ -30,7 +31,7 @@ pub trait SerializedAgentJsValueConversion {
         Self: Sized;
 }
 
-impl SerializedAgentJsValueConversion for SerializedAgent {
+impl SerializedLLMProviderJsValueConversion for SerializedLLMProvider {
     fn from_jsvalue(j: &JsValue) -> Result<Self, JsValue> {
         from_value(j.clone()).map_err(|e| JsValue::from_str(&e.to_string()))
     }
@@ -47,6 +48,7 @@ impl SerializedAgentJsValueConversion for SerializedAgent {
         serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn from_strings(
         id: String,
         full_identity_name: String,
@@ -87,7 +89,7 @@ impl SerializedAgentJsValueConversion for SerializedAgent {
             allowed_message_senders.split(',').map(|s| s.to_string()).collect()
         };
 
-        Ok(SerializedAgent {
+        Ok(SerializedLLMProvider {
             id,
             full_identity_name: ShinkaiName::new(full_identity_name)?,
             perform_locally,
@@ -103,21 +105,22 @@ impl SerializedAgentJsValueConversion for SerializedAgent {
 
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SerializedAgentWrapper {
-    inner: SerializedAgent,
+pub struct SerializedLLMProviderWrapper {
+    inner: SerializedLLMProvider,
 }
 
 #[wasm_bindgen]
-impl SerializedAgentWrapper {
+impl SerializedLLMProviderWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(serialized_agent_js: &JsValue) -> Result<SerializedAgentWrapper, JsValue> {
-        let serialized_agent = SerializedAgent::from_jsvalue(serialized_agent_js)?;
-        Ok(SerializedAgentWrapper {
+    pub fn new(serialized_agent_js: &JsValue) -> Result<SerializedLLMProviderWrapper, JsValue> {
+        let serialized_agent = SerializedLLMProvider::from_jsvalue(serialized_agent_js)?;
+        Ok(SerializedLLMProviderWrapper {
             inner: serialized_agent,
         })
     }
 
     #[wasm_bindgen(js_name = fromStrings)]
+    #[allow(clippy::too_many_arguments)]
     pub fn from_strings(
         id: String,
         full_identity_name: String,
@@ -128,8 +131,8 @@ impl SerializedAgentWrapper {
         toolkit_permissions: String,
         storage_bucket_permissions: String,
         allowed_message_senders: String,
-    ) -> Result<SerializedAgentWrapper, JsValue> {
-        let inner = SerializedAgent::from_strings(
+    ) -> Result<SerializedLLMProviderWrapper, JsValue> {
+        let inner = SerializedLLMProvider::from_strings(
             id,
             full_identity_name,
             perform_locally,
@@ -140,7 +143,7 @@ impl SerializedAgentWrapper {
             storage_bucket_permissions,
             allowed_message_senders,
         )?;
-        Ok(SerializedAgentWrapper { inner })
+        Ok(SerializedLLMProviderWrapper { inner })
     }
 
     #[wasm_bindgen(method)]
@@ -149,9 +152,9 @@ impl SerializedAgentWrapper {
     }
 
     #[wasm_bindgen(js_name = fromJsValue)]
-    pub fn from_jsvalue(j: &JsValue) -> Result<SerializedAgentWrapper, JsValue> {
-        let inner = SerializedAgent::from_jsvalue(j)?;
-        Ok(SerializedAgentWrapper { inner })
+    pub fn from_jsvalue(j: &JsValue) -> Result<SerializedLLMProviderWrapper, JsValue> {
+        let inner = SerializedLLMProvider::from_jsvalue(j)?;
+        Ok(SerializedLLMProviderWrapper { inner })
     }
 
     #[wasm_bindgen]
@@ -160,9 +163,9 @@ impl SerializedAgentWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn from_json_str(s: &str) -> Result<SerializedAgentWrapper, JsValue> {
-        let inner: SerializedAgent = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok(SerializedAgentWrapper { inner })
+    pub fn from_json_str(s: &str) -> Result<SerializedLLMProviderWrapper, JsValue> {
+        let inner: SerializedLLMProvider = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(SerializedLLMProviderWrapper { inner })
     }
 
     #[wasm_bindgen(method, getter)]

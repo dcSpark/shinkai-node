@@ -7,7 +7,7 @@ use serde::de::Deserializer;
 use serde::ser::{SerializeMap, SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{self};
-use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
 use std::collections::HashMap;
 use tiktoken_rs::ChatCompletionRequestMessage;
 

@@ -1,7 +1,7 @@
 use async_channel::Sender;
 use core::panic;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
@@ -311,7 +311,7 @@ pub async fn api_agent_registration(
     subidentity_signature_sk: SigningKey,
     node_name: &str,
     subidentity_name: &str,
-    agent: SerializedAgent,
+    agent: SerializedLLMProvider,
 ) {
     {
         let code_message = ShinkaiMessageBuilder::request_add_agent(

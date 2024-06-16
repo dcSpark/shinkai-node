@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+    use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider};
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::db::ShinkaiDB;
@@ -32,7 +32,7 @@ mod tests {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
-        let gpt_3_5_agent = SerializedAgent {
+        let gpt_3_5_agent = SerializedLLMProvider {
             id: agent_id.clone(),
             full_identity_name: agent_name,
             perform_locally: false,
@@ -74,7 +74,7 @@ mod tests {
             model_type: "gpt-4-vision-preview".to_string(),
         };
 
-        let gpt_4_vision_agent = SerializedAgent {
+        let gpt_4_vision_agent = SerializedLLMProvider {
             id: agent_id.clone(),
             full_identity_name: agent_name,
             perform_locally: false,
@@ -112,7 +112,7 @@ mod tests {
             model_type: "gpt-fake-model".to_string(),
         };
 
-        let fake_gpt_agent = SerializedAgent {
+        let fake_gpt_agent = SerializedLLMProvider {
             id: agent_id.clone(),
             full_identity_name: agent_name,
             perform_locally: false,

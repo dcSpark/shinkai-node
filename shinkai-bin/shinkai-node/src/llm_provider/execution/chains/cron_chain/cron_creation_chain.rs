@@ -10,7 +10,7 @@ use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
 use async_recursion::async_recursion;
 use regex::Regex;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
@@ -227,7 +227,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         full_job: Job,
         user_message: String,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
         cron_description: String,           // when

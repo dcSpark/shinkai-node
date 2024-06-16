@@ -4,8 +4,8 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use mockito::{Matcher, Mock};
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, OpenAI, SerializedAgent,
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
+    AgentLLMInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -129,7 +129,7 @@ fn planner_integration_test() {
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name.clone(),
                     perform_locally: false,

@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, Groq};
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, Groq};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]

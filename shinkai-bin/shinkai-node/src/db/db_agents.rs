@@ -1,7 +1,7 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 use serde_json::{from_slice, to_vec};
-use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
     /// Returns the the first half of the blake3 hash of the agent id value
@@ -11,7 +11,7 @@ impl ShinkaiDB {
     }
 
     // Fetches all agents from the Agents topic
-    pub fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub fn get_all_agents(&self) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
         let cf = self.cf_handle(Topic::NodeAndUsers.as_str())?;
         let mut result = Vec::new();
         let prefix = b"agent_placeholder_value_to_match_prefix_abcdef_";
@@ -20,7 +20,7 @@ impl ShinkaiDB {
         for item in iter {
             match item {
                 Ok((_, value)) => {
-                    let agent: SerializedAgent = from_slice(value.as_ref()).unwrap();
+                    let agent: SerializedLLMProvider = from_slice(value.as_ref()).unwrap();
                     result.push(agent);
                 }
                 Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
@@ -39,7 +39,7 @@ impl ShinkaiDB {
         Ok(format!("{}:::{}", agent_id, profile_name))
     }
 
-    pub fn add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn add_agent(&self, agent: SerializedLLMProvider, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Serialize the agent to bytes
         let bytes = to_vec(&agent).unwrap();
 
@@ -81,7 +81,7 @@ impl ShinkaiDB {
     }
 
     /// Updates an existing agent in the database.
-    pub fn update_agent(&self, updated_agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn update_agent(&self, updated_agent: SerializedLLMProvider, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Serialize the updated agent to bytes
         let bytes = to_vec(&updated_agent).unwrap();
 
@@ -188,7 +188,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
+    pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedLLMProvider>, ShinkaiDBError> {
         let agent_id_for_db = Self::db_agent_id(agent_id, profile)?;
 
         // Fetch the agent's bytes by their prefixed id from the NodeAndUsers topic
@@ -198,7 +198,7 @@ impl ShinkaiDB {
 
         // If the agent was found, deserialize the bytes into an agent object and return it
         if let Some(bytes) = agent_bytes {
-            let agent: SerializedAgent = from_slice(&bytes)?;
+            let agent: SerializedLLMProvider = from_slice(&bytes)?;
             Ok(Some(agent))
         } else {
             Err(ShinkaiDBError::DataNotFound)
@@ -304,7 +304,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_agents_for_profile(&self, profile_name: ShinkaiName) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub fn get_agents_for_profile(&self, profile_name: ShinkaiName) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
         let profile = profile_name
             .get_profile_name_string()
             .ok_or(ShinkaiDBError::DataConversionError(

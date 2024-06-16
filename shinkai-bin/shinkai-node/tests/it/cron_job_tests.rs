@@ -5,7 +5,7 @@ mod tests {
     use futures::Future;
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
+            agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider},
             shinkai_name::ShinkaiName,
         },
         shinkai_utils::{
@@ -67,7 +67,7 @@ mod tests {
                 model_type: "gpt-3.5-turbo-1106".to_string(),
             };
 
-            let agent = SerializedAgent {
+            let agent = SerializedLLMProvider {
                 id: agent_id.clone(),
                 full_identity_name: agent_name.clone(),
                 perform_locally: false,

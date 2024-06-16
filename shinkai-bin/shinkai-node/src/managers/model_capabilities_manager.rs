@@ -10,7 +10,7 @@ use crate::{
     db::ShinkaiDB,
 };
 use shinkai_message_primitives::schemas::{
-    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 use std::{
@@ -94,7 +94,7 @@ pub enum ModelPrivacy {
 pub struct ModelCapabilitiesManager {
     pub db: Weak<ShinkaiDB>,
     pub profile: ShinkaiName,
-    pub agents: Vec<SerializedAgent>,
+    pub agents: Vec<SerializedLLMProvider>,
 }
 
 impl ModelCapabilitiesManager {
@@ -106,12 +106,12 @@ impl ModelCapabilitiesManager {
     }
 
     // Function to get all agents from the database for a profile
-    async fn get_agents(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedAgent> {
+    async fn get_agents(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
         db.get_agents_for_profile(profile).unwrap()
     }
 
     // Static method to get capability of an agent
-    pub fn get_capability(agent: &SerializedAgent) -> (Vec<ModelCapability>, ModelCost, ModelPrivacy) {
+    pub fn get_capability(agent: &SerializedLLMProvider) -> (Vec<ModelCapability>, ModelCost, ModelPrivacy) {
         let capabilities = Self::get_agent_capabilities(&agent.model);
         let cost = Self::get_agent_cost(&agent.model);
         let privacy = Self::get_agent_privacy(&agent.model);

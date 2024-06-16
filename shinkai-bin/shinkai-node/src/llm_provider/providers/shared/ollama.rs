@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
 use tiktoken_rs::ChatCompletionRequestMessage;
 
 use crate::{

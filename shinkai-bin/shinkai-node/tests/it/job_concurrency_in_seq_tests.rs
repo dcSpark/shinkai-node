@@ -1,4 +1,4 @@
-// use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+// use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider};
 // use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 // use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 // use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
@@ -95,7 +95,7 @@
 //                     model_type: "gpt-4-1106-preview".to_string(),
 //                 };
 
-//                 let agent = SerializedAgent {
+//                 let agent = SerializedLLMProvider {
 //                     id: node1_agent.clone().to_string(),
 //                     full_identity_name: agent_name,
 //                     perform_locally: false,

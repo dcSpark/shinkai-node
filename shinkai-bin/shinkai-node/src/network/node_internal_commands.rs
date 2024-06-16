@@ -22,7 +22,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFol
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent},
+        agents::serialized_llm_provider::{AgentLLMInterface, Ollama, SerializedLLMProvider},
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
     },
@@ -353,7 +353,7 @@ impl Node {
         db: Arc<ShinkaiDB>,
         node_name: String,
         profile: String,
-    ) -> Result<Vec<SerializedAgent>, NodeError> {
+    ) -> Result<Vec<SerializedLLMProvider>, NodeError> {
         let profile_name = match ShinkaiName::from_node_and_profile_names(node_name, profile) {
             Ok(profile_name) => profile_name,
             Err(e) => {
@@ -393,7 +393,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
         match db.add_agent(agent.clone(), profile) {
@@ -632,7 +632,7 @@ impl Node {
             }
         }
 
-        let agents: Vec<SerializedAgent> = input_models
+        let agents: Vec<SerializedLLMProvider> = input_models
             .iter()
             .map(|model| {
                 // Replace non-alphanumeric characters with underscores for full_identity_name
@@ -648,7 +648,7 @@ impl Node {
                     model_data["port_used"].as_str().unwrap_or("11434")
                 );
 
-                SerializedAgent {
+                SerializedLLMProvider {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",

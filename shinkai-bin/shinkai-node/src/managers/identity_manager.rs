@@ -6,7 +6,7 @@ use crate::network::node_error::NodeError;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use async_trait::async_trait;
 use shinkai_crypto_identities::ShinkaiRegistryError;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
@@ -103,7 +103,7 @@ impl IdentityManager {
         Ok(())
     }
 
-    pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
+    pub async fn add_agent_subidentity(&mut self, agent: SerializedLLMProvider) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
@@ -113,7 +113,7 @@ impl IdentityManager {
         Ok(())
     }
 
-    pub async fn modify_agent_subidentity(&mut self, updated_agent: SerializedAgent) -> anyhow::Result<()> {
+    pub async fn modify_agent_subidentity(&mut self, updated_agent: SerializedLLMProvider) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
@@ -230,7 +230,7 @@ impl IdentityManager {
         }
     }
 
-    pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedAgent> {
+    pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedLLMProvider> {
         let db_arc = self.db.upgrade()?;
         db_arc.get_agent(agent_id, profile).ok().flatten()
     }
@@ -245,7 +245,7 @@ impl IdentityManager {
         self.local_identities.clone()
     }
 
-    pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub async fn get_all_agents(&self) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
         let db_arc = self
             .db
             .upgrade()
