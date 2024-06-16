@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use std::any::Any;
     use std::collections::HashMap;
+    use std::{any::Any, fs};
 
     use async_trait::async_trait;
+    use chrono::Utc;
     use dashmap::DashMap;
     use shinkai_dsl::{
         dsl_schemas::{
@@ -98,6 +99,45 @@ mod tests {
             .await
             .map_err(|e| WorkflowError::FunctionError(format!("Task failed: {:?}", e)))?;
             Ok(Box::new(task_response))
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn download_webpage(
+        args: Vec<Box<dyn Any + Send>>,
+    ) -> Result<Box<dyn Any + Send>, WorkflowError> {
+        if args.len() != 1 {
+            return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
+        }
+        let url = args[0]
+            .downcast_ref::<String>()
+            .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for URL".to_string()))?
+            .clone();
+    
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::limited(20))
+            .build()
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+        let response = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+        let content = response
+            .text()
+            .await
+            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+        
+        Ok(Box::new(content))
+    }
+
+    struct DownloadWebpageFunction;
+
+    #[async_trait]
+    impl AsyncFunction for DownloadWebpageFunction {
+        async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
+            download_webpage(args).await
         }
     }
 
@@ -312,7 +352,7 @@ mod tests {
             let engine = WorkflowEngine::new(&functions);
 
             // Create the StepExecutor iterator
-            let mut step_executor = engine.iter(&workflow, None);
+            let mut step_executor = engine.iter(&workflow, None, None);
 
             // Execute the workflow step by step
             for (i, result) in step_executor.by_ref().enumerate() {
@@ -562,7 +602,7 @@ mod tests {
             registers.insert("$R0".to_string(), "hello".to_string());
 
             // Create the StepExecutor iterator
-            let mut step_executor = engine.iter(&workflow, Some(registers));
+            let mut step_executor = engine.iter(&workflow, Some(registers), None);
 
             // Execute the workflow step by step
             for (i, result) in step_executor.by_ref().enumerate() {
@@ -614,7 +654,7 @@ mod tests {
         registers.insert("$R0".to_string(), "about Rust programming".to_string());
 
         // Create the StepExecutor iterator
-        let mut step_executor = engine.iter(&workflow, Some(registers));
+        let mut step_executor = engine.iter(&workflow, Some(registers), None);
 
         // Execute the workflow step by step
         for (i, result) in step_executor.by_ref().enumerate() {
@@ -658,9 +698,64 @@ mod tests {
             .map(|v| v.to_string())
             .collect();
 
+        // let logs = WorkflowEngine::formatted_logs(&step_executor.logs);
+        // eprintln!("run_chain logs: {:?}", logs);
+
         // Compare logs using a loop
         for (i, (actual_log, expected_log)) in log_values.iter().zip(expected_logs.iter()).enumerate() {
             assert_eq!(actual_log, expected_log, "Mismatch at index {}", i);
         }
+
+        // For debugging
+        // Create the tmp directory if it doesn't exist
+        // let tmp_dir = "tmp";
+        // fs::create_dir_all(tmp_dir).expect("Failed to create tmp directory");
+
+        // // Generate the file path
+        // let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        // let file_path = format!("{}/test_step_executor_with_dashmap_{}.txt", tmp_dir, now);
+
+        // // Write logs to file
+        // if let Err(e) = WorkflowEngine::write_logs_to_file(&step_executor.logs, &file_path) {
+        //     eprintln!("Failed to write logs to file: {}", e);
+        // }
+    }
+
+    #[tokio::test]
+    async fn test_download_webpage() {
+        let dsl_input = r#"
+        workflow MyProcess v0.1 {
+            step Initialize {
+                $R0 = "http://quotes.toscrape.com"
+            }
+            step Download {
+                $R1 = call download_webpage($R0)
+            }
+        }
+        "#;
+    
+        let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
+    
+        // Create function mappings
+        let mut functions: FunctionMap = HashMap::new();
+        functions.insert(
+            "download_webpage".to_string(),
+            Box::new(DownloadWebpageFunction) as Box<dyn AsyncFunction>,
+        );
+    
+        // Create the WorkflowEngine with the function mappings
+        let executor = WorkflowEngine::new(&functions);
+    
+        // Execute the workflow
+        let registers = executor
+            .execute_workflow(&workflow)
+            .await
+            .expect("Failed to execute workflow");
+
+        eprintln!("Registers: {:?}", registers);
+    
+        // Check the results
+        assert_eq!(registers.get("$R0").unwrap().as_str(), "http://quotes.toscrape.com");
+        assert!(registers.get("$R1").unwrap().as_str().contains("<html"));
     }
 }

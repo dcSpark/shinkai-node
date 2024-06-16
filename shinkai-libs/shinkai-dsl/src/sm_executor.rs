@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io;
+use std::io::Write;
 use std::pin::Pin;
 use std::{any::Any, fmt};
 
 use async_trait::async_trait;
+use chrono::Utc;
 use dashmap::DashMap;
 use futures::Future;
 use tokio::runtime::Runtime;
@@ -71,7 +75,8 @@ impl<'a> WorkflowEngine<'a> {
         let logs = DashMap::new();
         for step in &workflow.steps {
             for body in &step.body {
-                self.execute_step_body(&step.name.clone(), body, &registers, &logs).await?;
+                self.execute_step_body(&step.name.clone(), body, &registers, &logs)
+                    .await?;
             }
         }
         Ok(registers)
@@ -88,12 +93,17 @@ impl<'a> WorkflowEngine<'a> {
             match step_body {
                 StepBody::Action(action) => {
                     let result = self.execute_action(action, registers).await;
-                    logs.entry(step_name.to_string()).or_default().push(format!("Executing action: {:?}, Result: {:?}", action, result));
+                    logs.entry(step_name.to_string())
+                        .or_default()
+                        .push(format!("Executing action: {:?}, Result: {:?}", action, result));
                     result
                 }
                 StepBody::Condition { condition, body } => {
                     let condition_result = self.evaluate_condition(condition, registers).await;
-                    logs.entry(step_name.to_string()).or_default().push(format!("Evaluating condition: {:?}, Result: {:?}", condition, condition_result));
+                    logs.entry(step_name.to_string()).or_default().push(format!(
+                        "Evaluating condition: {:?}, Result: {:?}",
+                        condition, condition_result
+                    ));
                     if condition_result? {
                         self.execute_step_body(step_name, body, registers, logs).await?;
                     }
@@ -114,7 +124,9 @@ impl<'a> WorkflowEngine<'a> {
                                 .unwrap_or(0);
                             for i in start..=end {
                                 registers.insert(var.clone(), i.to_string());
-                                logs.entry(step_name.to_string()).or_default().push(format!("ForLoop iteration: {} = {}", var, i));
+                                logs.entry(step_name.to_string())
+                                    .or_default()
+                                    .push(format!("ForLoop iteration: {} = {}", var, i));
                                 self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
@@ -123,27 +135,35 @@ impl<'a> WorkflowEngine<'a> {
                             let parts: Vec<&str> = source_value.split(delimiter).collect();
                             for part in parts {
                                 registers.insert(var.clone(), part.to_string());
-                                logs.entry(step_name.to_string()).or_default().push(format!("ForLoop iteration: {} = {}", var, part));
+                                logs.entry(step_name.to_string())
+                                    .or_default()
+                                    .push(format!("ForLoop iteration: {} = {}", var, part));
                                 self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
                     }
-                    logs.entry(step_name.to_string()).or_default().push(format!("Executing for loop: {:?}, Registers: {:?}", in_expr, registers.clone()));
+                    logs.entry(step_name.to_string()).or_default().push(format!(
+                        "Executing for loop: {:?}, Registers: {:?}",
+                        in_expr,
+                        registers.clone()
+                    ));
                     Ok(())
                 }
                 StepBody::RegisterOperation { register, value } => {
                     let value = self.evaluate_workflow_value(value, registers).await?;
                     registers.insert(register.clone(), value.clone());
-                    eprintln!("Logs: {:?}", logs.clone());
-                    logs.entry(step_name.to_string()).or_default().push(format!("Setting register {} to {:?}", register, value));
-                    eprintln!("Logs: {:?}", logs.clone());
+                    logs.entry(step_name.to_string())
+                        .or_default()
+                        .push(format!("Setting register {} to {:?}", register, value));
                     Ok(())
                 }
                 StepBody::Composite(bodies) => {
                     for (index, body) in bodies.iter().enumerate() {
                         let step_body_str = format!("{:?}", body);
                         self.execute_step_body(step_name, body, registers, logs).await?;
-                        logs.entry(step_name.to_string()).or_default().push(format!("Composite body {}: {:?}", index, step_body_str));
+                        logs.entry(step_name.to_string())
+                            .or_default()
+                            .push(format!("Composite body {}: {:?}", index, step_body_str));
                     }
                     Ok(())
                 }
@@ -278,15 +298,6 @@ impl<'a> WorkflowEngine<'a> {
                         }
                     }
 
-                    // // Log the resolved arguments before calling the function
-                    // for (i, arg) in arg_values.iter().enumerate() {
-                    //     if let Some(value) = arg.downcast_ref::<String>() {
-                    //         println!("Resolved Argument {}: {:?}", i, value);
-                    //     } else {
-                    //         println!("Resolved Argument {}: Failed to downcast", i);
-                    //     }
-                    // }
-
                     let result = func.call(arg_values).await;
                     match result {
                         Ok(result) => {
@@ -323,14 +334,50 @@ impl<'a> WorkflowEngine<'a> {
         }
     }
 
-    pub fn iter(&'a self, workflow: &'a Workflow, initial_registers: Option<DashMap<String, String>>) -> StepExecutor<'a> {
+    pub fn iter(
+        &'a self,
+        workflow: &'a Workflow,
+        initial_registers: Option<DashMap<String, String>>,
+        logs: Option<DashMap<String, Vec<String>>>,
+    ) -> StepExecutor<'a> {
         StepExecutor {
             engine: self,
             workflow,
             current_step: 0,
             registers: initial_registers.unwrap_or_default(),
-            logs: DashMap::new(), 
+            logs: logs.unwrap_or_default(),
         }
+    }
+
+    pub fn formatted_logs(logs: &DashMap<String, Vec<String>>) -> String {
+        let mut formatted_logs = String::new();
+        for entry in logs.iter() {
+            let key = entry.key();
+            let values = entry.value();
+            for value in values {
+                formatted_logs.push_str(&format!("{}: {}\n---\n", key, value.replace("\\n", "\n")));
+            }
+        }
+        formatted_logs
+    }
+
+    pub fn write_logs_to_file(logs: &DashMap<String, Vec<String>>, file_path: &str) -> io::Result<()> {
+        let mut file = File::create(file_path)?;
+
+        // Write the top message with the current date and time
+        let now = Utc::now();
+        writeln!(file, "Log file created on: {}\n", now.to_rfc2822())?;
+
+        for entry in logs.iter() {
+            let key = entry.key();
+            let values = entry.value();
+            for value in values {
+                let pretty_value = value.replace("\\n", "\n").replace("\\\"", "\"");
+                let timestamp = Utc::now().to_rfc3339();
+                writeln!(file, "[{}] Step {}: {}\n---\n", timestamp, key, pretty_value)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -348,7 +395,11 @@ impl<'a> Iterator for StepExecutor<'a> {
                 let rt = Runtime::new().unwrap();
                 rt.block_on(async {
                     for body in step.body.iter() {
-                        if let Err(e) = self.engine.execute_step_body(&step_name, body, &self.registers, &self.logs).await {
+                        if let Err(e) = self
+                            .engine
+                            .execute_step_body(&step_name, body, &self.registers, &self.logs)
+                            .await
+                        {
                             result = Err(e);
                             break;
                         }
@@ -359,7 +410,6 @@ impl<'a> Iterator for StepExecutor<'a> {
                 });
             });
 
-            eprintln!("Logs: {:?}", self.logs.clone());
             self.current_step += 1;
             Some(result)
         } else {

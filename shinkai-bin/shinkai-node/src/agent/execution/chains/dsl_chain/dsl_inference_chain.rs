@@ -50,10 +50,11 @@ impl<'a> InferenceChain for DslChain<'a> {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, AgentError> {
         let engine = WorkflowEngine::new(&self.functions);
         let mut final_registers = DashMap::new();        
+        let logs = DashMap::new();        
 
         // Inject user_message into $R0
         final_registers.insert("$R0".to_string(), self.context.user_message.clone().original_user_message_string);
-        let executor = engine.iter(&self.workflow, Some(final_registers.clone()));
+        let executor = engine.iter(&self.workflow, Some(final_registers.clone()), Some(logs.clone()));
 
         for result in executor {
             match result {
@@ -73,6 +74,9 @@ impl<'a> InferenceChain for DslChain<'a> {
             .map(|r| r.clone())
             .unwrap_or_else(String::new);
         let new_contenxt = HashMap::new();
+
+        // Debug
+        let logs = WorkflowEngine::formatted_logs(&logs);
         Ok(InferenceChainResult::new(response_register, new_contenxt))
     }
 }
@@ -167,6 +171,8 @@ impl AsyncFunction for InferenceFunction {
         let max_tokens_in_prompt = self.context.max_tokens_in_prompt;
 
         let query_text = user_message.clone();
+
+        // TODO: add more debugging to (ie add to logs) the diff operations
 
         // If we need to search for nodes using the scope
         let scope_is_empty = full_job.scope().is_empty();
