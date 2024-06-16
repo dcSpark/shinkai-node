@@ -7,7 +7,7 @@ mod tests {
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
     use shinkai_node::agent::execution::prompts::prompts::Prompt;
-    use shinkai_node::agent::providers::LLMProvider;
+    use shinkai_node::agent::providers::LLMService;
     use shinkai_node::agent::{
         execution::prompts::prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
         job_manager::JobManager,

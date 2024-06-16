@@ -4,7 +4,7 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::shared_model_logic::parse_markdown_to_json;
-use super::LLMProvider;
+use super::LLMService;
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -29,7 +29,7 @@ fn truncate_image_content_in_payload(payload: &mut JsonValue) {
 }
 
 #[async_trait]
-impl LLMProvider for Ollama {
+impl LLMService for Ollama {
     async fn call_api(
         &self,
         client: &Client,

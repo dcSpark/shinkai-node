@@ -1,6 +1,6 @@
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
-use super::LLMProvider;
+use super::LLMService;
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::agent::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
@@ -13,7 +13,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInte
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]
-impl LLMProvider for Groq {
+impl LLMService for Groq {
     async fn call_api(
         &self,
         client: &Client,
@@ -115,9 +115,9 @@ impl LLMProvider for Groq {
 
                             return Err(match code {
                                 Some("rate_limit_exceeded") => {
-                                    AgentError::LLMProviderInferenceLimitReached(formatted_error.to_string())
+                                    AgentError::LLMServiceInferenceLimitReached(formatted_error.to_string())
                                 }
-                                _ => AgentError::LLMProviderUnexpectedError(formatted_error.to_string()),
+                                _ => AgentError::LLMServiceUnexpectedError(formatted_error.to_string()),
                             });
                         }
 

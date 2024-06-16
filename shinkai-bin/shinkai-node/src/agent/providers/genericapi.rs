@@ -4,7 +4,7 @@ use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::togetherai::TogetherAPIResponse;
-use super::LLMProvider;
+use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;
 
@@ -14,7 +14,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInte
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]
-impl LLMProvider for GenericAPI {
+impl LLMService for GenericAPI {
     async fn call_api(
         &self,
         client: &Client,

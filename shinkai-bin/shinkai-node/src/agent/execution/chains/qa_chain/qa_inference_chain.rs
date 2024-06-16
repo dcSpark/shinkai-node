@@ -147,10 +147,10 @@ impl QAInferenceChain {
         let response_res = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone()).await;
         // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
 
-        if let Err(AgentError::LLMProviderInferenceLimitReached(e)) = &response_res {
-            return Err(AgentError::LLMProviderInferenceLimitReached(e.to_string()));
-        } else if let Err(AgentError::LLMProviderUnexpectedError(e)) = &response_res {
-            return Err(AgentError::LLMProviderUnexpectedError(e.to_string()));
+        if let Err(AgentError::LLMServiceInferenceLimitReached(e)) = &response_res {
+            return Err(AgentError::LLMServiceInferenceLimitReached(e.to_string()));
+        } else if let Err(AgentError::LLMServiceUnexpectedError(e)) = &response_res {
+            return Err(AgentError::LLMServiceUnexpectedError(e.to_string()));
         } else if response_res.is_err() {
             return no_json_object_retry_logic(
                 response_res,

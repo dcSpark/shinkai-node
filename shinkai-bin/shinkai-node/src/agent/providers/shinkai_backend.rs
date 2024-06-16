@@ -1,10 +1,10 @@
 use crate::agent::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::managers::model_capabilities_manager::{PromptResultEnum};
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::AgentError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::shared::shared_model_logic::parse_markdown_to_json;
-use super::LLMProvider;
+use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -37,7 +37,7 @@ fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 }
 
 #[async_trait]
-impl LLMProvider for ShinkaiBackend {
+impl LLMService for ShinkaiBackend {
     async fn call_api(
         &self,
         client: &Client,

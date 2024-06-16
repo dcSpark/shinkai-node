@@ -16,7 +16,7 @@ pub mod shared;
 pub mod shinkai_backend;
 
 #[async_trait]
-pub trait LLMProvider {
+pub trait LLMService {
     // type Response;
     // fn parse_response(response_body: &str) -> Result<Self::Response, AgentError>;
     // fn extract_content(response: &Self::Response) -> Result<JsonValue, AgentError>;
