@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use quickxml_to_serde::{xml_string_to_json, Config};
 use reqwest::Client;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 
 pub mod genericapi;
 pub mod groq;
@@ -26,7 +26,7 @@ pub trait LLMService {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
-        model: AgentLLMInterface,
+        model: LLMProviderInterface,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 
     /// Given an input string, parses the first XML object that it finds.

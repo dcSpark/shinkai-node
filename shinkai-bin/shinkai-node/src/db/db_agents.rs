@@ -1,7 +1,7 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 use serde_json::{from_slice, to_vec};
-use shinkai_message_primitives::schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
     /// Returns the the first half of the blake3 hash of the agent id value

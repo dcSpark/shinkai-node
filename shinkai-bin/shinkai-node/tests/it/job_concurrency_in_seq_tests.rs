@@ -1,4 +1,4 @@
-// use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider};
+// use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider};
 // use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 // use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 // use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;

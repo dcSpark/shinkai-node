@@ -17,7 +17,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};

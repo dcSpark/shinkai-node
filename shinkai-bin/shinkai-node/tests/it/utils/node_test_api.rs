@@ -1,7 +1,7 @@
 use async_channel::Sender;
 use core::panic;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,

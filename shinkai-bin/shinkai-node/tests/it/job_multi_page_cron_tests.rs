@@ -1,8 +1,8 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
-    AgentLLMInterface, OpenAI, SerializedLLMProvider,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -126,7 +126,7 @@ fn job_from_cron_multi_page() {
                     // external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
+                    model: LLMProviderInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],

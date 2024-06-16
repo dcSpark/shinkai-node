@@ -3,8 +3,8 @@ use pyo3::types::PyDict;
 use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
 use serde_json::Error as SerdeError;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::str::FromStr;
 

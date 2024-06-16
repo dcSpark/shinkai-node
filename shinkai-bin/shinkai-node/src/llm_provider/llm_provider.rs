@@ -6,7 +6,7 @@ use super::providers::LLMService;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::{
-    agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 
@@ -18,7 +18,7 @@ pub struct LLMProvider {
     pub perform_locally: bool,        // Todo: Remove as not used anymore
     pub external_url: Option<String>, // external API URL
     pub api_key: Option<String>,
-    pub model: AgentLLMInterface,
+    pub model: LLMProviderInterface,
     pub toolkit_permissions: Vec<String>,        // Todo: remove as not used
     pub storage_bucket_permissions: Vec<String>, // Todo: remove as not used
     pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
@@ -32,7 +32,7 @@ impl LLMProvider {
         perform_locally: bool,
         external_url: Option<String>,
         api_key: Option<String>,
-        model: AgentLLMInterface,
+        model: LLMProviderInterface,
         toolkit_permissions: Vec<String>,
         storage_bucket_permissions: Vec<String>,
         allowed_message_senders: Vec<String>,
@@ -122,7 +122,7 @@ impl LLMProvider {
 
     async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
-            AgentLLMInterface::OpenAI(openai) => {
+            LLMProviderInterface::OpenAI(openai) => {
                 openai
                     .call_api(
                         &self.client,
@@ -133,7 +133,7 @@ impl LLMProvider {
                     )
                     .await
             }
-            AgentLLMInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::GenericAPI(genericapi) => {
                 genericapi
                     .call_api(
                         &self.client,
@@ -144,7 +144,7 @@ impl LLMProvider {
                     )
                     .await
             }
-            AgentLLMInterface::Ollama(ollama) => {
+            LLMProviderInterface::Ollama(ollama) => {
                 ollama
                     .call_api(
                         &self.client,
@@ -155,7 +155,7 @@ impl LLMProvider {
                     )
                     .await
             }
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 shinkai_backend
                     .call_api(
                         &self.client,
@@ -166,7 +166,7 @@ impl LLMProvider {
                     )
                     .await
             }
-            AgentLLMInterface::Groq(groq) => {
+            LLMProviderInterface::Groq(groq) => {
                 groq.call_api(
                     &self.client,
                     self.external_url.as_ref(),
@@ -176,7 +176,7 @@ impl LLMProvider {
                 )
                 .await
             }
-            AgentLLMInterface::LocalLLM(_local_llm) => {
+            LLMProviderInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
         }?;

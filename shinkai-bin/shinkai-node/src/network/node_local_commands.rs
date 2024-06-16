@@ -12,7 +12,7 @@ use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use log::error;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},

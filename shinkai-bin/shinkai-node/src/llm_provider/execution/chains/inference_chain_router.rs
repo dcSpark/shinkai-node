@@ -8,7 +8,7 @@ use crate::llm_provider::job::{Job, JobStepResult};
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::vector_fs::vector_fs::VectorFS;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;

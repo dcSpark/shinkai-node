@@ -320,7 +320,7 @@ impl CronManager {
                 "My scheduled job \"{}\" created on \"{}\" is ready to be executed",
                 cron_job.prompt, cron_job.created_at
             );
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.to_string(),
                 cron_request_message.to_string(),
                 "".to_string(),

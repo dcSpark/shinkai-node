@@ -350,7 +350,7 @@ mod tests {
         assert!(shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             "something".to_string(),
             "".to_string(),
@@ -395,7 +395,7 @@ mod tests {
             └── 3
          */
         for i in 1..=4 {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),
@@ -492,7 +492,7 @@ mod tests {
         let mut current_level = 0;
         let mut results = Vec::new();
         for i in 1..=4 {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),
@@ -805,7 +805,7 @@ mod tests {
         // Create the messages
         let mut messages = Vec::new();
         for i in [1, 3, 2].iter() {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),

@@ -4,7 +4,7 @@ use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message_schemas::JobMessage,
@@ -79,7 +79,7 @@ impl JobManager {
 
         match inbox_name_result {
             Ok(inbox_name) => {
-                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     full_job.job_id.to_string(),
                     agg_response.clone(),
                     inbox_name,
@@ -162,7 +162,7 @@ impl JobManager {
                 );
                 // Create Job
                 let job_id = full_job.job_id.to_string();
-                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     full_job.clone().job_id.to_string(),
                     inference_response_content.clone(),
                     "".to_string(),
@@ -203,7 +203,7 @@ impl JobManager {
                                     )
                                     .await?;
 
-                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     full_job.clone().job_id.to_string(),
                                     inference_response_content.clone(),
                                     "".to_string(),
@@ -263,10 +263,10 @@ impl JobManager {
 
         let base64_image = match &agent_found {
             Some(agent) => match agent.model {
-                AgentLLMInterface::OpenAI(_) => {
+                LLMProviderInterface::OpenAI(_) => {
                     format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
                 }
-                AgentLLMInterface::ShinkaiBackend(_) => {
+                LLMProviderInterface::ShinkaiBackend(_) => {
                     format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
                 }
                 _ => base64::encode(&content),
@@ -288,7 +288,7 @@ impl JobManager {
         )
         .await?;
 
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             full_job.job_id.to_string(),
             inference_response_content.clone().to_string(),
             "".to_string(),

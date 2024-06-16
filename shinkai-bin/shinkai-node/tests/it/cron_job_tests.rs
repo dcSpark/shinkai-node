@@ -5,7 +5,7 @@ mod tests {
     use futures::Future;
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider},
+            llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
             shinkai_name::ShinkaiName,
         },
         shinkai_utils::{
@@ -73,7 +73,7 @@ mod tests {
                 perform_locally: false,
                 external_url: Some("https://api.openai.com".to_string()),
                 api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
-                model: AgentLLMInterface::OpenAI(open_ai),
+                model: LLMProviderInterface::OpenAI(open_ai),
                 toolkit_permissions: vec![],
                 storage_bucket_permissions: vec![],
                 allowed_message_senders: vec![],

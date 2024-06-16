@@ -4,7 +4,7 @@ use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -169,7 +169,7 @@ impl ShinkaiMessageBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn job_message_from_agent(
+    pub fn job_message_from_llm_provider(
         job_id: String,
         content: String,
         files_inbox: String,

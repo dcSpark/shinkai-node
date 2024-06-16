@@ -6,7 +6,7 @@ use crate::network::node_error::NodeError;
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use async_trait::async_trait;
 use shinkai_crypto_identities::ShinkaiRegistryError;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;

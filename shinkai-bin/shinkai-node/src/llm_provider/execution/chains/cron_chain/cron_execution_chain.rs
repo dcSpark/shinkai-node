@@ -7,7 +7,7 @@ use crate::llm_provider::execution::{
 use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use std::result::Result::Ok;

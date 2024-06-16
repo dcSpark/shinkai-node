@@ -2,7 +2,7 @@ use regex::Regex;
 use serde_json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
-    schemas::agents::serialized_llm_provider::AgentLLMInterface,
+    schemas::llm_providers::serialized_llm_provider::LLMProviderInterface,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub fn llama_prepare_messages(
-    _model: &AgentLLMInterface,
+    _model: &LLMProviderInterface,
     _model_type: String,
     prompt: Prompt,
     total_tokens: usize,
@@ -33,7 +33,7 @@ pub fn llama_prepare_messages(
 }
 
 pub fn llava_prepare_messages(
-    _model: &AgentLLMInterface,
+    _model: &LLMProviderInterface,
     _model_type: String,
     prompt: Prompt,
     total_tokens: usize,

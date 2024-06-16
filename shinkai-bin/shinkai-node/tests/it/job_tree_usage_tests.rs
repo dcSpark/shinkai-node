@@ -1,7 +1,7 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

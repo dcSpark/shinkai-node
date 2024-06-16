@@ -1,5 +1,5 @@
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use crate::schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use crate::schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

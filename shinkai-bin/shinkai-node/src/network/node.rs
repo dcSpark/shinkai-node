@@ -28,7 +28,7 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};

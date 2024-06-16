@@ -2,8 +2,8 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
-    AgentLLMInterface, Ollama, OpenAI, SerializedLLMProvider,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -121,7 +121,7 @@ fn job_image_analysis() {
                     // external_url: Some("https://api.together.xyz".to_string()),
                     // model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
-                    model: AgentLLMInterface::Ollama(ollama),
+                    model: LLMProviderInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

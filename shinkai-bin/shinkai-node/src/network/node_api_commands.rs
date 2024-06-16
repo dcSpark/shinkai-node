@@ -31,7 +31,7 @@ use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_llm_provider::SerializedLLMProvider,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },

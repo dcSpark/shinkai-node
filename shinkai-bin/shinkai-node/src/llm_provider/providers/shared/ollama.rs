@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use tiktoken_rs::ChatCompletionRequestMessage;
 
 use crate::{
@@ -46,7 +46,7 @@ pub struct OllamaMessage {
 }
 
 pub fn ollama_conversation_prepare_messages(
-    model: &AgentLLMInterface,
+    model: &LLMProviderInterface,
     prompt: Prompt,
 ) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);

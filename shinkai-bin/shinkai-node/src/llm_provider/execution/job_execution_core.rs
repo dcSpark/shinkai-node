@@ -10,7 +10,7 @@ use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use shinkai_dsl::parser::parse_workflow;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::job_scope::{
     LocalScopeVRKaiEntry, LocalScopeVRPackEntry, ScopeEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
 };
@@ -57,7 +57,7 @@ impl JobManager {
         );
         // Fetch data we need to execute job step
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
-        let (mut full_job, agent_found, _, user_profile) = match fetch_data_result {
+        let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e).await,
         };
@@ -82,7 +82,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
-            agent_found.clone(),
+            llm_provider_found.clone(),
             &mut full_job,
             user_profile.clone(),
             None,
@@ -99,7 +99,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
-            agent_found.clone(),
+            llm_provider_found.clone(),
             full_job.clone(),
             clone_signature_secret_key(&identity_secret_key),
             generator.clone(),
@@ -120,7 +120,7 @@ impl JobManager {
             db.clone(),
             vector_fs.clone(),
             &job_message.job_message,
-            agent_found.clone(),
+            llm_provider_found.clone(),
             full_job.clone(),
             job_message.profile.clone(),
             clone_signature_secret_key(&identity_secret_key),
@@ -142,7 +142,7 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
             full_job,
-            agent_found.clone(),
+            llm_provider_found.clone(),
             user_profile.clone(),
             generator,
         )
@@ -176,7 +176,7 @@ impl JobManager {
         let error_for_frontend = error.to_error_json();
 
         let identity_secret_key_clone = clone_signature_secret_key(identity_secret_key);
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             error_for_frontend.to_string(),
             "".to_string(),
@@ -203,7 +203,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         job_message: JobMessage,
         full_job: Job,
-        agent_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<SerializedLLMProvider>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<(), LLMProviderError> {
@@ -228,7 +228,7 @@ impl JobManager {
         let inference_response = JobManager::inference_chain_router(
             db.clone(),
             vector_fs.clone(),
-            agent_found,
+            llm_provider_found,
             full_job,
             job_message.clone(),
             prev_execution_context,
@@ -248,7 +248,7 @@ impl JobManager {
 
         // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
             "".to_string(),
@@ -284,7 +284,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -310,8 +310,8 @@ impl JobManager {
         );
 
         let job_id = full_job.job_id().to_string();
-        let agent = agent_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
-        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&agent.model);
+        let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
+        let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
 
@@ -323,7 +323,7 @@ impl JobManager {
             vector_fs.clone(),
             full_job,
             parsed_user_message,
-            agent,
+            llm_provider,
             prev_execution_context,
             generator,
             user_profile.clone(),
@@ -377,7 +377,7 @@ impl JobManager {
 
         // TODO: can we extend it to add metadata somehow?
         // TODO: What should be the structre of this metadata?
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id,
             response.to_string(),
             "".to_string(),

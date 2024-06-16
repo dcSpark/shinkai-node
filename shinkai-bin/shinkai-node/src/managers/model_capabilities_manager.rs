@@ -10,7 +10,7 @@ use crate::{
     db::ShinkaiDB,
 };
 use shinkai_message_primitives::schemas::{
-    agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider},
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 use std::{
@@ -94,7 +94,7 @@ pub enum ModelPrivacy {
 pub struct ModelCapabilitiesManager {
     pub db: Weak<ShinkaiDB>,
     pub profile: ShinkaiName,
-    pub agents: Vec<SerializedLLMProvider>,
+    pub llm_providers: Vec<SerializedLLMProvider>,
 }
 
 impl ModelCapabilitiesManager {
@@ -102,7 +102,7 @@ impl ModelCapabilitiesManager {
     pub async fn new(db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
         let agents = Self::get_agents(&db_arc, profile.clone()).await;
-        Self { db, profile, agents }
+        Self { db, profile, llm_providers: agents }
     }
 
     // Function to get all agents from the database for a profile
@@ -112,7 +112,7 @@ impl ModelCapabilitiesManager {
 
     // Static method to get capability of an agent
     pub fn get_capability(agent: &SerializedLLMProvider) -> (Vec<ModelCapability>, ModelCost, ModelPrivacy) {
-        let capabilities = Self::get_agent_capabilities(&agent.model);
+        let capabilities = Self::get_llm_provider_capabilities(&agent.model);
         let cost = Self::get_agent_cost(&agent.model);
         let privacy = Self::get_agent_privacy(&agent.model);
 
@@ -120,9 +120,9 @@ impl ModelCapabilitiesManager {
     }
 
     // Static method to get capabilities of an agent model
-    pub fn get_agent_capabilities(model: &AgentLLMInterface) -> Vec<ModelCapability> {
+    pub fn get_llm_provider_capabilities(model: &LLMProviderInterface) -> Vec<ModelCapability> {
         match model {
-            AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
+            LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
@@ -131,7 +131,7 @@ impl ModelCapabilitiesManager {
                 model_type if model_type.starts_with("gpt-") => vec![ModelCapability::TextInference],
                 _ => vec![],
             },
-            AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
+            LLMProviderInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
                 "yorickvp/llava-13b" => vec![ModelCapability::ImageAnalysis],
                 model_type if model_type.starts_with("togethercomputer/llama-2") => {
@@ -139,8 +139,8 @@ impl ModelCapabilitiesManager {
                 }
                 _ => vec![],
             },
-            AgentLLMInterface::LocalLLM(_) => vec![],
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
+            LLMProviderInterface::LocalLLM(_) => vec![],
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
                     vec![ModelCapability::TextInference]
                 }
@@ -150,7 +150,7 @@ impl ModelCapabilitiesManager {
                 "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
-            AgentLLMInterface::Ollama(ollama) => match ollama.model_type.as_str() {
+            LLMProviderInterface::Ollama(ollama) => match ollama.model_type.as_str() {
                 model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("llava") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
@@ -163,16 +163,16 @@ impl ModelCapabilitiesManager {
                 }
                 _ => vec![ModelCapability::TextInference],
             },
-            AgentLLMInterface::Groq(groq) => {
+            LLMProviderInterface::Groq(groq) => {
                 vec![ModelCapability::TextInference]
             }
         }
     }
 
     // Static method to get cost of an agent model
-    pub fn get_agent_cost(model: &AgentLLMInterface) -> ModelCost {
+    pub fn get_agent_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
-            AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
+            LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => ModelCost::Cheap,
                 "gpt-3.5-turbo-1106" => ModelCost::Cheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
@@ -180,14 +180,14 @@ impl ModelCapabilitiesManager {
                 "dall-e-3" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
-            AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
+            LLMProviderInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
                 "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
                 "togethercomputer/llama3" => ModelCost::Cheap,
                 "yorickvp/llava-13b" => ModelCost::Expensive,
                 _ => ModelCost::Unknown,
             },
-            AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
+            LLMProviderInterface::LocalLLM(_) => ModelCost::Cheap,
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
                 "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
                     ModelCost::GoodValue
@@ -195,31 +195,31 @@ impl ModelCapabilitiesManager {
                 "dall-e" => ModelCost::GoodValue,
                 _ => ModelCost::Unknown,
             },
-            AgentLLMInterface::Ollama(_) => ModelCost::Cheap,
-            AgentLLMInterface::Groq(_) => ModelCost::Cheap,
+            LLMProviderInterface::Ollama(_) => ModelCost::Cheap,
+            LLMProviderInterface::Groq(_) => ModelCost::Cheap,
         }
     }
 
     // Static method to get privacy of an agent model
-    pub fn get_agent_privacy(model: &AgentLLMInterface) -> ModelPrivacy {
+    pub fn get_agent_privacy(model: &LLMProviderInterface) -> ModelPrivacy {
         match model {
-            AgentLLMInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
-            AgentLLMInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
-            AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
+            LLMProviderInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::LocalLLM(_) => ModelPrivacy::Local,
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 _ => ModelPrivacy::Unknown,
             },
-            AgentLLMInterface::Ollama(_) => ModelPrivacy::Local,
-            AgentLLMInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
+            LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
         }
     }
 
     // Function to check capabilities
     pub async fn check_capabilities(&self) -> Vec<(Vec<ModelCapability>, ModelCost, ModelPrivacy)> {
-        let agents = self.agents.clone();
+        let agents = self.llm_providers.clone();
         agents.into_iter().map(|agent| Self::get_capability(&agent)).collect()
     }
 
@@ -243,10 +243,10 @@ impl ModelCapabilitiesManager {
 
     pub async fn route_prompt_with_model(
         prompt: Prompt,
-        model: &AgentLLMInterface,
+        model: &LLMProviderInterface,
     ) -> Result<PromptResult, ModelCapabilitiesManagerError> {
         match model {
-            AgentLLMInterface::OpenAI(openai) => {
+            LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
                     let tiktoken_messages = openai_prepare_messages(model, prompt)?;
                     Ok(tiktoken_messages)
@@ -254,7 +254,7 @@ impl ModelCapabilitiesManager {
                     Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
                 }
             }
-            AgentLLMInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::GenericAPI(genericapi) => {
                 if genericapi.model_type.starts_with("togethercomputer/llama-2")
                     || genericapi.model_type.starts_with("meta-llama/Llama-3")
                 {
@@ -268,13 +268,13 @@ impl ModelCapabilitiesManager {
                     ))
                 }
             }
-            AgentLLMInterface::LocalLLM(_) => {
+            LLMProviderInterface::LocalLLM(_) => {
                 Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
                 shinkai_backend.model_type().clone(),
             )),
-            AgentLLMInterface::Ollama(ollama) => {
+            LLMProviderInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral")
                     || ollama.model_type.starts_with("llama2")
                     || ollama.model_type.starts_with("llama3")
@@ -315,7 +315,7 @@ impl ModelCapabilitiesManager {
                     Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
                 }
             }
-            AgentLLMInterface::Groq(groq) => {
+            LLMProviderInterface::Groq(groq) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
@@ -324,9 +324,9 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns the maximum number of tokens allowed for the given model.
-    pub fn get_max_tokens(model: &AgentLLMInterface) -> usize {
+    pub fn get_max_tokens(model: &LLMProviderInterface) -> usize {
         match model {
-            AgentLLMInterface::OpenAI(openai) => {
+            LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type == "gpt-4o"
                     || openai.model_type == "gpt-4-1106-preview"
                     || openai.model_type == "gpt-4-vision-preview"
@@ -337,7 +337,7 @@ impl ModelCapabilitiesManager {
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())
                 }
             }
-            AgentLLMInterface::GenericAPI(genericapi) => {
+            LLMProviderInterface::GenericAPI(genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
                 if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
                     32_000
@@ -352,11 +352,11 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
-            AgentLLMInterface::LocalLLM(_) => {
+            LLMProviderInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM
                 0
             }
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
                     || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
                 {
@@ -368,7 +368,7 @@ impl ModelCapabilitiesManager {
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())
                 }
             }
-            AgentLLMInterface::Groq(groq) => {
+            LLMProviderInterface::Groq(groq) => {
                 // Fill in the appropriate logic for GenericAPI
                 if groq.model_type == "llama3-70b-8192" {
                     8_000
@@ -376,7 +376,7 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
-            AgentLLMInterface::Ollama(ollama) => {
+            LLMProviderInterface::Ollama(ollama) => {
                 return match ollama.model_type.as_str() {
                     model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
                     model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -405,7 +405,7 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
-    pub fn get_max_input_tokens(model: &AgentLLMInterface) -> usize {
+    pub fn get_max_input_tokens(model: &LLMProviderInterface) -> usize {
         let max_tokens = Self::get_max_tokens(model);
         let max_output_tokens = Self::get_max_output_tokens(model);
         if max_tokens > max_output_tokens {
@@ -415,28 +415,28 @@ impl ModelCapabilitiesManager {
         }
     }
 
-    pub fn get_max_output_tokens(model: &AgentLLMInterface) -> usize {
+    pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
-            AgentLLMInterface::OpenAI(_) => {
+            LLMProviderInterface::OpenAI(_) => {
                 // Fill in the appropriate logic for OpenAI
                 4096
             }
-            AgentLLMInterface::GenericAPI(_) => {
+            LLMProviderInterface::GenericAPI(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
                 } else {
                     4096
                 }
             }
-            AgentLLMInterface::LocalLLM(_) => {
+            LLMProviderInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM
                 4096
             }
-            AgentLLMInterface::ShinkaiBackend(_) => {
+            LLMProviderInterface::ShinkaiBackend(_) => {
                 // Fill in the appropriate logic for ShinkaiBackend
                 4096
             }
-            AgentLLMInterface::Ollama(_) => {
+            LLMProviderInterface::Ollama(_) => {
                 // Fill in the appropriate logic for Ollama
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
@@ -444,7 +444,7 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
-            AgentLLMInterface::Groq(_) => {
+            LLMProviderInterface::Groq(_) => {
                 // Fill in the appropriate logic for Ollama
                 4096
             }
@@ -452,7 +452,7 @@ impl ModelCapabilitiesManager {
     }
 
     /// Returns the remaining number of output tokens allowed for the LLM to use
-    pub fn get_remaining_output_tokens(model: &AgentLLMInterface, used_tokens: usize) -> usize {
+    pub fn get_remaining_output_tokens(model: &LLMProviderInterface, used_tokens: usize) -> usize {
         let max_tokens = Self::get_max_tokens(model);
         let mut remaining_output_tokens = max_tokens.saturating_sub(used_tokens);
         remaining_output_tokens = std::cmp::min(
@@ -463,9 +463,9 @@ impl ModelCapabilitiesManager {
     }
 
     // Note(Nico): this may be necessary bc some libraries are not caught up with the latest models e.g. tiktoken-rs
-    pub fn normalize_model(model: &AgentLLMInterface) -> String {
+    pub fn normalize_model(model: &LLMProviderInterface) -> String {
         match model {
-            AgentLLMInterface::OpenAI(openai) => {
+            LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-4") {
                     "gpt-4-32k".to_string()
                 } else if openai.model_type.starts_with("gpt-3.5") {
@@ -474,26 +474,26 @@ impl ModelCapabilitiesManager {
                     "gpt-4".to_string()
                 }
             }
-            AgentLLMInterface::GenericAPI(_genericapi) => {
+            LLMProviderInterface::GenericAPI(_genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
                 "".to_string()
             }
-            AgentLLMInterface::LocalLLM(_) => {
+            LLMProviderInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM
                 "".to_string()
             }
-            AgentLLMInterface::Groq(_) => {
+            LLMProviderInterface::Groq(_) => {
                 // Fill in the appropriate logic for LocalLLM
                 "".to_string()
             }
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 if shinkai_backend.model_type().starts_with("gpt") {
                     "gpt-4-32k".to_string()
                 } else {
                     "gpt-4".to_string()
                 }
             }
-            AgentLLMInterface::Ollama(_) => {
+            LLMProviderInterface::Ollama(_) => {
                 // Fill in the appropriate logic for Ollama
                 "".to_string()
             }

@@ -22,7 +22,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFol
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_llm_provider::{AgentLLMInterface, Ollama, SerializedLLMProvider},
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
     },
@@ -470,7 +470,7 @@ impl Node {
                                 // Add Two Message from "Agent"
                                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
-                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
                                     WELCOME_MESSAGE.to_string(),
                                     "".to_string(),
@@ -658,7 +658,7 @@ impl Node {
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
-                    model: AgentLLMInterface::Ollama(Ollama {
+                    model: LLMProviderInterface::Ollama(Ollama {
                         model_type: model.clone(),
                     }),
                     toolkit_permissions: vec![],

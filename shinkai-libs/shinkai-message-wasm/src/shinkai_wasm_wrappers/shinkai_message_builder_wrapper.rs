@@ -6,7 +6,7 @@ use crate::shinkai_wasm_wrappers::{
 use serde::Deserialize;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
         APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
         JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,

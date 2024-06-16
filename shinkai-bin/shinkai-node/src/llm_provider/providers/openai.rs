@@ -9,7 +9,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, OpenAI};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
@@ -43,7 +43,7 @@ impl LLMService for OpenAI {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
-        model: AgentLLMInterface,
+        model: LLMProviderInterface,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {

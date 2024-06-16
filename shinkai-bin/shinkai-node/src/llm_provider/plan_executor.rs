@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// Struct that executes a plan (Vec<ExecutionStep>) generated from the analysis phase
 #[derive(Clone, Debug)]
 pub struct PlanExecutor<'a> {
-    agent: &'a LLMProvider,
+    llm_provider: &'a LLMProvider,
     execution_context: HashMap<String, String>,
     user_message: String,
     execution_plan: Vec<ExecutionStep>,
@@ -20,7 +20,7 @@ pub struct PlanExecutor<'a> {
 }
 
 impl<'a> PlanExecutor<'a> {
-    pub fn new(agent: &'a LLMProvider, execution_plan: &Vec<ExecutionStep>) -> Result<Self, LLMProviderError> {
+    pub fn new(llm_provider: &'a LLMProvider, execution_plan: &Vec<ExecutionStep>) -> Result<Self, LLMProviderError> {
         match execution_plan.first() {
             Some(ExecutionStep::Initial(initial_step)) => {
                 let mut execution_plan = execution_plan.to_vec();
@@ -28,7 +28,7 @@ impl<'a> PlanExecutor<'a> {
                 let user_message = initial_step.user_message.clone();
                 execution_plan.remove(0); // Remove the initial step
                 Ok(Self {
-                    agent,
+                    llm_provider,
                     execution_context,
                     user_message,
                     execution_plan,
@@ -66,7 +66,7 @@ impl<'a> PlanExecutor<'a> {
                     // 5. Find & parse the JSON in the response
                 }
                 ExecutionStep::Tool(_tool_step) => {
-                    // self.agent.use_tool(tool_step.tool.clone()).await?;
+                    // self.llm_provider.use_tool(tool_step.tool.clone()).await?;
                 }
                 _ => (),
             }

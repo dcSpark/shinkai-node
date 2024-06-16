@@ -12,7 +12,7 @@ fn setup() {
 mod tests {
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider},
+            llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
             shinkai_name::ShinkaiName,
         },
         shinkai_utils::shinkai_logging::init_default_tracing,
@@ -42,7 +42,7 @@ mod tests {
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
@@ -112,7 +112,7 @@ mod tests {
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
@@ -163,7 +163,7 @@ mod tests {
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
@@ -203,7 +203,7 @@ mod tests {
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
@@ -266,7 +266,7 @@ mod tests {
             false,
             Some(server.url()), // use the url of the mock server
             Some("mockapikey".to_string()),
-            AgentLLMInterface::OpenAI(openai),
+            LLMProviderInterface::OpenAI(openai),
             vec!["tk1".to_string(), "tk2".to_string()],
             vec!["sb1".to_string(), "sb2".to_string()],
             vec!["allowed1".to_string(), "allowed2".to_string()],

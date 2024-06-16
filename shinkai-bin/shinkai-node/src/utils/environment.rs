@@ -2,7 +2,7 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedLLMProvider> {
     let mut agents = Vec::new();
 
     for i in 0..initial_agent_names.len() {
-        let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_models[i]);
+        let model: Result<LLMProviderInterface, _> = LLMProviderInterface::from_str(&initial_agent_models[i]);
 
         let agent = SerializedLLMProvider {
             id: initial_agent_names[i].clone(),

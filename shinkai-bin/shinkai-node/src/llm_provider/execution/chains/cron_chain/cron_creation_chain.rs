@@ -10,7 +10,7 @@ use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
 use async_recursion::async_recursion;
 use regex::Regex;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 

@@ -4,7 +4,7 @@ use wasm_bindgen_test::*;
 mod tests {
     use super::*;
     use serde_wasm_bindgen::from_value;
-    use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, OpenAI, SerializedLLMProvider};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
     use shinkai_message_wasm::shinkai_wasm_wrappers::serialized_llm_provider_wrapper::SerializedLLMProviderWrapper;
     use wasm_bindgen::JsValue;
 
@@ -12,7 +12,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_conversion_from_wasm_serialized_agent_to_serialized_agent() {
         // Create a SerializedLLMProviderWrapper using from_strings
-        let serialized_agent_wrapper = SerializedLLMProviderWrapper::from_strings(
+        let serialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_strings(
             "test_agent".to_string(),
             "@@node.shinkai/main/agent/test_agent".to_string(),
             "false".to_string(),
@@ -26,7 +26,7 @@ mod tests {
         .unwrap();
 
         // Get the inner SerializedLLMProvider
-        let agent_jsvalue = serialized_agent_wrapper.inner().unwrap();
+        let agent_jsvalue = serialized_llm_provider_wrapper.inner().unwrap();
         let agent: SerializedLLMProvider = from_value(agent_jsvalue).unwrap();
 
         // Check that the fields are correctly converted
@@ -60,10 +60,10 @@ mod tests {
 
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
-    fn test_serialization_and_deserialization_of_serialized_agent_wrapper() {
+    fn test_serialization_and_deserialization_of_serialized_llm_provider_wrapper() {
         // console_log::init_with_level(log::Level::Debug).expect("error initializing log");
         // Create a SerializedLLMProviderWrapper using from_strings
-        let serialized_agent_wrapper = SerializedLLMProviderWrapper::from_strings(
+        let serialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_strings(
             "test_agent".to_string(),
             "@@node.shinkai/main/agent/test_agent".to_string(),
             "false".to_string(),
@@ -77,20 +77,20 @@ mod tests {
         .unwrap();
 
         // Serialize the SerializedLLMProviderWrapper to a JSON string
-        let serialized_agent_wrapper_json = serialized_agent_wrapper.to_json_str().unwrap();
-        // log::debug!("serialized agent: {}", serialized_agent_wrapper_json);
+        let serialized_llm_provider_wrapper_json = serialized_llm_provider_wrapper.to_json_str().unwrap();
+        // log::debug!("serialized agent: {}", serialized_llm_provider_wrapper_json);
 
         assert_eq!(
-            serialized_agent_wrapper_json.contains("\"model\":\"openai:gpt-3.5-turbo-1106\""),
+            serialized_llm_provider_wrapper_json.contains("\"model\":\"openai:gpt-3.5-turbo-1106\""),
             true
         );
 
         // Deserialize the JSON string back to a SerializedLLMProviderWrapper
-        let deserialized_agent_wrapper = SerializedLLMProviderWrapper::from_json_str(&serialized_agent_wrapper_json).unwrap();
-        // log::debug!("deserialized agent: {:?}", deserialized_agent_wrapper);
+        let deserialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_json_str(&serialized_llm_provider_wrapper_json).unwrap();
+        // log::debug!("deserialized agent: {:?}", deserialized_llm_provider_wrapper);
 
         // Check that the fields are correctly converted
-        let agent = deserialized_agent_wrapper.inner().unwrap();
+        let agent = deserialized_llm_provider_wrapper.inner().unwrap();
         let agent: SerializedLLMProvider = from_value(agent).unwrap();
         assert_eq!(agent.id, "test_agent");
         assert_eq!(

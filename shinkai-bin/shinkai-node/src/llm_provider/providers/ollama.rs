@@ -11,7 +11,7 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, Ollama};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::error::Error;
 
@@ -36,7 +36,7 @@ impl LLMService for Ollama {
         url: Option<&String>,
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
-        model: AgentLLMInterface,
+        model: LLMProviderInterface,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");

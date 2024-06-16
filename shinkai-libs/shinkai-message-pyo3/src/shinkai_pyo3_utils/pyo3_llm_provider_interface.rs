@@ -1,12 +1,12 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::GenericAPI;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::Groq;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::LocalLLM;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::Ollama;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::OpenAI;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::ShinkaiBackend;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::GenericAPI;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Groq;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LocalLLM;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::Ollama;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::OpenAI;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::ShinkaiBackend;
 
 #[pyclass]
 #[derive(Debug, Clone)]

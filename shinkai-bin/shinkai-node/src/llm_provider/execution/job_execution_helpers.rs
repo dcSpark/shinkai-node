@@ -7,7 +7,7 @@ use crate::llm_provider::job::Job;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_provider::LLMProvider;
 use serde_json::{Map, Value as JsonValue};
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::collections::HashMap;

@@ -1,5 +1,5 @@
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::{agents::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{

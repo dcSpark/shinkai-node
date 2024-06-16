@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
-    AgentLLMInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -123,7 +123,7 @@ fn node_agent_registration() {
             // api_key: Some("api_key".to_string()),
             api_key: Some("mockapikey".to_string()),
             // api_key: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjE3LCJpYXQiOjE3MDEzMTg5ODZ9.jTLpbsAVITowuCMYdNgTyUHikGRlLjEqqOYHWMRNSz4".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             // model: AgentLLMInterface::Ollama(ollama),
             // model: AgentLLMInterface::ShinkaiBackend(shinkai_backend),
             toolkit_permissions: vec![],

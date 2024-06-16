@@ -7,7 +7,7 @@ use serde::de::Deserializer;
 use serde::ser::{SerializeMap, SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{self};
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use std::collections::HashMap;
 use tiktoken_rs::ChatCompletionRequestMessage;
 
@@ -131,7 +131,7 @@ pub struct ApiPayload {
     max_tokens: usize,
 }
 
-pub fn openai_prepare_messages(model: &AgentLLMInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images

@@ -4,7 +4,7 @@ use aes_gcm::KeyInit;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{AgentLLMInterface, Ollama, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -142,7 +142,7 @@ fn vector_fs_api_tests() {
                     perform_locally: false,
                     api_key: Some("".to_string()),
                     external_url: Some(server.url()),
-                    model: AgentLLMInterface::Ollama(ollama),
+                    model: LLMProviderInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

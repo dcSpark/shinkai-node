@@ -16,7 +16,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiNameString;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
         APIAddAgentRequest, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIGetMessagesFromInboxRequest,
         APIReadUpToTimeRequest, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem,

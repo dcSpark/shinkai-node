@@ -4,8 +4,8 @@ use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use mockito::{Matcher, Mock};
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::{
-    AgentLLMInterface, OpenAI, SerializedLLMProvider,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -138,7 +138,7 @@ fn planner_integration_test() {
                     external_url: Some("https://api.openai.com".to_string()),
                     api_key: Some(api_key),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
+                    model: LLMProviderInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],

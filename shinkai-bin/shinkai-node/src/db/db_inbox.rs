@@ -10,7 +10,7 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
-use crate::schemas::smart_inbox::AgentSubset;
+use crate::schemas::smart_inbox::LLMProviderSubset;
 use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -531,7 +531,7 @@ impl ShinkaiDB {
                                     let job = self.get_job(&unique_id)?;
                                     let agent_id = job.parent_agent_id;
                                     match self.get_agent(&agent_id, &p) {
-                                        Ok(agent) => agent.map(AgentSubset::from_serialized_agent),
+                                        Ok(agent) => agent.map(LLMProviderSubset::from_serialized_agent),
                                         Err(_) => None,
                                     }
                                 }

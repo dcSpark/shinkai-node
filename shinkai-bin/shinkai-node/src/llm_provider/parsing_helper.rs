@@ -5,7 +5,7 @@ use super::execution::user_message_parser::{JobTaskElement, ParsedUserMessage};
 use super::job_manager::JobManager;
 use regex::Regex;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
