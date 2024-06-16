@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
     use std::collections::HashMap;
-    use std::{any::Any, fs};
 
     use async_trait::async_trait;
-    use chrono::Utc;
     use dashmap::DashMap;
     use shinkai_dsl::{
         dsl_schemas::{
@@ -103,9 +102,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    pub async fn download_webpage(
-        args: Vec<Box<dyn Any + Send>>,
-    ) -> Result<Box<dyn Any + Send>, WorkflowError> {
+    pub async fn download_webpage(args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         if args.len() != 1 {
             return Err(WorkflowError::InvalidArgument("Expected 1 argument".to_string()));
         }
@@ -113,7 +110,7 @@ mod tests {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for URL".to_string()))?
             .clone();
-    
+
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::limited(20))
@@ -128,7 +125,7 @@ mod tests {
             .text()
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
-        
+
         Ok(Box::new(content))
     }
 
@@ -733,19 +730,19 @@ mod tests {
             }
         }
         "#;
-    
+
         let workflow = parse_workflow(dsl_input).expect("Failed to parse workflow");
-    
+
         // Create function mappings
         let mut functions: FunctionMap = HashMap::new();
         functions.insert(
             "download_webpage".to_string(),
             Box::new(DownloadWebpageFunction) as Box<dyn AsyncFunction>,
         );
-    
+
         // Create the WorkflowEngine with the function mappings
         let executor = WorkflowEngine::new(&functions);
-    
+
         // Execute the workflow
         let registers = executor
             .execute_workflow(&workflow)
@@ -753,7 +750,7 @@ mod tests {
             .expect("Failed to execute workflow");
 
         eprintln!("Registers: {:?}", registers);
-    
+
         // Check the results
         assert_eq!(registers.get("$R0").unwrap().as_str(), "http://quotes.toscrape.com");
         assert!(registers.get("$R1").unwrap().as_str().contains("<html"));

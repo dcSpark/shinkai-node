@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope};
 use std::collections::HashMap;
 
-pub type JobId = String;
-
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
     fn is_hidden(&self) -> bool;

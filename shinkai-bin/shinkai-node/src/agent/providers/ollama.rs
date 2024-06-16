@@ -57,10 +57,10 @@ impl LLMProvider for Ollama {
                 format!("Messages JSON: {:?}", messages_json).as_str(),
             );
             // Print messages_json as a pretty JSON string
-            match serde_json::to_string_pretty(&messages_json) {
-                Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-            };
+            // match serde_json::to_string_pretty(&messages_json) {
+            //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+            //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+            // };
 
             let payload = json!({
                 "model": self.model_type,

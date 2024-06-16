@@ -160,7 +160,6 @@ impl AsyncFunction for InferenceFunction {
             .downcast_ref::<String>()
             .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument".to_string()))?
             .clone();
-        eprintln!("InferenceFunction: {:?}", user_message);
 
         let db = self.context.db.clone();
         let vector_fs = self.context.vector_fs.clone();

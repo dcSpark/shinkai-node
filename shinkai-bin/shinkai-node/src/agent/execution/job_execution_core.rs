@@ -94,8 +94,6 @@ impl JobManager {
             return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
         }
 
-        eprintln!("execution job Full Job: {:?}", full_job);
-
         // 2.- *If* a workflow is found, processing job message is taken over by this alternate logic
         let workflow_found_result = JobManager::should_process_workflow_for_tasks_take_over(
             db.clone(),
@@ -317,7 +315,7 @@ impl JobManager {
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
         let workflow = parse_workflow(&job_message.workflow.clone().unwrap())?;
 
-        eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
+        // eprintln!("should_process_workflow_for_tasks_take_over Full Job: {:?}", full_job);
 
         // Create the inference chain context
         let mut chain_context = InferenceChainContext::new(

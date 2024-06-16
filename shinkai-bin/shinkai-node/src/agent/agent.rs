@@ -1,8 +1,8 @@
+use super::error::AgentError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::{Prompt, SubPromptType};
 use super::parsing_helper::ParsingHelper;
 use super::providers::LLMProvider;
-use super::{error::AgentError};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::{

@@ -214,7 +214,7 @@ pub fn parse_param(pair: pest::iterators::Pair<Rule>) -> Param {
     println!("Parsing param with rule: {:?}", pair.as_rule());
     println!("Parsing param with content: {:?}", pair.as_str());
 
-    let input = pair.as_str();
+    let input = pair.as_str().trim();
 
     match identify_param_type(input) {
         "string" => {
@@ -255,6 +255,7 @@ pub fn parse_param(pair: pest::iterators::Pair<Rule>) -> Param {
 }
 
 fn identify_param_type(input: &str) -> &str {
+    let input = input.trim();
     if input.starts_with('"') && input.ends_with('"') {
         "string"
     } else if input.contains("..") {
