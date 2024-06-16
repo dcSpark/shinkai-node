@@ -1,5 +1,5 @@
 use crate::{
-    agent::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
+    llm_provider::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
     vector_fs::vector_fs_error::VectorFSError,
 };
 use shinkai_message_primitives::{

@@ -1,5 +1,5 @@
 use crate::{
-    agent::{
+    llm_provider::{
         error::AgentError,
         execution::prompts::prompts::Prompt,
         providers::shared::{

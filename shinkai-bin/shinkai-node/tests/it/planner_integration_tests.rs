@@ -18,7 +18,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_node::agent::error::AgentError;
+use shinkai_node::llm_provider::error::AgentError;
 use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;

@@ -5,7 +5,7 @@ use super::{
     subscription_manager::external_subscriber_manager::ExternalSubscriberManager, Node,
 };
 use crate::{
-    agent::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
+    llm_provider::parsing_helper::ParsingHelper, db::ShinkaiDB, managers::IdentityManager,
     network::subscription_manager::external_subscriber_manager::SharedFolderInfo, schemas::identity::Identity,
     vector_fs::vector_fs::VectorFS,
 };

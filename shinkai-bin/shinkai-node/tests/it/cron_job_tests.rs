@@ -15,7 +15,7 @@ mod tests {
         },
     };
     use shinkai_node::{
-        agent::job_manager::JobManager,
+        llm_provider::job_manager::JobManager,
         cron_tasks::cron_manager::{CronManager, CronManagerError},
         db::{db_cron_task::CronTask, ShinkaiDB},
         managers::IdentityManager,

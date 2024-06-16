@@ -1,6 +1,6 @@
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::Node;
-use crate::agent::job_manager::JobManager;
+use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;

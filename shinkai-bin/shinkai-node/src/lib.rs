@@ -1,5 +1,5 @@
 #![recursion_limit = "256"]
-pub mod agent;
+pub mod llm_provider;
 pub mod cron_tasks;
 pub mod db;
 pub mod managers;

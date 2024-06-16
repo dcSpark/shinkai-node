@@ -6,11 +6,11 @@ use super::node_api_handlers::APIUseRegistrationCodeSuccessResponse;
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
-use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::{IdentityManager};
+use crate::llm_provider::job_manager::JobManager;
+use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
@@ -2801,7 +2801,8 @@ impl Node {
         let res = {
             let mut reader = reader.lock().await;
             reader.read_exact(&mut buffer).await
-        }; match res {
+        };
+        match res {
             Ok(_) => {
                 let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
 

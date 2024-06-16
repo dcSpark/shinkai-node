@@ -7,7 +7,7 @@ use super::{
     Node,
 };
 use crate::{
-    agent::job_manager::JobManager,
+    llm_provider::job_manager::JobManager,
     db::db_errors::ShinkaiDBError,
     managers::IdentityManager,
     schemas::{

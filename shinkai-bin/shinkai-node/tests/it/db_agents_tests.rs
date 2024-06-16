@@ -17,7 +17,7 @@ mod tests {
         },
         shinkai_utils::shinkai_logging::init_default_tracing,
     };
-    use shinkai_node::agent::{agent::Agent, execution::prompts::prompts::JobPromptGenerator};
+    use shinkai_node::llm_provider::{llm_provider::LLMProvider, execution::prompts::prompts::JobPromptGenerator};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
@@ -260,7 +260,7 @@ mod tests {
         let openai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
-        let agent = Agent::new(
+        let agent = LLMProvider::new(
             "1".to_string(),
             ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             false,

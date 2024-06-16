@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::agent::execution::prompts::prompts::SubPromptType::{Assistant, User};
+use shinkai_node::llm_provider::execution::prompts::prompts::SubPromptType::{Assistant, User};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
 use tokio::time::{sleep, Duration};
@@ -73,7 +73,7 @@ mod tests {
             signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_node::{agent::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
+    use shinkai_node::{llm_provider::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::agent::execution::prompts::prompts::{Prompt, SubPromptType};
-use crate::agent::job::{Job, JobLike, JobStepResult};
+use crate::llm_provider::execution::prompts::prompts::{Prompt, SubPromptType};
+use crate::llm_provider::job::{Job, JobLike, JobStepResult};
 
 use rocksdb::{IteratorMode, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
