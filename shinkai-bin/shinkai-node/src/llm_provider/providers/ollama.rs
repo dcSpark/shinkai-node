@@ -3,7 +3,6 @@ use crate::llm_provider::providers::shared::ollama::{ollama_conversation_prepare
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
-use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMService;
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -103,7 +102,7 @@ impl LLMService for Ollama {
                                 previous_json_chunk = "".to_string();
                                 response_text.push_str(&data.message.content);
                             }
-                            Err(e) => {
+                            Err(_e) => {
                                 previous_json_chunk += chunk_str.as_str();
                                 // Handle JSON parsing error here...
                             }
@@ -126,24 +125,8 @@ impl LLMService for Ollama {
                 format!("Cleaned Response Text: {:?}", response_text).as_str(),
             );
 
-            match parse_markdown_to_json(&response_text) {
-                Ok(json) => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Debug,
-                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                    );
-                    Ok(LLMInferenceResponse::new(response_text, json))
-                }
-                Err(e) => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                    );
-                    Err(e)
-                }
-            }
+            // Directly return response_text with an empty JSON object
+            Ok(LLMInferenceResponse::new(response_text, json!({})))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

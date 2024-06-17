@@ -2,17 +2,18 @@ use super::chain_detection_embeddings::{
     top_score_message_history_summary_embeddings, top_score_summarize_these_embeddings,
     top_score_summarize_this_embeddings,
 };
+use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_router::InferenceChainDecision;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
     InferenceChain, InferenceChainContext, InferenceChainResult, ScoreResult,
 };
 use crate::llm_provider::execution::chains::summary_chain::chain_detection_embeddings::top_score_summarize_other_embeddings;
-use crate::llm_provider::execution::prompts::prompts::{JobPromptGenerator, SubPrompt};
+use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
+use crate::llm_provider::execution::prompts::subprompts::SubPrompt;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};
 use crate::llm_provider::job_manager::JobManager;
-use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
@@ -128,12 +129,12 @@ impl SummaryInferenceChain {
     /// Core logic which summarizes VRs in the job context.
     #[allow(clippy::too_many_arguments)]
     async fn start_summarize_job_context_sub_chain(
-        db: Arc<ShinkaiDB>,
+        _db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
         agent: SerializedLLMProvider,
-        execution_context: HashMap<String, String>,
+        _execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_tokens_in_prompt: usize,
@@ -198,11 +199,11 @@ impl SummaryInferenceChain {
     #[async_recursion]
     pub async fn generate_detailed_summary_for_resource(
         resource: BaseVectorResource,
-        generator: RemoteEmbeddingGenerator,
+        _generator: RemoteEmbeddingGenerator,
         user_message: ParsedUserMessage,
         agent: SerializedLLMProvider,
-        max_tokens_in_prompt: usize,
-        attempt_count: u64,
+        _max_tokens_in_prompt: usize,
+        _attempt_count: u64,
     ) -> Result<String, LLMProviderError> {
         let resource_sub_prompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
 
@@ -220,60 +221,7 @@ impl SummaryInferenceChain {
 
         // Extract the JSON from the inference response Result and proceed forward
         let response = JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await?;
-        let answer = &JobManager::advanced_extract_key_from_inference_response(
-            agent.clone(),
-            response.clone(),
-            prompt.clone(),
-            vec![
-                "answer".to_string(),
-                "markdown".to_string(),
-                "summary".to_string(),
-                "text".to_string(),
-            ],
-            3,
-        )
-        .await?;
-
-        // Split into chunks and do improved parsing
-        let filtered_answer = answer.replace("\\n_", "\\n");
-        let mut chunks: Vec<&str> = filtered_answer.split("\n\n").collect();
-        if chunks.last().map_or(false, |last| last.trim().is_empty()) {
-            chunks.pop();
-        }
-        let filtered_answer = if chunks.len() == 3 {
-            let mut title = chunks[0].replace("Title:", "");
-            let intro = chunks[1].replace("Summary:", "").replace("Intro:", "");
-            let mut list = chunks[2].replace("List:", "");
-
-            // Add the title tag if it doesnt exist
-            if !title.is_empty() && !title.trim().starts_with('#') {
-                title = format!("## {}", title);
-            }
-
-            // Filter the list for common pitfalls of dumb LLMs
-            list = list
-                .replace("[Content Title]:", "")
-                .replace("[Bulletpoint Title]: ", "")
-                .replace("Bulletpoint Description:", "-");
-
-            format!("{}\n\n{}\n\n{}", title.trim(), intro.trim(), list.trim())
-        } else {
-            filtered_answer
-        };
-
-        if filtered_answer.len() < 100 && attempt_count < 2 {
-            return Self::generate_detailed_summary_for_resource(
-                resource,
-                generator.clone(),
-                user_message.clone(),
-                agent.clone(),
-                max_tokens_in_prompt,
-                attempt_count + 1,
-            )
-            .await;
-        }
-
-        Ok(filtered_answer)
+        Ok(response.original_response_string.clone())
     }
 
     /// Validates that the message is relevant enough (from quick checking) to bother doing a wide amount of  embedding checking.

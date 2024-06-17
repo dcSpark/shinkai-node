@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::llm_provider::execution::prompts::prompts::{Prompt, SubPromptType};
+use crate::llm_provider::execution::prompts::prompts::Prompt;
+use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};
 
 use rocksdb::{IteratorMode, WriteBatch};
@@ -37,7 +38,11 @@ impl ShinkaiDB {
         let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
         let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
         let job_parent_providerid = format!("jobinbox_{}_agentid", job_id);
-        let job_parent_llm_provider_id_key = format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(&llm_provider_id), job_id); // needs to be 47 characters for prefix search to work
+        let job_parent_llm_provider_id_key = format!(
+            "jobinbox_agent_{}_{}",
+            Self::llm_provider_id_to_hash(&llm_provider_id),
+            job_id
+        ); // needs to be 47 characters for prefix search to work
         let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
         let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
         let all_jobs_time_keyed = format!("all_jobs_time_keyed_placeholder_to_fit_prefix__{}", current_time);
@@ -121,7 +126,11 @@ impl ShinkaiDB {
             Self::llm_provider_id_to_hash(&current_llm_provider_id),
             job_id
         );
-        let new_job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(new_agent_id), job_id);
+        let new_job_parent_agentid_key = format!(
+            "jobinbox_agent_{}_{}",
+            Self::llm_provider_id_to_hash(new_agent_id),
+            job_id
+        );
         let job_id_value = self
             .db
             .get_cf(cf_inbox, old_job_parent_agentid_key.as_bytes())?

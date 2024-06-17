@@ -46,11 +46,7 @@ impl JobManager {
         let response_json = JobManager::inference_agent_markdown(agent.clone(), image_prompt).await?;
         let mut new_execution_context = HashMap::new();
 
-        if let Ok(answer_str) = JobManager::direct_extract_key_inference_response(response_json.clone(), "answer") {
-            new_execution_context.insert("previous_step_response".to_string(), answer_str.clone());
-            Ok((answer_str, new_execution_context))
-        } else {
-            Err(LLMProviderError::InferenceFailed)
-        }
+        new_execution_context.insert("previous_step_response".to_string(), response_json.original_response_string.clone());
+        Ok((response_json.original_response_string.clone(), new_execution_context))
     }
 }

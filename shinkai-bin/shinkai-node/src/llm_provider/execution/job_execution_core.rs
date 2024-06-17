@@ -417,7 +417,7 @@ impl JobManager {
         full_job: Job,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
-        unstructured_api: UnstructuredAPI,
+        _unstructured_api: UnstructuredAPI,
     ) -> Result<bool, LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -449,83 +449,7 @@ impl JobManager {
                 );
 
                 let filename_lower = filename.to_lowercase();
-                // TODO: remove .jobkai support
-                if filename.ends_with(".jobkai") {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Found a .jobkai file: {}", filename),
-                    );
-
-                    let content_str = String::from_utf8(content.clone()).unwrap_or_default();
-                    let kai_file_result: Result<KaiJobFile, serde_json::Error> =
-                        KaiJobFile::from_json_str(&content_str);
-                    let kai_file = match kai_file_result {
-                        Ok(kai_file) => kai_file,
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                &format!("Error parsing KaiJobFile: {}", e),
-                            );
-                            return Err(LLMProviderError::LLMProviderNotFound);
-                        }
-                    };
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Debug,
-                        format!("KaiJobFile: {:?}", kai_file).as_str(),
-                    );
-                    match kai_file.schema {
-                        KaiSchemaType::CronJobRequest(cron_task_request) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Debug,
-                                format!("CronJobRequest: {:?}", cron_task_request).as_str(),
-                            );
-                            // Handle CronJobRequest
-                            JobManager::handle_cron_job_request(
-                                db.clone(),
-                                vector_fs.clone(),
-                                llm_provider_found.clone(),
-                                full_job.clone(),
-                                job_message.clone(),
-                                cron_task_request,
-                                profile.clone(),
-                                clone_signature_secret_key(&identity_secret_key),
-                            )
-                            .await?;
-                            return Ok(true);
-                        }
-                        KaiSchemaType::CronJob(cron_task) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Debug,
-                                format!("CronJob: {:?}", cron_task).as_str(),
-                            );
-                            // Handle CronJob
-                            JobManager::handle_cron_job(
-                                db.clone(),
-                                llm_provider_found.clone(),
-                                full_job.clone(),
-                                cron_task,
-                                profile.clone(),
-                                clone_signature_secret_key(&identity_secret_key),
-                                unstructured_api,
-                            )
-                            .await?;
-                            return Ok(true);
-                        }
-                        _ => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Error,
-                                "Unexpected schema type in KaiJobFile",
-                            );
-                            return Err(LLMProviderError::LLMProviderNotFound);
-                        }
-                    }
-                } else if filename_lower.ends_with(".png")
+                if filename_lower.ends_with(".png")
                     || filename_lower.ends_with(".jpg")
                     || filename_lower.ends_with(".jpeg")
                     || filename_lower.ends_with(".gif")

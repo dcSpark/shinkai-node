@@ -36,22 +36,7 @@ impl ParsingHelper {
                     continue; // Continue to the next iteration on error
                 }
             };
-            let (answer, _new_resp_markdown) =
-                match JobManager::advanced_extract_key_from_inference_response_with_new_response(
-                    agent.clone(),
-                    response_json,
-                    prompt.clone(),
-                    vec!["summary".to_string(), "answer".to_string()],
-                    1,
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_e) => {
-                        continue; // Continue to the next iteration on error
-                    }
-                };
-            extracted_answer = Some(answer.clone());
+            extracted_answer = Some(response_json.original_response_string);
             break; // Exit the loop if successful
         }
 

@@ -3,14 +3,15 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
-use super::shared::shared_model_logic::parse_markdown_to_json;
 use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, ShinkaiBackend};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, ShinkaiBackend,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
@@ -142,7 +143,8 @@ impl LLMService for ShinkaiBackend {
                         // TODO: refactor parsing logic so it's reusable
                         // If not an error, but actual response
                         if self.model_type().contains("vision") {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
+                            let data: OpenAIResponse =
+                                serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -156,26 +158,10 @@ impl LLMService for ShinkaiBackend {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            match parse_markdown_to_json(&response_string) {
-                                Ok(json) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Debug,
-                                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                                    );
-                                    Ok(LLMInferenceResponse::new(response_string, json))
-                                }
-                                Err(e) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                                    );
-                                    Err(e)
-                                }
-                            }
+                            return Ok(LLMInferenceResponse::new(response_string, json!({})));
                         } else {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
+                            let data: OpenAIResponse =
+                                serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -185,24 +171,7 @@ impl LLMService for ShinkaiBackend {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            match parse_markdown_to_json(&response_string) {
-                                Ok(json) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Debug,
-                                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                                    );
-                                    Ok(LLMInferenceResponse::new(response_string, json))
-                                }
-                                Err(e) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                                    );
-                                    Err(e)
-                                }
-                            }
+                            return Ok(LLMInferenceResponse::new(response_string, json!({})));
                         }
                     }
                     Err(e) => {

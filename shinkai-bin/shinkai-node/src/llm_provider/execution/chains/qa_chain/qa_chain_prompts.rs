@@ -1,5 +1,5 @@
-use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::llm_provider::job::JobStepResult;
+use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
+use crate::llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {
@@ -31,20 +31,14 @@ impl JobPromptGenerator {
         // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
         if !ret_nodes.is_empty() {
             prompt.add_content(
-                "Here is some extra context to answer any future user questions: --- start --- \n"
-                    .to_string(),
+                "Here is some extra context to answer any future user questions: --- start --- \n".to_string(),
                 SubPromptType::ExtraContext,
                 97,
             );
             for node in ret_nodes {
                 prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
             }
-            prompt.add_content(
-                "--- end ---"
-                    .to_string(),
-                SubPromptType::ExtraContext,
-                97,
-            );
+            prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
         }
 
         prompt.add_content(format!("{}\n Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n", user_message), SubPromptType::User, 100);
@@ -62,12 +56,15 @@ impl JobPromptGenerator {
         iteration_count: u64,
         max_characters_in_prompt: usize,
     ) -> Prompt {
-        eprintln!("qa_response_prompt_with_vector_search_final> Summary text: {:?}", summary_text);
+        eprintln!(
+            "qa_response_prompt_with_vector_search_final> Summary text: {:?}",
+            summary_text
+        );
         let mut prompt = Prompt::new();
         let ret_nodes_len = ret_nodes.len();
 
         add_setup_prompt(&mut prompt);
-        
+
         add_step_history_prompt(&mut prompt, job_step_history, ret_nodes_len);
 
         // if let Some(summary) = summary_text {
