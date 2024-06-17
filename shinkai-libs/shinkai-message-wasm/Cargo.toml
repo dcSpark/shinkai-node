@@ -57,8 +57,8 @@ name = "shinkai_message_builder_tests"
 path = "tests/shinkai_message_builder_tests.rs"
 
 [[test]]
-name = "serialized_agent_tests"
-path = "tests/serialized_agent_conversion_tests.rs"
+name = "serialized_llm_provider_tests"
+path = "tests/serialized_llm_provider_conversion_tests.rs"
 
 [[test]]
 name = "shinkai_jobs_tests"

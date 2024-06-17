@@ -1,4 +1,4 @@
-use crate::agent::queue::job_queue_manager::JobQueueManager;
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;

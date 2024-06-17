@@ -215,29 +215,6 @@ function addBorrowedObject(obj) {
     return stack_pointer;
 }
 /**
-* @param {string} input
-* @returns {string}
-*/
-export function calculate_blake3_hash(input) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.calculate_blake3_hash(retptr, ptr0, len0);
-        var r0 = getInt32Memory0()[retptr / 4 + 0];
-        var r1 = getInt32Memory0()[retptr / 4 + 1];
-        deferred2_0 = r0;
-        deferred2_1 = r1;
-        return getStringFromWasm0(r0, r1);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-}
-
-/**
 * @param {string} encryption_sk
 * @returns {string}
 */
@@ -265,6 +242,29 @@ export function convert_encryption_sk_string_to_encryption_pk_string(encryption_
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+* @param {string} input
+* @returns {string}
+*/
+export function calculate_blake3_hash(input) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(input, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.calculate_blake3_hash(retptr, ptr0, len0);
+        var r0 = getInt32Memory0()[retptr / 4 + 0];
+        var r1 = getInt32Memory0()[retptr / 4 + 1];
+        deferred2_0 = r0;
+        deferred2_1 = r1;
+        return getStringFromWasm0(r0, r1);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
 }
 
@@ -907,31 +907,31 @@ export class JobScopeWrapper {
     }
 }
 
-const SerializedAgentWrapperFinalization = (typeof FinalizationRegistry === 'undefined')
+const SerializedLLMProviderWrapperFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_serializedagentwrapper_free(ptr >>> 0));
+    : new FinalizationRegistry(ptr => wasm.__wbg_serializedllmproviderwrapper_free(ptr >>> 0));
 /**
 */
-export class SerializedAgentWrapper {
+export class SerializedLLMProviderWrapper {
 
     static __wrap(ptr) {
         ptr = ptr >>> 0;
-        const obj = Object.create(SerializedAgentWrapper.prototype);
+        const obj = Object.create(SerializedLLMProviderWrapper.prototype);
         obj.__wbg_ptr = ptr;
-        SerializedAgentWrapperFinalization.register(obj, obj.__wbg_ptr, obj);
+        SerializedLLMProviderWrapperFinalization.register(obj, obj.__wbg_ptr, obj);
         return obj;
     }
 
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        SerializedAgentWrapperFinalization.unregister(this);
+        SerializedLLMProviderWrapperFinalization.unregister(this);
         return ptr;
     }
 
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_serializedagentwrapper_free(ptr);
+        wasm.__wbg_serializedllmproviderwrapper_free(ptr);
     }
     /**
     * @param {any} serialized_agent_js
@@ -939,7 +939,7 @@ export class SerializedAgentWrapper {
     constructor(serialized_agent_js) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.serializedagentwrapper_fromJsValue(retptr, addBorrowedObject(serialized_agent_js));
+            wasm.serializedllmproviderwrapper_fromJsValue(retptr, addBorrowedObject(serialized_agent_js));
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -963,7 +963,7 @@ export class SerializedAgentWrapper {
     * @param {string} toolkit_permissions
     * @param {string} storage_bucket_permissions
     * @param {string} allowed_message_senders
-    * @returns {SerializedAgentWrapper}
+    * @returns {SerializedLLMProviderWrapper}
     */
     static fromStrings(id, full_identity_name, perform_locally, external_url, api_key, model, toolkit_permissions, storage_bucket_permissions, allowed_message_senders) {
         try {
@@ -986,14 +986,14 @@ export class SerializedAgentWrapper {
             const len7 = WASM_VECTOR_LEN;
             const ptr8 = passStringToWasm0(allowed_message_senders, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len8 = WASM_VECTOR_LEN;
-            wasm.serializedagentwrapper_fromStrings(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8);
+            wasm.serializedllmproviderwrapper_fromStrings(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             if (r2) {
                 throw takeObject(r1);
             }
-            return SerializedAgentWrapper.__wrap(r0);
+            return SerializedLLMProviderWrapper.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -1004,7 +1004,7 @@ export class SerializedAgentWrapper {
     to_jsvalue() {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.serializedagentwrapper_inner(retptr, this.__wbg_ptr);
+            wasm.serializedllmproviderwrapper_inner(retptr, this.__wbg_ptr);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -1018,19 +1018,19 @@ export class SerializedAgentWrapper {
     }
     /**
     * @param {any} j
-    * @returns {SerializedAgentWrapper}
+    * @returns {SerializedLLMProviderWrapper}
     */
     static fromJsValue(j) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.serializedagentwrapper_fromJsValue(retptr, addBorrowedObject(j));
+            wasm.serializedllmproviderwrapper_fromJsValue(retptr, addBorrowedObject(j));
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             if (r2) {
                 throw takeObject(r1);
             }
-            return SerializedAgentWrapper.__wrap(r0);
+            return SerializedLLMProviderWrapper.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
             heap[stack_pointer++] = undefined;
@@ -1044,7 +1044,7 @@ export class SerializedAgentWrapper {
         let deferred2_1;
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.serializedagentwrapper_to_json_str(retptr, this.__wbg_ptr);
+            wasm.serializedllmproviderwrapper_to_json_str(retptr, this.__wbg_ptr);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -1065,21 +1065,21 @@ export class SerializedAgentWrapper {
     }
     /**
     * @param {string} s
-    * @returns {SerializedAgentWrapper}
+    * @returns {SerializedLLMProviderWrapper}
     */
     static from_json_str(s) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             const ptr0 = passStringToWasm0(s, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
-            wasm.serializedagentwrapper_from_json_str(retptr, ptr0, len0);
+            wasm.serializedllmproviderwrapper_from_json_str(retptr, ptr0, len0);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
             if (r2) {
                 throw takeObject(r1);
             }
-            return SerializedAgentWrapper.__wrap(r0);
+            return SerializedLLMProviderWrapper.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -1090,7 +1090,7 @@ export class SerializedAgentWrapper {
     get inner() {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.serializedagentwrapper_inner(retptr, this.__wbg_ptr);
+            wasm.serializedllmproviderwrapper_inner(retptr, this.__wbg_ptr);
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];

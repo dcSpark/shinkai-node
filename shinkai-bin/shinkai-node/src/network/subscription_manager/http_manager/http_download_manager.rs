@@ -1,6 +1,6 @@
 use crate::db::Topic;
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::{agent::queue::job_queue_manager::JobQueueManager, db::ShinkaiDB};
+use crate::{llm_provider::queue::job_queue_manager::JobQueueManager, db::ShinkaiDB};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

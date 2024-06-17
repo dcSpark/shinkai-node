@@ -29,7 +29,7 @@ pub struct TestEnvironment {
     pub node1_identity_name: String,
     pub node1_profile_name: String,
     pub node1_device_name: String,
-    pub node1_agent: String,
+    pub node1_llm_provider: String,
     pub node1_commands_sender: Sender<NodeCommand>,
     pub node1_commands_receiver: Receiver<NodeCommand>,
     pub node1_identity_sk: SigningKey,
@@ -62,7 +62,7 @@ where
         let node1_identity_name = "@@node1_test.arb-sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node1_agent = "node1_gpt_agent";
+        let node1_llm_provider = "node1_gpt_agent";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -123,7 +123,7 @@ where
             node1_identity_name: node1_identity_name.to_string(),
             node1_profile_name: node1_profile_name.to_string(),
             node1_device_name: node1_device_name.to_string(),
-            node1_agent: node1_agent.to_string(),
+            node1_llm_provider: node1_llm_provider.to_string(),
             node1_commands_sender,
             node1_commands_receiver,
             node1_identity_sk,

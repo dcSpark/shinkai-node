@@ -1,20 +1,20 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_message_primitives::{schemas::{agents::serialized_agent::{AgentLLMInterface, SerializedAgent}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage};
+use shinkai_message_primitives::{schemas::{llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName}, shinkai_message::shinkai_message::ShinkaiMessage};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct AgentSubset {
+pub struct LLMProviderSubset {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub model: AgentLLMInterface,
+    pub model: LLMProviderInterface,
 }
 
-impl AgentSubset {
-    pub fn from_serialized_agent(serialized_agent: SerializedAgent) -> Self {
+impl LLMProviderSubset {
+    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider) -> Self {
         Self {
-            id: serialized_agent.id,
-            full_identity_name: serialized_agent.full_identity_name,
-            model: serialized_agent.model,
+            id: serialized_llm_provider.id,
+            full_identity_name: serialized_llm_provider.full_identity_name,
+            model: serialized_llm_provider.model,
         }
     }
 }
@@ -26,5 +26,5 @@ pub struct SmartInbox {
     pub last_message: Option<ShinkaiMessage>,
     pub is_finished: bool,
     pub job_scope: Option<Value>,
-    pub agent: Option<AgentSubset>,
+    pub agent: Option<LLMProviderSubset>,
 }

@@ -4,7 +4,7 @@ use aes_gcm::KeyInit;
 use chrono::TimeZone;
 use chrono::Utc;
 use ed25519_dalek::SigningKey;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -27,7 +27,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
-use super::utils::node_test_api::{api_agent_registration, api_initial_registration_with_no_code_for_device};
+use super::utils::node_test_api::{api_llm_provider_registration, api_initial_registration_with_no_code_for_device};
 use mockito::Server;
 
 #[allow(clippy::too_many_arguments)]
@@ -68,7 +68,7 @@ fn vector_fs_api_tests() {
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
-            let node1_agent = env.node1_agent.clone();
+            let node1_agent = env.node1_llm_provider.clone();
             let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
@@ -136,18 +136,18 @@ fn vector_fs_api_tests() {
                     model_type: "mixtral:8x7b-instruct-v0.1-q4_1".to_string(),
                 };
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
                     api_key: Some("".to_string()),
                     external_url: Some(server.url()),
-                    model: AgentLLMInterface::Ollama(ollama),
+                    model: LLMProviderInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
                 };
-                api_agent_registration(
+                api_llm_provider_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk,

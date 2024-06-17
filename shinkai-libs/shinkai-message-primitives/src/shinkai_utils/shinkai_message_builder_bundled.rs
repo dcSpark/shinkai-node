@@ -4,7 +4,7 @@ use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
@@ -169,7 +169,7 @@ impl ShinkaiMessageBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn job_message_from_agent(
+    pub fn job_message_from_llm_provider(
         job_id: String,
         content: String,
         files_inbox: String,
@@ -516,22 +516,22 @@ impl ShinkaiMessageBuilder {
 
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
-    pub fn request_add_agent(
+    pub fn request_add_llm_provider(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
-        agent: SerializedAgent,
+        llm_provider: SerializedLLMProvider,
         sender_subidentity: ShinkaiNameString,
         sender: ShinkaiNameString,
         receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let add_agent = APIAddAgentRequest { agent };
+        let add_llm_provider = APIAddAgentRequest { agent: llm_provider };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
             receiver_public_key,
-            add_agent,
+            add_llm_provider,
             sender_subidentity,
             sender,
             receiver,

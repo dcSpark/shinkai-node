@@ -747,12 +747,12 @@ pub async fn remove_agent_handler(
     .await
 }
 
-pub async fn available_agents_handler(
+pub async fn available_llm_providers_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     handle_node_command(node_commands_sender, message, |_, message, res_sender| {
-        NodeCommand::APIAvailableAgents {
+        NodeCommand::APIAvailableLLMProviders {
             msg: message,
             res: res_sender,
         }

@@ -1,5 +1,5 @@
 use crate::{
-    agent::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
+    llm_provider::error::LLMProviderError, db::db_errors::ShinkaiDBError, tools::error::ToolError,
     vector_fs::vector_fs_error::VectorFSError,
 };
 use shinkai_message_primitives::{
@@ -61,10 +61,10 @@ impl From<ShinkaiMessageError> for NodeError {
     }
 }
 
-impl From<AgentError> for NodeError {
-    fn from(error: AgentError) -> Self {
+impl From<LLMProviderError> for NodeError {
+    fn from(error: LLMProviderError) -> Self {
         NodeError {
-            message: format!("AgentError occurred: {}", error),
+            message: format!("LLMProviderError occurred: {}", error),
         }
     }
 }

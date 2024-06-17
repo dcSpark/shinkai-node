@@ -1,15 +1,15 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
-* @param {string} input
-* @returns {string}
-*/
-export function calculate_blake3_hash(input: string): string;
-/**
 * @param {string} encryption_sk
 * @returns {string}
 */
 export function convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: string): string;
+/**
+* @param {string} input
+* @returns {string}
+*/
+export function calculate_blake3_hash(input: string): string;
 /**
 */
 export class InboxNameWrapper {
@@ -155,7 +155,7 @@ export class JobScopeWrapper {
 }
 /**
 */
-export class SerializedAgentWrapper {
+export class SerializedLLMProviderWrapper {
   free(): void;
 /**
 * @param {any} serialized_agent_js
@@ -171,27 +171,27 @@ export class SerializedAgentWrapper {
 * @param {string} toolkit_permissions
 * @param {string} storage_bucket_permissions
 * @param {string} allowed_message_senders
-* @returns {SerializedAgentWrapper}
+* @returns {SerializedLLMProviderWrapper}
 */
-  static fromStrings(id: string, full_identity_name: string, perform_locally: string, external_url: string, api_key: string, model: string, toolkit_permissions: string, storage_bucket_permissions: string, allowed_message_senders: string): SerializedAgentWrapper;
+  static fromStrings(id: string, full_identity_name: string, perform_locally: string, external_url: string, api_key: string, model: string, toolkit_permissions: string, storage_bucket_permissions: string, allowed_message_senders: string): SerializedLLMProviderWrapper;
 /**
 * @returns {any}
 */
   to_jsvalue(): any;
 /**
 * @param {any} j
-* @returns {SerializedAgentWrapper}
+* @returns {SerializedLLMProviderWrapper}
 */
-  static fromJsValue(j: any): SerializedAgentWrapper;
+  static fromJsValue(j: any): SerializedLLMProviderWrapper;
 /**
 * @returns {string}
 */
   to_json_str(): string;
 /**
 * @param {string} s
-* @returns {SerializedAgentWrapper}
+* @returns {SerializedLLMProviderWrapper}
 */
-  static from_json_str(s: string): SerializedAgentWrapper;
+  static from_json_str(s: string): SerializedLLMProviderWrapper;
 /**
 */
   readonly inner: any;

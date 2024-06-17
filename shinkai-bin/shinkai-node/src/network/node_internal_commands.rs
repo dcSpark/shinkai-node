@@ -1,6 +1,6 @@
 use super::node::ProxyConnectionInfo;
 use super::{node_error::NodeError, Node};
-use crate::agent::job_manager::JobManager;
+use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
@@ -22,7 +22,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFol
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::{AgentLLMInterface, Ollama, SerializedAgent},
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
     },
@@ -297,7 +297,7 @@ impl Node {
                     return;
                 }
             },
-            Identity::Agent(_) => {
+            Identity::LLMProvider(_) => {
                 let _ = res.send(false).await;
                 return;
             }
@@ -349,11 +349,11 @@ impl Node {
         }
     }
 
-    pub async fn internal_get_agents_for_profile(
+    pub async fn internal_get_llm_providers_for_profile(
         db: Arc<ShinkaiDB>,
         node_name: String,
         profile: String,
-    ) -> Result<Vec<SerializedAgent>, NodeError> {
+    ) -> Result<Vec<SerializedLLMProvider>, NodeError> {
         let profile_name = match ShinkaiName::from_node_and_profile_names(node_name, profile) {
             Ok(profile_name) => profile_name,
             Err(e) => {
@@ -363,11 +363,11 @@ impl Node {
             }
         };
 
-        let result = match db.get_agents_for_profile(profile_name) {
-            Ok(agents) => agents,
+        let result = match db.get_llm_providers_for_profile(profile_name) {
+            Ok(llm_providers) => llm_providers,
             Err(e) => {
                 return Err(NodeError {
-                    message: format!("Failed to get agents for profile: {}", e),
+                    message: format!("Failed to get llm providers for profile: {}", e),
                 })
             }
         };
@@ -388,18 +388,18 @@ impl Node {
         }
     }
 
-    pub async fn internal_add_agent(
+    pub async fn internal_add_llm_provider(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
-        agent: SerializedAgent,
+        llm_provider: SerializedLLMProvider,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
-        match db.add_agent(agent.clone(), profile) {
+        match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
-                match subidentity_manager.add_agent_subidentity(agent.clone()).await {
+                match subidentity_manager.add_llm_provider_subidentity(llm_provider.clone()).await {
                     Ok(_) => {
                         drop(subidentity_manager);
 
@@ -438,7 +438,7 @@ impl Node {
 
                             let mut job_manager_locked = job_manager.lock().await;
                             let job_id = match job_manager_locked
-                                .process_job_creation(job_creation, profile, &agent.id.clone())
+                                .process_job_creation(job_creation, profile, &llm_provider.id.clone())
                                 .await
                             {
                                 Ok(job_id) => job_id,
@@ -470,7 +470,7 @@ impl Node {
                                 // Add Two Message from "Agent"
                                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
-                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
                                     WELCOME_MESSAGE.to_string(),
                                     "".to_string(),
@@ -504,7 +504,7 @@ impl Node {
         agent_id: String,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
-        match db.remove_agent(&agent_id, profile) {
+        match db.remove_llm_provider(&agent_id, profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager.remove_agent_subidentity(&agent_id).await {
@@ -632,7 +632,7 @@ impl Node {
             }
         }
 
-        let agents: Vec<SerializedAgent> = input_models
+        let llm_providers: Vec<SerializedLLMProvider> = input_models
             .iter()
             .map(|model| {
                 // Replace non-alphanumeric characters with underscores for full_identity_name
@@ -648,7 +648,7 @@ impl Node {
                     model_data["port_used"].as_str().unwrap_or("11434")
                 );
 
-                SerializedAgent {
+                SerializedLLMProvider {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",
@@ -658,7 +658,7 @@ impl Node {
                     perform_locally: false,
                     external_url: Some(external_url.to_string()),
                     api_key: Some("".to_string()),
-                    model: AgentLLMInterface::Ollama(Ollama {
+                    model: LLMProviderInterface::Ollama(Ollama {
                         model_type: model.clone(),
                     }),
                     toolkit_permissions: vec![],
@@ -669,9 +669,9 @@ impl Node {
             .collect();
 
         // Iterate over each agent and add it using internal_add_agent
-        for agent in agents {
+        for agent in llm_providers {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            Self::internal_add_agent(
+            Self::internal_add_llm_provider(
                 db.clone(),
                 identity_manager.clone(),
                 job_manager.clone(),

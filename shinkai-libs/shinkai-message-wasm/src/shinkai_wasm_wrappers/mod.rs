@@ -4,7 +4,7 @@ pub mod shinkai_message_builder_wrapper_subscription;
 pub mod shinkai_message_wrapper;
 pub mod shinkai_name_wrapper;
 pub mod inbox_name_wrapper;
-pub mod serialized_agent_wrapper;
+pub mod serialized_llm_provider_wrapper;
 pub mod shinkai_job_wrapper;
 pub mod shinkai_wasm_error;
 pub mod wasm_shinkai_message;

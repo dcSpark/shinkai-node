@@ -1,5 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -104,13 +104,13 @@ fn workflow_integration_test() {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
-        let agent = SerializedAgent {
+        let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec![],
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],
@@ -364,13 +364,13 @@ fn workflow_complex_integration_test() {
 
         let openai_api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
 
-        let agent = SerializedAgent {
+        let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: Some(openai_api_key),
-            model: AgentLLMInterface::OpenAI(open_ai),
+            model: LLMProviderInterface::OpenAI(open_ai),
             toolkit_permissions: vec![],
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],

@@ -100,19 +100,19 @@ pub async fn local_registration_profile_node(
             "Node has the right subidentity"
         );
 
-        // use GetAllSubidentitiesDevicesAndAgents to check if the subidentity is registered
+        // use GetAllSubidentitiesDevicesAndLLMProviders to check if the subidentity is registered
         #[allow(clippy::type_complexity)]
-        let (res_all_subidentities_devices_and_agents_sender, res_all_subidentities_devices_and_agents_receiver): (
+        let (res_all_subidentities_devices_and_llm_providers_sender, res_all_subidentities_devices_and_llm_providers_receiver): (
             async_channel::Sender<Result<Vec<Identity>, APIError>>,
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
-                res_all_subidentities_devices_and_agents_sender,
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(
+                res_all_subidentities_devices_and_llm_providers_sender,
             ))
             .await
             .unwrap();
-        let node2_all_subidentities_devices_and_agents = res_all_subidentities_devices_and_agents_receiver
+        let node2_all_subidentities_devices_and_llm_providers = res_all_subidentities_devices_and_llm_providers_receiver
             .recv()
             .await
             .unwrap()
@@ -121,7 +121,7 @@ pub async fn local_registration_profile_node(
         eprintln!(
             "{} subidentity: {:?}",
             node_profile_name,
-            node2_all_subidentities_devices_and_agents[0].get_full_identity_name()
+            node2_all_subidentities_devices_and_llm_providers[0].get_full_identity_name()
         );
     }
 }

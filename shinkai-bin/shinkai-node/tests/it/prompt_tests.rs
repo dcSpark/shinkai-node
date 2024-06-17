@@ -4,18 +4,18 @@ mod tests {
 
     use super::*;
     use reqwest::Client;
-    use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, GenericAPI, OpenAI};
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_default_tracing;
-    use shinkai_node::agent::execution::prompts::prompts::Prompt;
-    use shinkai_node::agent::providers::LLMProvider;
-    use shinkai_node::agent::{
+    use shinkai_node::llm_provider::execution::prompts::prompts::Prompt;
+    use shinkai_node::llm_provider::providers::LLMService;
+    use shinkai_node::llm_provider::{
         execution::prompts::prompts::{JobPromptGenerator, SubPrompt, SubPromptType},
         job_manager::JobManager,
         parsing_helper::ParsingHelper,
     };
     use tokio;
 
-    fn setup_vars() -> Result<(AgentLLMInterface, Client, Option<String>, Option<String>), &'static str> {
+    fn setup_vars() -> Result<(LLMProviderInterface, Client, Option<String>, Option<String>), &'static str> {
         // Extract from ENV with fallback to default values
         let model_type =
             env::var("INITIAL_AGENT_MODEL").unwrap_or_else(|_| "togethercomputer/llama-2-70b-chat".to_string());
@@ -29,10 +29,10 @@ mod tests {
         // Determine the provider type from ENV or default to GenericAPI
         let provider_type = env::var("INITIAL_TEST_LLM_PROVIDER").unwrap_or_else(|_| "genericapi".to_string());
 
-        // Create an instance of AgentLLMInterface based on the provider type
+        // Create an instance of LLMProviderInterface based on the provider type
         let provider = match provider_type.as_str() {
-            "openai" => AgentLLMInterface::OpenAI(OpenAI { model_type }),
-            _ => AgentLLMInterface::GenericAPI(GenericAPI { model_type }),
+            "openai" => LLMProviderInterface::OpenAI(OpenAI { model_type }),
+            _ => LLMProviderInterface::GenericAPI(GenericAPI { model_type }),
         };
 
         let url = env::var("INITIAL_AGENT_URL")
@@ -118,7 +118,7 @@ mod tests {
     }
 
     async fn test_call_api(
-        provider: AgentLLMInterface,
+        provider: LLMProviderInterface,
         client: &Client,
         url: Option<&String>,
         api_key: Option<&String>,
@@ -126,12 +126,12 @@ mod tests {
     ) {
         for _ in 0..3 {
             let result = match &provider {
-                AgentLLMInterface::OpenAI(openai) => {
+                LLMProviderInterface::OpenAI(openai) => {
                     openai
                         .call_api(client, url, api_key, prompt.clone(), provider.clone())
                         .await
                 }
-                AgentLLMInterface::GenericAPI(genericapi) => {
+                LLMProviderInterface::GenericAPI(genericapi) => {
                     genericapi
                         .call_api(client, url, api_key, prompt.clone(), provider.clone())
                         .await

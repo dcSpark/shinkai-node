@@ -106,7 +106,7 @@ impl KaiJobFileManager {
                                 "".to_string(),
                                 url,
                                 cron_task_response.cron_task_request.crawl_links, // Note(Nico): maybe we should update this depending on the PDDL plan?
-                                kai_file.agent_id,
+                                kai_file.llm_provider_id,
                             )
                             .await;
                     }

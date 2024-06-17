@@ -6,11 +6,11 @@ use super::node_api_handlers::APIUseRegistrationCodeSuccessResponse;
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
-use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::{IdentityManager};
+use crate::llm_provider::job_manager::JobManager;
+use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
@@ -28,7 +28,7 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde_json::Value;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::shinkai_subscription::{ShinkaiSubscription, SubscriptionId};
@@ -100,7 +100,7 @@ pub enum NodeCommand {
     APIGetAllSubidentities {
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
     },
-    GetAllSubidentitiesDevicesAndAgents(Sender<Result<Vec<Identity>, APIError>>),
+    GetAllSubidentitiesDevicesAndLLMProviders(Sender<Result<Vec<Identity>, APIError>>),
     APIGetAllInboxesForProfile {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
@@ -233,7 +233,7 @@ pub enum NodeCommand {
         res: Sender<Result<String, APIError>>,
     },
     AddAgent {
-        agent: SerializedAgent,
+        agent: SerializedLLMProvider,
         profile: ShinkaiName,
         res: Sender<String>,
     },
@@ -241,9 +241,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
-    APIAvailableAgents {
+    APIAvailableLLMProviders {
         msg: ShinkaiMessage,
-        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
     },
     APIRemoveAgent {
         msg: ShinkaiMessage,
@@ -253,9 +253,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
-    AvailableAgents {
+    AvailableLLMProviders {
         full_profile_name: String,
-        res: Sender<Result<Vec<SerializedAgent>, String>>,
+        res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
     },
     APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
@@ -453,7 +453,7 @@ pub struct Node {
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
-    pub initial_agents: Vec<SerializedAgent>,
+    pub initial_llm_providers: Vec<SerializedLLMProvider>,
     // The Job manager
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
@@ -495,7 +495,7 @@ impl Node {
         secrets_file_path: String,
         proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
-        initial_agents: Vec<SerializedAgent>,
+        initial_llm_providers: Vec<SerializedLLMProvider>,
         js_toolkit_executor_remote: Option<String>,
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
@@ -650,7 +650,7 @@ impl Node {
             job_manager: None,
             cron_manager: None,
             first_device_needs_registration_code,
-            initial_agents,
+            initial_llm_providers,
             js_toolkit_executor_remote,
             vector_fs: vector_fs_arc.clone(),
             embedding_generator,
@@ -862,10 +862,10 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        NodeCommand::GetAllSubidentitiesDevicesAndAgents(res) => {
+                                        NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(res) => {
                                             let identity_manager_clone = Arc::clone(&self.identity_manager);
                                             tokio::spawn(async move {
-                                                let _ = Node::local_get_all_subidentities_devices_and_agents(
+                                                let _ = Node::local_get_all_subidentities_devices_and_llm_providers(
                                                     identity_manager_clone,
                                                     res,
                                                 ).await;
@@ -989,7 +989,7 @@ impl Node {
                                             let db_clone = self.db.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             tokio::spawn(async move {
-                                                let _ = Node::local_add_agent(
+                                                let _ = Node::local_add_llm_provider(
                                                     db_clone,
                                                     identity_manager_clone,
                                                     job_manager_clone,
@@ -1000,11 +1000,11 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        NodeCommand::AvailableAgents { full_profile_name, res } => {
+                                        NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
                                             let db_clone = self.db.clone();
                                             let node_name_clone = self.node_name.clone();
                                             tokio::spawn(async move {
-                                                let _ = Node::local_available_agents(
+                                                let _ = Node::local_available_llm_providers(
                                                     db_clone,
                                                     &node_name_clone,
                                                     full_profile_name,
@@ -1063,7 +1063,7 @@ impl Node {
                                             let encryption_public_key_clone = self.encryption_public_key;
                                             let identity_public_key_clone = self.identity_public_key;
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
-                                            let initial_agents_clone = self.initial_agents.clone();
+                                            let initial_llm_providers_clone = self.initial_llm_providers.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
@@ -1078,7 +1078,7 @@ impl Node {
                                                     encryption_public_key_clone,
                                                     identity_public_key_clone,
                                                     identity_secret_key_clone,
-                                                    initial_agents_clone,
+                                                    initial_llm_providers_clone,
                                                     msg,
                                                     res,
                                                 ).await;
@@ -1266,14 +1266,14 @@ impl Node {
                                                 ).await;
                                             });
                                         },
-                                        // NodeCommand::APIAvailableAgents { msg, res } => self.api_available_agents(msg, res).await,
-                                        NodeCommand::APIAvailableAgents { msg, res } => {
+                                        // NodeCommand::APIAvailableLLMProviders { msg, res } => self.api_available_llm_providers(msg, res).await,
+                                        NodeCommand::APIAvailableLLMProviders { msg, res } => {
                                             let db_clone = Arc::clone(&self.db);
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             tokio::spawn(async move {
-                                                let _ = Node::api_available_agents(
+                                                let _ = Node::api_available_llm_providers(
                                                     db_clone,
                                                     node_name_clone,
                                                     identity_manager_clone,
@@ -2801,7 +2801,8 @@ impl Node {
         let res = {
             let mut reader = reader.lock().await;
             reader.read_exact(&mut buffer).await
-        }; match res {
+        };
+        match res {
             Ok(_) => {
                 let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
 

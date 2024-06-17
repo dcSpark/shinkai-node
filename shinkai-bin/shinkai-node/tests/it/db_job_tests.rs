@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::agent::execution::prompts::prompts::SubPromptType::{Assistant, User};
+use shinkai_node::llm_provider::execution::prompts::prompts::SubPromptType::{Assistant, User};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
 use tokio::time::{sleep, Duration};
@@ -73,7 +73,7 @@ mod tests {
             signatures::unsafe_deterministic_signature_keypair,
         },
     };
-    use shinkai_node::{agent::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
+    use shinkai_node::{llm_provider::execution::prompts::prompts::SubPrompt, db::db_errors::ShinkaiDBError};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
@@ -101,7 +101,7 @@ mod tests {
         // Check that the job has the correct properties
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
-        assert_eq!(job.parent_agent_id, agent_id);
+        assert_eq!(job.parent_llm_provider_id, agent_id);
         assert!(!job.is_finished);
     }
 
@@ -131,7 +131,7 @@ mod tests {
 
         // Additional check that all jobs have correct agent_id
         for job in jobs {
-            assert_eq!(job.parent_agent_id(), &agent_id);
+            assert_eq!(job.parent_llm_provider_id(), &agent_id);
         }
     }
 
@@ -150,11 +150,11 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), initial_agent_id.clone(), scope);
 
         // Change the agent of the job
-        shinkai_db.change_job_agent(&job_id, &new_agent_id).unwrap();
+        shinkai_db.change_job_llm_provider(&job_id, &new_agent_id).unwrap();
 
         // Retrieve the job and check that the agent has been updated
         let job = shinkai_db.get_job(&job_id).unwrap();
-        assert_eq!(job.parent_agent_id, new_agent_id);
+        assert_eq!(job.parent_llm_provider_id, new_agent_id);
 
         // Check that the job is listed under the new agent
         let new_agent_jobs = shinkai_db.get_agent_jobs(new_agent_id.clone()).unwrap();
@@ -350,7 +350,7 @@ mod tests {
         assert!(shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
-        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             "something".to_string(),
             "".to_string(),
@@ -395,7 +395,7 @@ mod tests {
             └── 3
          */
         for i in 1..=4 {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),
@@ -492,7 +492,7 @@ mod tests {
         let mut current_level = 0;
         let mut results = Vec::new();
         for i in 1..=4 {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),
@@ -805,7 +805,7 @@ mod tests {
         // Create the messages
         let mut messages = Vec::new();
         for i in [1, 3, 2].iter() {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
                 "".to_string(),

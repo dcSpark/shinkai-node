@@ -15,8 +15,8 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
-use shinkai_node::agent::job_manager::JobManager;
-use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
+use shinkai_node::llm_provider::job_manager::JobManager;
+use shinkai_node::llm_provider::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::{ShinkaiDB, Topic};
 use shinkai_node::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;

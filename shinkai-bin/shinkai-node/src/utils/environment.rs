@@ -2,7 +2,7 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, SerializedAgent};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone)]
@@ -33,8 +33,9 @@ pub struct StaticServerEnvironment {
     pub folder_path: String,
 }
 
-pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
+pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvider> {
     let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_NAMES"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .filter(|s| !s.is_empty())
@@ -42,29 +43,32 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
         .collect();
 
     let initial_agent_api_keys: Vec<String> = env::var("INITIAL_AGENT_API_KEYS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_API_KEYS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
     let initial_agent_urls: Vec<String> = env::var("INITIAL_AGENT_URLS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_URLS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
     let initial_agent_models: Vec<String> = env::var("INITIAL_AGENT_MODELS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_MODELS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
-    let mut agents = Vec::new();
+    let mut llm_providers = Vec::new();
 
     for i in 0..initial_agent_names.len() {
-        let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_models[i]);
+        let model: Result<LLMProviderInterface, _> = LLMProviderInterface::from_str(&initial_agent_models[i]);
 
-        let agent = SerializedAgent {
+        let agent = SerializedLLMProvider {
             id: initial_agent_names[i].clone(),
             full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_names[i]))
                 .unwrap(),
@@ -77,10 +81,10 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
             allowed_message_senders: vec![],
         };
 
-        agents.push(agent);
+        llm_providers.push(agent);
     }
 
-    agents
+    llm_providers
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {

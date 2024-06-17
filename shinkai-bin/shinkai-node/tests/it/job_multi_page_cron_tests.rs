@@ -1,8 +1,8 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, OpenAI, SerializedAgent,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -25,7 +25,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
+    api_llm_provider_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
@@ -39,7 +39,7 @@ fn job_from_cron_multi_page() {
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
-            let node1_agent = env.node1_agent.clone();
+            let node1_agent = env.node1_llm_provider.clone();
             let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
@@ -117,7 +117,7 @@ fn job_from_cron_multi_page() {
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
@@ -126,13 +126,13 @@ fn job_from_cron_multi_page() {
                     // external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
-                    // model: AgentLLMInterface::GenericAPI(generic_api),
+                    model: LLMProviderInterface::OpenAI(open_ai),
+                    // model: LLMProviderInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
                 };
-                api_agent_registration(
+                api_llm_provider_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk,
@@ -194,13 +194,13 @@ fn job_from_cron_multi_page() {
                     url: "https://news.ycombinator.com".to_string(),
                     crawl_links: true,
                     created_at: "2021-08-01T00:00:00Z".to_string(),
-                    agent_id: agent_subidentity.clone(),
+                    llm_provider_id: agent_subidentity.clone(),
                 };
 
                 let data = KaiJobFile {
                     schema: KaiSchemaType::CronJob(cron_task),
                     shinkai_profile: None,
-                    agent_id: agent_subidentity.clone(),
+                    llm_provider_id: agent_subidentity.clone(),
                 };
 
                 // Read the file into a buffer
