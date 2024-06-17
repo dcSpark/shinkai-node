@@ -189,10 +189,10 @@ impl JobManager {
     /// Inferences the Agent's LLM with the given markdown prompt. Automatically validates the response is
     /// a valid markdown, and processes it into a json.
     pub async fn inference_agent_markdown(
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         filled_prompt: Prompt,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
-        let agent_cloned = agent.clone();
+        let agent_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
@@ -225,8 +225,8 @@ impl JobManager {
         let mut agent_found = None;
         let mut profile_name = String::new();
         let mut user_profile: Option<ShinkaiName> = None;
-        let agents = JobManager::get_all_agents(db).await.unwrap_or(vec![]);
-        for agent in agents {
+        let llm_providers = JobManager::get_all_llm_providers(db).await.unwrap_or(vec![]);
+        for agent in llm_providers {
             if agent.id == agent_id {
                 agent_found = Some(agent.clone());
                 profile_name.clone_from(&agent.full_identity_name.full_name);
@@ -238,8 +238,8 @@ impl JobManager {
         Ok((full_job, agent_found, profile_name, user_profile))
     }
 
-    pub async fn get_all_agents(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
-        db.get_all_agents()
+    pub async fn get_all_llm_providers(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
+        db.get_all_llm_providers()
     }
 
     /// Converts the values of the inference response json, into strings to work nicely with

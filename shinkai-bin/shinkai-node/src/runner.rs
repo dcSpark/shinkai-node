@@ -109,7 +109,7 @@ pub async fn initialize_node() -> Result<
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string()));
 
     // Initialization, creating Tokio runtime and fetching needed startup data
-    let initial_agents = fetch_agent_env(global_identity_name.clone());
+    let initial_llm_providers = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key);
@@ -145,7 +145,7 @@ pub async fn initialize_node() -> Result<
     shinkai_log(
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
-        format!("Initial Agent: {:?}", initial_agents).as_str(),
+        format!("Initial Agent: {:?}", initial_llm_providers).as_str(),
     );
 
     // CLI check
@@ -183,7 +183,7 @@ pub async fn initialize_node() -> Result<
         secrets_file_path.clone(),
         node_env.proxy_identity.clone(),
         node_env.first_device_needs_registration_code,
-        initial_agents,
+        initial_llm_providers,
         node_env.js_toolkit_executor_remote.clone(),
         vector_fs_db_path.clone(),
         Some(embedding_generator),

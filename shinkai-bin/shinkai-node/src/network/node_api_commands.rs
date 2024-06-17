@@ -943,7 +943,7 @@ impl Node {
                                     std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
                                     for agent in &initial_agents {
-                                        Self::internal_add_agent(
+                                        Self::internal_add_llm_provider(
                                             db.clone(),
                                             identity_manager.clone(),
                                             job_manager.clone(),
@@ -1887,7 +1887,7 @@ impl Node {
         }
     }
 
-    pub async fn api_available_agents(
+    pub async fn api_available_llm_providers(
         db: Arc<ShinkaiDB>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1917,7 +1917,7 @@ impl Node {
                 message: "Profile name not found".to_string(),
             })?;
 
-        match Self::internal_get_agents_for_profile(db.clone(), node_name.clone().node_name, profile).await {
+        match Self::internal_get_llm_providers_for_profile(db.clone(), node_name.clone().node_name, profile).await {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }
@@ -2147,9 +2147,9 @@ impl Node {
             }
         };
 
-        let serialized_agent_result = serde_json::from_str::<APIAddAgentRequest>(&serialized_agent_string);
+        let serialized_llm_provider_result = serde_json::from_str::<APIAddAgentRequest>(&serialized_agent_string);
 
-        let serialized_agent = match serialized_agent_result {
+        let serialized_agent = match serialized_llm_provider_result {
             Ok(agent) => agent,
             Err(e) => {
                 let api_error = APIError {
@@ -2180,7 +2180,7 @@ impl Node {
             }
         };
 
-        match Self::internal_add_agent(
+        match Self::internal_add_llm_provider(
             db.clone(),
             identity_manager.clone(),
             job_manager.clone(),
@@ -2262,7 +2262,7 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match db.remove_agent(&agent_id, &profile) {
+        match db.remove_llm_provider(&agent_id, &profile) {
             Ok(_) => match identity_manager.remove_agent_subidentity(&agent_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
@@ -2315,7 +2315,7 @@ impl Node {
         };
 
         // Check if the profile has access to modify the agent
-        let profiles_with_access = match db.get_agent_profiles_with_access(&input_payload.id, &requester_name) {
+        let profiles_with_access = match db.get_llm_provider_profiles_with_access(&input_payload.id, &requester_name) {
             Ok(access_list) => access_list,
             Err(err) => {
                 let api_error = APIError {
@@ -2339,7 +2339,7 @@ impl Node {
             Ok(())
         } else {
             // Modify agent based on the input_payload
-            match db.update_agent(input_payload.clone(), &requester_name) {
+            match db.update_llm_provider(input_payload.clone(), &requester_name) {
                 Ok(_) => {
                     let mut identity_manager = identity_manager.lock().await;
                     match identity_manager.modify_agent_subidentity(input_payload).await {

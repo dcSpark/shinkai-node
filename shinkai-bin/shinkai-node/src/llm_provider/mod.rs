@@ -1,6 +1,6 @@
 #[allow(clippy::module_inception)]
 pub mod llm_provider;
-pub mod agent_to_serialization;
+pub mod llm_provider_to_serialization;
 pub mod error;
 pub mod execution;
 pub mod job;

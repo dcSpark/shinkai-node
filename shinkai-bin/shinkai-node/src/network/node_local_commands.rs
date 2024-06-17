@@ -117,7 +117,7 @@ impl Node {
         res: Sender<Result<Vec<Identity>, APIError>>,
     ) {
         let identity_manager = identity_manager.lock().await;
-        let result = identity_manager.get_all_subidentities_devices_and_agents();
+        let result = identity_manager.get_all_subidentities_devices_and_llm_providers();
 
         if let Err(e) = res.send(Ok(result)).await {
             error!("Failed to send result: {}", e);
@@ -164,7 +164,7 @@ impl Node {
                     .await;
                 return;
             }
-            Identity::Agent(_) => {
+            Identity::LLMProvider(_) => {
                 let _ = res
                     .send("Agent identities cannot have inbox permissions".to_string())
                     .await;
@@ -215,7 +215,7 @@ impl Node {
                     return;
                 }
             },
-            Identity::Agent(_) => {
+            Identity::LLMProvider(_) => {
                 let _ = res
                     .send("Agent identities cannot have inbox permissions".to_string())
                     .await;
@@ -298,7 +298,7 @@ impl Node {
         };
     }
 
-    pub async fn local_add_agent(
+    pub async fn local_add_llm_provider(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -308,7 +308,7 @@ impl Node {
         res: Sender<String>,
     ) {
         let result =
-            Self::internal_add_agent(db, identity_manager, job_manager, identity_secret_key, agent, profile).await;
+            Self::internal_add_llm_provider(db, identity_manager, job_manager, identity_secret_key, agent, profile).await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -316,13 +316,13 @@ impl Node {
         let _ = res.send(result_str).await;
     }
 
-    pub async fn local_available_agents(
+    pub async fn local_available_llm_providers(
         db: Arc<ShinkaiDB>,
         node_name: &ShinkaiName,
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
     ) {
-        match Self::internal_get_agents_for_profile(db, node_name.clone().node_name, full_profile_name).await {
+        match Self::internal_get_llm_providers_for_profile(db, node_name.clone().node_name, full_profile_name).await {
             Ok(agents) => {
                 let _ = res.send(Ok(agents)).await;
             }

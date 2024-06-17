@@ -1,15 +1,10 @@
-use std::{
-    cmp::Ordering,
-    collections::{HashMap},
-};
+use std::{cmp::Ordering, collections::HashMap};
 
 use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
-};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CronTask {
@@ -20,7 +15,7 @@ pub struct CronTask {
     pub url: String,
     pub crawl_links: bool,
     pub created_at: String,
-    pub agent_id: String,
+    pub llm_provider_id: String,
 }
 
 impl PartialOrd for CronTask {
@@ -137,7 +132,7 @@ impl ShinkaiDB {
             url: String::new(),
             crawl_links: false,
             created_at: String::new(),
-            agent_id: String::new(),
+            llm_provider_id: String::new(),
         };
 
         for (attribute, value) in attributes {
@@ -169,7 +164,7 @@ impl ShinkaiDB {
                         .map_err(|_| ShinkaiDBError::InvalidAttributeName("Invalid UTF-8 for created_at".to_string()))?
                 }
                 "agent_id" => {
-                    cron_task.agent_id = String::from_utf8(value)
+                    cron_task.llm_provider_id = String::from_utf8(value)
                         .map_err(|_| ShinkaiDBError::InvalidAttributeName("Invalid UTF-8 for agent_id".to_string()))?
                 }
                 _ => return Err(ShinkaiDBError::InvalidAttributeName(attribute)),

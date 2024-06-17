@@ -35,7 +35,7 @@ fn setup() {
 }
 
 #[test]
-fn node_agent_registration() {
+fn node_llm_provider_registration() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     init_default_tracing();
     // WIP: need to find a way to test the agent registration
@@ -112,7 +112,7 @@ fn node_agent_registration() {
 
         let _shinkai_backend = ShinkaiBackend::new("gpt-4-1106-preview");
 
-        let agent = SerializedLLMProvider {
+        let llm_provider = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
@@ -144,7 +144,7 @@ fn node_agent_registration() {
             "".to_string(),
             None,
             true,
-            vec![agent],
+            vec![llm_provider],
             None,
             node1_fs_db_path,
             None,

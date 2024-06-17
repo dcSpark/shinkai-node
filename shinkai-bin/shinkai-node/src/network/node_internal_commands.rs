@@ -297,7 +297,7 @@ impl Node {
                     return;
                 }
             },
-            Identity::Agent(_) => {
+            Identity::LLMProvider(_) => {
                 let _ = res.send(false).await;
                 return;
             }
@@ -349,7 +349,7 @@ impl Node {
         }
     }
 
-    pub async fn internal_get_agents_for_profile(
+    pub async fn internal_get_llm_providers_for_profile(
         db: Arc<ShinkaiDB>,
         node_name: String,
         profile: String,
@@ -363,8 +363,8 @@ impl Node {
             }
         };
 
-        let result = match db.get_agents_for_profile(profile_name) {
-            Ok(agents) => agents,
+        let result = match db.get_llm_providers_for_profile(profile_name) {
+            Ok(llm_providers) => llm_providers,
             Err(e) => {
                 return Err(NodeError {
                     message: format!("Failed to get agents for profile: {}", e),
@@ -388,18 +388,18 @@ impl Node {
         }
     }
 
-    pub async fn internal_add_agent(
+    pub async fn internal_add_llm_provider(
         db: Arc<ShinkaiDB>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
-        match db.add_agent(agent.clone(), profile) {
+        match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
-                match subidentity_manager.add_agent_subidentity(agent.clone()).await {
+                match subidentity_manager.add_llm_provider_subidentity(llm_provider.clone()).await {
                     Ok(_) => {
                         drop(subidentity_manager);
 
@@ -438,7 +438,7 @@ impl Node {
 
                             let mut job_manager_locked = job_manager.lock().await;
                             let job_id = match job_manager_locked
-                                .process_job_creation(job_creation, profile, &agent.id.clone())
+                                .process_job_creation(job_creation, profile, &llm_provider.id.clone())
                                 .await
                             {
                                 Ok(job_id) => job_id,
@@ -504,7 +504,7 @@ impl Node {
         agent_id: String,
         profile: &ShinkaiName,
     ) -> Result<(), NodeError> {
-        match db.remove_agent(&agent_id, profile) {
+        match db.remove_llm_provider(&agent_id, profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
                 match subidentity_manager.remove_agent_subidentity(&agent_id).await {
@@ -671,7 +671,7 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in agents {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            Self::internal_add_agent(
+            Self::internal_add_llm_provider(
                 db.clone(),
                 identity_manager.clone(),
                 job_manager.clone(),

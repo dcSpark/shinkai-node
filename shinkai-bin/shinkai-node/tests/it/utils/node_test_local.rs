@@ -107,7 +107,7 @@ pub async fn local_registration_profile_node(
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(
                 res_all_subidentities_devices_and_agents_sender,
             ))
             .await

@@ -11,14 +11,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
 use std::{fmt, net::SocketAddr};
-use x25519_dalek::{PublicKey as EncryptionPublicKey};
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IdentityType {
     Global,
     Device,
-    Agent,
+    LLMProvider,
     Profile,
 }
 
@@ -27,7 +27,7 @@ impl IdentityType {
         match s {
             "global" => Some(IdentityType::Global),
             "device" => Some(IdentityType::Device),
-            "agent" => Some(IdentityType::Agent),
+            "agent" => Some(IdentityType::LLMProvider),
             "profile" => Some(IdentityType::Profile),
             _ => None,
         }
@@ -37,7 +37,7 @@ impl IdentityType {
         match self {
             IdentityType::Global => "global",
             IdentityType::Device => "device",
-            IdentityType::Agent => "agent",
+            IdentityType::LLMProvider => "agent",
             IdentityType::Profile => "profile",
         }
         .to_owned()
@@ -92,8 +92,8 @@ pub struct RegistrationCode {
 pub enum Identity {
     // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),
-    // IdentityType::Agent
-    Agent(SerializedLLMProvider),
+    // IdentityType::LLMProvider
+    LLMProvider(SerializedLLMProvider),
     // IdentityType::Device
     Device(DeviceIdentity),
 }
@@ -102,7 +102,7 @@ impl Identity {
     pub fn get_full_identity_name(&self) -> String {
         match self {
             Identity::Standard(std_identity) => std_identity.full_identity_name.clone().to_string(),
-            Identity::Agent(agent) => agent.full_identity_name.clone().to_string(),
+            Identity::LLMProvider(agent) => agent.full_identity_name.clone().to_string(),
             Identity::Device(device) => device.full_identity_name.clone().to_string(),
         }
     }
@@ -311,17 +311,21 @@ impl fmt::Debug for Identity {
             Identity::Standard(std_identity) => {
                 write!(f, "Standard({})", std_identity)
             }
-            Identity::Agent(agent) => {
+            Identity::LLMProvider(agent) => {
                 // Assuming you have implemented Debug for SerializedLLMProvider
                 write!(f, "Agent({:?})", agent)
             }
             Identity::Device(device) => {
                 let node_encryption_public_key = encryption_public_key_to_string(device.node_encryption_public_key);
                 let node_signature_public_key = signature_public_key_to_string(device.node_signature_public_key);
-                let profile_encryption_public_key = encryption_public_key_to_string_ref(&device.profile_encryption_public_key);
-                let profile_signature_public_key = signature_public_key_to_string_ref(&device.profile_signature_public_key);
-                let device_encryption_public_key = encryption_public_key_to_string_ref(&device.device_encryption_public_key);
-                let device_signature_public_key = signature_public_key_to_string_ref(&device.device_signature_public_key);
+                let profile_encryption_public_key =
+                    encryption_public_key_to_string_ref(&device.profile_encryption_public_key);
+                let profile_signature_public_key =
+                    signature_public_key_to_string_ref(&device.profile_signature_public_key);
+                let device_encryption_public_key =
+                    encryption_public_key_to_string_ref(&device.device_encryption_public_key);
+                let device_signature_public_key =
+                    signature_public_key_to_string_ref(&device.device_signature_public_key);
 
                 write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {:?}, profile_signature_public_key: {:?}, device_encryption_public_key: {:?}, device_signature_public_key: {:?}, permission_type: {:?} }}",
                     device.full_identity_name,

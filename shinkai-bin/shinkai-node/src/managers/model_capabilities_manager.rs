@@ -90,7 +90,7 @@ pub enum ModelPrivacy {
     RemoteGreedy,
 }
 
-// Struct for AgentsCapabilitiesManager
+// Struct for ModelCapabilitiesManager
 pub struct ModelCapabilitiesManager {
     pub db: Weak<ShinkaiDB>,
     pub profile: ShinkaiName,
@@ -101,20 +101,20 @@ impl ModelCapabilitiesManager {
     // Constructor
     pub async fn new(db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
-        let agents = Self::get_agents(&db_arc, profile.clone()).await;
-        Self { db, profile, llm_providers: agents }
+        let llm_providers = Self::get_llm_providers(&db_arc, profile.clone()).await;
+        Self { db, profile, llm_providers }
     }
 
-    // Function to get all agents from the database for a profile
-    async fn get_agents(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
-        db.get_agents_for_profile(profile).unwrap()
+    // Function to get all llm providers from the database for a profile
+    async fn get_llm_providers(db: &Arc<ShinkaiDB>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
+        db.get_llm_providers_for_profile(profile).unwrap()
     }
 
     // Static method to get capability of an agent
     pub fn get_capability(agent: &SerializedLLMProvider) -> (Vec<ModelCapability>, ModelCost, ModelPrivacy) {
         let capabilities = Self::get_llm_provider_capabilities(&agent.model);
-        let cost = Self::get_agent_cost(&agent.model);
-        let privacy = Self::get_agent_privacy(&agent.model);
+        let cost = Self::get_llm_provider_cost(&agent.model);
+        let privacy = Self::get_llm_provider_privacy(&agent.model);
 
         (capabilities, cost, privacy)
     }
@@ -170,7 +170,7 @@ impl ModelCapabilitiesManager {
     }
 
     // Static method to get cost of an agent model
-    pub fn get_agent_cost(model: &LLMProviderInterface) -> ModelCost {
+    pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => ModelCost::Cheap,
@@ -200,8 +200,8 @@ impl ModelCapabilitiesManager {
         }
     }
 
-    // Static method to get privacy of an agent model
-    pub fn get_agent_privacy(model: &LLMProviderInterface) -> ModelPrivacy {
+    // Static method to get privacy of an llm provider model
+    pub fn get_llm_provider_privacy(model: &LLMProviderInterface) -> ModelPrivacy {
         match model {
             LLMProviderInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::GenericAPI(_) => ModelPrivacy::RemoteGreedy,
@@ -219,8 +219,8 @@ impl ModelCapabilitiesManager {
 
     // Function to check capabilities
     pub async fn check_capabilities(&self) -> Vec<(Vec<ModelCapability>, ModelCost, ModelPrivacy)> {
-        let agents = self.llm_providers.clone();
-        agents.into_iter().map(|agent| Self::get_capability(&agent)).collect()
+        let llm_providers = self.llm_providers.clone();
+        llm_providers.into_iter().map(|llm_provider| Self::get_capability(&llm_provider)).collect()
     }
 
     // Function to check if a specific capability is available

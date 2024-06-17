@@ -193,7 +193,7 @@ fn job_from_cron_one_page() {
                     url: "https://news.ycombinator.com".to_string(),
                     crawl_links: false,
                     created_at: "2021-08-01T00:00:00Z".to_string(),
-                    agent_id: agent_subidentity.clone(),
+                    llm_provider_id: agent_subidentity.clone(),
                 };
 
                 let data = KaiJobFile {

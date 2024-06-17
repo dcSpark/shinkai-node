@@ -2,11 +2,11 @@
 
 mod it {
     mod a0_subscription_manager_tests;
-    mod agent_integration_tests;
+    mod llm_provider_integration_tests;
     mod workflow_integration_tests;
     mod cron_job_tests;
     mod crypto_payment_tests;
-    mod db_agents_tests;
+    mod db_llm_providers_tests;
     mod db_identity_tests;
     mod db_inbox_tests;
     mod db_job_tests;

@@ -21,7 +21,7 @@ use super::node_api_handlers::api_vec_fs_retrieve_path_simplified_json_handler;
 use super::node_api_handlers::api_vec_fs_retrieve_vector_resource_handler;
 use super::node_api_handlers::api_vec_fs_retrieve_vector_search_simplified_json_handler;
 use super::node_api_handlers::api_vec_fs_search_item_handler;
-use super::node_api_handlers::available_agents_handler;
+use super::node_api_handlers::available_llm_providers_handler;
 use super::node_api_handlers::change_job_agent_handler;
 use super::node_api_handlers::change_nodes_name_handler;
 use super::node_api_handlers::create_files_inbox_with_symmetric_key_handler;
@@ -388,7 +388,7 @@ pub async fn run_api(
         warp::path!("v1" / "available_agents")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| available_agents_handler(node_commands_sender.clone(), message))
+            .and_then(move |message: ShinkaiMessage| available_llm_providers_handler(node_commands_sender.clone(), message))
     };
 
     // POST v1/add_agent

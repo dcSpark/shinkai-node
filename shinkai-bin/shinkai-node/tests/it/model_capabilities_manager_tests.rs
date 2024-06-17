@@ -14,7 +14,7 @@ mod tests {
     #[ignore]
     fn setup() {
         let path = Path::new("db_tests/");
-        let _ = fs::remove_dir_all(&path);
+        let _ = fs::remove_dir_all(path);
     }
 
     #[tokio::test]
@@ -24,17 +24,17 @@ mod tests {
         let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let db_weak = Arc::downgrade(&db);
 
-        let agent_id = "agent_id1".to_string();
-        let agent_name =
-            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", agent_id.clone()).to_string()).unwrap();
+        let llm_provider_id = "agent_id1".to_string();
+        let llm_provider_name =
+            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string()).unwrap();
 
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
-        let gpt_3_5_agent = SerializedLLMProvider {
-            id: agent_id.clone(),
-            full_identity_name: agent_name,
+        let gpt_3_5_llm_provider = SerializedLLMProvider {
+            id: llm_provider_id.clone(),
+            full_identity_name: llm_provider_name,
             perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
@@ -47,13 +47,13 @@ mod tests {
         let manager = ModelCapabilitiesManager {
             db: db_weak,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
-            llm_providers: vec![gpt_3_5_agent.clone()],
+            llm_providers: vec![gpt_3_5_llm_provider.clone()],
         };
 
         assert!(manager.has_capability(ModelCapability::TextInference).await);
         assert!(!manager.has_capability(ModelCapability::ImageAnalysis).await);
 
-        let capabilities = ModelCapabilitiesManager::get_capability(&gpt_3_5_agent);
+        let capabilities = ModelCapabilitiesManager::get_capability(&gpt_3_5_llm_provider);
         assert_eq!(capabilities.0, vec![ModelCapability::TextInference]);
         assert_eq!(capabilities.1, ModelCost::Cheap);
         assert_eq!(capabilities.2, ModelPrivacy::RemoteGreedy);
@@ -66,17 +66,17 @@ mod tests {
         let db = Arc::new(ShinkaiDB::new("db_tests/").unwrap());
         let db_weak = Arc::downgrade(&db);
 
-        let agent_id = "agent_id2".to_string();
-        let agent_name =
-            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", agent_id.clone()).to_string()).unwrap();
+        let llm_provider_id = "agent_id2".to_string();
+        let llm_provider_name =
+            ShinkaiName::new(format!("@@localhost.shinkai/main/agent/{}", llm_provider_id.clone()).to_string()).unwrap();
 
         let open_ai = OpenAI {
             model_type: "gpt-4-vision-preview".to_string(),
         };
 
-        let gpt_4_vision_agent = SerializedLLMProvider {
-            id: agent_id.clone(),
-            full_identity_name: agent_name,
+        let gpt_4_vision_llm_provider = SerializedLLMProvider {
+            id: llm_provider_id.clone(),
+            full_identity_name: llm_provider_name,
             perform_locally: false,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
@@ -89,7 +89,7 @@ mod tests {
         let manager = ModelCapabilitiesManager {
             db: db_weak,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
-            llm_providers: vec![gpt_4_vision_agent],
+            llm_providers: vec![gpt_4_vision_llm_provider],
         };
 
         assert!(manager.has_capability(ModelCapability::TextInference).await);

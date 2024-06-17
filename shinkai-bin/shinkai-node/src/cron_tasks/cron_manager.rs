@@ -271,7 +271,7 @@ impl CronManager {
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJob(cron_job.clone()),
             shinkai_profile: Some(shinkai_profile.clone()),
-            agent_id: cron_job.agent_id.clone(),
+            agent_id: cron_job.llm_provider_id.clone(),
         };
 
         let job_creation = JobCreationInfo {
@@ -283,7 +283,7 @@ impl CronManager {
         let job_id = job_manager
             .lock()
             .await
-            .process_job_creation(job_creation, &shinkai_profile, &cron_job.agent_id)
+            .process_job_creation(job_creation, &shinkai_profile, &cron_job.llm_provider_id)
             .await?;
 
         // Note(Nico): should we close the job after the processing?

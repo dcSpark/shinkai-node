@@ -35,6 +35,7 @@ pub struct StaticServerEnvironment {
 
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedLLMProvider> {
     let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_NAMES"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .filter(|s| !s.is_empty())
@@ -42,24 +43,27 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedLLMProvider> {
         .collect();
 
     let initial_agent_api_keys: Vec<String> = env::var("INITIAL_AGENT_API_KEYS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_API_KEYS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
     let initial_agent_urls: Vec<String> = env::var("INITIAL_AGENT_URLS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_URLS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
     let initial_agent_models: Vec<String> = env::var("INITIAL_AGENT_MODELS")
+        .or_else(|_| env::var("INITIAL_LLM_PROVIDER_MODELS"))
         .unwrap_or_else(|_| "".to_string())
         .split(',')
         .map(|s| s.to_string())
         .collect();
 
-    let mut agents = Vec::new();
+    let mut llm_providers = Vec::new();
 
     for i in 0..initial_agent_names.len() {
         let model: Result<LLMProviderInterface, _> = LLMProviderInterface::from_str(&initial_agent_models[i]);
@@ -77,10 +81,10 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedLLMProvider> {
             allowed_message_senders: vec![],
         };
 
-        agents.push(agent);
+        llm_providers.push(agent);
     }
 
-    agents
+    llm_providers
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {

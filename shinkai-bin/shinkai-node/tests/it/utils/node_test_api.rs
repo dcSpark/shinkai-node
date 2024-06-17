@@ -91,7 +91,7 @@ pub async fn api_registration_device_node_profile_main(
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(
                 res_all_subidentities_sender,
             ))
             .await
@@ -343,7 +343,7 @@ pub async fn api_agent_registration(
             async_channel::Receiver<Result<Vec<Identity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(
                 res_all_subidentities_sender,
             ))
             .await
@@ -360,7 +360,7 @@ pub async fn api_agent_registration(
 
         assert!(agent_identity.is_some(), "Agent was added to the node");
 
-        let available_agents_msg = ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+        let available_llm_providers_msg = ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
@@ -371,27 +371,27 @@ pub async fn api_agent_registration(
             MessageSchemaType::Empty,
         )
         .unwrap();
-        eprintln!("available_agents_msg: {:?}", available_agents_msg);
+        eprintln!("available_llm_providers_msg: {:?}", available_llm_providers_msg);
 
-        let (res_available_agents_sender, res_available_agents_receiver) = async_channel::bounded(1);
+        let (res_available_llm_providers_sender, res_available_llm_providers_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIAvailableAgents {
-                msg: available_agents_msg.clone(),
-                res: res_available_agents_sender,
+            .send(NodeCommand::APIAvailableLLMProviders {
+                msg: available_llm_providers_msg.clone(),
+                res: res_available_llm_providers_sender,
             })
             .await
             .unwrap();
-        let available_agents = res_available_agents_receiver.recv().await.unwrap();
+        let available_llm_providers = res_available_llm_providers_receiver.recv().await.unwrap();
 
         // Check if the result is Ok and extract the agents
-        if let Ok(agents) = &available_agents {
+        if let Ok(llm_providers) = &available_llm_providers {
             // Extract the agent IDs from the available agents
-            let available_agent_ids: Vec<String> = agents.iter().map(|agent| agent.id.clone()).collect();
+            let available_llm_providers_ids: Vec<String> = llm_providers.iter().map(|agent| agent.id.clone()).collect();
 
             // Check if the added agent's ID is in the list of available agent IDs
-            assert!(available_agent_ids.contains(&agent.id), "Agent is not available");
+            assert!(available_llm_providers_ids.contains(&agent.id), "Agent is not available");
         } else {
-            panic!("Failed to get available agents");
+            panic!("Failed to get available llm providers");
         }
     }
 }
@@ -550,7 +550,7 @@ pub async fn api_initial_registration_with_no_code_for_device(
         async_channel::Receiver<Result<Vec<Identity>, APIError>>,
     ) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+        .send(NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(
             res_all_subidentities_sender,
         ))
         .await

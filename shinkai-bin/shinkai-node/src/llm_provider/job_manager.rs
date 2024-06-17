@@ -33,7 +33,7 @@ pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     pub db: Weak<ShinkaiDB>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
-    pub agents: Vec<Arc<Mutex<LLMProvider>>>,
+    pub llm_providers: Vec<Arc<Mutex<LLMProvider>>>,
     pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
@@ -66,13 +66,13 @@ impl JobManager {
         }
 
         // Get all serialized_agents and convert them to Agents
-        let mut agents: Vec<Arc<Mutex<LLMProvider>>> = Vec::new();
+        let mut llm_providers: Vec<Arc<Mutex<LLMProvider>>> = Vec::new();
         {
             let identity_manager = identity_manager.lock().await;
-            let serialized_agents = identity_manager.get_all_agents().await.unwrap();
-            for serialized_agent in serialized_agents {
-                let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
-                agents.push(Arc::new(Mutex::new(agent)));
+            let serialized_llm_providers = identity_manager.get_all_llm_providers().await.unwrap();
+            for serialized_agent in serialized_llm_providers {
+                let llm_provider = LLMProvider::from_serialized_llm_provider(serialized_agent);
+                llm_providers.push(Arc::new(Mutex::new(llm_provider)));
             }
         }
 
@@ -121,7 +121,7 @@ impl JobManager {
             node_profile_name,
             jobs: jobs_map,
             identity_manager,
-            agents,
+            llm_providers,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
             vector_fs,
@@ -366,27 +366,27 @@ impl JobManager {
                 Ok(job) => {
                     std::mem::drop(db_arc); // require to avoid deadlock
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
-                    let mut agent_found = None;
-                    for agent in &self.agents {
+                    let mut llm_provider_found = None;
+                    for agent in &self.llm_providers {
                         let locked_agent = agent.lock().await;
                         if &locked_agent.id == llm_provider_id {
-                            agent_found = Some(agent.clone());
+                            llm_provider_found = Some(agent.clone());
                             break;
                         }
                     }
 
-                    if agent_found.is_none() {
+                    if llm_provider_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_agent(llm_provider_id, profile).await {
+                        if let Some(serialized_agent) = identity_manager.search_local_llm_provider(llm_provider_id, profile).await {
                             let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
-                            agent_found = Some(Arc::new(Mutex::new(agent)));
-                            if let Some(agent) = agent_found.clone() {
-                                self.agents.push(agent);
+                            llm_provider_found = Some(Arc::new(Mutex::new(agent)));
+                            if let Some(agent) = llm_provider_found.clone() {
+                                self.llm_providers.push(agent);
                             }
                         }
                     }
 
-                    let job_id_to_return = match agent_found {
+                    let job_id_to_return = match llm_provider_found {
                         Some(_) => Ok(job_id.clone()),
                         None => Err(anyhow::Error::new(LLMProviderError::LLMProviderNotFound)),
                     };

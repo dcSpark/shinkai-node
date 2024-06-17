@@ -49,13 +49,13 @@ impl IdentityManager {
                 .collect()
         };
 
-        let agents = {
+        let llm_providers = {
             let db = db.upgrade().ok_or(ShinkaiRegistryError::CustomError(
                 "Couldn't convert to strong db".to_string(),
             ))?;
-            db.get_all_agents()?
+            db.get_all_llm_providers()?
                 .into_iter()
-                .map(Identity::Agent)
+                .map(Identity::LLMProvider)
                 .collect::<Vec<_>>()
         };
         {
@@ -65,7 +65,7 @@ impl IdentityManager {
             db.debug_print_all_keys_for_profiles_identity_key();
         }
 
-        identities.extend(agents);
+        identities.extend(llm_providers);
 
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new().await));
 
@@ -103,13 +103,13 @@ impl IdentityManager {
         Ok(())
     }
 
-    pub async fn add_agent_subidentity(&mut self, agent: SerializedLLMProvider) -> anyhow::Result<()> {
+    pub async fn add_llm_provider_subidentity(&mut self, llm_provider: SerializedLLMProvider) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("add_agent_subidentity > agent: {:?}", agent).as_str(),
+            format!("add_agent_subidentity > agent: {:?}", llm_provider).as_str(),
         );
-        self.local_identities.push(Identity::Agent(agent.clone()));
+        self.local_identities.push(Identity::LLMProvider(llm_provider.clone()));
         Ok(())
     }
 
@@ -122,7 +122,7 @@ impl IdentityManager {
 
         let mut found = false;
         for identity in &mut self.local_identities {
-            if let Identity::Agent(agent) = identity {
+            if let Identity::LLMProvider(agent) = identity {
                 if agent.full_identity_name == updated_agent.full_identity_name {
                     *agent = updated_agent.clone();
                     found = true;
@@ -161,7 +161,7 @@ impl IdentityManager {
 
         let initial_count = self.local_identities.len();
         self.local_identities.retain(|identity| match identity {
-            Identity::Agent(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != agent_id,
+            Identity::LLMProvider(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != agent_id,
             _ => true,
         });
 
@@ -209,9 +209,9 @@ impl IdentityManager {
                             None
                         }
                     }
-                    Identity::Agent(agent) => {
+                    Identity::LLMProvider(agent) => {
                         if agent.full_identity_name.to_string() == full_identity_name {
-                            Some(Identity::Agent(agent.clone()))
+                            Some(Identity::LLMProvider(agent.clone()))
                         } else {
                             None
                         }
@@ -230,13 +230,13 @@ impl IdentityManager {
         }
     }
 
-    pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedLLMProvider> {
+    pub async fn search_local_llm_provider(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedLLMProvider> {
         let db_arc = self.db.upgrade()?;
-        db_arc.get_agent(agent_id, profile).ok().flatten()
+        db_arc.get_llm_provider(agent_id, profile).ok().flatten()
     }
 
     // Primarily for testing
-    pub fn get_all_subidentities_devices_and_agents(&self) -> Vec<Identity> {
+    pub fn get_all_subidentities_devices_and_llm_providers(&self) -> Vec<Identity> {
         self.local_identities.clone()
     }
 
@@ -245,12 +245,12 @@ impl IdentityManager {
         self.local_identities.clone()
     }
 
-    pub async fn get_all_agents(&self) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
+    pub async fn get_all_llm_providers(&self) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
         let db_arc = self
             .db
             .upgrade()
             .ok_or(ShinkaiDBError::SomeError("Couldn't convert to db strong".to_string()))?;
-        db_arc.get_all_agents()
+        db_arc.get_all_llm_providers()
     }
 
     pub async fn external_profile_to_global_identity(
@@ -330,7 +330,7 @@ impl IdentityManagerTrait for IdentityManager {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
                 Identity::Device(device) => device.full_identity_name == full_profile_name,
-                Identity::Agent(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+                Identity::LLMProvider(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
             }
         })
     }
@@ -387,7 +387,7 @@ impl IdentityManager {
     pub fn get_full_identity_name(identity: &Identity) -> Option<String> {
         match identity {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
-            Identity::Agent(agent) => Some(agent.full_identity_name.clone().to_string()),
+            Identity::LLMProvider(agent) => Some(agent.full_identity_name.clone().to_string()),
             Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
         }
     }
@@ -423,7 +423,7 @@ impl IdentityManager {
         let signature_public_key = match &subidentity {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key,
             Identity::Device(std_device) => Some(std_device.device_signature_public_key),
-            Identity::Agent(_) => {
+            Identity::LLMProvider(_) => {
                 shinkai_log(
                     ShinkaiLogOption::Identity,
                     ShinkaiLogLevel::Error,

@@ -73,7 +73,7 @@ pub async fn validate_message_main_logic(
                                 .unwrap_or(std_identity.node_encryption_public_key),
                         },
                         Identity::Device(device) => device.device_encryption_public_key,
-                        Identity::Agent(_) => {
+                        Identity::LLMProvider(_) => {
                             return Err(APIError {
                                 code: StatusCode::UNAUTHORIZED.as_u16(),
                                 error: "Unauthorized".to_string(),

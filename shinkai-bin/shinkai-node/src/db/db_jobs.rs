@@ -15,7 +15,7 @@ impl ShinkaiDB {
     pub fn create_new_job(
         &self,
         job_id: String,
-        agent_id: String,
+        llm_provider_id: String,
         scope: JobScope,
         is_hidden: bool,
     ) -> Result<(), ShinkaiDBError> {
@@ -36,8 +36,8 @@ impl ShinkaiDB {
         let job_scope_key = format!("jobinbox_{}_scope", job_id);
         let job_is_finished_key = format!("jobinbox_{}_is_finished", job_id);
         let job_datetime_created_key = format!("jobinbox_{}_datetime_created", job_id);
-        let job_parent_agentid = format!("jobinbox_{}_agentid", job_id);
-        let job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::agent_id_to_hash(&agent_id), job_id); // needs to be 47 characters for prefix search to work
+        let job_parent_providerid = format!("jobinbox_{}_agentid", job_id);
+        let job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(&llm_provider_id), job_id); // needs to be 47 characters for prefix search to work
         let job_inbox_name = format!("jobinbox_{}_inboxname", job_id);
         let job_conversation_inbox_name_key = format!("jobinbox_{}_conversation_inbox_name", job_id);
         let all_jobs_time_keyed = format!("all_jobs_time_keyed_placeholder_to_fit_prefix__{}", current_time);
@@ -59,7 +59,7 @@ impl ShinkaiDB {
         batch.put_cf(cf_inbox, job_scope_key.as_bytes(), &scope_bytes);
         batch.put_cf(cf_inbox, job_is_finished_key.as_bytes(), b"false");
         batch.put_cf(cf_inbox, job_datetime_created_key.as_bytes(), current_time.as_bytes());
-        batch.put_cf(cf_inbox, job_parent_agentid.as_bytes(), agent_id.as_bytes());
+        batch.put_cf(cf_inbox, job_parent_providerid.as_bytes(), llm_provider_id.as_bytes());
         batch.put_cf(cf_inbox, job_parent_agentid_key.as_bytes(), job_id.as_bytes());
         batch.put_cf(
             cf_inbox,
@@ -118,10 +118,10 @@ impl ShinkaiDB {
         // Update the job_parent_agentid_key
         let old_job_parent_agentid_key = format!(
             "jobinbox_agent_{}_{}",
-            Self::agent_id_to_hash(&current_agent_id),
+            Self::llm_provider_id_to_hash(&current_agent_id),
             job_id
         );
-        let new_job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::agent_id_to_hash(new_agent_id), job_id);
+        let new_job_parent_agentid_key = format!("jobinbox_agent_{}_{}", Self::llm_provider_id_to_hash(new_agent_id), job_id);
         let job_id_value = self
             .db
             .get_cf(cf_inbox, old_job_parent_agentid_key.as_bytes())?
@@ -340,7 +340,7 @@ impl ShinkaiDB {
     /// Fetches all jobs under a specific Agent
     pub fn get_agent_jobs(&self, agent_id: String) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_jobs = self.get_cf_handle(Topic::Inbox).unwrap();
-        let prefix_string = format!("jobinbox_agent_{}", Self::agent_id_to_hash(&agent_id));
+        let prefix_string = format!("jobinbox_agent_{}", Self::llm_provider_id_to_hash(&agent_id));
         let prefix = prefix_string.as_bytes();
         let mut jobs = Vec::new();
         let iter = self.db.prefix_iterator_cf(cf_jobs, prefix);

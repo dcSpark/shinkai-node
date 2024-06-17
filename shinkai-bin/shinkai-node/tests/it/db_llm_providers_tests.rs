@@ -49,33 +49,33 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
-        let retrieved_agent = db.get_agent(&test_agent.id, &profile).expect("Failed to get agent");
+        let retrieved_agent = db.get_llm_provider(&test_agent.id, &profile).expect("Failed to get llm provider");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
         // Call get_all_agents and check that it returns the right agent
-        let all_agents = db.get_all_agents().expect("Failed to get all agents");
+        let all_llm_providers = db.get_all_llm_providers().expect("Failed to get all llm providers");
         assert!(
-            all_agents.contains(&test_agent),
+            all_llm_providers.contains(&test_agent),
             "get_all_agents did not return the added agent"
         );
 
         // Call get_agents_for_profile and check that it returns the right agent for the profile
-        let agents_for_profile = db
-            .get_agents_for_profile(profile.clone())
+        let llm_providers_for_profile = db
+            .get_llm_providers_for_profile(profile.clone())
             .expect("Failed to get agents for profile");
         assert!(
-            agents_for_profile.contains(&test_agent),
-            "get_agents_for_profile did not return the added agent"
+            llm_providers_for_profile.contains(&test_agent),
+            "get_llm_providers_for_profile did not return the added agent"
         );
 
         // Remove the agent
-        let result = db.remove_agent(&test_agent.id, &profile);
+        let result = db.remove_llm_provider(&test_agent.id, &profile);
         assert!(result.is_ok(), "Failed to remove agent");
 
         // Attempt to get the removed agent, expecting an error
-        let retrieved_agent_result = db.get_agent(&test_agent.id, &profile);
+        let retrieved_agent_result = db.get_llm_provider(&test_agent.id, &profile);
         match retrieved_agent_result {
             Ok(_) => panic!("Expected error, but got Ok"),
             Err(e) => assert!(
@@ -85,7 +85,7 @@ mod tests {
         }
 
         // Attempt to remove the same agent again, expecting an error
-        let result = db.remove_agent(&test_agent.id, &profile);
+        let result = db.remove_llm_provider(&test_agent.id, &profile);
         assert!(
             matches!(result, Err(ShinkaiDBError::DataNotFound)),
             "Expected RocksDBError error"
@@ -119,11 +119,11 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
 
         // Update agent access
-        let result = db.update_agent_access(
+        let result = db.update_llm_provider_access(
             &test_agent.id,
             &profile,
             Some(vec!["new_sender".to_string()]),
@@ -132,7 +132,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to update agent access");
 
         // Attempt to update access for a non-existent agent, expecting an error
-        let result = db.update_agent_access(
+        let result = db.update_llm_provider_access(
             "non_existent_agent",
             &profile,
             Some(vec!["new_sender".to_string()]),
@@ -170,16 +170,16 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
 
         // Get agent profiles with access
-        let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile);
+        let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
         assert_eq!(vec!["profilename", "sender1", "sender2"], profiles.unwrap());
 
         // Get agent toolkits accessible
-        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id, &profile);
+        let toolkits = db.get_llm_provider_toolkits_accessible(&test_agent.id, &profile);
         assert!(toolkits.is_ok(), "Failed to get agent toolkits");
         assert_eq!(vec!["toolkit1", "toolkit2"], toolkits.unwrap());
     }
@@ -210,19 +210,19 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
 
         // Remove a profile from agent access
-        let result = db.remove_profile_from_agent_access(&test_agent.id, "sender1", &profile);
+        let result = db.remove_profile_from_llm_provider_access(&test_agent.id, "sender1", &profile);
         assert!(result.is_ok(), "Failed to remove profile from agent access");
-        let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile).unwrap();
+        let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile).unwrap();
         assert_eq!(vec!["profilename", "sender2"], profiles);
 
         // Remove a toolkit from agent access
-        let result = db.remove_toolkit_from_agent_access(&test_agent.id, "toolkit1", &profile);
+        let result = db.remove_toolkit_from_llm_provider_access(&test_agent.id, "toolkit1", &profile);
         assert!(result.is_ok(), "Failed to remove toolkit from agent access");
-        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id, &profile).unwrap();
+        let toolkits = db.get_llm_provider_toolkits_accessible(&test_agent.id, &profile).unwrap();
         assert_eq!(vec!["toolkit2"], toolkits);
     }
 
