@@ -112,45 +112,52 @@ impl OnchainIdentity {
             )
             .as_str(),
         );
-        if let Some(first_address) = self.address_or_proxy_nodes.first() {
-            let address = first_address.replace("http://", "").replace("https://", "");
 
-            let address = if address.starts_with("localhost:") {
-                address.replacen("localhost", "127.0.0.1", 1)
-            } else {
-                address.to_string()
-            };
+        let first_address = self
+            .address_or_proxy_nodes
+            .first()
+            .map_or("localhost:9550", |addr| addr.as_str());
+        let address = Self::validate_address(first_address)?;
 
-            // Append default ports if missing
-            let address = if !address.contains(':') {
-                if first_address.starts_with("https://") {
-                    format!("{}:443", address)
-                } else if first_address.starts_with("http://") {
-                    format!("{}:80", address)
-                } else {
-                    address
-                }
+        // Try to parse the address directly first
+        match address.parse::<SocketAddr>() {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                // If direct parsing fails, attempt DNS resolution
+                let resolved_addresses = lookup_host(address)
+                    .await
+                    .map_err(|e| ShinkaiRegistryError::CustomError(format!("DNS resolution error: {}", e)))?;
+                resolved_addresses
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| ShinkaiRegistryError::CustomError("No address resolved".to_string()))
+            }
+        }
+    }
+
+    fn validate_address(first_address: &str) -> Result<String, ShinkaiRegistryError> {
+        let address = first_address.replace("http://", "").replace("https://", "");
+
+        let address = if address.starts_with("localhost:") {
+            address.replacen("localhost", "127.0.0.1", 1)
+        } else {
+            address.to_string()
+        };
+
+        // Append default ports if missing
+        let address = if !address.contains(':') {
+            if first_address.starts_with("https://") {
+                format!("{}:443", address)
+            } else if first_address.starts_with("http://") {
+                format!("{}:80", address)
             } else {
                 address
-            };
-
-            // Try to parse the address directly first
-            match address.parse::<SocketAddr>() {
-                Ok(addr) => Ok(addr),
-                Err(_) => {
-                    // If direct parsing fails, attempt DNS resolution
-                    let resolved_addresses = lookup_host(address)
-                        .await
-                        .map_err(|e| ShinkaiRegistryError::CustomError(format!("DNS resolution error: {}", e)))?;
-                    resolved_addresses
-                        .into_iter()
-                        .next()
-                        .ok_or_else(|| ShinkaiRegistryError::CustomError("No address resolved".to_string()))
-                }
             }
         } else {
-            Err(ShinkaiRegistryError::CustomError("No address available".to_string()))
-        }
+            address
+        };
+
+        Ok(address)
     }
 
     pub fn encryption_public_key(&self) -> Result<PublicKey, ShinkaiRegistryError> {
@@ -179,7 +186,11 @@ pub struct ShinkaiRegistry {
 }
 
 impl ShinkaiRegistry {
-    pub async fn new(url: &str, contract_address: &str, abi_path: Option<String>) -> Result<Self, ShinkaiRegistryError> {
+    pub async fn new(
+        url: &str,
+        contract_address: &str,
+        abi_path: Option<String>,
+    ) -> Result<Self, ShinkaiRegistryError> {
         let provider =
             Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
@@ -217,7 +228,7 @@ impl ShinkaiRegistry {
         } else {
             identity
         };
-        
+
         // eprintln!("Getting identity record for: {}", identity);
         let now = SystemTime::now();
 
@@ -312,5 +323,30 @@ impl ShinkaiRegistry {
             delegated_tokens: result.6,
             last_updated,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_address() {
+        let cases = vec![
+            ("http://localhost:8080", "127.0.0.1:8080"),
+            ("https://localhost", "localhost:443"),
+            ("http://example.com", "example.com:80"),
+            ("https://example.com", "example.com:443"),
+            ("example.com:1234", "example.com:1234"),
+            (
+                "https://hosting.shinkai.com/by/4G60_4564a10178_node",
+                "hosting.shinkai.com/by/4G60_4564a10178_node:443",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let result = OnchainIdentity::validate_address(input).unwrap();
+            assert_eq!(result, expected);
+        }
     }
 }
