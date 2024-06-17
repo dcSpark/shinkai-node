@@ -139,7 +139,7 @@ fn planner_integration_test() {
                     api_key: Some(api_key),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: LLMProviderInterface::OpenAI(open_ai),
-                    // model: AgentLLMInterface::GenericAPI(generic_api),
+                    // model: LLMProviderInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

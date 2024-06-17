@@ -6,6 +6,5 @@ pub mod execution;
 pub mod job;
 pub mod job_manager;
 pub mod parsing_helper;
-pub mod plan_executor;
 pub mod providers;
 pub mod queue;

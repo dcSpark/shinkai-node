@@ -127,7 +127,7 @@ fn job_from_cron_multi_page() {
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: LLMProviderInterface::OpenAI(open_ai),
-                    // model: AgentLLMInterface::GenericAPI(generic_api),
+                    // model: LLMProviderInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

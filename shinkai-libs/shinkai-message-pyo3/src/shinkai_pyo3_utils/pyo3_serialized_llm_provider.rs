@@ -3,12 +3,12 @@ use pyo3::types::PyDict;
 use pyo3::types::PyString;
 use pyo3::wrap_pyfunction;
 use serde_json::Error as SerdeError;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::AgentLLMInterface;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::str::FromStr;
 
-use super::pyo3_llm_provider_interface::PyAgentLLMInterface;
+use super::pyo3_llm_provider_interface::PyLLMProviderInterface;
 use super::pyo3_shinkai_name::PyShinkaiName;
 
 #[pyclass]
@@ -43,7 +43,7 @@ impl PySerializedLLMProvider {
             .and_then(|v| v.extract::<String>().ok());
         let model = kwargs
             .and_then(|k| k.get_item("model").ok().flatten())
-            .and_then(|v| v.extract::<PyAgentLLMInterface>().ok())
+            .and_then(|v| v.extract::<PyLLMProviderInterface>().ok())
             .map(|py_model| py_model.inner)
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("model is required"))?;
         let toolkit_permissions = kwargs
@@ -84,7 +84,7 @@ impl PySerializedLLMProvider {
     ) -> PyResult<Self> {
         let full_identity_name =
             ShinkaiName::new(full_identity_name).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-        let model = AgentLLMInterface::from_str(&model)
+        let model = LLMProviderInterface::from_str(&model)
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid model"))?;
 
         Ok(Self {

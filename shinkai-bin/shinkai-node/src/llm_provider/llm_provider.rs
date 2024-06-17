@@ -21,7 +21,7 @@ pub struct LLMProvider {
     pub model: LLMProviderInterface,
     pub toolkit_permissions: Vec<String>,        // Todo: remove as not used
     pub storage_bucket_permissions: Vec<String>, // Todo: remove as not used
-    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
+    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the llm provider
 }
 
 impl LLMProvider {
@@ -55,7 +55,7 @@ impl LLMProvider {
         }
     }
 
-    /// Inferences an LLM locally based on info held in the Agent
+    /// Inferences an LLM locally based on info held in the LLM Provider
     /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait to unify local with remote interface.
     async fn inference_locally(&self, content: String) -> Result<LLMInferenceResponse, LLMProviderError> {
         // Here we run our GPU-intensive task on a separate thread
@@ -74,7 +74,7 @@ impl LLMProvider {
         }
     }
 
-    /// Inferences the LLM model tied to the agent to get a response back.
+    /// Inferences the LLM model tied to the llm provider to get a response back.
     /// We automatically  parse the JSON object out of the response into a JsonValue, perform retries,
     /// and error if no object is found after everything.
     pub async fn inference_markdown(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
@@ -185,17 +185,17 @@ impl LLMProvider {
 }
 
 impl LLMProvider {
-    pub fn from_serialized_agent(serialized_agent: SerializedLLMProvider) -> Self {
+    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider) -> Self {
         Self::new(
-            serialized_agent.id,
-            serialized_agent.full_identity_name,
-            serialized_agent.perform_locally,
-            serialized_agent.external_url,
-            serialized_agent.api_key,
-            serialized_agent.model,
-            serialized_agent.toolkit_permissions,
-            serialized_agent.storage_bucket_permissions,
-            serialized_agent.allowed_message_senders,
+            serialized_llm_provider.id,
+            serialized_llm_provider.full_identity_name,
+            serialized_llm_provider.perform_locally,
+            serialized_llm_provider.external_url,
+            serialized_llm_provider.api_key,
+            serialized_llm_provider.model,
+            serialized_llm_provider.toolkit_permissions,
+            serialized_llm_provider.storage_bucket_permissions,
+            serialized_llm_provider.allowed_message_senders,
         )
     }
 }

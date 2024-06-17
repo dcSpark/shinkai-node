@@ -196,7 +196,7 @@ impl JobManager {
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
-            let agent = LLMProvider::from_serialized_agent(agent_cloned);
+            let agent = LLMProvider::from_serialized_llm_provider(agent_cloned);
             agent.inference_markdown(prompt_cloned).await
         })
         .await;
@@ -329,7 +329,7 @@ async fn internal_fix_markdown_to_include_proper_key(
     key_to_correct: String,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let response = tokio::spawn(async move {
-        let agent = LLMProvider::from_serialized_agent(agent);
+        let agent = LLMProvider::from_serialized_llm_provider(agent);
         let prompt = JobPromptGenerator::basic_fix_markdown_to_include_proper_key(
             invalid_markdown,
             original_prompt,

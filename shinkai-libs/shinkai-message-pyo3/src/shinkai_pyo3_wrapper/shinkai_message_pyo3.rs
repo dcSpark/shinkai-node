@@ -8,7 +8,7 @@ use super::{
     shinkai_builder_pyo3::PyShinkaiMessageBuilder,
 };
 use crate::shinkai_pyo3_utils::{
-    pyo3_llm_provider_interface::PyAgentLLMInterface,
+    pyo3_llm_provider_interface::PyLLMProviderInterface,
     pyo3_job_scope::PyJobScope,
     pyo3_shinkai_name::PyShinkaiName,
     pyo3_subscription::{PyFolderSubscription, PyPaymentOption},
@@ -22,7 +22,7 @@ fn shinkai_message_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyShinkaiMessageBuilder>()?;
     m.add_class::<PyEncryptionMethod>()?;
     m.add_class::<PyJobScope>()?;
-    m.add_class::<PyAgentLLMInterface>()?;
+    m.add_class::<PyLLMProviderInterface>()?;
     m.add_class::<PySerializedLLMProvider>()?;
     m.add_class::<PyShinkaiName>()?;
     m.add_class::<PyMessageSchemaType>()?;

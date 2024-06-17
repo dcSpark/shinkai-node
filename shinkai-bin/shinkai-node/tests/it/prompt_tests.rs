@@ -29,7 +29,7 @@ mod tests {
         // Determine the provider type from ENV or default to GenericAPI
         let provider_type = env::var("INITIAL_TEST_LLM_PROVIDER").unwrap_or_else(|_| "genericapi".to_string());
 
-        // Create an instance of AgentLLMInterface based on the provider type
+        // Create an instance of LLMProviderInterface based on the provider type
         let provider = match provider_type.as_str() {
             "openai" => LLMProviderInterface::OpenAI(OpenAI { model_type }),
             _ => LLMProviderInterface::GenericAPI(GenericAPI { model_type }),

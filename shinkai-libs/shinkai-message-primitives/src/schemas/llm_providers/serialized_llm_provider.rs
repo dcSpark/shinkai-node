@@ -141,13 +141,13 @@ impl Serialize for LLMProviderInterface {
     }
 }
 
-struct AgentLLMInterfaceVisitor;
+struct LLMProviderInterfaceVisitor;
 
-impl<'de> Visitor<'de> for AgentLLMInterfaceVisitor {
+impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
     type Value = LLMProviderInterface;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a string representing an AgentLLMInterface variant")
+        formatter.write_str("a string representing an LLMProviderInterface variant")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -185,6 +185,6 @@ impl<'de> Deserialize<'de> for LLMProviderInterface {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_str(AgentLLMInterfaceVisitor)
+        deserializer.deserialize_str(LLMProviderInterfaceVisitor)
     }
 }

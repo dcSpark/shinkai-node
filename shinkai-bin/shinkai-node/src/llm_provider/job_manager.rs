@@ -71,7 +71,7 @@ impl JobManager {
             let identity_manager = identity_manager.lock().await;
             let serialized_agents = identity_manager.get_all_agents().await.unwrap();
             for serialized_agent in serialized_agents {
-                let agent = LLMProvider::from_serialized_agent(serialized_agent);
+                let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
                 agents.push(Arc::new(Mutex::new(agent)));
             }
         }
@@ -350,14 +350,14 @@ impl JobManager {
         &mut self,
         job_creation: JobCreationInfo,
         profile: &ShinkaiName,
-        agent_id: &String,
+        llm_provider_id: &String,
     ) -> Result<String, LLMProviderError> {
         // TODO: add job_id to agent so it's aware
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
-            match db_arc.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope, is_hidden) {
+            match db_arc.create_new_job(job_id.clone(), llm_provider_id.clone(), job_creation.scope, is_hidden) {
                 Ok(_) => (),
                 Err(err) => return Err(LLMProviderError::ShinkaiDB(err)),
             };
@@ -369,7 +369,7 @@ impl JobManager {
                     let mut agent_found = None;
                     for agent in &self.agents {
                         let locked_agent = agent.lock().await;
-                        if &locked_agent.id == agent_id {
+                        if &locked_agent.id == llm_provider_id {
                             agent_found = Some(agent.clone());
                             break;
                         }
@@ -377,8 +377,8 @@ impl JobManager {
 
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_agent(agent_id, profile).await {
-                            let agent = LLMProvider::from_serialized_agent(serialized_agent);
+                        if let Some(serialized_agent) = identity_manager.search_local_agent(llm_provider_id, profile).await {
+                            let agent = LLMProvider::from_serialized_llm_provider(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             if let Some(agent) = agent_found.clone() {
                                 self.agents.push(agent);

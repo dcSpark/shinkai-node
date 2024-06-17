@@ -2,7 +2,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, GenericAPI, Ollama, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -122,9 +122,9 @@ fn job_tree_usage_tests() {
                     external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    // model: AgentLLMInterface::OpenAI(open_ai),
-                    // model: AgentLLMInterface::GenericAPI(generic_api),
-                    model: AgentLLMInterface::Ollama(ollama),
+                    // model: LLMProviderInterface::OpenAI(open_ai),
+                    // model: LLMProviderInterface::GenericAPI(generic_api),
+                    model: LLMProviderInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

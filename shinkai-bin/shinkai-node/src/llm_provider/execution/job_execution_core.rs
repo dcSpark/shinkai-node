@@ -413,7 +413,7 @@ impl JobManager {
         db: Arc<ShinkaiDB>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
-        agent_found: Option<SerializedLLMProvider>,
+        llm_provider_found: Option<SerializedLLMProvider>,
         full_job: Job,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
@@ -487,7 +487,7 @@ impl JobManager {
                             JobManager::handle_cron_job_request(
                                 db.clone(),
                                 vector_fs.clone(),
-                                agent_found.clone(),
+                                llm_provider_found.clone(),
                                 full_job.clone(),
                                 job_message.clone(),
                                 cron_task_request,
@@ -506,7 +506,7 @@ impl JobManager {
                             // Handle CronJob
                             JobManager::handle_cron_job(
                                 db.clone(),
-                                agent_found.clone(),
+                                llm_provider_found.clone(),
                                 full_job.clone(),
                                 cron_task,
                                 profile.clone(),
@@ -557,7 +557,7 @@ impl JobManager {
                     // Call a new function
                     JobManager::handle_image_file(
                         db.clone(),
-                        agent_found.clone(),
+                        llm_provider_found.clone(),
                         full_job.clone(),
                         task,
                         content,

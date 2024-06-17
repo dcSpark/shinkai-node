@@ -4,7 +4,9 @@ use wasm_bindgen_test::*;
 mod tests {
     use super::*;
     use serde_wasm_bindgen::from_value;
-    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider};
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+        LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    };
     use shinkai_message_wasm::shinkai_wasm_wrappers::serialized_llm_provider_wrapper::SerializedLLMProviderWrapper;
     use wasm_bindgen::JsValue;
 
@@ -40,7 +42,7 @@ mod tests {
         assert_eq!(agent.api_key, Some("123456".to_string()));
         assert_eq!(
             agent.model,
-            AgentLLMInterface::OpenAI(OpenAI {
+            LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string()
             })
         );
@@ -86,7 +88,8 @@ mod tests {
         );
 
         // Deserialize the JSON string back to a SerializedLLMProviderWrapper
-        let deserialized_llm_provider_wrapper = SerializedLLMProviderWrapper::from_json_str(&serialized_llm_provider_wrapper_json).unwrap();
+        let deserialized_llm_provider_wrapper =
+            SerializedLLMProviderWrapper::from_json_str(&serialized_llm_provider_wrapper_json).unwrap();
         // log::debug!("deserialized agent: {:?}", deserialized_llm_provider_wrapper);
 
         // Check that the fields are correctly converted
@@ -102,7 +105,7 @@ mod tests {
         assert_eq!(agent.api_key, Some("123456".to_string()));
         assert_eq!(
             agent.model,
-            AgentLLMInterface::OpenAI(OpenAI {
+            LLMProviderInterface::OpenAI(OpenAI {
                 model_type: "gpt-3.5-turbo-1106".to_string()
             })
         );
