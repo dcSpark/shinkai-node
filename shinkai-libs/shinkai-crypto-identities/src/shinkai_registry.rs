@@ -17,6 +17,7 @@ use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::{Duration, UNIX_EPOCH};
+use std::vec;
 use tokio::net::lookup_host;
 use tokio::task;
 use x25519_dalek::PublicKey;
@@ -112,11 +113,13 @@ impl OnchainIdentity {
             )
             .as_str(),
         );
-
+        let default_value = "localhost:9550";
         let first_address = self
             .address_or_proxy_nodes
+            .iter().filter(|addr| !addr.is_empty())
+            .collect::<Vec<_>>()
             .first()
-            .map_or("localhost:9550", |addr| addr.as_str());
+            .map_or(default_value, |addr| addr.as_str());
         let address = Self::validate_address(first_address)?;
 
         // Try to parse the address directly first
