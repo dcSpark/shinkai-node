@@ -112,7 +112,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn local_get_all_subidentities_devices_and_agents(
+    pub async fn local_get_all_subidentities_devices_and_llm_providers(
         identity_manager: Arc<Mutex<IdentityManager>>,
         res: Sender<Result<Vec<Identity>, APIError>>,
     ) {
@@ -323,8 +323,8 @@ impl Node {
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
     ) {
         match Self::internal_get_llm_providers_for_profile(db, node_name.clone().node_name, full_profile_name).await {
-            Ok(agents) => {
-                let _ = res.send(Ok(agents)).await;
+            Ok(llm_providers) => {
+                let _ = res.send(Ok(llm_providers)).await;
             }
             Err(err) => {
                 let _ = res.send(Err(format!("Internal Server Error: {}", err))).await;

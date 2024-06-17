@@ -21,7 +21,7 @@ pub enum KaiSchemaType {
 pub struct KaiJobFile {
     pub schema: KaiSchemaType,
     pub shinkai_profile: Option<ShinkaiName>,
-    pub agent_id: String
+    pub llm_provider_id: String
 }
 
 impl KaiJobFile {

@@ -367,7 +367,7 @@ impl Node {
             Ok(llm_providers) => llm_providers,
             Err(e) => {
                 return Err(NodeError {
-                    message: format!("Failed to get agents for profile: {}", e),
+                    message: format!("Failed to get llm providers for profile: {}", e),
                 })
             }
         };
@@ -632,7 +632,7 @@ impl Node {
             }
         }
 
-        let agents: Vec<SerializedLLMProvider> = input_models
+        let llm_providers: Vec<SerializedLLMProvider> = input_models
             .iter()
             .map(|model| {
                 // Replace non-alphanumeric characters with underscores for full_identity_name
@@ -669,7 +669,7 @@ impl Node {
             .collect();
 
         // Iterate over each agent and add it using internal_add_agent
-        for agent in agents {
+        for agent in llm_providers {
             let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
             Self::internal_add_llm_provider(
                 db.clone(),

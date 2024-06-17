@@ -24,7 +24,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
+    api_llm_provider_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
@@ -38,7 +38,7 @@ fn job_from_cron_one_page() {
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
-            let node1_agent = env.node1_agent.clone();
+            let node1_llm_provider = env.node1_llm_provider.clone();
             let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
@@ -73,7 +73,7 @@ fn job_from_cron_one_page() {
                         "{}/{}/agent/{}",
                         node1_identity_name.clone(),
                         node1_profile_name.clone(),
-                        node1_agent.clone()
+                        node1_llm_provider.clone()
                     )
                     .to_string(),
                 )
@@ -117,7 +117,7 @@ fn job_from_cron_one_page() {
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedLLMProvider {
-                    id: node1_agent.clone().to_string(),
+                    id: node1_llm_provider.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
@@ -131,7 +131,7 @@ fn job_from_cron_one_page() {
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
                 };
-                api_agent_registration(
+                api_llm_provider_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
@@ -144,7 +144,7 @@ fn job_from_cron_one_page() {
             }
 
             let mut job_id = "".to_string();
-            let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
+            let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_llm_provider.clone()).to_string();
             {
                 // Create a Job
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
@@ -199,7 +199,7 @@ fn job_from_cron_one_page() {
                 let data = KaiJobFile {
                     schema: KaiSchemaType::CronJob(cron_task),
                     shinkai_profile: None,
-                    agent_id: agent_subidentity.clone(),
+                    llm_provider_id: agent_subidentity.clone(),
                 };
 
                 // Read the file into a buffer

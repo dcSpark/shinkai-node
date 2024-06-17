@@ -101,7 +101,7 @@ mod tests {
         // Check that the job has the correct properties
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
-        assert_eq!(job.parent_agent_id, agent_id);
+        assert_eq!(job.parent_llm_provider_id, agent_id);
         assert!(!job.is_finished);
     }
 
@@ -131,7 +131,7 @@ mod tests {
 
         // Additional check that all jobs have correct agent_id
         for job in jobs {
-            assert_eq!(job.parent_agent_id(), &agent_id);
+            assert_eq!(job.parent_llm_provider_id(), &agent_id);
         }
     }
 
@@ -150,11 +150,11 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), initial_agent_id.clone(), scope);
 
         // Change the agent of the job
-        shinkai_db.change_job_agent(&job_id, &new_agent_id).unwrap();
+        shinkai_db.change_job_llm_provider(&job_id, &new_agent_id).unwrap();
 
         // Retrieve the job and check that the agent has been updated
         let job = shinkai_db.get_job(&job_id).unwrap();
-        assert_eq!(job.parent_agent_id, new_agent_id);
+        assert_eq!(job.parent_llm_provider_id, new_agent_id);
 
         // Check that the job is listed under the new agent
         let new_agent_jobs = shinkai_db.get_agent_jobs(new_agent_id.clone()).unwrap();

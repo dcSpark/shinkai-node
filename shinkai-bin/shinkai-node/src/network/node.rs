@@ -495,7 +495,7 @@ impl Node {
         secrets_file_path: String,
         proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
-        initial_agents: Vec<SerializedLLMProvider>,
+        initial_llm_providers: Vec<SerializedLLMProvider>,
         js_toolkit_executor_remote: Option<String>,
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
@@ -650,7 +650,7 @@ impl Node {
             job_manager: None,
             cron_manager: None,
             first_device_needs_registration_code,
-            initial_llm_providers: initial_agents,
+            initial_llm_providers,
             js_toolkit_executor_remote,
             vector_fs: vector_fs_arc.clone(),
             embedding_generator,
@@ -865,7 +865,7 @@ impl Node {
                                         NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(res) => {
                                             let identity_manager_clone = Arc::clone(&self.identity_manager);
                                             tokio::spawn(async move {
-                                                let _ = Node::local_get_all_subidentities_devices_and_agents(
+                                                let _ = Node::local_get_all_subidentities_devices_and_llm_providers(
                                                     identity_manager_clone,
                                                     res,
                                                 ).await;
@@ -1063,7 +1063,7 @@ impl Node {
                                             let encryption_public_key_clone = self.encryption_public_key;
                                             let identity_public_key_clone = self.identity_public_key;
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
-                                            let initial_agents_clone = self.initial_llm_providers.clone();
+                                            let initial_llm_providers_clone = self.initial_llm_providers.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
@@ -1078,7 +1078,7 @@ impl Node {
                                                     encryption_public_key_clone,
                                                     identity_public_key_clone,
                                                     identity_secret_key_clone,
-                                                    initial_agents_clone,
+                                                    initial_llm_providers_clone,
                                                     msg,
                                                     res,
                                                 ).await;

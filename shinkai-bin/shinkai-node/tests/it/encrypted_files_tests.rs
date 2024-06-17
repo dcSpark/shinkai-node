@@ -22,7 +22,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
+    api_llm_provider_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
     api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
@@ -37,7 +37,7 @@ fn sandwich_messages_with_files_test() {
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
-            let node1_agent = env.node1_agent.clone();
+            let node1_agent = env.node1_llm_provider.clone();
             let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
@@ -129,7 +129,7 @@ fn sandwich_messages_with_files_test() {
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
                 };
-                api_agent_registration(
+                api_llm_provider_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk,

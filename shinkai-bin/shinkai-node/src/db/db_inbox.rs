@@ -529,9 +529,9 @@ impl ShinkaiDB {
                             match InboxName::new(inbox_id.clone())? {
                                 InboxName::JobInbox { unique_id, .. } => {
                                     let job = self.get_job(&unique_id)?;
-                                    let agent_id = job.parent_agent_id;
+                                    let agent_id = job.parent_llm_provider_id;
                                     match self.get_llm_provider(&agent_id, &p) {
-                                        Ok(agent) => agent.map(LLMProviderSubset::from_serialized_agent),
+                                        Ok(agent) => agent.map(LLMProviderSubset::from_serialized_llm_provider),
                                         Err(_) => None,
                                     }
                                 }

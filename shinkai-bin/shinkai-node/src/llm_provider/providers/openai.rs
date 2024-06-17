@@ -49,7 +49,7 @@ impl LLMService for OpenAI {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
 
-                // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
+                // Note(Nico): we can use prepare_messages directly or we could had called ModelCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,

@@ -30,7 +30,7 @@ impl LLMService for Groq {
                 };
                 let model = LLMProviderInterface::Groq(groq);
                 let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
-                // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
+                // Note(Nico): we can use prepare_messages directly or we could had called ModelCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(mut v) => {

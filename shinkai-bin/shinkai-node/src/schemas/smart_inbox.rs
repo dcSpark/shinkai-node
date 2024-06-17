@@ -10,7 +10,7 @@ pub struct LLMProviderSubset {
 }
 
 impl LLMProviderSubset {
-    pub fn from_serialized_agent(serialized_llm_provider: SerializedLLMProvider) -> Self {
+    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider) -> Self {
         Self {
             id: serialized_llm_provider.id,
             full_identity_name: serialized_llm_provider.full_identity_name,

@@ -54,17 +54,17 @@ mod tests {
         let retrieved_agent = db.get_llm_provider(&test_agent.id, &profile).expect("Failed to get llm provider");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
-        // Call get_all_agents and check that it returns the right agent
+        // Call get_all_llm_providers and check that it returns the right agent
         let all_llm_providers = db.get_all_llm_providers().expect("Failed to get all llm providers");
         assert!(
             all_llm_providers.contains(&test_agent),
-            "get_all_agents did not return the added agent"
+            "get_all_llm_providers did not return the added agent"
         );
 
-        // Call get_agents_for_profile and check that it returns the right agent for the profile
+        // Call get_llm_providers_for_profile and check that it returns the right agent for the profile
         let llm_providers_for_profile = db
             .get_llm_providers_for_profile(profile.clone())
-            .expect("Failed to get agents for profile");
+            .expect("Failed to get llm providers for profile");
         assert!(
             llm_providers_for_profile.contains(&test_agent),
             "get_llm_providers_for_profile did not return the added agent"

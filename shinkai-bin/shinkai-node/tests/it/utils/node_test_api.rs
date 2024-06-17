@@ -304,21 +304,21 @@ pub async fn api_try_re_register_profile_node(
     );
 }
 
-pub async fn api_agent_registration(
+pub async fn api_llm_provider_registration(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
     subidentity_signature_sk: SigningKey,
     node_name: &str,
     subidentity_name: &str,
-    agent: SerializedLLMProvider,
+    llm_provider: SerializedLLMProvider,
 ) {
     {
-        let code_message = ShinkaiMessageBuilder::request_add_agent(
+        let code_message = ShinkaiMessageBuilder::request_add_llm_provider(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            agent.clone(),
+            llm_provider.clone(),
             subidentity_name.to_string(),
             node_name.to_string(),
             node_name.to_string(),
@@ -353,7 +353,7 @@ pub async fn api_agent_registration(
         // Search in node2_all_subidentities for the agent
         let agent_identity = node2_all_subidentities.iter().find(|identity| {
             identity.get_full_identity_name()
-                == ShinkaiName::new(format!("{}/main/agent/{}", node_name, agent.id))
+                == ShinkaiName::new(format!("{}/main/agent/{}", node_name, llm_provider.id))
                     .unwrap()
                     .to_string()
         });
@@ -383,13 +383,13 @@ pub async fn api_agent_registration(
             .unwrap();
         let available_llm_providers = res_available_llm_providers_receiver.recv().await.unwrap();
 
-        // Check if the result is Ok and extract the agents
+        // Check if the result is Ok and extract the llm providers
         if let Ok(llm_providers) = &available_llm_providers {
-            // Extract the agent IDs from the available agents
+            // Extract the agent IDs from the available llm providers
             let available_llm_providers_ids: Vec<String> = llm_providers.iter().map(|agent| agent.id.clone()).collect();
 
             // Check if the added agent's ID is in the list of available agent IDs
-            assert!(available_llm_providers_ids.contains(&agent.id), "Agent is not available");
+            assert!(available_llm_providers_ids.contains(&llm_provider.id), "Agent is not available");
         } else {
             panic!("Failed to get available llm providers");
         }

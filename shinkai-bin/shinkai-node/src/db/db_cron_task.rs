@@ -31,6 +31,7 @@ impl Ord for CronTask {
 }
 
 impl ShinkaiDB {
+    #[allow(clippy::too_many_arguments)]
     pub fn add_cron_task(
         &self,
         profile: ShinkaiName,
@@ -40,7 +41,7 @@ impl ShinkaiDB {
         subprompt: String,
         url: String,
         crawl_links: bool,
-        agent_id: String,
+        llm_provider_id: String,
     ) -> Result<(), ShinkaiDBError> {
         let profile_name = profile
             .get_profile_name_string()
@@ -82,7 +83,7 @@ impl ShinkaiDB {
         batch.put_cf(
             cf_cron_queues,
             format!("{}_agent_id", prefix).as_bytes(),
-            agent_id.as_bytes(),
+            llm_provider_id.as_bytes(),
         );
 
         // Commit the write batch

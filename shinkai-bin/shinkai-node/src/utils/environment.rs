@@ -33,7 +33,7 @@ pub struct StaticServerEnvironment {
     pub folder_path: String,
 }
 
-pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedLLMProvider> {
+pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvider> {
     let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
         .or_else(|_| env::var("INITIAL_LLM_PROVIDER_NAMES"))
         .unwrap_or_else(|_| "".to_string())

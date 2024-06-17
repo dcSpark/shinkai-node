@@ -65,7 +65,7 @@ impl JobManager {
             }
         }
 
-        // Get all serialized_agents and convert them to Agents
+        // Get all serialized_llm_providers and convert them to LLM Providers
         let mut llm_providers: Vec<Arc<Mutex<LLMProvider>>> = Vec::new();
         {
             let identity_manager = identity_manager.lock().await;

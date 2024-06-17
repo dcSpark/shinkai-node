@@ -20,14 +20,14 @@ impl JobManager {
     /// Returns a Hashmap using the same expected keys as the potential keys hashmap, but the values are the String found (the first matching of each).
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response(
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
         retry_attempts: u64,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
         let (value, _) = JobManager::advanced_extract_multi_keys_from_inference_response_with_json(
-            agent.clone(),
+            llm_provider.clone(),
             response.clone(),
             filled_prompt.clone(),
             potential_keys_hashmap.clone(),
@@ -44,7 +44,7 @@ impl JobManager {
     /// Also returns the response result (which will be new if at least one inference retry was done).
     /// Errors if any of the keys fail to extract.
     pub async fn advanced_extract_multi_keys_from_inference_response_with_json(
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys_hashmap: HashMap<&str, Vec<&str>>,
@@ -55,7 +55,7 @@ impl JobManager {
 
         for (key, potential_keys) in potential_keys_hashmap {
             let (value, res) = JobManager::advanced_extract_key_from_inference_response_with_new_response(
-                agent.clone(),
+                llm_provider.clone(),
                 response.clone(),
                 filled_prompt.clone(),
                 potential_keys.iter().map(|k| k.to_string()).collect(),
@@ -72,14 +72,14 @@ impl JobManager {
     /// Also tries variants of each potential key using capitalization/casing.
     /// Returns the String found at the first matching key.
     pub async fn advanced_extract_key_from_inference_response(
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
         retry_attempts: u64,
     ) -> Result<String, LLMProviderError> {
         let (value, _) = JobManager::advanced_extract_key_from_inference_response_with_new_response(
-            agent.clone(),
+            llm_provider.clone(),
             response.clone(),
             filled_prompt.clone(),
             potential_keys.clone(),
@@ -94,7 +94,7 @@ impl JobManager {
     /// Also tries variants of each potential key using capitalization/casing.
     /// Returns a tuple of the String found at the first matching key + the (potentially new) response markdown parsed to JSON (new if retry was done).
     pub async fn advanced_extract_key_from_inference_response_with_new_response(
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         response: LLMInferenceResponse,
         filled_prompt: Prompt,
         potential_keys: Vec<String>,
@@ -116,7 +116,7 @@ impl JobManager {
         for _ in 0..retry_attempts {
             for key in &potential_keys {
                 let new_response = internal_fix_markdown_to_include_proper_key(
-                    agent.clone(),
+                    llm_provider.clone(),
                     current_response.to_string(),
                     filled_prompt.clone(),
                     key.to_string(),
@@ -192,12 +192,12 @@ impl JobManager {
         llm_provider: SerializedLLMProvider,
         filled_prompt: Prompt,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
-        let agent_cloned = llm_provider.clone();
+        let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
 
         let task_response = tokio::spawn(async move {
-            let agent = LLMProvider::from_serialized_llm_provider(agent_cloned);
-            agent.inference_markdown(prompt_cloned).await
+            let llm_provider = LLMProvider::from_serialized_llm_provider(llm_provider_cloned);
+            llm_provider.inference_markdown(prompt_cloned).await
         })
         .await;
 
@@ -205,7 +205,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            format!("inference_agent_markdown> response: {:?}", response).as_str(),
+            format!("inference_llm_provider_markdown> response: {:?}", response).as_str(),
         );
 
         response
@@ -221,21 +221,21 @@ impl JobManager {
         let full_job = { db.get_job(job_id)? };
 
         // Acquire Agent
-        let agent_id = full_job.parent_agent_id.clone();
-        let mut agent_found = None;
+        let llm_provider_id = full_job.parent_llm_provider_id.clone();
+        let mut llm_provider_found = None;
         let mut profile_name = String::new();
         let mut user_profile: Option<ShinkaiName> = None;
         let llm_providers = JobManager::get_all_llm_providers(db).await.unwrap_or(vec![]);
-        for agent in llm_providers {
-            if agent.id == agent_id {
-                agent_found = Some(agent.clone());
-                profile_name.clone_from(&agent.full_identity_name.full_name);
-                user_profile = Some(agent.full_identity_name.extract_profile().unwrap());
+        for llm_provider in llm_providers {
+            if llm_provider.id == llm_provider_id {
+                llm_provider_found = Some(llm_provider.clone());
+                profile_name.clone_from(&llm_provider.full_identity_name.full_name);
+                user_profile = Some(llm_provider.full_identity_name.extract_profile().unwrap());
                 break;
             }
         }
 
-        Ok((full_job, agent_found, profile_name, user_profile))
+        Ok((full_job, llm_provider_found, profile_name, user_profile))
     }
 
     pub async fn get_all_llm_providers(db: Arc<ShinkaiDB>) -> Result<Vec<SerializedLLMProvider>, ShinkaiDBError> {
@@ -323,13 +323,13 @@ fn to_dash_case(s: &str) -> String {
 
 /// Inferences the LLM again asking it to take its previous answer and make sure it responds with markdown and include the required key.
 async fn internal_fix_markdown_to_include_proper_key(
-    agent: SerializedLLMProvider,
+    llm_provider: SerializedLLMProvider,
     invalid_markdown: String,
     original_prompt: Prompt,
     key_to_correct: String,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let response = tokio::spawn(async move {
-        let agent = LLMProvider::from_serialized_llm_provider(agent);
+        let llm_provider = LLMProvider::from_serialized_llm_provider(llm_provider);
         let prompt = JobPromptGenerator::basic_fix_markdown_to_include_proper_key(
             invalid_markdown,
             original_prompt,
@@ -339,7 +339,7 @@ async fn internal_fix_markdown_to_include_proper_key(
             "!?! Attempting to fix markdown. Re-inferencing: {:?}",
             prompt.sub_prompts
         );
-        agent.inference_markdown(prompt).await
+        llm_provider.inference_markdown(prompt).await
     })
     .await;
     let response = match response {

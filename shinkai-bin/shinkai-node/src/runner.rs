@@ -10,7 +10,7 @@ use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
-use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
+use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
@@ -109,7 +109,7 @@ pub async fn initialize_node() -> Result<
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string()));
 
     // Initialization, creating Tokio runtime and fetching needed startup data
-    let initial_llm_providers = fetch_agent_env(global_identity_name.clone());
+    let initial_llm_providers = fetch_llm_provider_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key);
@@ -145,7 +145,7 @@ pub async fn initialize_node() -> Result<
     shinkai_log(
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
-        format!("Initial Agent: {:?}", initial_llm_providers).as_str(),
+        format!("Initial LLM Provider: {:?}", initial_llm_providers).as_str(),
     );
 
     // CLI check

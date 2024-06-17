@@ -11,7 +11,7 @@ pub trait JobLike: Send + Sync {
     fn is_hidden(&self) -> bool;
     fn datetime_created(&self) -> &str;
     fn is_finished(&self) -> bool;
-    fn parent_agent_id(&self) -> &str;
+    fn parent_llm_provider_id(&self) -> &str;
     fn scope(&self) -> &JobScope;
     fn conversation_inbox_name(&self) -> &InboxName;
 }
@@ -28,7 +28,7 @@ pub struct Job {
     /// Marks if the job is finished or not
     pub is_finished: bool,
     /// Identity of the parent agent. We just use a full identity name for simplicity
-    pub parent_agent_id: String,
+    pub parent_llm_provider_id: String,
     /// What VectorResources the Job has access to when performing vector searches
     pub scope: JobScope,
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
@@ -62,8 +62,8 @@ impl JobLike for Job {
         self.is_finished
     }
 
-    fn parent_agent_id(&self) -> &str {
-        &self.parent_agent_id
+    fn parent_llm_provider_id(&self) -> &str {
+        &self.parent_llm_provider_id
     }
 
     fn scope(&self) -> &JobScope {

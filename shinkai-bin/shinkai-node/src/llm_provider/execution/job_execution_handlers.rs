@@ -70,7 +70,7 @@ impl JobManager {
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJobRequestResponse(cron_task_response.clone()),
             shinkai_profile: Some(profile.clone()),
-            agent_id: agent.id.clone(),
+            llm_provider_id: agent.id.clone(),
         };
 
         let inbox_name_result =

@@ -271,7 +271,7 @@ impl CronManager {
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJob(cron_job.clone()),
             shinkai_profile: Some(shinkai_profile.clone()),
-            agent_id: cron_job.llm_provider_id.clone(),
+            llm_provider_id: cron_job.llm_provider_id.clone(),
         };
 
         let job_creation = JobCreationInfo {
@@ -390,14 +390,14 @@ impl CronManager {
         subprompt: String,
         url: String,
         crawl_links: bool,
-        agent_id: String,
+        llm_provider_id: String,
     ) -> tokio::task::JoinHandle<Result<(), CronManagerError>> {
         let db = self.db.clone();
         // Note: needed to avoid a deadlock
         tokio::spawn(async move {
             let db_arc = db.upgrade().unwrap();
             db_arc
-                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
+                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, llm_provider_id)
                 .map_err(|e| CronManagerError::SomeError(e.to_string()))
         })
     }

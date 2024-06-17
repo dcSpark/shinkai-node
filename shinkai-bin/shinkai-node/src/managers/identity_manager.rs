@@ -107,24 +107,24 @@ impl IdentityManager {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("add_agent_subidentity > agent: {:?}", llm_provider).as_str(),
+            format!("add_agent_subidentity > llm provider: {:?}", llm_provider).as_str(),
         );
         self.local_identities.push(Identity::LLMProvider(llm_provider.clone()));
         Ok(())
     }
 
-    pub async fn modify_agent_subidentity(&mut self, updated_agent: SerializedLLMProvider) -> anyhow::Result<()> {
+    pub async fn modify_llm_provider_subidentity(&mut self, updated_llm_provider: SerializedLLMProvider) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("modify_agent_subidentity > updated_agent: {:?}", updated_agent).as_str(),
+            format!("modify_llm_provider_subidentity > updated_llm_provider: {:?}", updated_llm_provider).as_str(),
         );
 
         let mut found = false;
         for identity in &mut self.local_identities {
             if let Identity::LLMProvider(agent) = identity {
-                if agent.full_identity_name == updated_agent.full_identity_name {
-                    *agent = updated_agent.clone();
+                if agent.full_identity_name == updated_llm_provider.full_identity_name {
+                    *agent = updated_llm_provider.clone();
                     found = true;
                     break;
                 }
@@ -135,33 +135,33 @@ impl IdentityManager {
             shinkai_log(
                 ShinkaiLogOption::Identity,
                 ShinkaiLogLevel::Debug,
-                format!("Agent modified: {:?}", updated_agent.full_identity_name).as_str(),
+                format!("Agent modified: {:?}", updated_llm_provider.full_identity_name).as_str(),
             );
             Ok(())
         } else {
             shinkai_log(
                 ShinkaiLogOption::Identity,
                 ShinkaiLogLevel::Error,
-                format!("Agent not found: {}", updated_agent.full_identity_name).as_str(),
+                format!("Agent not found: {}", updated_llm_provider.full_identity_name).as_str(),
             );
             Err(anyhow::anyhow!(
                 "Agent with ID '{}' not found.",
-                updated_agent.full_identity_name
+                updated_llm_provider.full_identity_name
             ))
         }
     }
 
-    pub async fn remove_agent_subidentity(&mut self, agent_id: &str) -> anyhow::Result<()> {
+    pub async fn remove_agent_subidentity(&mut self, llm_provider_id: &str) -> anyhow::Result<()> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("remove_agent_subidentity > agent_id: {}", agent_id).as_str(),
+            format!("remove_agent_subidentity > llm_provider_id: {}", llm_provider_id).as_str(),
         );
-        // eprintln!("all agents: {:?}", self.local_identities);
+        // eprintln!("all llm providers: {:?}", self.local_identities);
 
         let initial_count = self.local_identities.len();
         self.local_identities.retain(|identity| match identity {
-            Identity::LLMProvider(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != agent_id,
+            Identity::LLMProvider(agent) => agent.full_identity_name.get_agent_name_string().unwrap() != llm_provider_id,
             _ => true,
         });
 
@@ -173,7 +173,7 @@ impl IdentityManager {
         );
 
         if initial_count == final_count {
-            Err(anyhow::anyhow!("Agent with ID '{}' not found.", agent_id))
+            Err(anyhow::anyhow!("Agent with ID '{}' not found.", llm_provider_id))
         } else {
             Ok(())
         }

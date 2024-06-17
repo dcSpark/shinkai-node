@@ -628,7 +628,7 @@ impl Node {
         encryption_public_key: EncryptionPublicKey,
         identity_public_key: VerifyingKey,
         identity_secret_key: SigningKey,
-        initial_agents: Vec<SerializedLLMProvider>,
+        initial_llm_providers: Vec<SerializedLLMProvider>,
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -939,16 +939,16 @@ impl Node {
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if !main_profile_exists && !initial_agents.is_empty() {
+                                if !main_profile_exists && !initial_llm_providers.is_empty() {
                                     std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
-                                    for agent in &initial_agents {
+                                    for llm_provider in &initial_llm_providers {
                                         Self::internal_add_llm_provider(
                                             db.clone(),
                                             identity_manager.clone(),
                                             job_manager.clone(),
                                             identity_secret_key.clone(),
-                                            agent.clone(),
+                                            llm_provider.clone(),
                                             &profile,
                                         )
                                         .await?;
@@ -1918,8 +1918,8 @@ impl Node {
             })?;
 
         match Self::internal_get_llm_providers_for_profile(db.clone(), node_name.clone().node_name, profile).await {
-            Ok(agents) => {
-                let _ = res.send(Ok(agents)).await;
+            Ok(llm_providers) => {
+                let _ = res.send(Ok(llm_providers)).await;
             }
             Err(err) => {
                 let api_error = APIError {
@@ -2149,8 +2149,8 @@ impl Node {
 
         let serialized_llm_provider_result = serde_json::from_str::<APIAddAgentRequest>(&serialized_agent_string);
 
-        let serialized_agent = match serialized_llm_provider_result {
-            Ok(agent) => agent,
+        let serialized_llm_provider = match serialized_llm_provider_result {
+            Ok(llm_provider) => llm_provider,
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -2185,7 +2185,7 @@ impl Node {
             identity_manager.clone(),
             job_manager.clone(),
             identity_secret_key.clone(),
-            serialized_agent.agent,
+            serialized_llm_provider.agent,
             &profile,
         )
         .await
@@ -2232,9 +2232,9 @@ impl Node {
             }
         };
 
-        let agent_id_result = msg.get_message_content();
+        let llm_provider_id_result = msg.get_message_content();
 
-        let agent_id = match agent_id_result {
+        let llm_provider_id = match llm_provider_id_result {
             Ok(id) => id.to_string(),
             Err(e) => {
                 let api_error = APIError {
@@ -2262,8 +2262,8 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match db.remove_llm_provider(&agent_id, &profile) {
-            Ok(_) => match identity_manager.remove_agent_subidentity(&agent_id).await {
+        match db.remove_llm_provider(&llm_provider_id, &profile) {
+            Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
                     Ok(())
@@ -2342,7 +2342,7 @@ impl Node {
             match db.update_llm_provider(input_payload.clone(), &requester_name) {
                 Ok(_) => {
                     let mut identity_manager = identity_manager.lock().await;
-                    match identity_manager.modify_agent_subidentity(input_payload).await {
+                    match identity_manager.modify_llm_provider_subidentity(input_payload).await {
                         Ok(_) => {
                             let _ = res.send(Ok("Agent modified successfully".to_string())).await;
                             Ok(())
@@ -2444,7 +2444,7 @@ impl Node {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Attempt to change the job agent in the job manager
-                    match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                    match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
                         Ok(_) => {
                             let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
                             Ok(())
@@ -2466,7 +2466,7 @@ impl Node {
                             message: format!("Failed to check permissions: {}", e),
                         })?;
                     if has_permission {
-                        match db.change_job_agent(&change_request.job_id, &change_request.new_agent_id) {
+                        match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
                             Ok(_) => {
                                 let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
                                 Ok(())

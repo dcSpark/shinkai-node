@@ -383,7 +383,7 @@ pub async fn run_api(
     // };
 
     // POST v1/available_agents
-    let available_agents = {
+    let available_llm_providers = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "available_agents")
             .and(warp::post())
@@ -762,7 +762,7 @@ pub async fn run_api(
         .or(get_all_inboxes_for_profile)
         .or(get_all_smart_inboxes_for_profile)
         .or(update_smart_inbox_name)
-        .or(available_agents)
+        .or(available_llm_providers)
         .or(add_agent)
         .or(remove_agent)
         .or(modify_agent)
