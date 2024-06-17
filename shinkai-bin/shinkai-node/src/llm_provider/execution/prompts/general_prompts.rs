@@ -77,7 +77,7 @@ impl JobPromptGenerator {
         );
 
         let mut wrong_string =
-            r#"It's formatted incorrectly. It needs to be properly formatted as markdown with the correct section names starting with \n # Answer. \n {{corrected_answer}}"#
+            r#"It's formatted incorrectly. It needs to be properly formatted as markdown."#
                 .to_string();
 
         if let Some(md_def) = markdown_definitions.first() {
@@ -89,7 +89,7 @@ impl JobPromptGenerator {
         prompt.add_content(wrong_string, SubPromptType::User, 100);
 
         prompt.add_content(
-            r#"Remember to escape any double quotes that you include in the content. Respond only with the markdown specified format and absolutely no explanation or anything else \n # Answer \n{{your answer}}\n"#.to_string(),
+            r#"Remember to escape any double quotes that you include in the content. Ideally respond using markdown."#.to_string(),
             SubPromptType::User,
             100,
         );

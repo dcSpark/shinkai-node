@@ -41,7 +41,7 @@ impl JobPromptGenerator {
             prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
         }
 
-        prompt.add_content(format!("{}\n Answer the question using this markdown and the extra context provided: \n # Answer \n here goes the answer\n", user_message), SubPromptType::User, 100);
+        prompt.add_content(format!("{}\n Answer the question using this markdown and the extra context provided.", user_message), SubPromptType::User, 100);
 
         prompt
     }
@@ -94,7 +94,7 @@ impl JobPromptGenerator {
         }
 
         let user_message_with_format = format!(
-            "{} \n Answer using markdown. Following this format: \n# Answer \n {{answer}}",
+            "{} \n Answer using markdown",
             user_message
         );
 
@@ -107,7 +107,7 @@ impl JobPromptGenerator {
 /// Adds initial setup text sub-prompt for qa chain
 fn add_setup_prompt(prompt: &mut Prompt) {
     prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the following markdown schema and nothing else:\n # Answer \nhere goes the answer\n".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user information using paragraphs, blocks, and bulletpoint lists. Use the content to directly answer the user's question. If the user talks about `it` or `this`, they are referencing the previous message.\n Respond using the markdown.".to_string(),
             SubPromptType::System,
             98
         );

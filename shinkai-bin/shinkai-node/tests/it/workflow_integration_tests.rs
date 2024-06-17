@@ -78,7 +78,7 @@ fn workflow_integration_test() {
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "\n# Answer \n The Roman Empire is very interesting"
+                    "content": "The Roman Empire is very interesting"
                 },
                 "finish_reason": "stop"
             }],

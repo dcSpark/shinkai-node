@@ -93,7 +93,7 @@ fn sandwich_messages_with_files_test() {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "\n# Answer\nHello there, how may I assist you today?"
+                            "content": "Hello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],

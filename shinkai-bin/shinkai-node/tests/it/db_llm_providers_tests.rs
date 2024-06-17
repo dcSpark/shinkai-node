@@ -244,7 +244,7 @@ mod tests {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": " a bunch of other text before # Answer\nHello there, how may I assist you today?"
+                            "content": "Hello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],
