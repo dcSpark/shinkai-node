@@ -1,4 +1,5 @@
 use serde::Serialize;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::{io::Write, net::SocketAddr};
 use tokio::net::TcpListener;
 use warp::{http::StatusCode, Filter};
@@ -37,9 +38,28 @@ impl From<String> for APIError {
 impl warp::reject::Reject for APIError {}
 
 pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Starting server at: {:?}", address);
+    shinkai_log(
+        ShinkaiLogOption::Executor,
+        ShinkaiLogLevel::Info,
+        format!("Starting Executor API server at: {:?}", address).as_str(),
+    );
 
     let try_bind = TcpListener::bind(&address).await;
+
+    let log = warp::log::custom(|info| {
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            &format!(
+                "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",
+                info.remote_addr(),
+                info.method(),
+                info.path(),
+                info.status(),
+                info.elapsed(),
+            ),
+        );
+    });
 
     // PDF
     let pdf_extract_to_text_groups = warp::path!("v1" / "pdf" / "extract-to-text-groups")
@@ -114,14 +134,19 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .or(vrpack_add_folder)
         .or(vrpack_vector_search)
         .or(vrpack_view_contents)
-        .recover(handle_rejection);
+        .recover(handle_rejection)
+        .with(log);
 
     match try_bind {
         Ok(_) => {
             tokio::spawn(async {
                 match check_and_download_dependencies().await {
                     Ok(_) => {}
-                    Err(e) => eprintln!("Error downloading ocrs models: {:?}", e),
+                    Err(e) => shinkai_log(
+                        ShinkaiLogOption::Executor,
+                        ShinkaiLogLevel::Error,
+                        &format!("Error downloading ocrs models: {:?}", e),
+                    ),
                 }
             });
 
@@ -134,7 +159,12 @@ pub async fn run_api(address: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
-    eprintln!("API Error: {:?}", err);
+    shinkai_log(
+        ShinkaiLogOption::Executor,
+        ShinkaiLogLevel::Error,
+        &format!("API Error: {:?}", err),
+    );
+
     if let Some(api_error) = err.find::<APIError>() {
         let json = warp::reply::json(api_error);
         Ok(warp::reply::with_status(
@@ -159,7 +189,11 @@ async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Err
     let recognition_model = "text-recognition.rten";
 
     if !std::path::Path::new(&format!("ocrs/{}", detection_model)).exists() {
-        println!("Downloading OCRS model {}", detection_model);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Info,
+            &format!("Downloading OCRS model {}", detection_model),
+        );
 
         let client = reqwest::Client::new();
         let file_data = client
@@ -174,7 +208,11 @@ async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Err
     }
 
     if !std::path::Path::new(&format!("ocrs/{}", recognition_model)).exists() {
-        println!("Downloading OCRS model {}", recognition_model);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Info,
+            &format!("Downloading OCRS model {}", recognition_model),
+        );
 
         let client = reqwest::Client::new();
         let file_data = client

@@ -2,6 +2,7 @@ use image::GenericImageView;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup};
 use std::path::PathBuf;
 
@@ -68,19 +69,9 @@ impl PDFParser {
         for (page_index, page) in document.pages().iter().enumerate() {
             let mut previous_text_position: Option<TextPosition> = None;
 
-            // Debug info
-            eprintln!("=============== Page {} ===============", page_index + 1);
-            let mut found_text = false;
-            let mut found_image = false;
-
             for object in page.objects().iter() {
                 match object.object_type() {
                     PdfPageObjectType::Text => {
-                        if !found_text {
-                            eprintln!("Processing text objects...");
-                            found_text = true;
-                        }
-
                         let text_object = object.as_text_object().unwrap();
                         let text = text_object.text();
 
@@ -172,11 +163,6 @@ impl PDFParser {
                         previous_text_font = Some(current_text_font);
                     }
                     PdfPageObjectType::Image => {
-                        if !found_image {
-                            eprintln!("Processing image objects...");
-                            found_image = true;
-                        }
-
                         // Save text from previous text objects.
                         ShinkaiFileParser::push_text_group_by_depth(
                             &mut text_groups,
@@ -195,7 +181,12 @@ impl PDFParser {
                             max_node_text_size,
                             text_depth,
                         ) {
-                            eprintln!("Error processing image object: {:?}", err);
+                            shinkai_log(
+                                ShinkaiLogOption::Executor,
+                                ShinkaiLogLevel::Error,
+                                &format!("PDF parser: Error processing image object: {:?}", err),
+                            );
+
                             match image_object.get_raw_image() {
                                 Ok(img) => {
                                     let current_time = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
@@ -204,15 +195,27 @@ impl PDFParser {
 
                                     match img.save_with_format(&img_path, image::ImageFormat::Png) {
                                         Ok(_) => {
-                                            eprintln!("Saved image to {}", &img_path);
+                                            shinkai_log(
+                                                ShinkaiLogOption::Executor,
+                                                ShinkaiLogLevel::Info,
+                                                &format!("Saved image to {}", &img_path),
+                                            );
                                         }
                                         Err(err) => {
-                                            eprintln!("Error saving image: {:?}", err);
+                                            shinkai_log(
+                                                ShinkaiLogOption::Executor,
+                                                ShinkaiLogLevel::Error,
+                                                &format!("Error saving image: {:?}", err),
+                                            );
                                         }
                                     }
                                 }
                                 Err(err) => {
-                                    eprintln!("Error getting raw image: {:?}", err);
+                                    shinkai_log(
+                                        ShinkaiLogOption::Executor,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Error getting raw image: {:?}", err),
+                                    );
                                 }
                             }
                         }

@@ -1,4 +1,5 @@
 use futures::StreamExt;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::{
     embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
     model_type::EmbeddingModelType,
@@ -26,16 +27,26 @@ const PART_KEY_QUERY_STRING: &str = "query_string";
 const PART_KEY_VRPATH: &str = "vrpath";
 const PART_KEY_VRPACK_NAME: &str = "vrpack_name";
 
-pub async fn pdf_extract_to_text_groups_handler(
-    form: warp::multipart::FormData,
-) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut filename = "".to_string();
-    let mut file_buffer = Vec::new();
-    let mut max_node_text_size = 400;
+struct ParsedParts {
+    parts: HashMap<String, String>,
+    files: HashMap<String, Vec<u8>>,
+}
+
+async fn process_form_data(form: warp::multipart::FormData, part_keys: Vec<String>) -> ParsedParts {
+    let mut parsed_parts = ParsedParts {
+        parts: HashMap::new(),
+        files: HashMap::new(),
+    };
+
+    let part_keys = &part_keys;
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+            shinkai_log(
+                ShinkaiLogOption::Executor,
+                ShinkaiLogLevel::Debug,
+                format!("Received part: {:?}", part).as_str(),
+            );
 
             let part_name = part.name().to_string();
             let file_name = part.filename().map(|s| s.to_string());
@@ -44,37 +55,58 @@ pub async fn pdf_extract_to_text_groups_handler(
                 .stream()
                 .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
 
-            if part_name == PART_KEY_MAX_NODE_TEXT_SIZE {
-                return Some((part_name, stream));
+            if let Some(file_name) = file_name {
+                return Some((file_name, stream, true));
             }
 
-            if let Some(file_name) = file_name {
-                return Some((file_name, stream));
+            if part_keys.contains(&part_name) {
+                return Some((part_name, stream, false));
             }
         }
         None
     }));
 
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
+    while let Some((part_name, mut part_stream, is_file)) = stream.next().await {
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            format!("Processing part: {:?}", part_name).as_str(),
+        );
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
             part_data.extend(node);
         }
 
-        match part_name.as_str() {
-            PART_KEY_MAX_NODE_TEXT_SIZE => {
-                if let Ok(size) = String::from_utf8(part_data).unwrap_or_default().parse::<u64>() {
-                    max_node_text_size = size;
-                }
-            }
-            _ => {
-                filename = part_name;
-                file_buffer = part_data;
-            }
+        if is_file {
+            parsed_parts.files.insert(part_name, part_data);
+        } else {
+            parsed_parts
+                .parts
+                .insert(part_name, String::from_utf8(part_data).unwrap_or_default());
         }
     }
+
+    parsed_parts
+}
+
+pub async fn pdf_extract_to_text_groups_handler(
+    form: warp::multipart::FormData,
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let parsed_parts = process_form_data(form, vec![PART_KEY_MAX_NODE_TEXT_SIZE.to_string()]).await;
+
+    let (filename, file_buffer) = parsed_parts
+        .files
+        .into_iter()
+        .next()
+        .unwrap_or(("".to_string(), Vec::new()));
+
+    let max_node_text_size = parsed_parts
+        .parts
+        .get(PART_KEY_MAX_NODE_TEXT_SIZE)
+        .unwrap_or(&"".to_string())
+        .parse::<u64>()
+        .unwrap_or(400);
 
     let file_extension = filename.split('.').last();
     match file_extension {
@@ -95,59 +127,32 @@ pub async fn pdf_extract_to_text_groups_handler(
 pub async fn vrkai_generate_from_file_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut filename = "".to_string();
-    let mut file_buffer = Vec::new();
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_EMBEDDING_MODEL.to_string(),
+            PART_KEY_EMBEDDING_GEN_URL.to_string(),
+            PART_KEY_EMBEDDING_GEN_KEY.to_string(),
+        ],
+    )
+    .await;
+
+    let (filename, file_buffer) = parsed_parts
+        .files
+        .into_iter()
+        .next()
+        .unwrap_or(("".to_string(), Vec::new()));
+
     let mut generator = RemoteEmbeddingGenerator::new_default();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
-
-            let part_name = part.name().to_string();
-            let file_name = part.filename().map(|s| s.to_string());
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_EMBEDDING_MODEL.to_string(),
-                PART_KEY_EMBEDDING_GEN_URL.to_string(),
-                PART_KEY_EMBEDDING_GEN_KEY.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
-            }
-
-            if let Some(file_name) = file_name {
-                return Some((file_name, stream));
-            }
-        }
-        None
-    }));
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_EMBEDDING_MODEL => {
-                let embedding_model = String::from_utf8(part_data).unwrap_or_default();
-                generator.model_type = EmbeddingModelType::from_string(&embedding_model)
-                    .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
-            }
-            PART_KEY_EMBEDDING_GEN_URL => generator.api_url = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_EMBEDDING_GEN_KEY => generator.api_key = Some(String::from_utf8(part_data).unwrap_or_default()),
-            _ => {
-                filename = part_name;
-                file_buffer = part_data;
-            }
-        }
+    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+        generator.model_type = EmbeddingModelType::from_string(model_type)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+    }
+    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+        generator.api_url = api_url.to_owned();
+    }
+    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+        generator.api_key = Some(api_key.to_owned());
     }
 
     match FileStreamParser::generate_vrkai(&filename, file_buffer, &generator).await {
@@ -168,64 +173,47 @@ pub async fn vrkai_generate_from_file_handler(
 pub async fn vrkai_vector_search_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut encoded_vrkai = "".to_string();
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_EMBEDDING_MODEL.to_string(),
+            PART_KEY_EMBEDDING_GEN_URL.to_string(),
+            PART_KEY_EMBEDDING_GEN_KEY.to_string(),
+            PART_KEY_ENCODED_VRKAI.to_string(),
+            PART_KEY_NUM_OF_RESULTS.to_string(),
+            PART_KEY_QUERY_STRING.to_string(),
+        ],
+    )
+    .await;
+
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    let mut num_of_results = 3u64;
-    let mut query_string = "".to_string();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
-
-            let part_name = part.name().to_string();
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_EMBEDDING_MODEL.to_string(),
-                PART_KEY_EMBEDDING_GEN_URL.to_string(),
-                PART_KEY_EMBEDDING_GEN_KEY.to_string(),
-                PART_KEY_ENCODED_VRKAI.to_string(),
-                PART_KEY_NUM_OF_RESULTS.to_string(),
-                PART_KEY_QUERY_STRING.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
-            }
-        }
-        None
-    }));
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_EMBEDDING_MODEL => {
-                let embedding_model = String::from_utf8(part_data).unwrap_or_default();
-                generator.model_type = EmbeddingModelType::from_string(&embedding_model)
-                    .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
-            }
-            PART_KEY_EMBEDDING_GEN_URL => generator.api_url = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_EMBEDDING_GEN_KEY => generator.api_key = Some(String::from_utf8(part_data).unwrap_or_default()),
-            PART_KEY_ENCODED_VRKAI => encoded_vrkai = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_NUM_OF_RESULTS => {
-                num_of_results = String::from_utf8(part_data)
-                    .unwrap_or_default()
-                    .parse::<u64>()
-                    .unwrap_or(3)
-            }
-            PART_KEY_QUERY_STRING => query_string = String::from_utf8(part_data).unwrap_or_default(),
-            _ => {}
-        }
+    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+        generator.model_type = EmbeddingModelType::from_string(model_type)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
     }
+    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+        generator.api_url = api_url.to_owned();
+    }
+    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+        generator.api_key = Some(api_key.to_owned());
+    }
+
+    let encoded_vrkai = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRKAI)
+        .unwrap_or(&"".to_string())
+        .to_owned();
+    let num_of_results = parsed_parts
+        .parts
+        .get(PART_KEY_NUM_OF_RESULTS)
+        .unwrap_or(&"".to_string())
+        .parse::<u64>()
+        .unwrap_or(3);
+    let query_string = parsed_parts
+        .parts
+        .get(PART_KEY_QUERY_STRING)
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
     match VRKai::from_base64(&encoded_vrkai) {
         Ok(vrkai) => {
@@ -251,36 +239,13 @@ pub async fn vrkai_vector_search_handler(
 pub async fn vrkai_view_contents_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut encoded_vrkai = "".to_string();
+    let parsed_parts = process_form_data(form, vec![PART_KEY_ENCODED_VRKAI.to_string()]).await;
 
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
-
-            let part_name = part.name().to_string();
-
-            if part_name == PART_KEY_ENCODED_VRKAI {
-                let stream = part
-                    .stream()
-                    .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-                return Some((part_name, stream));
-            }
-        }
-        None
-    }));
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        if part_name == PART_KEY_ENCODED_VRKAI {
-            encoded_vrkai = String::from_utf8(part_data).unwrap_or_default();
-        }
-    }
+    let encoded_vrkai = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRKAI)
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
     match VRKai::from_base64(&encoded_vrkai) {
         Ok(vrkai) => Ok(Box::new(warp::reply::with_status(
@@ -297,64 +262,36 @@ pub async fn vrkai_view_contents_handler(
 pub async fn vrpack_generate_from_files_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_EMBEDDING_MODEL.to_string(),
+            PART_KEY_EMBEDDING_GEN_URL.to_string(),
+            PART_KEY_EMBEDDING_GEN_KEY.to_string(),
+            PART_KEY_VRPACK_NAME.to_string(),
+        ],
+    )
+    .await;
+
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    let mut vrpack_name = "".to_string();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
-
-            let part_name = part.name().to_string();
-            let file_name = part.filename().map(|s| s.to_string());
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_EMBEDDING_MODEL.to_string(),
-                PART_KEY_EMBEDDING_GEN_URL.to_string(),
-                PART_KEY_EMBEDDING_GEN_KEY.to_string(),
-                PART_KEY_VRPACK_NAME.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
-            }
-
-            if let Some(file_name) = file_name {
-                return Some((file_name, stream));
-            }
-        }
-        None
-    }));
-
-    let mut files = HashMap::new();
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_EMBEDDING_MODEL => {
-                let embedding_model = String::from_utf8(part_data).unwrap_or_default();
-                generator.model_type = EmbeddingModelType::from_string(&embedding_model)
-                    .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
-            }
-            PART_KEY_EMBEDDING_GEN_URL => generator.api_url = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_EMBEDDING_GEN_KEY => generator.api_key = Some(String::from_utf8(part_data).unwrap_or_default()),
-            PART_KEY_VRPACK_NAME => vrpack_name = String::from_utf8(part_data).unwrap_or_default(),
-            _ => {
-                files.insert(part_name, part_data);
-            }
-        }
+    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+        generator.model_type = EmbeddingModelType::from_string(model_type)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+    }
+    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+        generator.api_url = api_url.to_owned();
+    }
+    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+        generator.api_key = Some(api_key.to_owned());
     }
 
-    let vrpack = FileStreamParser::generate_vrpack_from_files(files, &generator, &vrpack_name)
+    let vrpack_name = parsed_parts
+        .parts
+        .get(PART_KEY_VRPACK_NAME)
+        .unwrap_or(&"".to_string())
+        .to_owned();
+
+    let vrpack = FileStreamParser::generate_vrpack_from_files(parsed_parts.files, &generator, &vrpack_name)
         .await
         .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
 
@@ -371,47 +308,15 @@ pub async fn vrpack_generate_from_files_handler(
 pub async fn vrpack_generate_from_vrkais_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut vrpack_name = "".to_string();
+    let parsed_parts = process_form_data(form, vec![PART_KEY_VRPACK_NAME.to_string()]).await;
 
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+    let vrpack_name = parsed_parts
+        .parts
+        .get(PART_KEY_VRPACK_NAME)
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
-            let part_name = part.name().to_string();
-            let file_name = part.filename().map(|s| s.to_string());
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if part_name == PART_KEY_VRPACK_NAME {
-                return Some((part_name, stream));
-            }
-
-            if let Some(file_name) = file_name {
-                return Some((file_name, stream));
-            }
-        }
-        None
-    }));
-
-    let mut files = Vec::new();
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_VRPACK_NAME => vrpack_name = String::from_utf8(part_data).unwrap_or_default(),
-            _ => {
-                files.push(part_data);
-            }
-        }
-    }
+    let files = parsed_parts.files.into_values().collect::<Vec<Vec<u8>>>();
 
     let vrpack = FileStreamParser::generate_vrpack_from_vrkais(files, &vrpack_name)
         .await
@@ -434,7 +339,11 @@ pub async fn vrpack_add_vrkais_handler(
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+            shinkai_log(
+                ShinkaiLogOption::Executor,
+                ShinkaiLogLevel::Debug,
+                format!("Received part: {:?}", part).as_str(),
+            );
 
             let part_name = part.name().to_string();
 
@@ -459,7 +368,11 @@ pub async fn vrpack_add_vrkais_handler(
     let mut vrkais = Vec::new();
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            format!("Processing part: {:?}", part_name).as_str(),
+        );
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
@@ -525,7 +438,11 @@ pub async fn vrpack_add_folder_handler(
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+            shinkai_log(
+                ShinkaiLogOption::Executor,
+                ShinkaiLogLevel::Debug,
+                format!("Received part: {:?}", part).as_str(),
+            );
 
             let part_name = part.name().to_string();
 
@@ -549,7 +466,11 @@ pub async fn vrpack_add_folder_handler(
     let mut vrpack = VRPack::new_empty("");
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            format!("Processing part: {:?}", part_name).as_str(),
+        );
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
@@ -608,7 +529,11 @@ pub async fn vrpack_vector_search_handler(
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+            shinkai_log(
+                ShinkaiLogOption::Executor,
+                ShinkaiLogLevel::Debug,
+                format!("Received part: {:?}", part).as_str(),
+            );
 
             let part_name = part.name().to_string();
 
@@ -634,7 +559,11 @@ pub async fn vrpack_vector_search_handler(
     }));
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            format!("Processing part: {:?}", part_name).as_str(),
+        );
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {
@@ -693,7 +622,11 @@ pub async fn vrpack_view_contents_handler(
 
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
-            println!("Received part: {:?}", part);
+            shinkai_log(
+                ShinkaiLogOption::Executor,
+                ShinkaiLogLevel::Debug,
+                format!("Received part: {:?}", part).as_str(),
+            );
 
             let part_name = part.name().to_string();
 
@@ -708,7 +641,11 @@ pub async fn vrpack_view_contents_handler(
     }));
 
     while let Some((part_name, mut part_stream)) = stream.next().await {
-        println!("Processing part: {:?}", part_name);
+        shinkai_log(
+            ShinkaiLogOption::Executor,
+            ShinkaiLogLevel::Debug,
+            format!("Processing part: {:?}", part_name).as_str(),
+        );
 
         let mut part_data = Vec::new();
         while let Some(Ok(node)) = part_stream.next().await {

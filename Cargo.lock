@@ -7102,6 +7102,7 @@ dependencies = [
  "rten",
  "serde",
  "serde_json",
+ "shinkai_message_primitives",
  "shinkai_vector_resources",
  "tokio",
  "warp",
