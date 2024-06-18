@@ -244,7 +244,7 @@ mod tests {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": " a bunch of other text before # Answer\nHello there, how may I assist you today?"
+                            "content": "Hello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],
@@ -280,7 +280,7 @@ mod tests {
             .await;
         match response {
             Ok(res) => assert_eq!(
-                res.json["answer"].as_str().unwrap(),
+                res.original_response_string.as_str().to_string(),
                 "Hello there, how may I assist you today?".to_string()
             ),
             Err(e) => panic!("Error when calling API: {}", e),

@@ -206,8 +206,7 @@ impl AsyncFunction for InferenceFunction {
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
-        let answer = JobManager::direct_extract_key_inference_response(response.clone(), "answer")
-            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+        let answer = response.original_response_string;
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,

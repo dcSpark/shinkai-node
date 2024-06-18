@@ -223,7 +223,7 @@ fn planner_integration_test() {
 
                 // Create a KaiJobFile from the CronTaskRequest
                 let kai_file = KaiJobFile {
-                    schema: KaiSchemaType::CronJobRequest(cron_request),
+                    schema: KaiSchemaType::JobRequest(cron_request),
                     shinkai_profile: None,
                     llm_provider_id: node1_agent.clone().to_string(),
                 };

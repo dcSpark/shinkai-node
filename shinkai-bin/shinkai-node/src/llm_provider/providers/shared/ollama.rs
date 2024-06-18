@@ -130,7 +130,7 @@ mod tests {
             },
             ChatCompletionRequestMessage {
                 role: "system".to_string(),
-                content: Some("Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs. Start your response with # Answer".to_string()),
+                content: Some("Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string()),
                 name: None,
                 function_call: None,
             },
@@ -149,7 +149,7 @@ mod tests {
             },
             OllamaMessage {
                 role: "system".to_string(),
-                content: "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs. Start your response with # Answer".to_string(),
+                content: "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string(),
                 images: None,
             },
         ];

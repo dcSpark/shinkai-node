@@ -2,7 +2,6 @@ use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt}
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -136,24 +135,7 @@ impl LLMService for OpenAI {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            match parse_markdown_to_json(&response_string) {
-                                Ok(json) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Debug,
-                                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                                    );
-                                    Ok(LLMInferenceResponse::new(response_string, json))
-                                }
-                                Err(e) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                                    );
-                                    Err(e)
-                                }
-                            }
+                            Ok(LLMInferenceResponse::new(response_string, json!({})))
                         } else {
                             let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                             let response_string: String = data
@@ -165,24 +147,9 @@ impl LLMService for OpenAI {
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            match parse_markdown_to_json(&response_string) {
-                                Ok(json) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Debug,
-                                        format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                                    );
-                                    Ok(LLMInferenceResponse::new(response_string, json))
-                                }
-                                Err(e) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                                    );
-                                    Err(e)
-                                }
-                            }
+                
+                            // Directly return response_text with an empty JSON object
+                            Ok(LLMInferenceResponse::new(response_string, json!({})))
                         }
                     }
                     Err(e) => {

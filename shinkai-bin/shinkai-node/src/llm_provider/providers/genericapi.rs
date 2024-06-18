@@ -1,5 +1,4 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::providers::shared::shared_model_logic::parse_markdown_to_json;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
@@ -10,7 +9,7 @@ use reqwest::Client;
 
 use serde_json;
 use serde_json::json;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, GenericAPI};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{GenericAPI, LLMProviderInterface};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]
@@ -98,24 +97,7 @@ impl LLMService for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(String::new);
 
-                        match parse_markdown_to_json(&response_string) {
-                            Ok(json) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Debug,
-                                    format!("Parsed JSON from Markdown: {:?}", json).as_str(),
-                                );
-                                Ok(LLMInferenceResponse::new(response_string, json))
-                            }
-                            Err(e) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    format!("Failed to parse Markdown to JSON: {:?}", e).as_str(),
-                                );
-                                Err(e)
-                            }
-                        }
+                        return Ok(LLMInferenceResponse::new(response_string, json!({})));
                     }
                     Err(e) => {
                         shinkai_log(

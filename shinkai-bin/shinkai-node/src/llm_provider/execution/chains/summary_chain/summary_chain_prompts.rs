@@ -1,5 +1,5 @@
-use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt, SubPromptType};
-use crate::llm_provider::execution::{prompts::prompts::SubPrompt, user_message_parser::ParsedUserMessage};
+use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
+use crate::llm_provider::execution::{prompts::subprompts::{SubPrompt, SubPromptType}, user_message_parser::ParsedUserMessage};
 use shinkai_vector_resources::source::VRSourceReference;
 
 impl JobPromptGenerator {
@@ -21,7 +21,10 @@ impl JobPromptGenerator {
             );
         } else {
             prompt.add_content(
-                format!("Here is the content from {} to answer the user's question: --- start --- \n", resource_source.format_source_string()),
+                format!(
+                    "Here is the content from {} to answer the user's question: --- start --- \n",
+                    resource_source.format_source_string()
+                ),
                 SubPromptType::ExtraContext,
                 100,
             );
@@ -30,16 +33,12 @@ impl JobPromptGenerator {
         // Add the resource sub prompts
         prompt.add_sub_prompts(resource_sub_prompts);
 
-        prompt.add_content(
-            "--- end ---".to_string(),
-            SubPromptType::ExtraContext,
-            100,
-        );
+        prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 100);
 
-        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics or chapters in the content (with 1-2 sentences describing each).\n Respond using the following markdown template and nothing else (no references). Don't forget to put all content under the top-level `# Answer`:\n";
+        let task_message = "Your task is to summarize the content by providing a relevant title, writing an introductory paragraph explaining the high-level context of the content, and at least 5 bulletpoints in a list highlighting the main topics or chapters in the content (with 1-2 sentences describing each).\n Respond using markdown.";
         prompt.add_content(task_message.to_string(), SubPromptType::User, 100);
 
-        let markdown_message = r#"# Answer \n ## {{content title here}}\n\n{{introductory paragraph here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n"#;
+        let markdown_message = r#"## {{content title here}}\n\n{{introductory paragraph here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n - **{{bulletpoint title here}}**: {{bulletpoint description here}}\n"#;
         prompt.add_content(markdown_message.to_string(), SubPromptType::User, 100);
 
         let task_message = format!("Do not respond with absolutely anything else, except with the above markdown template, filling it in with info to fulfill the user's summary request: {}", user_message.original_user_message_string);

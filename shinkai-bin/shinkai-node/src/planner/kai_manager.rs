@@ -48,7 +48,7 @@ pub struct KaiJobFileManager;
 impl KaiJobFileManager {
     pub async fn execute(kai_file: KaiJobFile, node: &Node) -> Result<(), KaiJobFileManagerError> {
         match kai_file.schema {
-            KaiSchemaType::CronJobRequest(cron_task_request) => {
+            KaiSchemaType::JobRequest(cron_task_request) => {
                 // Nothing to do
                 shinkai_log(
                     ShinkaiLogOption::CronExecution,
@@ -64,7 +64,7 @@ impl KaiJobFileManager {
                     "KaiSchemaType::CronJob variant matched but not handled",
                 );
             }
-            KaiSchemaType::CronJobRequestResponse(cron_task_response) => {
+            KaiSchemaType::JobRequestResponse(cron_task_response) => {
                 shinkai_log(
                     ShinkaiLogOption::CronExecution,
                     ShinkaiLogLevel::Debug,

@@ -6,7 +6,9 @@ use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::any::Any;
 
-use crate::llm_provider::{execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::prompts::SubPrompt}, job_manager::JobManager};
+use crate::llm_provider::{
+    execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt}, job_manager::JobManager,
+};
 
 // TODO: we need to generate description for each function (LLM processing?)
 // we need to extend the description with keywords maybe use RAKE as well
@@ -275,15 +277,17 @@ pub fn extract_and_map_csv_column(
         .downcast_ref::<Box<dyn Fn(&str) -> String + Send>>()
         .ok_or_else(|| WorkflowError::InvalidArgument("Invalid argument for map function".to_string()))?;
 
-    let mut reader = ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(csv_data.as_slice());
+    let mut reader = ReaderBuilder::new().has_headers(true).from_reader(csv_data.as_slice());
 
-    let headers = reader.headers().map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+    let headers = reader
+        .headers()
+        .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
     let column_index = if let Ok(index) = column_identifier.parse::<usize>() {
         index
     } else {
-        headers.iter().position(|h| h == column_identifier)
+        headers
+            .iter()
+            .position(|h| h == column_identifier)
             .ok_or_else(|| WorkflowError::InvalidArgument("Column not found".to_string()))?
     };
 
@@ -297,7 +301,6 @@ pub fn extract_and_map_csv_column(
 
     Ok(Box::new(mapped_values))
 }
-
 
 #[allow(dead_code)]
 // TODO: needs some work in the embedding <> fn usage
@@ -317,20 +320,20 @@ pub async fn process_embeddings_in_job_scope(
     let user_profile = context.user_profile();
     let scope = context.full_job().scope.clone();
 
-    let resource_stream = JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile).await;
+    let resource_stream =
+        JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, user_profile).await;
     let mut chunks = resource_stream.chunks(5);
 
     let mut processed_embeddings = Vec::new();
     while let Some(resources) = chunks.next().await {
-        let futures = resources.into_iter().map(|resource| {
-            async move {
-                let subprompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
-                let embedding = subprompts.iter()
-                    .map(|subprompt| map_fn(&subprompt.get_content()))
-                    .collect::<Vec<String>>()
-                    .join(" ");
-                Ok::<_, WorkflowError>(embedding)
-            }
+        let futures = resources.into_iter().map(|resource| async move {
+            let subprompts = SubPrompt::convert_resource_into_subprompts(&resource, 97);
+            let embedding = subprompts
+                .iter()
+                .map(|subprompt| map_fn(&subprompt.get_content()))
+                .collect::<Vec<String>>()
+                .join(" ");
+            Ok::<_, WorkflowError>(embedding)
         });
         let results = join_all(futures).await;
 
@@ -354,7 +357,15 @@ pub async fn process_embeddings_in_job_scope(
 mod tests {
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-    use crate::llm_provider::execution::{chains::{dsl_chain::generic_functions::{count_files_from_input, extract_and_map_csv_column, retrieve_file_from_input}, inference_chain_trait::MockInferenceChainContext}, user_message_parser::ParsedUserMessage};
+    use crate::llm_provider::execution::{
+        chains::{
+            dsl_chain::generic_functions::{
+                count_files_from_input, extract_and_map_csv_column, retrieve_file_from_input,
+            },
+            inference_chain_trait::MockInferenceChainContext,
+        },
+        user_message_parser::ParsedUserMessage,
+    };
 
     use super::{super::generic_functions::html_to_markdown, array_to_markdown_template, fill_variable_in_md_template};
     use std::{any::Any, collections::HashMap, sync::Arc};
@@ -533,16 +544,15 @@ mod tests {
         let column_identifier = "Age".to_string();
         let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Age: {}", value));
 
-        let args: Vec<Box<dyn Any + Send>> = vec![
-            Box::new(csv_data),
-            Box::new(column_identifier),
-            Box::new(map_fn),
-        ];
+        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
         let context = MockInferenceChainContext::default();
 
         let result = extract_and_map_csv_column(&context, args).unwrap();
         let mapped_values = result.downcast_ref::<Vec<String>>().unwrap();
-        assert_eq!(mapped_values, &vec!["Age: 30".to_string(), "Age: 25".to_string(), "Age: 35".to_string()]);
+        assert_eq!(
+            mapped_values,
+            &vec!["Age: 30".to_string(), "Age: 25".to_string(), "Age: 35".to_string()]
+        );
     }
 
     #[test]
@@ -551,16 +561,19 @@ mod tests {
         let column_identifier = "2".to_string(); // Location column
         let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Location: {}", value));
 
-        let args: Vec<Box<dyn Any + Send>> = vec![
-            Box::new(csv_data),
-            Box::new(column_identifier),
-            Box::new(map_fn),
-        ];
+        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
         let context = MockInferenceChainContext::default();
 
         let result = extract_and_map_csv_column(&context, args).unwrap();
         let mapped_values = result.downcast_ref::<Vec<String>>().unwrap();
-        assert_eq!(mapped_values, &vec!["Location: USA".to_string(), "Location: UK".to_string(), "Location: Canada".to_string()]);
+        assert_eq!(
+            mapped_values,
+            &vec![
+                "Location: USA".to_string(),
+                "Location: UK".to_string(),
+                "Location: Canada".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -569,11 +582,7 @@ mod tests {
         let column_identifier = "InvalidColumn".to_string();
         let map_fn: Box<dyn Fn(&str) -> String + Send> = Box::new(|value| format!("Value: {}", value));
 
-        let args: Vec<Box<dyn Any + Send>> = vec![
-            Box::new(csv_data),
-            Box::new(column_identifier),
-            Box::new(map_fn),
-        ];
+        let args: Vec<Box<dyn Any + Send>> = vec![Box::new(csv_data), Box::new(column_identifier), Box::new(map_fn)];
         let context = MockInferenceChainContext::default();
 
         let result = extract_and_map_csv_column(&context, args);

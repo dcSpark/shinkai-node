@@ -1,6 +1,6 @@
-use super::error::LLMProviderError;
+use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use super::execution::prompts::prompts::{Prompt, SubPromptType};
+use super::execution::prompts::prompts::Prompt;
 use super::parsing_helper::ParsingHelper;
 use super::providers::LLMService;
 use reqwest::Client;
@@ -120,7 +120,10 @@ impl LLMProvider {
         Ok(final_response)
     }
 
-    async fn internal_inference_matching_model(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
+    async fn internal_inference_matching_model(
+        &self,
+        prompt: Prompt,
+    ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
                 openai

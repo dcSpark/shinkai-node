@@ -9,9 +9,9 @@ use crate::{cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse}
 #[serde(rename_all = "lowercase")]
 pub enum KaiSchemaType {
     #[serde(rename = "cronjobrequest")]
-    CronJobRequest(CronTaskRequest),
+    JobRequest(CronTaskRequest),
     #[serde(rename = "cronjobresponse")]
-    CronJobRequestResponse(CronTaskRequestResponse),
+    JobRequestResponse(CronTaskRequestResponse),
     #[serde(rename = "cronjob")]
     CronJob(CronTask),
 }
@@ -27,10 +27,10 @@ pub struct KaiJobFile {
 impl KaiJobFile {
     pub fn parse_content(&self) -> Result<Value, serde_json::Error> {
         match &self.schema {
-            KaiSchemaType::CronJobRequest(cron_task_request) => {
+            KaiSchemaType::JobRequest(cron_task_request) => {
                 serde_json::to_value(cron_task_request)
             },
-            KaiSchemaType::CronJobRequestResponse(cron_task_response) => {
+            KaiSchemaType::JobRequestResponse(cron_task_response) => {
                 serde_json::to_value(cron_task_response)
             },
             KaiSchemaType::CronJob(cron_job) => {
