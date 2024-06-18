@@ -92,7 +92,6 @@ cp ../../args.gn $BUILD_TARGET_DIR/args.gn
     linux | mac)
       echo "clang_use_chrome_plugins = false" >> args.gn
       echo "use_custom_libcxx = false" >> args.gn
-      echo "use_goma = false" >> args.gn
       ;;
   esac
 )

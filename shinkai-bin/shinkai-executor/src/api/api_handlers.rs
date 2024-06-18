@@ -28,7 +28,7 @@ const PART_KEY_VRPATH: &str = "vrpath";
 const PART_KEY_VRPACK_NAME: &str = "vrpack_name";
 
 struct ParsedParts {
-    parts: HashMap<String, String>,
+    parts: HashMap<String, Vec<String>>,
     files: HashMap<String, Vec<u8>>,
 }
 
@@ -83,7 +83,9 @@ async fn process_form_data(form: warp::multipart::FormData, part_keys: Vec<Strin
         } else {
             parsed_parts
                 .parts
-                .insert(part_name, String::from_utf8(part_data).unwrap_or_default());
+                .entry(part_name)
+                .or_insert_with(Vec::new)
+                .push(String::from_utf8(part_data).unwrap_or_default());
         }
     }
 
@@ -104,6 +106,8 @@ pub async fn pdf_extract_to_text_groups_handler(
     let max_node_text_size = parsed_parts
         .parts
         .get(PART_KEY_MAX_NODE_TEXT_SIZE)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .parse::<u64>()
         .unwrap_or(400);
@@ -144,14 +148,29 @@ pub async fn vrkai_generate_from_file_handler(
         .unwrap_or(("".to_string(), Vec::new()));
 
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+    if let Some(model_type) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_MODEL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.model_type = EmbeddingModelType::from_string(model_type)
             .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
     }
-    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+    if let Some(api_url) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_URL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_url = api_url.to_owned();
     }
-    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+    if let Some(api_key) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_KEY)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_key = Some(api_key.to_owned());
     }
 
@@ -187,31 +206,52 @@ pub async fn vrkai_vector_search_handler(
     .await;
 
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+    if let Some(model_type) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_MODEL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.model_type = EmbeddingModelType::from_string(model_type)
             .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
     }
-    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+    if let Some(api_url) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_URL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_url = api_url.to_owned();
     }
-    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+    if let Some(api_key) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_KEY)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_key = Some(api_key.to_owned());
     }
 
     let encoded_vrkai = parsed_parts
         .parts
         .get(PART_KEY_ENCODED_VRKAI)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .to_owned();
     let num_of_results = parsed_parts
         .parts
         .get(PART_KEY_NUM_OF_RESULTS)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .parse::<u64>()
         .unwrap_or(3);
     let query_string = parsed_parts
         .parts
         .get(PART_KEY_QUERY_STRING)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .to_owned();
 
@@ -244,6 +284,8 @@ pub async fn vrkai_view_contents_handler(
     let encoded_vrkai = parsed_parts
         .parts
         .get(PART_KEY_ENCODED_VRKAI)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .to_owned();
 
@@ -274,20 +316,37 @@ pub async fn vrpack_generate_from_files_handler(
     .await;
 
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    if let Some(model_type) = parsed_parts.parts.get(PART_KEY_EMBEDDING_MODEL) {
+    if let Some(model_type) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_MODEL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.model_type = EmbeddingModelType::from_string(model_type)
             .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
     }
-    if let Some(api_url) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_URL) {
+    if let Some(api_url) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_URL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_url = api_url.to_owned();
     }
-    if let Some(api_key) = parsed_parts.parts.get(PART_KEY_EMBEDDING_GEN_KEY) {
+    if let Some(api_key) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_KEY)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
         generator.api_key = Some(api_key.to_owned());
     }
 
     let vrpack_name = parsed_parts
         .parts
         .get(PART_KEY_VRPACK_NAME)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .to_owned();
 
@@ -313,6 +372,8 @@ pub async fn vrpack_generate_from_vrkais_handler(
     let vrpack_name = parsed_parts
         .parts
         .get(PART_KEY_VRPACK_NAME)
+        .unwrap_or(&Vec::new())
+        .first()
         .unwrap_or(&"".to_string())
         .to_owned();
 
@@ -335,89 +396,61 @@ pub async fn vrpack_generate_from_vrkais_handler(
 pub async fn vrpack_add_vrkais_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_ENCODED_VRPACK.to_string(),
+            PART_KEY_ENCODED_VRKAI.to_string(),
+            PART_KEY_VRPATH.to_string(),
+        ],
+    )
+    .await;
+
     let mut vrpath = VRPath::root();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            shinkai_log(
-                ShinkaiLogOption::Executor,
-                ShinkaiLogLevel::Debug,
-                format!("Received part: {:?}", part).as_str(),
-            );
-
-            let part_name = part.name().to_string();
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_ENCODED_VRPACK.to_string(),
-                PART_KEY_ENCODED_VRKAI.to_string(),
-                PART_KEY_VRPATH.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
+    if let Some(path) = parsed_parts.parts.get(PART_KEY_VRPATH).unwrap_or(&Vec::new()).first() {
+        vrpath = match VRPath::from_string(path) {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(Box::new(warp::reply::with_status(
+                    warp::reply::json(&"Input is not a valid VRPath."),
+                    warp::http::StatusCode::BAD_REQUEST,
+                )));
             }
-        }
-        None
-    }));
-
-    let mut vrpack = VRPack::new_empty("");
-    let mut vrkais = Vec::new();
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        shinkai_log(
-            ShinkaiLogOption::Executor,
-            ShinkaiLogLevel::Debug,
-            format!("Processing part: {:?}", part_name).as_str(),
-        );
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_ENCODED_VRPACK => match VRPack::from_bytes(&part_data) {
-                Ok(result) => vrpack = result,
-                Err(_) => {
-                    return Ok(Box::new(warp::reply::with_status(
-                        warp::reply::json(&"Input is not a valid VRPack."),
-                        warp::http::StatusCode::BAD_REQUEST,
-                    )));
-                }
-            },
-            PART_KEY_ENCODED_VRKAI => match VRKai::from_bytes(&part_data) {
-                Ok(vrkai) => vrkais.push(vrkai),
-                Err(_) => {
-                    return Ok(Box::new(warp::reply::with_status(
-                        warp::reply::json(&"Input is not a valid VRKai."),
-                        warp::http::StatusCode::BAD_REQUEST,
-                    )));
-                }
-            },
-            PART_KEY_VRPATH => {
-                let path = String::from_utf8(part_data).unwrap_or_default();
-                match VRPath::from_string(&path) {
-                    Ok(result) => vrpath = result,
-                    Err(_) => {
-                        return Ok(Box::new(warp::reply::with_status(
-                            warp::reply::json(&"Input is not a valid VRPath."),
-                            warp::http::StatusCode::BAD_REQUEST,
-                        )));
-                    }
-                }
-            }
-            _ => {}
-        }
+        };
     }
 
-    for vrkai in vrkais {
-        vrpack
-            .insert_vrkai(&vrkai, vrpath.clone(), true)
-            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+    let encoded_vrpack = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRPACK)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
+
+    let mut vrpack = match VRPack::from_base64(&encoded_vrpack) {
+        Ok(result) => result,
+        Err(_) => {
+            return Ok(Box::new(warp::reply::with_status(
+                warp::reply::json(&"Input is not a valid VRPack."),
+                warp::http::StatusCode::BAD_REQUEST,
+            )));
+        }
+    };
+
+    for encoded_vrkai in parsed_parts.parts.get(PART_KEY_ENCODED_VRKAI).unwrap_or(&Vec::new()) {
+        match VRKai::from_base64(&encoded_vrkai) {
+            Ok(vrkai) => {
+                vrpack
+                    .insert_vrkai(&vrkai, vrpath.clone(), true)
+                    .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
+            }
+            Err(_) => {
+                return Ok(Box::new(warp::reply::with_status(
+                    warp::reply::json(&"Input is not a valid VRKai."),
+                    warp::http::StatusCode::BAD_REQUEST,
+                )));
+            }
+        }
     }
 
     let encoded_vrpack = vrpack
@@ -433,76 +466,54 @@ pub async fn vrpack_add_vrkais_handler(
 pub async fn vrpack_add_folder_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_ENCODED_VRPACK.to_string(),
+            PART_KEY_FOLDER_NAME.to_string(),
+            PART_KEY_VRPATH.to_string(),
+        ],
+    )
+    .await;
+
     let mut vrpath = VRPath::root();
-    let mut folder_name = "".to_string();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            shinkai_log(
-                ShinkaiLogOption::Executor,
-                ShinkaiLogLevel::Debug,
-                format!("Received part: {:?}", part).as_str(),
-            );
-
-            let part_name = part.name().to_string();
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_ENCODED_VRPACK.to_string(),
-                PART_KEY_FOLDER_NAME.to_string(),
-                PART_KEY_VRPATH.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
+    if let Some(path) = parsed_parts.parts.get(PART_KEY_VRPATH).unwrap_or(&Vec::new()).first() {
+        vrpath = match VRPath::from_string(path) {
+            Ok(result) => result,
+            Err(_) => {
+                return Ok(Box::new(warp::reply::with_status(
+                    warp::reply::json(&"Input is not a valid VRPath."),
+                    warp::http::StatusCode::BAD_REQUEST,
+                )));
             }
-        }
-        None
-    }));
-
-    let mut vrpack = VRPack::new_empty("");
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        shinkai_log(
-            ShinkaiLogOption::Executor,
-            ShinkaiLogLevel::Debug,
-            format!("Processing part: {:?}", part_name).as_str(),
-        );
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_ENCODED_VRPACK => match VRPack::from_bytes(&part_data) {
-                Ok(result) => vrpack = result,
-                Err(_) => {
-                    return Ok(Box::new(warp::reply::with_status(
-                        warp::reply::json(&"Input is not a valid VRPack."),
-                        warp::http::StatusCode::BAD_REQUEST,
-                    )));
-                }
-            },
-            PART_KEY_FOLDER_NAME => folder_name = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_VRPATH => {
-                let path = String::from_utf8(part_data).unwrap_or_default();
-                match VRPath::from_string(&path) {
-                    Ok(result) => vrpath = result,
-                    Err(_) => {
-                        return Ok(Box::new(warp::reply::with_status(
-                            warp::reply::json(&"Input is not a valid VRPath."),
-                            warp::http::StatusCode::BAD_REQUEST,
-                        )));
-                    }
-                }
-            }
-            _ => {}
-        }
+        };
     }
+
+    let encoded_vrpack = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRPACK)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
+
+    let mut vrpack = match VRPack::from_base64(&encoded_vrpack) {
+        Ok(result) => result,
+        Err(_) => {
+            return Ok(Box::new(warp::reply::with_status(
+                warp::reply::json(&"Input is not a valid VRPack."),
+                warp::http::StatusCode::BAD_REQUEST,
+            )));
+        }
+    };
+
+    let folder_name = parsed_parts
+        .parts
+        .get(PART_KEY_FOLDER_NAME)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
     vrpack
         .create_folder(&folder_name, vrpath.clone())
@@ -521,80 +532,77 @@ pub async fn vrpack_add_folder_handler(
 pub async fn vrpack_vector_search_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut encoded_vrpack = "".to_string();
+    let parsed_parts = process_form_data(
+        form,
+        vec![
+            PART_KEY_EMBEDDING_MODEL.to_string(),
+            PART_KEY_EMBEDDING_GEN_URL.to_string(),
+            PART_KEY_EMBEDDING_GEN_KEY.to_string(),
+            PART_KEY_ENCODED_VRPACK.to_string(),
+            PART_KEY_NUM_OF_RESULTS.to_string(),
+            PART_KEY_NUM_OF_VRKAIS_TO_SEARCH_INTO.to_string(),
+            PART_KEY_QUERY_STRING.to_string(),
+        ],
+    )
+    .await;
+
     let mut generator = RemoteEmbeddingGenerator::new_default();
-    let mut num_of_results = 3u64;
-    let mut num_of_vrkais_to_search_into = 50u64;
-    let mut query_string = "".to_string();
-
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            shinkai_log(
-                ShinkaiLogOption::Executor,
-                ShinkaiLogLevel::Debug,
-                format!("Received part: {:?}", part).as_str(),
-            );
-
-            let part_name = part.name().to_string();
-
-            let stream = part
-                .stream()
-                .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-
-            if [
-                PART_KEY_EMBEDDING_MODEL.to_string(),
-                PART_KEY_EMBEDDING_GEN_URL.to_string(),
-                PART_KEY_EMBEDDING_GEN_KEY.to_string(),
-                PART_KEY_ENCODED_VRPACK.to_string(),
-                PART_KEY_NUM_OF_RESULTS.to_string(),
-                PART_KEY_NUM_OF_VRKAIS_TO_SEARCH_INTO.to_string(),
-                PART_KEY_QUERY_STRING.to_string(),
-            ]
-            .contains(&part_name)
-            {
-                return Some((part_name, stream));
-            }
-        }
-        None
-    }));
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        shinkai_log(
-            ShinkaiLogOption::Executor,
-            ShinkaiLogLevel::Debug,
-            format!("Processing part: {:?}", part_name).as_str(),
-        );
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        match part_name.as_str() {
-            PART_KEY_EMBEDDING_MODEL => {
-                let embedding_model = String::from_utf8(part_data).unwrap_or_default();
-                generator.model_type = EmbeddingModelType::from_string(&embedding_model)
-                    .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
-            }
-            PART_KEY_EMBEDDING_GEN_URL => generator.api_url = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_EMBEDDING_GEN_KEY => generator.api_key = Some(String::from_utf8(part_data).unwrap_or_default()),
-            PART_KEY_ENCODED_VRPACK => encoded_vrpack = String::from_utf8(part_data).unwrap_or_default(),
-            PART_KEY_NUM_OF_RESULTS => {
-                num_of_results = String::from_utf8(part_data)
-                    .unwrap_or_default()
-                    .parse::<u64>()
-                    .unwrap_or(3)
-            }
-            PART_KEY_NUM_OF_VRKAIS_TO_SEARCH_INTO => {
-                num_of_vrkais_to_search_into = String::from_utf8(part_data)
-                    .unwrap_or_default()
-                    .parse::<u64>()
-                    .unwrap_or(50)
-            }
-            PART_KEY_QUERY_STRING => query_string = String::from_utf8(part_data).unwrap_or_default(),
-            _ => {}
-        }
+    if let Some(model_type) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_MODEL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
+        generator.model_type = EmbeddingModelType::from_string(model_type)
+            .map_err(|e| warp::reject::custom(APIError::from(e.to_string())))?;
     }
+    if let Some(api_url) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_URL)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
+        generator.api_url = api_url.to_owned();
+    }
+    if let Some(api_key) = parsed_parts
+        .parts
+        .get(PART_KEY_EMBEDDING_GEN_KEY)
+        .unwrap_or(&Vec::new())
+        .first()
+    {
+        generator.api_key = Some(api_key.to_owned());
+    }
+
+    let encoded_vrpack = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRPACK)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
+    let num_of_results = parsed_parts
+        .parts
+        .get(PART_KEY_NUM_OF_RESULTS)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .parse::<u64>()
+        .unwrap_or(3);
+    let num_of_vrkais_to_search_into = parsed_parts
+        .parts
+        .get(PART_KEY_NUM_OF_VRKAIS_TO_SEARCH_INTO)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .parse::<u64>()
+        .unwrap_or(50);
+    let query_string = parsed_parts
+        .parts
+        .get(PART_KEY_QUERY_STRING)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
     match VRPack::from_base64(&encoded_vrpack) {
         Ok(vrpack) => {
@@ -618,44 +626,15 @@ pub async fn vrpack_vector_search_handler(
 pub async fn vrpack_view_contents_handler(
     form: warp::multipart::FormData,
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut encoded_vrpack = "".to_string();
+    let parsed_parts = process_form_data(form, vec![PART_KEY_ENCODED_VRPACK.to_string()]).await;
 
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            shinkai_log(
-                ShinkaiLogOption::Executor,
-                ShinkaiLogLevel::Debug,
-                format!("Received part: {:?}", part).as_str(),
-            );
-
-            let part_name = part.name().to_string();
-
-            if part_name == PART_KEY_ENCODED_VRPACK {
-                let stream = part
-                    .stream()
-                    .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-                return Some((part_name, stream));
-            }
-        }
-        None
-    }));
-
-    while let Some((part_name, mut part_stream)) = stream.next().await {
-        shinkai_log(
-            ShinkaiLogOption::Executor,
-            ShinkaiLogLevel::Debug,
-            format!("Processing part: {:?}", part_name).as_str(),
-        );
-
-        let mut part_data = Vec::new();
-        while let Some(Ok(node)) = part_stream.next().await {
-            part_data.extend(node);
-        }
-
-        if part_name == PART_KEY_ENCODED_VRPACK {
-            encoded_vrpack = String::from_utf8(part_data).unwrap_or_default();
-        }
-    }
+    let encoded_vrpack = parsed_parts
+        .parts
+        .get(PART_KEY_ENCODED_VRPACK)
+        .unwrap_or(&Vec::new())
+        .first()
+        .unwrap_or(&"".to_string())
+        .to_owned();
 
     match VRPack::from_base64(&encoded_vrpack) {
         Ok(vrpack) => {

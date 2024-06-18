@@ -2,15 +2,11 @@
 
 ## Building the Project
 
-The project needs to link the pdfium static library which should be available as `libpdfium.a` in the pdfium directory. If you wish to build pdfium from source follow the steps in the *Building PDFium from source* section.
-
 To build the project use the following command:
 
 ```sh
 cargo build --release
 ```
-
-**Note**: If you encounter linker errors run `cargo clean` in the root and in the executor project, then rebuild the project.
 
 **Note**: Build the project in release mode or try to prevent running `ocrs` in debug mode since it will be extremely slow.
 
@@ -20,7 +16,19 @@ Alternatively embed debug info to the release build by running:
 RUSTFLAGS=-g cargo build --release
 ```
 
-### Building PDFium from source
+### Static linking PDFium
+
+By default the executor service binds to the dynamic library. To statically link PDFium build with feature `static` enabled:
+
+```sh
+cargo build --release --features static
+```
+
+The project needs to link the pdfium static library which should be available as `libpdfium.a` in the pdfium directory. If you wish to build pdfium from source follow the steps in the *Building PDFium static library from source* section.
+
+**Note**: If you encounter linker errors run `cargo clean` in the root directory then rebuild the project.
+
+### Building PDFium static library from source
 
 [Prerequisites](https://pdfium.googlesource.com/pdfium/)
 
@@ -46,17 +54,6 @@ Mount directory `linux-x64` and run the container:
 docker run -v $(PWD)/linux-x64:/app/linux-x64 --name build-pdfium build-pdfium
 ```
 
-### Building with dynamic linking
-
-[Dynamic library release](https://github.com/bblanchon/pdfium-binaries/releases)
-
-On Windows run the following commands:
-
-```sh
-SET PDFIUM_DYNAMIC_LIB_PATH=<path-to-DLL-directory>
-cargo build --release --no-default-features
-```
-
 ## Downloading Ocrs models
 
 To download models in .rten format run:
@@ -66,6 +63,16 @@ cd ocrs && ./download-models.sh
 ```
 
 `.rten` files should be downloaded in the `ocrs` folder.
+
+## Cargo run and test with dynamic linking
+
+[Dynamic library releases](https://github.com/bblanchon/pdfium-binaries/releases)
+
+Make sure the `PDFIUM_DYNAMIC_LIB_PATH` environment variable is set to the directory that contains the dynamic library when running `cargo run` or `cargo test` commands:
+
+```sh
+PDFIUM_DYNAMIC_LIB_PATH=$(PWD)/pdfium/linux-x64 cargo test -- --test-threads=1
+```
 
 ## Running the server
 
