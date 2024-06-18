@@ -5,7 +5,7 @@ mod tests {
     use futures::Future;
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
+            llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
             shinkai_name::ShinkaiName,
         },
         shinkai_utils::{
@@ -15,7 +15,7 @@ mod tests {
         },
     };
     use shinkai_node::{
-        agent::job_manager::JobManager,
+        llm_provider::job_manager::JobManager,
         cron_tasks::cron_manager::{CronManager, CronManagerError},
         db::{db_cron_task::CronTask, ShinkaiDB},
         managers::IdentityManager,
@@ -67,13 +67,13 @@ mod tests {
                 model_type: "gpt-3.5-turbo-1106".to_string(),
             };
 
-            let agent = SerializedAgent {
+            let agent = SerializedLLMProvider {
                 id: agent_id.clone(),
                 full_identity_name: agent_name.clone(),
                 perform_locally: false,
                 external_url: Some("https://api.openai.com".to_string()),
                 api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
-                model: AgentLLMInterface::OpenAI(open_ai),
+                model: LLMProviderInterface::OpenAI(open_ai),
                 toolkit_permissions: vec![],
                 storage_bucket_permissions: vec![],
                 allowed_message_senders: vec![],
@@ -82,10 +82,10 @@ mod tests {
             let profile = agent_name.clone().extract_profile().unwrap();
 
             // add agent
-            match db.add_agent(agent.clone(), &profile) {
+            match db.add_llm_provider(agent.clone(), &profile) {
                 Ok(()) => {
                     let mut subidentity_manager = identity_manager.lock().await;
-                    match subidentity_manager.add_agent_subidentity(agent).await {
+                    match subidentity_manager.add_llm_provider_subidentity(agent).await {
                         Ok(_) => (),
                         Err(err) => {
                             panic!("Failed to add agent subidentity: {}", err);
@@ -187,7 +187,7 @@ mod tests {
             url: "url1".to_string(),
             crawl_links: false,
             created_at: Utc::now().to_rfc3339().to_string(),
-            agent_id: "agent_id1".to_string(),
+            llm_provider_id: "agent_id1".to_string(),
         };
 
         let current_time = Utc::now();
@@ -201,7 +201,7 @@ mod tests {
             url: "url2".to_string(),
             crawl_links: false,
             created_at: Utc::now().to_rfc3339().to_string(),
-            agent_id: "agent_id2".to_string(),
+            llm_provider_id: "agent_id2".to_string(),
         };
 
         let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes

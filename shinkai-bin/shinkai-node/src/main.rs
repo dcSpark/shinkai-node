@@ -1,6 +1,6 @@
 // main.rs
 #![recursion_limit = "256"]
-mod agent;
+mod llm_provider;
 mod cron_tasks;
 mod db;
 mod managers;

@@ -4,33 +4,33 @@ import unittest
 import shinkai_message_pyo3
 
 
-class TestPyAgentLLMInterface(unittest.TestCase):
+class TestPyLLMProviderInterface(unittest.TestCase):
     def test_new_openai(self):
         model_type = "gpt-3.5-turbo-1106"
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_openai(model_type)
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface.new_openai(model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
 
     def test_new_openai(self):
         model_type = "mistralai/Mistral-7B-Instruct-v0.1"
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_genericapi(model_type)
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface.new_genericapi(model_type)
         self.assertEqual(agent_llm_interface.get_model(), "genericapi:" + model_type)
 
     def test_new_localllm(self):
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_localllm()
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface.new_localllm()
         self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
 
     def test_new_with_openai_prefix(self):
         model_type = "gpt-3.5-turbo-1106"
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("openai:" + model_type)
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface("openai:" + model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
 
     def test_new_with_genericapi_prefix(self):
         model_type = "mistralai/Mistral-7B-Instruct-v0.1"
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("genericapi:" + model_type)
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface("genericapi:" + model_type)
         self.assertEqual(agent_llm_interface.get_model(), "genericapi:" + model_type)
 
     def test_new_without_openai_prefix(self):
-        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("not_openai")
+        agent_llm_interface = shinkai_message_pyo3.PyLLMProviderInterface("not_openai")
         self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
 
 
@@ -254,7 +254,7 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
         my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
         node = "@@node1.shinkai"
-        agent = shinkai_message_pyo3.PySerializedAgent.new_with_defaults(
+        agent = shinkai_message_pyo3.PySerializedLLMProvider.new_with_defaults(
             full_identity_name="@@node1.shinkai",
             id="agent1",
             external_url="http://example.com",

@@ -1,7 +1,7 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_node::agent::execution::user_message_parser::ParsedUserMessage;
-use shinkai_node::agent::parsing_helper::ParsingHelper;
+use shinkai_node::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use shinkai_node::llm_provider::parsing_helper::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::vector_fs::vector_fs_internals::VectorFSInternals;
 use shinkai_node::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};

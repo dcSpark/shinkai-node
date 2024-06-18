@@ -46,7 +46,7 @@ use shinkai_message_primitives::{
 use tokio::sync::Mutex;
 
 use crate::{
-    agent::{error::AgentError, job_manager::JobManager},
+    llm_provider::{error::LLMProviderError, job_manager::JobManager},
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
     planner::kai_files::{KaiJobFile, KaiSchemaType},
     schemas::inbox_permission::InboxPermission, vector_fs::vector_fs::VectorFS,
@@ -70,8 +70,8 @@ pub enum CronManagerError {
     InboxError(InboxNameError),
 }
 
-impl From<AgentError> for CronManagerError {
-    fn from(error: AgentError) -> Self {
+impl From<LLMProviderError> for CronManagerError {
+    fn from(error: LLMProviderError) -> Self {
         CronManagerError::JobCreationError(error.to_string())
     }
 }
@@ -271,7 +271,7 @@ impl CronManager {
         let kai_file = KaiJobFile {
             schema: KaiSchemaType::CronJob(cron_job.clone()),
             shinkai_profile: Some(shinkai_profile.clone()),
-            agent_id: cron_job.agent_id.clone(),
+            llm_provider_id: cron_job.llm_provider_id.clone(),
         };
 
         let job_creation = JobCreationInfo {
@@ -283,7 +283,7 @@ impl CronManager {
         let job_id = job_manager
             .lock()
             .await
-            .process_job_creation(job_creation, &shinkai_profile, &cron_job.agent_id)
+            .process_job_creation(job_creation, &shinkai_profile, &cron_job.llm_provider_id)
             .await?;
 
         // Note(Nico): should we close the job after the processing?
@@ -320,7 +320,7 @@ impl CronManager {
                 "My scheduled job \"{}\" created on \"{}\" is ready to be executed",
                 cron_job.prompt, cron_job.created_at
             );
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.to_string(),
                 cron_request_message.to_string(),
                 "".to_string(),
@@ -390,14 +390,14 @@ impl CronManager {
         subprompt: String,
         url: String,
         crawl_links: bool,
-        agent_id: String,
+        llm_provider_id: String,
     ) -> tokio::task::JoinHandle<Result<(), CronManagerError>> {
         let db = self.db.clone();
         // Note: needed to avoid a deadlock
         tokio::spawn(async move {
             let db_arc = db.upgrade().unwrap();
             db_arc
-                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
+                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, llm_provider_id)
                 .map_err(|e| CronManagerError::SomeError(e.to_string()))
         })
     }

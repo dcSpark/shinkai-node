@@ -30,9 +30,10 @@ lz4_flex = "0.11.0"
 base64 = "0.13.0"
 futures = "0.3.30"
 urlencoding = "1.1.1"
+docx-rust = "0.1.7"
 
 [build-dependencies]
-reqwest = { version = "0.11.24", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
+reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
 
 [features]
 default = ["desktop-only"]

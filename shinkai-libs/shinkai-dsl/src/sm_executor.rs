@@ -1,8 +1,12 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io;
+use std::io::Write;
 use std::pin::Pin;
 use std::{any::Any, fmt};
 
 use async_trait::async_trait;
+use chrono::Utc;
 use dashmap::DashMap;
 use futures::Future;
 use tokio::runtime::Runtime;
@@ -58,6 +62,7 @@ pub struct StepExecutor<'a> {
     workflow: &'a Workflow,
     pub current_step: usize,
     pub registers: DashMap<String, String>,
+    pub logs: DashMap<String, Vec<String>>,
 }
 
 impl<'a> WorkflowEngine<'a> {
@@ -67,9 +72,11 @@ impl<'a> WorkflowEngine<'a> {
 
     pub async fn execute_workflow(&self, workflow: &Workflow) -> Result<DashMap<String, String>, WorkflowError> {
         let registers = DashMap::new();
+        let logs = DashMap::new();
         for step in &workflow.steps {
             for body in &step.body {
-                self.execute_step_body(body, &registers).await?;
+                self.execute_step_body(&step.name.clone(), body, &registers, &logs)
+                    .await?;
             }
         }
         Ok(registers)
@@ -77,15 +84,28 @@ impl<'a> WorkflowEngine<'a> {
 
     pub fn execute_step_body<'b>(
         &'b self,
+        step_name: &'b str,
         step_body: &'b StepBody,
         registers: &'b DashMap<String, String>,
+        logs: &'b DashMap<String, Vec<String>>,
     ) -> Pin<Box<dyn Future<Output = Result<(), WorkflowError>> + Send + 'b>> {
         Box::pin(async move {
             match step_body {
-                StepBody::Action(action) => self.execute_action(action, registers).await,
+                StepBody::Action(action) => {
+                    let result = self.execute_action(action, registers).await;
+                    logs.entry(step_name.to_string())
+                        .or_default()
+                        .push(format!("Executing action: {:?}, Result: {:?}", action, result));
+                    result
+                }
                 StepBody::Condition { condition, body } => {
-                    if self.evaluate_condition(condition, registers).await? {
-                        self.execute_step_body(body, registers).await?;
+                    let condition_result = self.evaluate_condition(condition, registers).await;
+                    logs.entry(step_name.to_string()).or_default().push(format!(
+                        "Evaluating condition: {:?}, Result: {:?}",
+                        condition, condition_result
+                    ));
+                    if condition_result? {
+                        self.execute_step_body(step_name, body, registers, logs).await?;
                     }
                     Ok(())
                 }
@@ -104,33 +124,46 @@ impl<'a> WorkflowEngine<'a> {
                                 .unwrap_or(0);
                             for i in start..=end {
                                 registers.insert(var.clone(), i.to_string());
-                                self.execute_step_body(body, registers).await?;
+                                logs.entry(step_name.to_string())
+                                    .or_default()
+                                    .push(format!("ForLoop iteration: {} = {}", var, i));
+                                self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
                         ForLoopExpression::Split { source, delimiter } => {
                             let source_value = self.evaluate_param(source, registers).await?;
-                            eprintln!("Splitting source: {}", source_value);
                             let parts: Vec<&str> = source_value.split(delimiter).collect();
                             for part in parts {
-                                eprintln!("Part: {}", part);
                                 registers.insert(var.clone(), part.to_string());
-                                self.execute_step_body(body, registers).await?;
+                                logs.entry(step_name.to_string())
+                                    .or_default()
+                                    .push(format!("ForLoop iteration: {} = {}", var, part));
+                                self.execute_step_body(step_name, body, registers, logs).await?;
                             }
                         }
                     }
+                    logs.entry(step_name.to_string()).or_default().push(format!(
+                        "Executing for loop: {:?}, Registers: {:?}",
+                        in_expr,
+                        registers.clone()
+                    ));
                     Ok(())
                 }
                 StepBody::RegisterOperation { register, value } => {
-                    println!("Setting register {} to {:?}", register, value);
-                    let value = self.evaluate_workflow_value(value, registers).await;
-                    println!("Value: {}", value);
-                    registers.insert(register.clone(), value);
-                    eprintln!("Registers: {:?}", registers);
+                    let value = self.evaluate_workflow_value(value, registers).await?;
+                    registers.insert(register.clone(), value.clone());
+                    logs.entry(step_name.to_string())
+                        .or_default()
+                        .push(format!("Setting register {} to {:?}", register, value));
                     Ok(())
                 }
                 StepBody::Composite(bodies) => {
-                    for body in bodies {
-                        self.execute_step_body(body, registers).await?;
+                    for (index, body) in bodies.iter().enumerate() {
+                        let step_body_str = format!("{:?}", body);
+                        self.execute_step_body(step_name, body, registers, logs).await?;
+                        logs.entry(step_name.to_string())
+                            .or_default()
+                            .push(format!("Composite body {}: {:?}", index, step_body_str));
                     }
                     Ok(())
                 }
@@ -182,10 +215,10 @@ impl<'a> WorkflowEngine<'a> {
                             registers.insert(register_name.clone(), result.clone());
                         }
                     } else {
-                        println!("Failed to downcast result: {:?}", result);
+                        return Err(WorkflowError::FunctionError("Failed to downcast result".to_string()));
                     }
                 } else {
-                    println!("Function {} not found", name);
+                    return Err(WorkflowError::FunctionError(format!("Function {} not found", name)));
                 }
                 Ok(())
             }
@@ -223,7 +256,7 @@ impl<'a> WorkflowEngine<'a> {
         param: &Param,
         registers: &DashMap<String, String>,
     ) -> Result<String, WorkflowError> {
-        eprintln!("Evaluating param: {:?}", param);
+        eprintln!("\n\nEvaluating param: {:?}", param);
         eprintln!("Registers: {:?}", registers);
         let value = match param {
             Param::String(s) => s.clone(),
@@ -236,15 +269,20 @@ impl<'a> WorkflowEngine<'a> {
         Ok(value)
     }
 
-    pub async fn evaluate_workflow_value(&self, value: &WorkflowValue, registers: &DashMap<String, String>) -> String {
+    pub async fn evaluate_workflow_value(
+        &self,
+        value: &WorkflowValue,
+        registers: &DashMap<String, String>,
+    ) -> Result<String, WorkflowError> {
+        eprintln!("Evaluating workflow value: {:?}", value);
         match value {
-            WorkflowValue::String(s) => s.clone(),
-            WorkflowValue::Number(n) => n.to_string(),
-            WorkflowValue::Boolean(b) => b.to_string(),
-            WorkflowValue::Identifier(id) => registers
+            WorkflowValue::String(s) => Ok(s.clone()),
+            WorkflowValue::Number(n) => Ok(n.to_string()),
+            WorkflowValue::Boolean(b) => Ok(b.to_string()),
+            WorkflowValue::Identifier(id) | WorkflowValue::Register(id) => registers
                 .get(id)
-                .map(|v| v.value().clone())
-                .unwrap_or_else(|| "0".to_string()),
+                .map(|v| Ok(v.value().clone()))
+                .unwrap_or_else(|| Err(WorkflowError::InvalidArgument(format!("Identifier {} not found", id)))),
             WorkflowValue::FunctionCall(FunctionCall { name, args }) => {
                 if let Some(func) = self.functions.get(name) {
                     let mut arg_values = Vec::new();
@@ -255,17 +293,8 @@ impl<'a> WorkflowEngine<'a> {
                             Ok(value) => arg_values.push(Box::new(value) as Box<dyn Any + Send>),
                             Err(e) => {
                                 eprintln!("Error evaluating argument: {}", e);
-                                return "0".to_string();
+                                return Err(e);
                             }
-                        }
-                    }
-
-                    // Log the resolved arguments before calling the function
-                    for (i, arg) in arg_values.iter().enumerate() {
-                        if let Some(value) = arg.downcast_ref::<String>() {
-                            println!("Resolved Argument {}: {:?}", i, value);
-                        } else {
-                            println!("Resolved Argument {}: Failed to downcast", i);
                         }
                     }
 
@@ -273,36 +302,82 @@ impl<'a> WorkflowEngine<'a> {
                     match result {
                         Ok(result) => {
                             if let Ok(result) = result.downcast::<String>() {
-                                (*result).clone()
+                                Ok((*result).clone())
                             } else {
                                 eprintln!("Function call to '{}' did not return a String.", name);
-                                "0".to_string()
+                                Err(WorkflowError::FunctionError(format!(
+                                    "Function call to '{}' did not return a String",
+                                    name
+                                )))
                             }
                         }
                         Err(err) => {
                             eprintln!("Error executing function '{}': {}", name, err);
-                            "0".to_string()
+                            Err(WorkflowError::FunctionError(format!(
+                                "Error executing function '{}': {}",
+                                name, err
+                            )))
                         }
                     }
                 } else {
                     eprintln!("Function '{}' not found.", name);
-                    "0".to_string()
+                    Err(WorkflowError::FunctionError(format!("Function '{}' not found", name)))
                 }
             }
             _ => {
                 eprintln!("Unsupported workflow value type {:?}, defaulting to 0", value);
-                "0".to_string()
+                Err(WorkflowError::InvalidArgument(format!(
+                    "Unsupported workflow value type {:?}",
+                    value
+                )))
             }
         }
     }
 
-    pub fn iter(&'a self, workflow: &'a Workflow) -> StepExecutor<'a> {
+    pub fn iter(
+        &'a self,
+        workflow: &'a Workflow,
+        initial_registers: Option<DashMap<String, String>>,
+        logs: Option<DashMap<String, Vec<String>>>,
+    ) -> StepExecutor<'a> {
         StepExecutor {
             engine: self,
             workflow,
             current_step: 0,
-            registers: DashMap::new(),
+            registers: initial_registers.unwrap_or_default(),
+            logs: logs.unwrap_or_default(),
         }
+    }
+
+    pub fn formatted_logs(logs: &DashMap<String, Vec<String>>) -> String {
+        let mut formatted_logs = String::new();
+        for entry in logs.iter() {
+            let key = entry.key();
+            let values = entry.value();
+            for value in values {
+                formatted_logs.push_str(&format!("{}: {}\n---\n", key, value.replace("\\n", "\n")));
+            }
+        }
+        formatted_logs
+    }
+
+    pub fn write_logs_to_file(logs: &DashMap<String, Vec<String>>, file_path: &str) -> io::Result<()> {
+        let mut file = File::create(file_path)?;
+
+        // Write the top message with the current date and time
+        let now = Utc::now();
+        writeln!(file, "Log file created on: {}\n", now.to_rfc2822())?;
+
+        for entry in logs.iter() {
+            let key = entry.key();
+            let values = entry.value();
+            for value in values {
+                let pretty_value = value.replace("\\n", "\n").replace("\\\"", "\"");
+                let timestamp = Utc::now().to_rfc3339();
+                writeln!(file, "[{}] Step {}: {}\n---\n", timestamp, key, pretty_value)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -312,14 +387,19 @@ impl<'a> Iterator for StepExecutor<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_step < self.workflow.steps.len() {
             let step = &self.workflow.steps[self.current_step];
+            let step_name = step.name.clone();
             eprintln!("Executing step: {:?}", step);
             let mut result = Ok(self.registers.clone());
 
             task::block_in_place(|| {
                 let rt = Runtime::new().unwrap();
                 rt.block_on(async {
-                    for body in &step.body {
-                        if let Err(e) = self.engine.execute_step_body(body, &self.registers).await {
+                    for body in step.body.iter() {
+                        if let Err(e) = self
+                            .engine
+                            .execute_step_body(&step_name, body, &self.registers, &self.logs)
+                            .await
+                        {
                             result = Err(e);
                             break;
                         }
@@ -327,7 +407,6 @@ impl<'a> Iterator for StepExecutor<'a> {
                     if result.is_ok() {
                         result = Ok(self.registers.clone());
                     }
-                    eprintln!("Registers: {:?}", self.registers);
                 });
             });
 

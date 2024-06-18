@@ -8,9 +8,8 @@ use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 #[cfg(feature = "desktop-only")]
 use reqwest::Client as AsyncClient;
-use reqwest::ClientBuilder;
 use serde::{Deserialize, Serialize};
-
+use reqwest::ClientBuilder;
 use std::time::Duration;
 
 lazy_static! {
@@ -186,7 +185,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     #[cfg(feature = "desktop-only")]
     /// Generate an Embedding for an input string by using the external API.
     async fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
-        let input_strings = vec![input_string.to_string()];
+        let input_strings = [input_string.to_string()];
         let input_strings: Vec<String> = input_strings
             .iter()
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
@@ -221,7 +220,7 @@ impl RemoteEmbeddingGenerator {
         RemoteEmbeddingGenerator {
             model_type,
             api_url: api_url.to_string(),
-            api_key: api_key,
+            api_key,
         }
     }
 
@@ -283,7 +282,7 @@ impl RemoteEmbeddingGenerator {
 
             // Build the request
             let mut request = client
-                .post(&format!("{}", self.ollama_endpoint_url()))
+                .post(self.ollama_endpoint_url().to_string())
                 .header("Content-Type", "application/json")
                 .json(&request_body);
 
@@ -430,7 +429,7 @@ impl RemoteEmbeddingGenerator {
 
             // Build the request
             let mut request = client
-                .post(&format!("{}", self.tei_endpoint_url()))
+                .post(self.tei_endpoint_url().to_string())
                 .header("Content-Type", "application/json")
                 .json(&request_body);
 
@@ -625,7 +624,7 @@ impl RemoteEmbeddingGenerator {
 
         // Build the request
         let mut request = client
-            .post(&format!("{}", self.api_url))
+            .post(self.api_url.to_string())
             .header("Content-Type", "application/json")
             .json(&request_body);
 
@@ -716,12 +715,14 @@ impl RemoteEmbeddingGenerator {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct EmbeddingRequestBody {
     input: String,
     model: String,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct EmbeddingResponseData {
     embedding: Vec<f32>,
     index: usize,
@@ -729,6 +730,7 @@ struct EmbeddingResponseData {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct EmbeddingResponse {
     object: String,
     model: String,
@@ -737,17 +739,20 @@ struct EmbeddingResponse {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct EmbeddingArrayRequestBody {
     inputs: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct OllamaEmbeddingsRequestBody {
     model: String,
     prompt: String,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OllamaEmbeddingsResponse {
     embedding: Vec<f32>,
 }

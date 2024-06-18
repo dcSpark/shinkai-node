@@ -2,8 +2,8 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, OpenAI, SerializedAgent,
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
@@ -22,7 +22,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
+    api_llm_provider_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
     api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
@@ -37,7 +37,7 @@ fn sandwich_messages_with_files_test() {
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
-            let node1_agent = env.node1_agent.clone();
+            let node1_agent = env.node1_llm_provider.clone();
             let node1_encryption_pk = env.node1_encryption_pk;
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
@@ -93,7 +93,7 @@ fn sandwich_messages_with_files_test() {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "\n# Answer\nHello there, how may I assist you today?"
+                            "content": "Hello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],
@@ -114,7 +114,7 @@ fn sandwich_messages_with_files_test() {
                 //     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 // };
 
-                let agent = SerializedAgent {
+                let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
@@ -123,13 +123,13 @@ fn sandwich_messages_with_files_test() {
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
-                    // model: AgentLLMInterface::GenericAPI(generic_api),
+                    model: LLMProviderInterface::OpenAI(open_ai),
+                    // model: LLMProviderInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
                 };
-                api_agent_registration(
+                api_llm_provider_registration(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk,
