@@ -117,7 +117,7 @@ fn job_branchs_retries_tests() {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "\Hello there, how may I assist you today?"
+                            "content": "Hello there, how may I assist you today?"
                         },
                         "finish_reason": "stop"
                     }],
