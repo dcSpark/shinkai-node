@@ -3,6 +3,7 @@ use crate::{
     managers::model_capabilities_manager::ModelCapabilitiesManager,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 use std::fmt;
 use tiktoken_rs::ChatCompletionRequestMessage;
@@ -15,6 +16,7 @@ pub enum SubPromptType {
     System,
     Assistant,
     ExtraContext,
+    Tool,
 }
 
 impl fmt::Display for SubPromptType {
@@ -24,6 +26,7 @@ impl fmt::Display for SubPromptType {
             SubPromptType::System => "system",
             SubPromptType::Assistant => "assistant",
             SubPromptType::ExtraContext => "user",
+            SubPromptType::Tool => "tool",
         };
         write!(f, "{}", s)
     }
@@ -52,7 +55,7 @@ pub enum SubPrompt {
         SubPromptAssetDetail,
         u8,
     ),
-    EBNF(SubPromptType, String, u8, bool),
+    Tool(SubPromptType, JsonValue, u8),
 }
 
 impl SubPrompt {
@@ -61,7 +64,7 @@ impl SubPrompt {
         match self {
             SubPrompt::Content(_, content, _) => content.len(),
             SubPrompt::Asset(_, _, content, _, _) => content.len(),
-            SubPrompt::EBNF(_, ebnf, _, _) => ebnf.len(),
+            SubPrompt::Tool(_, content, _) => content.to_string().len(),
         }
     }
 
@@ -74,19 +77,10 @@ impl SubPrompt {
     pub fn generate_output_string(&self) -> String {
         match self {
             SubPrompt::Content(_, content, _) => content.clone(),
-            SubPrompt::EBNF(_, ebnf, _, retry) => {
-                if *retry {
-                    format!("An EBNF option to respond with: {} ", ebnf)
-                } else {
-                    format!(
-                        "Then respond using the following markdown formatting and absolutely nothing else: {} ",
-                        ebnf
-                    )
-                }
-            }
             SubPrompt::Asset(_, asset_type, _asset_content, asset_detail, _) => {
                 format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
             }
+            SubPrompt::Tool(_, content, _) => content.to_string(),
         }
     }
 
@@ -94,18 +88,18 @@ impl SubPrompt {
     pub fn extract_generic_subprompt_data(&self) -> (SubPromptType, String, &'static str) {
         match self {
             SubPrompt::Content(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
-            SubPrompt::EBNF(prompt_type, _, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
             SubPrompt::Asset(prompt_type, _, asset_content, _, _) => {
                 (prompt_type.clone(), asset_content.clone(), "image")
             }
+            SubPrompt::Tool(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
         }
     }
     /// Gets the content of the SubPrompt (aka. updates it to the provided string)
     pub fn get_content(&self) -> String {
         match self {
             SubPrompt::Content(_, content, _) => content.clone(),
-            SubPrompt::EBNF(_, ebnf, _, _) => ebnf.clone(),
             SubPrompt::Asset(_, _, asset_content, _, _) => asset_content.clone(),
+            SubPrompt::Tool(_, content, _) => content.to_string(),
         }
     }
 
@@ -113,8 +107,8 @@ impl SubPrompt {
     pub fn set_content(&mut self, new_content: String) {
         match self {
             SubPrompt::Content(_, content, _) => *content = new_content,
-            SubPrompt::EBNF(_, ebnf, _, _) => *ebnf = new_content,
             SubPrompt::Asset(_, _, asset_content, _, _) => *asset_content = new_content,
+            SubPrompt::Tool(_, content, _) => *content = serde_json::Value::String(new_content),
         }
     }
 

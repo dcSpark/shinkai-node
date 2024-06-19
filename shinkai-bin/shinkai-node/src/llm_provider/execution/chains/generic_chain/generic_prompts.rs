@@ -1,5 +1,5 @@
 use super::super::super::prompts::prompts::{JobPromptGenerator, Prompt};
-use crate::llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult};
+use crate::{llm_provider::{execution::prompts::subprompts::SubPromptType, job::JobStepResult}, tools::router::ShinkaiTool};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {
@@ -12,6 +12,7 @@ impl JobPromptGenerator {
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         job_step_history: Option<Vec<JobStepResult>>,
+        tools: Vec<ShinkaiTool>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 

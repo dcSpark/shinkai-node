@@ -80,7 +80,7 @@ async fn test_js_toolkit_execution() {
     let tool = "isEven";
     let input_data = &serde_json::json!({"number": 56});
     let tool_execution_result = executor
-        .submit_tool_execution_request(tool, input_data, &toolkit_js_code, &header_values)
+        .submit_tool_execution_request(tool, input_data, &toolkit_js_code, header_values)
         .await
         .unwrap();
 

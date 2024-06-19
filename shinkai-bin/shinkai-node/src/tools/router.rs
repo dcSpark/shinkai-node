@@ -163,7 +163,6 @@ pub struct ToolRouter {
     pub routing_resource: MapVectorResource,
 }
 
-// URGENT!: This needs to be refactored
 impl ToolRouter {
     /// Create a new ToolRouter instance from scratch.
     pub async fn new(generator: Box<dyn EmbeddingGenerator>) -> Self {

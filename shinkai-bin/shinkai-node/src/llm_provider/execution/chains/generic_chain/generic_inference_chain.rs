@@ -6,12 +6,18 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::tools::argument::ToolArgument;
+use crate::tools::router::ShinkaiTool;
+use crate::tools::rust_tools::RustTool;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::result::Result::Ok;
@@ -71,7 +77,7 @@ impl GenericInferenceChain {
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
-        agent: SerializedLLMProvider,
+        llm_provider: SerializedLLMProvider,
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -122,7 +128,49 @@ impl GenericInferenceChain {
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
-        // WIP
+        // Only for OpenAI right now
+        let mut tools = vec![];
+        if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model {
+            // Perform the specific action for OpenAI models
+            // delete
+            let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
+            let tool = RustTool::new(
+                "concat_strings".to_string(),
+                concat_strings_desc.clone(),
+                vec![
+                    ToolArgument::new(
+                        "first_string".to_string(),
+                        "string".to_string(),
+                        "The first string to concatenate".to_string(),
+                        true,
+                    ),
+                    ToolArgument::new(
+                        "second_string".to_string(),
+                        "string".to_string(),
+                        "The second string to concatenate".to_string(),
+                        true,
+                    ),
+                    ToolArgument::new(
+                        "third_string".to_string(),
+                        "string".to_string(),
+                        "The third string to concatenate (optional)".to_string(),
+                        false,
+                    ),
+                    ToolArgument::new(
+                        "fourth_string".to_string(),
+                        "string".to_string(),
+                        "The fourth string to concatenate (optional)".to_string(),
+                        false,
+                    ),
+                ],
+                generator
+                    .generate_embedding_default(&concat_strings_desc)
+                    .await
+                    .unwrap(),
+            );
+            tools.push(ShinkaiTool::Rust(tool));
+            // end delete
+        }
 
         // 3) Generate Prompt
         let filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -132,10 +180,11 @@ impl GenericInferenceChain {
             ret_nodes,
             summary_node_text,
             Some(full_job.step_history.clone()),
+            tools,
         );
 
         // 4) Call LLM
-        let response_res = JobManager::inference_with_llm_provider(agent.clone(), filled_prompt.clone()).await;
+        let response_res = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone()).await;
 
         // TODO: modify LLMInferenceResponse so it holds more information e.g. function call required, etc. choices, etc.
         // TODO: modify inference_with_llm_provider (or create a new one) that can take some extra information so it can stream tokens out

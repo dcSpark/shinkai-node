@@ -5,7 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 use std::fmt;
-use tiktoken_rs::ChatCompletionRequestMessage;
+use tiktoken_rs::{ChatCompletionRequestMessage, FunctionCall};
 
 use super::subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType};
 
@@ -97,7 +97,7 @@ impl Prompt {
 
         for sub_prompt in self.sub_prompts.iter() {
             match &sub_prompt {
-                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
+                SubPrompt::Content(_, _, priority) | SubPrompt::Tool(_, _, priority) => {
                     self.lowest_priority = self.lowest_priority.min(*priority);
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
@@ -148,7 +148,7 @@ impl Prompt {
         let mut updated_sub_prompts = Vec::new();
         for mut sub_prompt in sub_prompts {
             match &mut sub_prompt {
-                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => {
+                SubPrompt::Content(_, _, priority) | SubPrompt::Tool(_, _, priority) => {
                     *priority = capped_priority_value
                 }
                 SubPrompt::Asset(_, _, _, _, priority) => *priority = capped_priority_value,
@@ -175,7 +175,7 @@ impl Prompt {
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
         let lowest_priority = self.lowest_priority;
         if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
-            SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority, _) => *priority == lowest_priority,
+            SubPrompt::Content(_, _, priority) | SubPrompt::Tool(_, _, priority) => *priority == lowest_priority,
             SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
         }) {
             return Some(self.remove_sub_prompt(position));
@@ -237,6 +237,19 @@ impl Prompt {
                     extra_context_content.push_str(content);
                     extra_context_content.push('\n');
                     processing_extra_context = true;
+                }
+                SubPrompt::Tool(_, content, _) => {
+                    let tool_message = ChatCompletionRequestMessage {
+                        role: "function".to_string(),
+                        content: None,
+                        name: Some("tool".to_string()),
+                        function_call: Some(FunctionCall {
+                            name: "tool_function".to_string(),
+                            arguments: content.to_string(),
+                        }),
+                    };
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&tool_message);
+                    tiktoken_messages.push(tool_message);
                 }
                 _ => {
                     // If we were processing ExtraContext, add it as a single System message
@@ -323,7 +336,7 @@ impl Prompt {
                     }
                     messages.push(new_message);
                 }
-                SubPrompt::EBNF(_, content, _, _) => {
+                SubPrompt::Tool(_, content, _) => {
                     let new_message = format!("{}\n", content.clone());
                     messages.push(new_message);
                 }
