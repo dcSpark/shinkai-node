@@ -40,7 +40,7 @@ fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
 
 // #[test]
 // fn test_default_js_toolkit_json_parsing() {
-//     init_default_tracing(); 
+//     init_default_tracing();
 //     let toolkit = JSToolkit::from_toolkit_json(&default_toolkit_json(), "").unwrap();
 
 //     assert_eq!(toolkit.name, "Google Calendar Toolkit");
@@ -57,7 +57,7 @@ fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
 
 // #[tokio::test]
 async fn test_js_toolkit_execution() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
@@ -90,7 +90,7 @@ async fn test_js_toolkit_execution() {
 
 // #[tokio::test]
 async fn test_toolkit_installation_and_retrieval() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
@@ -105,7 +105,11 @@ async fn test_toolkit_installation_and_retrieval() {
     let db_path = format!("db_tests/{}", "toolkit");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let profile = default_test_profile();
-    shinkai_db.init_profile_tool_structs(&profile).unwrap();
+    let generator = RemoteEmbeddingGenerator::new_default();
+    shinkai_db
+        .init_profile_tool_structs(&profile, Box::new(generator))
+        .await
+        .unwrap();
     shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 
@@ -115,14 +119,14 @@ async fn test_toolkit_installation_and_retrieval() {
 
     // Uninstall and check via the toolkit map and db key (TODO: later add deactivation checks too)
     shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
-    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap() == false);
+    assert!(!shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
     let fetched_toolkit = shinkai_db.get_toolkit(&toolkit.name, &profile);
     assert!(fetched_toolkit.is_err());
 }
 
 // #[tokio::test]
 async fn test_tool_router_and_toolkit_flow() {
-    init_default_tracing(); 
+    init_default_tracing();
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -140,7 +144,10 @@ async fn test_tool_router_and_toolkit_flow() {
     let db_path = format!("db_tests/{}", "toolkit");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let profile = default_test_profile();
-    shinkai_db.init_profile_tool_structs(&profile).unwrap();
+    shinkai_db
+        .init_profile_tool_structs(&profile, Box::new(generator.clone()))
+        .await
+        .unwrap();
     shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 

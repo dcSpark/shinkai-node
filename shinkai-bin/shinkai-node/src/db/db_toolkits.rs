@@ -9,7 +9,6 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 
-
 impl ShinkaiDB {
     /// Prepares the `JSToolkit` for saving into the ShinkaiDB.
     fn _prepare_toolkit(&self, toolkit: &JSToolkit, _profile: &ShinkaiName) -> Result<(Vec<u8>, &str), ShinkaiDBError> {
@@ -40,10 +39,7 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let (bytes, cf) = self._prepare_profile_toolkit_map(toolkit_map, profile)?;
-        let cf = self
-            .db
-            .cf_handle(cf)
-            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
+        let cf = self.db.cf_handle(cf).ok_or(ShinkaiDBError::FailedFetchingCF)?;
         self.pb_put_cf(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes, profile)?;
         Ok(())
     }
@@ -347,13 +343,17 @@ impl ShinkaiDB {
     }
 
     /// Initializes a `InstalledJSToolkitMap` and a `ToolRouter` if they do not exist in the DB.
-    pub fn init_profile_tool_structs(&self, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub async fn init_profile_tool_structs(
+        &self,
+        profile: &ShinkaiName,
+        embedding_generator: Box<dyn EmbeddingGenerator>,
+    ) -> Result<(), ShinkaiDBError> {
         if let Err(_) = self.get_installed_toolkit_map(profile) {
             let toolkit_map = InstalledJSToolkitMap::new();
             self._save_profile_toolkit_map(&toolkit_map, profile)?;
         }
         if let Err(_) = self.get_tool_router(profile) {
-            let router = ToolRouter::new();
+            let router = ToolRouter::new(embedding_generator).await;
             self._save_profile_tool_router(&router, profile)?;
         }
         Ok(())

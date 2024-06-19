@@ -3,6 +3,7 @@ use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::RustTool;
 use serde_json;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
@@ -162,35 +163,31 @@ pub struct ToolRouter {
     pub routing_resource: MapVectorResource,
 }
 
-impl Default for ToolRouter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // URGENT!: This needs to be refactored
 impl ToolRouter {
     /// Create a new ToolRouter instance from scratch.
-    pub fn new() -> Self {
+    pub async fn new(generator: Box<dyn EmbeddingGenerator>) -> Self {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
         let source = VRSourceReference::None;
 
         // Initialize the MapVectorResource and add all of the rust tools by default
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);
-        // let mut metadata = HashMap::new();
-        // metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 
-        // for t in RUST_TOOLKIT.rust_tool_map.values() {
-        //     let tool = ShinkaiTool::Rust(t.clone());
-        //     let _ = routing_resource.insert_text_node(
-        //         tool.tool_router_key(),
-        //         tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
-        //         Some(metadata.clone()),
-        //         t.tool_embedding.clone(),
-        //         &vec![],
-        //     );
-        // }
+        // Generate the static Rust tools
+        let rust_tools = RustTool::static_tools(generator).await;
+
+        // Insert each Rust tool into the routing resource
+        for tool in rust_tools {
+            let shinkai_tool = ShinkaiTool::Rust(tool.clone());
+            let _ = routing_resource.insert_text_node(
+                shinkai_tool.tool_router_key(),
+                shinkai_tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
+                None,
+                tool.tool_embedding.clone(),
+                &vec![],
+            );
+        }
 
         ToolRouter { routing_resource }
     }

@@ -429,8 +429,8 @@ fn test_manual_resource_vector_search() {
     hm2.insert("common_key".to_string(), "common_value".to_string());
     hm2.insert("unique_key2".to_string(), "unique_value2".to_string());
 
-    fruit_doc.append_text_node(fact5.clone(), Some(hm1), fact5_embedding.clone(), &vec![]);
-    fruit_doc.append_text_node(fact6.clone(), Some(hm2), fact6_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact5, Some(hm1), fact5_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact6, Some(hm2), fact6_embedding.clone(), &vec![]);
 
     // Check any filtering, with the common key/value
     let res = fruit_doc.vector_search_customized(
@@ -755,9 +755,9 @@ fn test_manual_syntactic_vector_search() {
     let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
     let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &data_tags);
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &data_tags);
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &data_tags);
+    let _ = doc.append_text_node(fact1, None, fact1_embedding.clone(), &data_tags);
+    let _ = doc.append_text_node(fact2, None, fact2_embedding.clone(), &data_tags);
+    let _ = doc.append_text_node(fact3, None, fact3_embedding.clone(), &data_tags);
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
 

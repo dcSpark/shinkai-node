@@ -127,7 +127,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
     /// Note this method is blocking.
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError> {
-        let input_strings = vec![input_string.to_string()];
+        let input_strings = [input_string.to_string()];
         let input_strings: Vec<String> = input_strings
             .iter()
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())

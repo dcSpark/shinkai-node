@@ -10,6 +10,16 @@ pub struct ToolArgument {
 }
 
 impl ToolArgument {
+    /// Creates a new ToolArgument
+    pub fn new(name: String, arg_type: String, description: String, is_required: bool) -> Self {
+        Self {
+            name,
+            arg_type,
+            description,
+            is_required,
+        }
+    }
+
     /// Parses a ToolArgument from a toolkit json
     pub fn from_toolkit_json(json: &JsonValue) -> Result<Self, ToolError> {
         let name = json["name"].as_str().ok_or(ToolError::ParseError("name".to_string()))?;

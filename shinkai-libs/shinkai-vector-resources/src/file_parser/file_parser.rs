@@ -285,7 +285,7 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
-        let name = ShinkaiFileParser::clean_name(&name);
+        let name = ShinkaiFileParser::clean_name(name);
         let max_embedding_token_count = generator.model_type().max_input_token_count();
         let resource_desc = Self::_setup_resource_description(
             desc,
@@ -352,7 +352,7 @@ impl ShinkaiFileParser {
         parsing_tags: &Vec<DataTag>,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
-        let name = ShinkaiFileParser::clean_name(&name);
+        let name = ShinkaiFileParser::clean_name(name);
         let max_embedding_token_count = generator.model_type().max_input_token_count();
         let resource_desc = Self::_setup_resource_description(
             desc,
