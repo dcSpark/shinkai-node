@@ -1,7 +1,7 @@
 use crate::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use serde::{Deserialize, Serialize};
 
-// Based on crewai for compatibility https://docs.crewai.com
+// Based on the great job by crewai (mostly for for compatibility) https://docs.crewai.com
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CustomizedAgent {

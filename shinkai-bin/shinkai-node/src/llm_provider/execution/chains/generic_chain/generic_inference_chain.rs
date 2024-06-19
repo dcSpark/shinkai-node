@@ -141,12 +141,12 @@ impl GenericInferenceChain {
         // TODO: modify inference_with_llm_provider (or create a new one) that can take some extra information so it can stream tokens out
         // TODO: handle errors and potential retry (depending on the error)
 
-        // Previous code
-        // // Check if it failed to produce a proper json object at all, and if so go through more advanced retry logic
-        // if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
-        //     return Err(LLMProviderError::LLMServiceInferenceLimitReached(e.to_string()));
-        // } else if let Err(LLMProviderError::LLMServiceUnexpectedError(e)) = &response_res {
-        //     return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
+        // Error Codes
+        if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
+            return Err(LLMProviderError::LLMServiceInferenceLimitReached(e.to_string()));
+        } else if let Err(LLMProviderError::LLMServiceUnexpectedError(e)) = &response_res {
+            return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
+        }
 
         let answer = response_res?.original_response_string;
         Ok(answer)
