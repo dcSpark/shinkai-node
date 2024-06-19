@@ -6,7 +6,7 @@ for_loop  = { "for" ~ identifier ~ "in" ~ (split_expression | range_expression) 
 action    = { external_fn_call | command ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
 command   = { identifier }
 param     = { string | number | boolean | identifier | register }
-register  = { "$" ~ "R" ~ ASCII_DIGIT+ }
+register  = { "$" ~ identifier }
 // New rule for registers
 external_fn_call   = { "call" ~ identifier ~ "(" ~ (param ~ ("," ~ param)*)? ~ ")" }
 expression         = { range_expression | simple_expression ~ (comparison_operator ~ simple_expression)? }

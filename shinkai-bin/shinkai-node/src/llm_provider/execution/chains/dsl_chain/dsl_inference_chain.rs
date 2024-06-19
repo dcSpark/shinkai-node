@@ -54,7 +54,7 @@ impl<'a> InferenceChain for DslChain<'a> {
 
         // Inject user_message into $R0
         final_registers.insert(
-            "$R0".to_string(),
+            "$INPUT".to_string(),
             self.context.user_message.clone().original_user_message_string,
         );
         let executor = engine.iter(&self.workflow, Some(final_registers.clone()), Some(logs.clone()));
@@ -73,13 +73,14 @@ impl<'a> InferenceChain for DslChain<'a> {
         }
 
         let response_register = final_registers
-            .get("$R1")
+            .get("$RESULT")
             .map(|r| r.clone())
             .unwrap_or_else(String::new);
         let new_contenxt = HashMap::new();
 
         // Debug
-        let logs = WorkflowEngine::formatted_logs(&logs);
+        // let logs = WorkflowEngine::formatted_logs(&logs);
+
         Ok(InferenceChainResult::new(response_register, new_contenxt))
     }
 }

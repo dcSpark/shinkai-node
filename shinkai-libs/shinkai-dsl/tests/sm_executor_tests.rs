@@ -723,10 +723,10 @@ mod tests {
         let dsl_input = r#"
         workflow MyProcess v0.1 {
             step Initialize {
-                $R0 = "http://quotes.toscrape.com"
+                $WEBPAGE = "http://quotes.toscrape.com"
             }
             step Download {
-                $R1 = call download_webpage($R0)
+                $RESULT = call download_webpage($WEBPAGE)
             }
         }
         "#;
@@ -752,7 +752,7 @@ mod tests {
         eprintln!("Registers: {:?}", registers);
 
         // Check the results
-        assert_eq!(registers.get("$R0").unwrap().as_str(), "http://quotes.toscrape.com");
-        assert!(registers.get("$R1").unwrap().as_str().contains("<html"));
+        assert_eq!(registers.get("$WEBPAGE").unwrap().as_str(), "http://quotes.toscrape.com");
+        assert!(registers.get("$RESULT").unwrap().as_str().contains("<html"));
     }
 }
