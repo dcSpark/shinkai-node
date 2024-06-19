@@ -51,7 +51,7 @@ impl JobPromptGenerator {
 
         // Add the user question and the preference prompt for the answer
         let user_prompt = custom_user_prompt
-            .unwrap_or_else(|| "Answer the question using this markdown and the extra context provided.".to_string());
+            .unwrap_or_else(|| "Answer the question using markdown and the extra context provided.".to_string());
         prompt.add_content(format!("{}\n {}", user_message, user_prompt), SubPromptType::User, 100);
 
         prompt
