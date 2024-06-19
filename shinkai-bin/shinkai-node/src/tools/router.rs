@@ -298,7 +298,7 @@ impl ToolRouter {
 
         for t in RUST_TOOLKIT.rust_tool_map.values() {
             let tool = ShinkaiTool::Rust(t.clone());
-            routing_resource.insert_text_node(
+            let _ = routing_resource.insert_text_node(
                 tool.tool_router_key(),
                 tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
                 Some(metadata.clone()),

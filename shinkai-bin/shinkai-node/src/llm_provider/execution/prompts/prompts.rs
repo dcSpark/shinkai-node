@@ -61,7 +61,9 @@ impl Prompt {
         priority_value: u8,
     ) {
         if let Some(content) = retrieved_node.format_for_prompt(3500) {
-            self.add_content(content, prompt_type, priority_value);
+            if !content.trim().is_empty() {
+                self.add_content(content, prompt_type, priority_value);
+            }
         }
     }
 

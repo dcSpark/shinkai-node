@@ -43,7 +43,7 @@ impl JobManager {
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
-        let response_json = JobManager::inference_agent_markdown(agent.clone(), image_prompt).await?;
+        let response_json = JobManager::inference_with_llm_provider(agent.clone(), image_prompt).await?;
         let mut new_execution_context = HashMap::new();
 
         new_execution_context.insert("previous_step_response".to_string(), response_json.original_response_string.clone());

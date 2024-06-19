@@ -262,7 +262,7 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
 
-    /// Retrieve the Vector Resource & Source File Map from the db
+    // Retrieve the Vector Resource & Source File Map from the db
     // Test both retrieve interfaces
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
@@ -312,11 +312,11 @@ async fn test_vector_fs_saving_reading() {
     let fact2_embedding = generator.generate_embedding_default(fact2).await.unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embedding = generator.generate_embedding_default(fact3).await.unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+    doc.append_text_node(fact1, None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+    doc.append_text_node(fact2, None, fact2_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+    doc.append_text_node(fact3, None, fact3_embedding.clone(), &vec![])
         .unwrap();
 
     let writer = vector_fs
