@@ -22,6 +22,7 @@ pub enum ToolError {
     JSToolkitHeaderValidationFailed(String),
     ToolkitAlreadyActivated(String),
     ToolkitAlreadyDeactivated(String),
+    SerializationError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -46,6 +47,7 @@ impl fmt::Display for ToolError {
             ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
             ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
+            ToolError::SerializationError(ref e) => write!(f, "Serialization error: {}", e),
         }
     }
 }

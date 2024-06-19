@@ -1,7 +1,7 @@
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
-use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
+use crate::tools::rust_tools::RustTool;
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::source::VRSourceReference;
@@ -69,158 +69,48 @@ impl ShinkaiTool {
         }
     }
 
-    /// Returns the output arguments of the tool
-    pub fn output_args(&self) -> Vec<ToolArgument> {
-        match self {
-            ShinkaiTool::Rust(r) => r.output_args.clone(),
-            ShinkaiTool::JS(j) => j.output_args.clone(),
-        }
-    }
-
-    /// Returns a string that includes all of the input arguments' EBNF definitions
-    pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
-        ToolArgument::generate_ebnf_for_args(
-            self.input_args().clone(),
-            self.toolkit_type_name().clone(),
-            add_arg_descriptions,
-        )
-    }
-
-    /// Returns a string that includes all of the input arguments' EBNF definitions
-    pub fn ebnf_outputs(&self, add_arg_descriptions: bool) -> String {
-        ToolArgument::generate_ebnf_for_args(
-            self.output_args().clone(),
-            self.toolkit_type_name().clone(),
-            add_arg_descriptions,
-        )
-    }
-
     /// Returns a formatted summary of the tool
-    pub fn formatted_tool_summary(&self, ebnf_output: bool) -> String {
-        let mut summary = format!(
-            "Tool Name: {}\nToolkit Name: {}\nDescription: {}\nTool Input EBNF: `{}`",
+    pub fn formatted_tool_summary(&self) -> String {
+        format!(
+            "Tool Name: {}\nToolkit Name: {}\nDescription: {}",
             self.name(),
             self.toolkit_type_name(),
             self.description(),
-            self.ebnf_inputs(false)
-        );
-
-        if ebnf_output {
-            summary.push_str(&format!("\nTool Output EBNF: `{}`", self.ebnf_outputs(false)));
-        }
-
-        summary
+        )
     }
 
-    /// Returns a formatted summary of the tool
-    pub fn xml_lite_formatted_tool_summary(&self, ebnf_output: bool) -> String {
-        let mut summary = format!(
-            "<toolkit name=\"{}\" description=\"{}\">",
-            self.toolkit_name(),
-            self.description(),
-        );
+    pub fn json_value_tool_summary(&self) -> Result<serde_json::Value, ToolError> {
+        let mut properties = serde_json::Map::new();
 
-        summary.push_str("<inputs>");
-        summary.push_str(&ToolArgument::lite_xml_generate_ebnf_for_args(
-            self.input_args().clone(),
-            ebnf_output,
-        ));
-        summary.push_str("</inputs>");
-
-        if ebnf_output {
-            summary.push_str("<outputs>");
-            summary.push_str(&ToolArgument::lite_xml_generate_ebnf_for_args(
-                self.output_args().clone(),
-                ebnf_output,
-            ));
-            summary.push_str("</outputs>");
+        for arg in self.input_args() {
+            properties.insert(
+                arg.name.clone(),
+                serde_json::json!({
+                    "type": "string",
+                    "description": arg.description.clone(),
+                }),
+            );
         }
 
-        summary.push_str("</toolkit>");
+        let summary = serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": self.input_args().iter().map(|arg| arg.name.clone()).collect::<Vec<String>>(),
+                },
+            },
+        });
 
-        summary
+        Ok(summary)
     }
 
-    pub fn json_formatted_tool_summary(&self, ebnf_output: bool) -> Result<String, ToolError> {
-        let mut summary = HashMap::new();
-
-        summary.insert("toolkit_name", self.toolkit_name());
-        summary.insert("description", self.description());
-
-        let inputs = ToolArgument::json_generate_ebnf_for_args(self.input_args().clone(), ebnf_output);
-        let inputs_json = serde_json::to_string(&inputs).map_err(|_| ToolError::FailedJSONParsing)?;
-        summary.insert("inputs", inputs_json);
-
-        if ebnf_output {
-            let outputs = ToolArgument::json_generate_ebnf_for_args(self.output_args().clone(), ebnf_output);
-            let outputs_json = serde_json::to_string(&outputs).map_err(|_| ToolError::FailedJSONParsing)?;
-            summary.insert("outputs", outputs_json);
-        }
-
-        serde_json::to_string(&summary).map_err(|_| ToolError::FailedJSONParsing)
-    }
-
-    pub fn describe_formatted_tool_summary(&self, ebnf_output: bool) -> Result<String, ToolError> {
-        let mut description = String::new();
-
-        description.push_str(&format!("Toolkit Name: {}\n", self.toolkit_name()));
-        description.push_str(&format!("Description: {}\n", self.description()));
-
-        let inputs = ToolArgument::json_generate_ebnf_for_args(self.input_args().clone(), ebnf_output);
-        for input in &inputs {
-            description.push_str(&format!(
-                "Input Name: {}\n",
-                input.get("name").unwrap_or(&String::from("N/A"))
-            ));
-            if ebnf_output {
-                description.push_str(&format!(
-                    "Input EBNF: {}\n",
-                    input.get("ebnf").unwrap_or(&String::from("N/A"))
-                ));
-            }
-        }
-
-        if ebnf_output {
-            let outputs = ToolArgument::json_generate_ebnf_for_args(self.output_args().clone(), ebnf_output);
-            for output in &outputs {
-                description.push_str(&format!(
-                    "Output Name: {}\n",
-                    output.get("name").unwrap_or(&String::from("N/A"))
-                ));
-                description.push_str(&format!(
-                    "Output EBNF: {}\n",
-                    output.get("ebnf").unwrap_or(&String::from("N/A"))
-                ));
-            }
-        }
-
-        Ok(description)
-    }
-
-    pub fn csv_formatted_tool_summary(&self, ebnf_output: bool) -> String {
-        let mut summary = String::from("Toolkit Name,Description,Inputs");
-
-        if ebnf_output {
-            summary.push_str(",Outputs");
-        }
-
-        summary.push('\n');
-
-        summary.push_str(&format!(
-            "{},{},{}",
-            self.toolkit_name(),
-            self.description(),
-            ToolArgument::lite_csv_generate_ebnf_for_args(self.input_args().clone(), ebnf_output,),
-        ));
-
-        if ebnf_output {
-            summary.push_str(&format!(
-                ",{}",
-                ToolArgument::lite_xml_generate_ebnf_for_args(self.output_args().clone(), ebnf_output,),
-            ));
-        }
-
-        summary
+    pub fn json_formatted_tool_summary(&self) -> Result<String, ToolError> {
+        let summary_value = self.json_value_tool_summary()?;
+        serde_json::to_string(&summary_value).map_err(|_| ToolError::FailedJSONParsing)
     }
 
     /// Formats the tool's info into a String to be used for generating the tool's embedding.
@@ -230,12 +120,6 @@ impl ShinkaiTool {
         embedding_string.push_str("Input Args:\n");
 
         for arg in self.input_args() {
-            embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
-        }
-
-        embedding_string.push_str("Output Args:\n");
-
-        for arg in self.output_args() {
             embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
         }
 
@@ -284,6 +168,7 @@ impl Default for ToolRouter {
     }
 }
 
+// URGENT!: This needs to be refactored
 impl ToolRouter {
     /// Create a new ToolRouter instance from scratch.
     pub fn new() -> Self {
@@ -293,23 +178,21 @@ impl ToolRouter {
 
         // Initialize the MapVectorResource and add all of the rust tools by default
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);
-        let mut metadata = HashMap::new();
-        metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
+        // let mut metadata = HashMap::new();
+        // metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 
-        for t in RUST_TOOLKIT.rust_tool_map.values() {
-            let tool = ShinkaiTool::Rust(t.clone());
-            let _ = routing_resource.insert_text_node(
-                tool.tool_router_key(),
-                tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
-                Some(metadata.clone()),
-                t.tool_embedding.clone(),
-                &vec![],
-            );
-        }
+        // for t in RUST_TOOLKIT.rust_tool_map.values() {
+        //     let tool = ShinkaiTool::Rust(t.clone());
+        //     let _ = routing_resource.insert_text_node(
+        //         tool.tool_router_key(),
+        //         tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
+        //         Some(metadata.clone()),
+        //         t.tool_embedding.clone(),
+        //         &vec![],
+        //     );
+        // }
 
-        ToolRouter {
-            routing_resource,
-        }
+        ToolRouter { routing_resource }
     }
 
     fn tool_type_metadata_key() -> String {
