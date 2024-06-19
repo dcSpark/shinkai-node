@@ -89,7 +89,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
     }
 
     fn agent(&self) -> &SerializedLLMProvider {
-        &self.agent
+        &self.llm_provider
     }
 
     fn execution_context(&self) -> &HashMap<String, String> {
@@ -137,7 +137,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
-    pub agent: SerializedLLMProvider,
+    pub llm_provider: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
@@ -169,7 +169,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
-            agent,
+            llm_provider: agent,
             execution_context,
             generator,
             user_profile,

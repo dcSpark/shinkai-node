@@ -1,10 +1,14 @@
 use async_recursion::async_recursion;
-use shinkai_message_primitives::schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{
+    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    llm_provider::{error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager},
     db::ShinkaiDB,
+    llm_provider::{
+        error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager,
+    },
 };
 
 #[derive(Debug, Clone, Default)]
@@ -34,7 +38,9 @@ impl JobManager {
         max_iterations: u64,
     ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         if iteration_count > max_iterations {
-            return Err(LLMProviderError::InferenceRecursionLimitReached("Image Analysis".to_string()));
+            return Err(LLMProviderError::InferenceRecursionLimitReached(
+                "Image Analysis".to_string(),
+            ));
         }
 
         let agent = match agent_found {
@@ -43,10 +49,13 @@ impl JobManager {
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
-        let response_json = JobManager::inference_agent_markdown(agent.clone(), image_prompt).await?;
+        let response_json = JobManager::inference_with_llm_provider(agent.clone(), image_prompt).await?;
         let mut new_execution_context = HashMap::new();
 
-        new_execution_context.insert("previous_step_response".to_string(), response_json.original_response_string.clone());
+        new_execution_context.insert(
+            "previous_step_response".to_string(),
+            response_json.original_response_string.clone(),
+        );
         Ok((response_json.original_response_string.clone(), new_execution_context))
     }
 }

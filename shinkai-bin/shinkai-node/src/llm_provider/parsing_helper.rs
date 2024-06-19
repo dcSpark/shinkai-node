@@ -30,7 +30,7 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error

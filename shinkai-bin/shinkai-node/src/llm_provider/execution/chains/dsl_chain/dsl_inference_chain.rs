@@ -49,11 +49,14 @@ impl<'a> InferenceChain for DslChain<'a> {
 
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let engine = WorkflowEngine::new(&self.functions);
-        let mut final_registers = DashMap::new();        
-        let logs = DashMap::new();        
+        let mut final_registers = DashMap::new();
+        let logs = DashMap::new();
 
         // Inject user_message into $R0
-        final_registers.insert("$R0".to_string(), self.context.user_message.clone().original_user_message_string);
+        final_registers.insert(
+            "$R0".to_string(),
+            self.context.user_message.clone().original_user_message_string,
+        );
         let executor = engine.iter(&self.workflow, Some(final_registers.clone()), Some(logs.clone()));
 
         for result in executor {
@@ -101,7 +104,13 @@ impl<'a> DslChain<'a> {
 
     pub fn add_generic_function<F>(&mut self, name: &str, func: F)
     where
-        F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync + 'a,
+        F: Fn(
+                Box<dyn InferenceChainContextTrait>,
+                Vec<Box<dyn Any + Send>>,
+            ) -> Result<Box<dyn Any + Send>, WorkflowError>
+            + Send
+            + Sync
+            + 'a,
     {
         self.functions.insert(
             name.to_string(),
@@ -164,7 +173,7 @@ impl AsyncFunction for InferenceFunction {
         let db = self.context.db.clone();
         let vector_fs = self.context.vector_fs.clone();
         let full_job = self.context.full_job.clone();
-        let agent = self.context.agent.clone();
+        let llm_provider = self.context.llm_provider.clone();
         let generator = self.context.generator.clone();
         let user_profile = self.context.user_profile.clone();
         let max_tokens_in_prompt = self.context.max_tokens_in_prompt;
@@ -176,9 +185,10 @@ impl AsyncFunction for InferenceFunction {
         // If we need to search for nodes using the scope
         let scope_is_empty = full_job.scope().is_empty();
         let mut ret_nodes: Vec<RetrievedNode> = vec![];
+        let mut summary_node_text = None;
         if !scope_is_empty {
             // TODO: this should also be a generic fn
-            let (ret, _summary) = JobManager::keyword_chained_job_scope_vector_search(
+            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
                 vector_fs.clone(),
                 full_job.scope(),
@@ -191,18 +201,20 @@ impl AsyncFunction for InferenceFunction {
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
             ret_nodes = ret;
+            summary_node_text = summary;
         }
 
-        let filled_prompt = JobPromptGenerator::qa_response_prompt_with_vector_search(
+        let filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            None, // TODO: connect later on
+            None, // TODO: connect later on
             user_message.clone(),
             ret_nodes,
-            None,
-            Some(query_text),
+            summary_node_text,
             Some(full_job.step_history.clone()),
         );
 
         // Handle response_res without using the `?` operator
-        let response = JobManager::inference_agent_markdown(agent.clone(), filled_prompt.clone())
+        let response = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone())
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
@@ -221,7 +233,9 @@ impl AsyncFunction for InferenceFunction {
 #[allow(dead_code)]
 struct GenericFunction<F>
 where
-    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
+    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
+        + Send
+        + Sync,
 {
     func: F,
     context: Box<dyn InferenceChainContextTrait>,
@@ -231,7 +245,9 @@ where
 #[async_trait]
 impl<F> AsyncFunction for GenericFunction<F>
 where
-    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> + Send + Sync,
+    F: Fn(Box<dyn InferenceChainContextTrait>, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>
+        + Send
+        + Sync,
 {
     async fn call(&self, args: Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError> {
         (self.func)(self.context.clone(), args)
