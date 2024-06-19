@@ -7,8 +7,6 @@ use shinkai_vector_resources::{
     vector_resource::{VRKai, VRPack, VRPath},
 };
 
-use super::PDFParser;
-
 pub struct FileStreamParser {}
 
 impl FileStreamParser {
@@ -17,27 +15,17 @@ impl FileStreamParser {
         file_buffer: Vec<u8>,
         max_node_text_size: u64,
     ) -> anyhow::Result<Vec<TextGroup>> {
-        let file_extension = filename.split('.').last();
-        match file_extension {
-            Some("pdf") => {
-                let pdf_parser = PDFParser::new()?;
+        let source = VRSourceReference::from_file(&filename, TextChunkingStrategy::V1)?;
 
-                pdf_parser.process_pdf_file(file_buffer, max_node_text_size)
-            }
-            _ => {
-                let source = VRSourceReference::from_file(&filename, TextChunkingStrategy::V1)?;
-
-                ShinkaiFileParser::process_file_into_text_groups(
-                    file_buffer,
-                    filename.to_string(),
-                    max_node_text_size,
-                    source,
-                    UnstructuredAPI::new_default(),
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-            }
-        }
+        ShinkaiFileParser::process_file_into_text_groups(
+            file_buffer,
+            filename.to_string(),
+            max_node_text_size,
+            source,
+            UnstructuredAPI::new_default(),
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     pub async fn generate_vrkai(

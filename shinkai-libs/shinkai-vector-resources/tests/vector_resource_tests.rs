@@ -1125,7 +1125,7 @@ async fn local_csv_metadata_parsing_test() {
     );
 }
 
-// #[tokio::test]
+#[tokio::test]
 async fn local_md_parsing_test() {
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "parsed_channels.md";

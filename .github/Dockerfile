@@ -27,7 +27,7 @@ COPY . .
 
 # Download ocrs models
 
-RUN $(cd shinkai-bin/shinkai-executor/ocrs && ./download-models.sh)
+RUN $(cd shinkai-libs/shinkai-pdf-parser/ocrs && ./download-models.sh)
 
 # Build the dependencies (cached)
 

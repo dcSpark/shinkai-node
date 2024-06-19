@@ -57,6 +57,6 @@ fn main() {
         let pdfium_lib_source = pdfium_lib_path.join(pdfium_lib);
         let pdfium_lib_dest = bin_dir.join(pdfium_lib);
 
-        std::fs::copy(&pdfium_lib_source, &pdfium_lib_dest).unwrap();
+        std::fs::copy(pdfium_lib_source, pdfium_lib_dest).unwrap();
     }
 }

@@ -2,13 +2,21 @@ use image::GenericImageView;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup};
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 pub struct PDFParser {
     ocr_engine: OcrEngine,
     pdfium: Pdfium,
+}
+
+pub struct PDFPage {
+    pub page_number: usize,
+    pub content: Vec<PDFText>,
+}
+
+pub struct PDFText {
+    pub text: String,
+    pub likely_heading: bool,
 }
 
 impl PDFParser {
@@ -32,22 +40,20 @@ impl PDFParser {
             ..Default::default()
         })?;
 
-        Ok(PDFParser {
-            ocr_engine,
+        #[cfg(not(feature = "static"))]
+        let pdfium = {
+            use std::env;
+            let lib_path = env::var("PDFIUM_DYNAMIC_LIB_PATH").unwrap_or("./".to_string());
+            Pdfium::new(Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap())
+        };
 
-            #[cfg(not(feature = "static"))]
-            pdfium: {
-                use std::env;
-                let lib_path = env::var("PDFIUM_DYNAMIC_LIB_PATH").unwrap_or("./".to_string());
-                Pdfium::new(Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap())
-            },
+        #[cfg(feature = "static")]
+        let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
 
-            #[cfg(feature = "static")]
-            pdfium: Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap()),
-        })
+        Ok(PDFParser { ocr_engine, pdfium })
     }
 
-    pub fn process_pdf_file(&self, file_buffer: Vec<u8>, max_node_text_size: u64) -> anyhow::Result<Vec<TextGroup>> {
+    pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
         let document = self.pdfium.load_pdf_from_byte_vec(file_buffer, None)?;
 
         struct TextPosition {
@@ -61,12 +67,12 @@ impl PDFParser {
             font_weight: PdfFontWeight,
         }
 
-        let mut text_groups = Vec::new();
-        let mut text_depth: usize = 0;
+        let mut pdf_pages = Vec::new();
         let mut page_text = "".to_owned();
         let mut previous_text_font: Option<TextFont> = None;
 
         for (page_index, page) in document.pages().iter().enumerate() {
+            let mut pdf_texts = Vec::new();
             let mut previous_text_position: Option<TextPosition> = None;
 
             for object in page.objects().iter() {
@@ -116,47 +122,46 @@ impl PDFParser {
                         if previous_text_position.is_some()
                             && current_text_position.y == previous_text_position.as_ref().unwrap().y
                         {
-                            page_text.push_str(&format!("{}", &text));
+                            page_text.push_str(&text);
                         } else if likely_heading {
                             // Save text from previous text objects.
-                            ShinkaiFileParser::push_text_group_by_depth(
-                                &mut text_groups,
-                                text_depth,
-                                page_text.clone(),
-                                max_node_text_size,
-                            );
-                            page_text.clear();
+                            if !page_text.is_empty() {
+                                let pdf_text = PDFText {
+                                    text: page_text.clone(),
+                                    likely_heading: false,
+                                };
+                                pdf_texts.push(pdf_text);
+
+                                page_text.clear();
+                            }
 
                             // Add heading to the top level
-                            ShinkaiFileParser::push_text_group_by_depth(
-                                &mut text_groups,
-                                0,
-                                text.clone(),
-                                max_node_text_size,
-                            );
-
-                            text_depth = 1;
+                            let pdf_text = PDFText {
+                                text: text.clone(),
+                                likely_heading: true,
+                            };
+                            pdf_texts.push(pdf_text);
                         }
                         // likely heading or new paragraph
                         else if likely_paragraph {
                             // Save text from previous text objects.
-                            ShinkaiFileParser::push_text_group_by_depth(
-                                &mut text_groups,
-                                text_depth,
-                                page_text.clone(),
-                                max_node_text_size,
-                            );
-                            page_text.clear();
+                            if !page_text.is_empty() {
+                                let pdf_text = PDFText {
+                                    text: page_text.clone(),
+                                    likely_heading: false,
+                                };
+                                pdf_texts.push(pdf_text);
 
-                            page_text.push_str(&format!("{}", &text));
+                                page_text.clear();
+                            }
+
+                            page_text.push_str(&text);
                         }
                         // add new line
-                        else {
-                            if page_text.is_empty() {
-                                page_text.push_str(&format!("{}", &text));
-                            } else {
-                                page_text.push_str(&format!("\n{}", &text));
-                            }
+                        else if page_text.is_empty() {
+                            page_text.push_str(&text);
+                        } else {
+                            page_text.push_str(&format!("\n{}", &text));
                         }
 
                         previous_text_position = Some(current_text_position);
@@ -164,59 +169,25 @@ impl PDFParser {
                     }
                     PdfPageObjectType::Image => {
                         // Save text from previous text objects.
-                        ShinkaiFileParser::push_text_group_by_depth(
-                            &mut text_groups,
-                            text_depth,
-                            page_text.clone(),
-                            max_node_text_size,
-                        );
-                        page_text.clear();
+                        if !page_text.is_empty() {
+                            let pdf_text = PDFText {
+                                text: page_text.clone(),
+                                likely_heading: false,
+                            };
+                            pdf_texts.push(pdf_text);
+
+                            page_text.clear();
+                        }
 
                         let image_object = object.as_image_object().unwrap();
 
-                        if let Err(err) = Self::process_image_object(
-                            self,
-                            &image_object,
-                            &mut text_groups,
-                            max_node_text_size,
-                            text_depth,
-                        ) {
-                            shinkai_log(
-                                ShinkaiLogOption::Executor,
-                                ShinkaiLogLevel::Error,
-                                &format!("PDF parser: Error processing image object: {:?}", err),
-                            );
-
-                            match image_object.get_raw_image() {
-                                Ok(img) => {
-                                    let current_time = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
-                                    let _ = std::fs::create_dir("broken_images");
-                                    let img_path = format!("broken_images/image_{}.png", current_time);
-
-                                    match img.save_with_format(&img_path, image::ImageFormat::Png) {
-                                        Ok(_) => {
-                                            shinkai_log(
-                                                ShinkaiLogOption::Executor,
-                                                ShinkaiLogLevel::Info,
-                                                &format!("Saved image to {}", &img_path),
-                                            );
-                                        }
-                                        Err(err) => {
-                                            shinkai_log(
-                                                ShinkaiLogOption::Executor,
-                                                ShinkaiLogLevel::Error,
-                                                &format!("Error saving image: {:?}", err),
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Executor,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("Error getting raw image: {:?}", err),
-                                    );
-                                }
+                        if let Ok(text) = Self::process_image_object(self, image_object) {
+                            if !text.is_empty() {
+                                let pdf_text = PDFText {
+                                    text,
+                                    likely_heading: false,
+                                };
+                                pdf_texts.push(pdf_text);
                             }
                         }
                     }
@@ -225,35 +196,41 @@ impl PDFParser {
             }
 
             // Drop parsed page numbers as text
-            if page_text != format!("{}", page_index + 1) {
-                ShinkaiFileParser::push_text_group_by_depth(
-                    &mut text_groups,
-                    text_depth,
-                    page_text.clone(),
-                    max_node_text_size,
-                );
+            if !page_text.is_empty() && page_text != format!("{}", page_index + 1) {
+                let pdf_text = PDFText {
+                    text: page_text.clone(),
+                    likely_heading: false,
+                };
+                pdf_texts.push(pdf_text);
             }
 
             page_text.clear();
+
+            pdf_pages.push(PDFPage {
+                page_number: page_index + 1,
+                content: pdf_texts,
+            });
         }
 
-        ShinkaiFileParser::push_text_group_by_depth(
-            &mut text_groups,
-            text_depth,
-            page_text.clone(),
-            max_node_text_size,
-        );
+        if !page_text.is_empty() {
+            let pdf_text = PDFText {
+                text: page_text.clone(),
+                likely_heading: false,
+            };
+            pdf_pages
+                .last_mut()
+                .unwrap_or(&mut PDFPage {
+                    page_number: 1,
+                    content: Vec::new(),
+                })
+                .content
+                .push(pdf_text);
+        }
 
-        Ok(text_groups)
+        Ok(pdf_pages)
     }
 
-    fn process_image_object(
-        &self,
-        image_object: &PdfPageImageObject,
-        text_groups: &mut Vec<TextGroup>,
-        max_node_text_size: u64,
-        text_depth: usize,
-    ) -> anyhow::Result<()> {
+    fn process_image_object(&self, image_object: &PdfPageImageObject) -> anyhow::Result<String> {
         let img = image_object.get_raw_image()?;
         let img_source = ImageSource::from_bytes(img.as_bytes(), img.dimensions())?;
 
@@ -282,7 +259,41 @@ impl PDFParser {
             .collect::<Vec<_>>()
             .join("\n");
 
-        ShinkaiFileParser::push_text_group_by_depth(text_groups, text_depth, text.clone(), max_node_text_size);
+        Ok(text)
+    }
+
+    pub async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Error>> {
+        let _ = std::fs::create_dir("ocrs");
+
+        let ocrs_models_url = "https://ocrs-models.s3-accelerate.amazonaws.com/";
+        let detection_model = "text-detection.rten";
+        let recognition_model = "text-recognition.rten";
+
+        if !std::path::Path::new(&format!("ocrs/{}", detection_model)).exists() {
+            let client = reqwest::Client::new();
+            let file_data = client
+                .get(format!("{}{}", ocrs_models_url, detection_model))
+                .send()
+                .await?
+                .bytes()
+                .await?;
+
+            let mut file = std::fs::File::create(format!("ocrs/{}", detection_model))?;
+            file.write_all(&file_data)?;
+        }
+
+        if !std::path::Path::new(&format!("ocrs/{}", recognition_model)).exists() {
+            let client = reqwest::Client::new();
+            let file_data = client
+                .get(format!("{}{}", ocrs_models_url, recognition_model))
+                .send()
+                .await?
+                .bytes()
+                .await?;
+
+            let mut file = std::fs::File::create(format!("ocrs/{}", recognition_model))?;
+            file.write_all(&file_data)?;
+        }
 
         Ok(())
     }

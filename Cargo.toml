@@ -4,11 +4,13 @@ members = [
   "shinkai-libs/shinkai-dsl",
   "shinkai-libs/shinkai-fs-mirror",
   "shinkai-libs/shinkai-message-primitives",
+  "shinkai-libs/shinkai-pdf-parser",
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-bin/*",
   "shinkai-cli-tools/*"
 ]
+exclude = ["shinkai-bin/shinkai-executor"]
 resolver = "2"
 
 [workspace.package]
@@ -21,3 +23,4 @@ shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" 
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
 shinkai_dsl = { path = "./shinkai-libs/shinkai-dsl" }
+shinkai_pdf_parser = { path = "./shinkai-libs/shinkai-pdf-parser" }

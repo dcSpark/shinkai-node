@@ -374,10 +374,10 @@ impl Cli {
     }
 
     fn pdf_extract_to_text_groups(file_path: &PathBuf, max_node_text_size: u64) -> anyhow::Result<Vec<TextGroup>> {
-        let pdf_parser = PDFParser::new()?;
         let file_data = std::fs::read(file_path)?;
+        let filename = file_path.file_name().and_then(|name| name.to_str()).unwrap_or("");
 
-        pdf_parser.process_pdf_file(file_data, max_node_text_size)
+        FileStreamParser::generate_text_groups(filename, file_data, max_node_text_size)
     }
 
     async fn vrkai_generate_from_file(
