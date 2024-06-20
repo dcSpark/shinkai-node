@@ -21,4 +21,3 @@ static = ["pdfium-render/static", "pdfium-render/libc++"]
 [[test]]
 name = "pdf_parser_tests"
 path = "tests/pdf_parser_tests.rs"
-required-features = ["static"]

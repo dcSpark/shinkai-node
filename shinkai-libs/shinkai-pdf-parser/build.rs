@@ -44,6 +44,9 @@ fn main() {
 
         let target_dir = out_dir.iter().take(out_dir.len() - 4).collect::<PathBuf>();
         let bin_dir = target_dir.join(env::var("PROFILE").unwrap());
+        let pdfium_dest_dir = bin_dir.join(format!("pdfium/{}-{}", os, arch));
+
+        let _ = std::fs::create_dir_all(&pdfium_dest_dir);
 
         #[cfg(target_os = "linux")]
         let pdfium_lib = "libpdfium.so";
@@ -55,7 +58,7 @@ fn main() {
         let pdfium_lib = "pdfium.dll";
 
         let pdfium_lib_source = pdfium_lib_path.join(pdfium_lib);
-        let pdfium_lib_dest = bin_dir.join(pdfium_lib);
+        let pdfium_lib_dest = pdfium_dest_dir.join(pdfium_lib);
 
         std::fs::copy(pdfium_lib_source, pdfium_lib_dest).unwrap();
     }

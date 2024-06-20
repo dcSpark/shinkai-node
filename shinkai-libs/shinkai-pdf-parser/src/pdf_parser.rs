@@ -2,7 +2,7 @@ use image::GenericImageView;
 use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
 use rten::Model;
-use std::{io::Write, path::PathBuf};
+use std::io::Write;
 
 pub struct PDFParser {
     ocr_engine: OcrEngine,
@@ -21,15 +21,14 @@ pub struct PDFText {
 
 impl PDFParser {
     pub fn new() -> anyhow::Result<Self> {
-        fn file_path(path: &str) -> PathBuf {
-            let mut abs_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            abs_path.push(path);
-            abs_path
-        }
+        let ocrs_path = match std::env::var("NODE_STORAGE_PATH").ok() {
+            Some(path) => std::path::PathBuf::from(path).join("ocrs"),
+            None => std::path::PathBuf::from("ocrs"),
+        };
 
         // Use the `download-models.sh` script to download the models.
-        let detection_model_path = file_path("ocrs/text-detection.rten");
-        let rec_model_path = file_path("ocrs/text-recognition.rten");
+        let detection_model_path = ocrs_path.join("text-detection.rten");
+        let rec_model_path = ocrs_path.join("text-recognition.rten");
 
         let detection_model = Model::load_file(detection_model_path)?;
         let recognition_model = Model::load_file(rec_model_path)?;
@@ -42,8 +41,28 @@ impl PDFParser {
 
         #[cfg(not(feature = "static"))]
         let pdfium = {
-            use std::env;
-            let lib_path = env::var("PDFIUM_DYNAMIC_LIB_PATH").unwrap_or("./".to_string());
+            let lib_path = match std::env::var("PDFIUM_DYNAMIC_LIB_PATH").ok() {
+                Some(lib_path) => lib_path,
+                None => {
+                    #[cfg(target_os = "linux")]
+                    let os = "linux";
+
+                    #[cfg(target_os = "macos")]
+                    let os = "mac";
+
+                    #[cfg(target_os = "windows")]
+                    let os = "win";
+
+                    #[cfg(target_arch = "aarch64")]
+                    let arch = "arm64";
+
+                    #[cfg(target_arch = "x86_64")]
+                    let arch = "x64";
+
+                    format!("pdfium/{}-{}", os, arch)
+                }
+            };
+
             Pdfium::new(Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&lib_path)).unwrap())
         };
 
@@ -263,13 +282,17 @@ impl PDFParser {
     }
 
     pub async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Error>> {
-        let _ = std::fs::create_dir("ocrs");
+        let ocrs_path = match std::env::var("NODE_STORAGE_PATH").ok() {
+            Some(path) => std::path::PathBuf::from(path).join("ocrs"),
+            None => std::path::PathBuf::from("ocrs"),
+        };
+        let _ = std::fs::create_dir(&ocrs_path);
 
         let ocrs_models_url = "https://ocrs-models.s3-accelerate.amazonaws.com/";
         let detection_model = "text-detection.rten";
         let recognition_model = "text-recognition.rten";
 
-        if !std::path::Path::new(&format!("ocrs/{}", detection_model)).exists() {
+        if !ocrs_path.join(detection_model).exists() {
             let client = reqwest::Client::new();
             let file_data = client
                 .get(format!("{}{}", ocrs_models_url, detection_model))
@@ -278,11 +301,11 @@ impl PDFParser {
                 .bytes()
                 .await?;
 
-            let mut file = std::fs::File::create(format!("ocrs/{}", detection_model))?;
+            let mut file = std::fs::File::create(ocrs_path.join(detection_model))?;
             file.write_all(&file_data)?;
         }
 
-        if !std::path::Path::new(&format!("ocrs/{}", recognition_model)).exists() {
+        if !ocrs_path.join(recognition_model).exists() {
             let client = reqwest::Client::new();
             let file_data = client
                 .get(format!("{}{}", ocrs_models_url, recognition_model))
@@ -291,7 +314,7 @@ impl PDFParser {
                 .bytes()
                 .await?;
 
-            let mut file = std::fs::File::create(format!("ocrs/{}", recognition_model))?;
+            let mut file = std::fs::File::create(ocrs_path.join(recognition_model))?;
             file.write_all(&file_data)?;
         }
 

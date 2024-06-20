@@ -166,7 +166,8 @@ pub async fn initialize_node() -> Result<
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
     if !node_env.no_secrets_file {
-        std::fs::create_dir_all(Path::new(&secrets_file_path.clone()).parent().unwrap()).expect("Failed to create .secret dir");
+        std::fs::create_dir_all(Path::new(&secrets_file_path.clone()).parent().unwrap())
+            .expect("Failed to create .secret dir");
         std::fs::write(secrets_file_path.clone(), secret_content).expect("Unable to write to .secret file");
     }
 
@@ -267,6 +268,20 @@ pub async fn initialize_node() -> Result<
     let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
     let ws_server = tokio::spawn(async move {
         init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
+    });
+
+    #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
+    tokio::spawn(async {
+        use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+
+        match ShinkaiFileParser::initialize_local_file_parser().await {
+            Ok(_) => {}
+            Err(e) => shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("Error downloading ocrs models: {:?}", e),
+            ),
+        }
     });
 
     // Return the node_commands_sender_copy and the tasks

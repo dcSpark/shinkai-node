@@ -176,7 +176,7 @@ impl ParsingHelper {
     pub fn clean_markdown_inference_response(response: LLMInferenceResponse) -> LLMInferenceResponse {
         let mut cleaned_json = response.json;
         if let JsonValue::Object(ref mut obj) = cleaned_json {
-            for (key, value) in obj.iter_mut() {
+            for (_key, value) in obj.iter_mut() {
                 if let JsonValue::String(ref mut str_value) = value {
                     *value = JsonValue::String(ParsingHelper::clean_markdown_result_string(str_value));
                 }

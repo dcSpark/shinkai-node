@@ -68,7 +68,7 @@ cd ocrs && ./download-models.sh
 
 [Dynamic library releases](https://github.com/bblanchon/pdfium-binaries/releases)
 
-Make sure the `PDFIUM_DYNAMIC_LIB_PATH` environment variable is set to the directory that contains the dynamic library when running `cargo run` or `cargo test` commands:
+Set `PDFIUM_DYNAMIC_LIB_PATH` environment variable to overwrite the default location directory of the library which is `pdfium/$OS-$CPU`.
 
 ```sh
 PDFIUM_DYNAMIC_LIB_PATH=$(PWD)/pdfium/linux-x64 cargo test -- --test-threads=1
