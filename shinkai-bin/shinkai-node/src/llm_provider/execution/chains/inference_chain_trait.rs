@@ -1,4 +1,5 @@
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -233,15 +234,17 @@ impl ScoreResult {
 /// A struct that holds the response from inference an LLM.
 #[derive(Debug, Clone)]
 pub struct LLMInferenceResponse {
-    pub original_response_string: String,
+    pub response_string: String,
+    pub function_call: Option<FunctionCall>,
     pub json: JsonValue,
 }
 
 impl LLMInferenceResponse {
-    pub fn new(original_response_string: String, json: JsonValue) -> Self {
+    pub fn new(original_response_string: String, json: JsonValue, function_call: Option<FunctionCall>) -> Self {
         Self {
-            original_response_string,
+            response_string: original_response_string,
             json,
+            function_call
         }
     }
 }

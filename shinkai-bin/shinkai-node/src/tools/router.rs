@@ -9,7 +9,6 @@ use shinkai_vector_resources::source::VRSourceReference;
 use shinkai_vector_resources::vector_resource::{
     MapVectorResource, NodeContent, RetrievedNode, VectorResourceCore, VectorResourceSearch,
 };
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ShinkaiTool {
@@ -80,8 +79,9 @@ impl ShinkaiTool {
         )
     }
 
-    pub fn json_value_tool_summary(&self) -> Result<serde_json::Value, ToolError> {
+    pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
         let mut properties = serde_json::Map::new();
+        let mut required_args = vec![];
 
         for arg in self.input_args() {
             properties.insert(
@@ -91,6 +91,9 @@ impl ShinkaiTool {
                     "description": arg.description.clone(),
                 }),
             );
+            if arg.is_required {
+                required_args.push(arg.name.clone());
+            }
         }
 
         let summary = serde_json::json!({
@@ -101,7 +104,7 @@ impl ShinkaiTool {
                 "parameters": {
                     "type": "object",
                     "properties": properties,
-                    "required": self.input_args().iter().map(|arg| arg.name.clone()).collect::<Vec<String>>(),
+                    "required": required_args,
                 },
             },
         });
@@ -109,8 +112,8 @@ impl ShinkaiTool {
         Ok(summary)
     }
 
-    pub fn json_formatted_tool_summary(&self) -> Result<String, ToolError> {
-        let summary_value = self.json_value_tool_summary()?;
+    pub fn json_string_function_call_format(&self) -> Result<String, ToolError> {
+        let summary_value = self.json_function_call_format()?;
         serde_json::to_string(&summary_value).map_err(|_| ToolError::FailedJSONParsing)
     }
 

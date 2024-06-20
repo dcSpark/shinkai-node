@@ -56,7 +56,7 @@ impl LLMService for ShinkaiBackend {
                     | "STANDARD_TEXT_INFERENCE"
                     | "FREE_TEXT_INFERENCE" => {
                         let result = openai_prepare_messages(&model, prompt)?;
-                        match result.value {
+                        match result.messages {
                             PromptResultEnum::Value(v) => v,
                             _ => {
                                 return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -140,8 +140,6 @@ impl LLMService for ShinkaiBackend {
                             });
                         }
 
-                        // TODO: refactor parsing logic so it's reusable
-                        // If not an error, but actual response
                         if self.model_type().contains("vision") {
                             let data: OpenAIResponse =
                                 serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
@@ -149,16 +147,20 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .filter_map(|choice| match &choice.message.content {
-                                    MessageContent::Text(text) => {
-                                        // Unescape the JSON string
+                                    Some(MessageContent::Text(text)) => {
                                         let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
                                         Some(cleaned_json_str)
                                     }
-                                    MessageContent::ImageUrl { .. } => None,
+                                    _ => None,
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            return Ok(LLMInferenceResponse::new(response_string, json!({})));
+
+                            let function_call = data
+                                .choices
+                                .iter()
+                                .find_map(|choice| choice.message.function_call.clone());
+                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
                         } else {
                             let data: OpenAIResponse =
                                 serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
@@ -166,12 +168,16 @@ impl LLMService for ShinkaiBackend {
                                 .choices
                                 .iter()
                                 .filter_map(|choice| match &choice.message.content {
-                                    MessageContent::Text(text) => Some(text.clone()),
-                                    MessageContent::ImageUrl { .. } => None,
+                                    Some(MessageContent::Text(text)) => Some(text.clone()),
+                                    _ => None,
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            return Ok(LLMInferenceResponse::new(response_string, json!({})));
+                            let function_call = data
+                                .choices
+                                .iter()
+                                .find_map(|choice| choice.message.function_call.clone());
+                            Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
                         }
                     }
                     Err(e) => {

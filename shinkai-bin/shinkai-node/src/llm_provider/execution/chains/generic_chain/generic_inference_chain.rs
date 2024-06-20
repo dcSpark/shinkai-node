@@ -1,11 +1,14 @@
 use crate::db::ShinkaiDB;
 use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::dsl_chain::generic_functions::RustToolFunctions;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::prompts::JobPromptGenerator;
+use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
+use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
 use crate::tools::argument::ToolArgument;
 use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
@@ -20,6 +23,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
+use std::any::Any;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
@@ -54,7 +58,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
-            0,
             self.context.max_iterations,
             self.context.max_tokens_in_prompt,
         )
@@ -81,7 +84,6 @@ impl GenericInferenceChain {
         execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
-        iteration_count: u64,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
     ) -> Result<String, LLMProviderError> {
@@ -130,7 +132,7 @@ impl GenericInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model {
+        if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model.clone() {
             // Perform the specific action for OpenAI models
             // delete
             let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
@@ -173,31 +175,154 @@ impl GenericInferenceChain {
         }
 
         // 3) Generate Prompt
-        let filled_prompt = JobPromptGenerator::generic_inference_prompt(
+        let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             None, // TODO: connect later on
             None, // TODO: connect later on
             user_message.clone(),
-            ret_nodes,
-            summary_node_text,
+            ret_nodes.clone(),
+            summary_node_text.clone(),
             Some(full_job.step_history.clone()),
-            tools,
+            tools.clone(),
+            None,
         );
 
-        // 4) Call LLM
-        let response_res = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone()).await;
+        let mut iteration_count = 0;
+        loop {
+            // Check if max_iterations is reached
+            if iteration_count >= max_iterations {
+                return Err(LLMProviderError::MaxIterationsReached(
+                    "Maximum iterations reached".to_string(),
+                ));
+            }
 
-        // TODO: modify LLMInferenceResponse so it holds more information e.g. function call required, etc. choices, etc.
-        // TODO: modify inference_with_llm_provider (or create a new one) that can take some extra information so it can stream tokens out
-        // TODO: handle errors and potential retry (depending on the error)
+            // 4) Call LLM
+            let response_res =
+                JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone()).await;
 
-        // Error Codes
-        if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
-            return Err(LLMProviderError::LLMServiceInferenceLimitReached(e.to_string()));
-        } else if let Err(LLMProviderError::LLMServiceUnexpectedError(e)) = &response_res {
-            return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
+            // Error Codes
+            if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
+                return Err(LLMProviderError::LLMServiceInferenceLimitReached(e.to_string()));
+            } else if let Err(LLMProviderError::LLMServiceUnexpectedError(e)) = &response_res {
+                return Err(LLMProviderError::LLMServiceUnexpectedError(e.to_string()));
+            }
+
+            let response = response_res?;
+
+            // 5) Check response if it requires a function call
+            if let Some(function_call) = response.function_call {
+                let parsed_message = ParsedUserMessage::new(user_message.clone());
+                let context = InferenceChainContext::new(
+                    db.clone(),
+                    vector_fs.clone(),
+                    full_job.clone(),
+                    parsed_message,
+                    llm_provider.clone(),
+                    execution_context.clone(),
+                    generator.clone(),
+                    user_profile.clone(),
+                    max_iterations,
+                    max_tokens_in_prompt,
+                    HashMap::new(),
+                );
+
+                // 6) Call workflow or tooling
+                let function_response = Self::call_function(function_call, &context).await?;
+
+                // 7) Call LLM again with the response (for formatting)
+                filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                    None, // TODO: connect later on
+                    None, // TODO: connect later on
+                    user_message.clone(),
+                    ret_nodes.clone(),
+                    summary_node_text.clone(),
+                    Some(full_job.step_history.clone()),
+                    tools.clone(),
+                    Some(function_response),
+                );
+            } else {
+                // No more function calls required, return the final response
+                return Ok(response.response_string);
+            }
+
+            // Increment the iteration count
+            iteration_count += 1;
         }
+    }
 
-        let answer = response_res?.original_response_string;
-        Ok(answer)
+    async fn call_function(
+        function_call: FunctionCall,
+        context: &dyn InferenceChainContextTrait,
+    ) -> Result<FunctionCallResponse, LLMProviderError> {
+        // TODO: Update to support JS -- It's only for rust for now
+
+        // Extract function name and arguments from the function_call
+        let function_name = function_call.name.clone();
+        let function_args = function_call.arguments.clone();
+        
+        eprintln!("function_name: {:?}", function_name);
+        eprintln!("function_args: {:?}", function_args);
+
+        // Find the function in the tool map
+        let tool_function = RustToolFunctions::get_tool_function(&function_name)
+            .ok_or_else(|| LLMProviderError::FunctionNotFound(function_name.clone()))?;
+
+        // Convert arguments to the required format
+        let args: Vec<Box<dyn Any + Send>> = match function_args {
+            serde_json::Value::Array(arr) => arr
+                .into_iter()
+                .map(|arg| match arg {
+                    serde_json::Value::String(s) => Box::new(s) as Box<dyn Any + Send>,
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Box::new(i) as Box<dyn Any + Send>
+                        } else if let Some(f) = n.as_f64() {
+                            Box::new(f) as Box<dyn Any + Send>
+                        } else {
+                            Box::new(n.to_string()) as Box<dyn Any + Send>
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Box::new(b) as Box<dyn Any + Send>,
+                    _ => Box::new(arg.to_string()) as Box<dyn Any + Send>,
+                })
+                .collect(),
+            serde_json::Value::Object(map) => map
+                .into_iter()
+                .map(|(_, value)| match value {
+                    serde_json::Value::String(s) => Box::new(s) as Box<dyn Any + Send>,
+                    serde_json::Value::Number(n) => {
+                        if let Some(i) = n.as_i64() {
+                            Box::new(i) as Box<dyn Any + Send>
+                        } else if let Some(f) = n.as_f64() {
+                            Box::new(f) as Box<dyn Any + Send>
+                        } else {
+                            Box::new(n.to_string()) as Box<dyn Any + Send>
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Box::new(b) as Box<dyn Any + Send>,
+                    _ => Box::new(value.to_string()) as Box<dyn Any + Send>,
+                })
+                .collect(),
+            _ => {
+                return Err(LLMProviderError::InvalidFunctionArguments(format!(
+                    "Invalid arguments: {:?}",
+                    function_args
+                )))
+            }
+        };
+
+        // Call the function
+        let result =
+            tool_function(context, args).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+
+        // Convert the result back to a string (assuming the result is a string)
+        let result_str = result
+            .downcast_ref::<String>()
+            .ok_or_else(|| LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result)))?
+            .clone();
+
+        Ok(FunctionCallResponse {
+            response: result_str,
+            function_call,
+        })
     }
 }

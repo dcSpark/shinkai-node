@@ -280,7 +280,7 @@ mod tests {
             .await;
         match response {
             Ok(res) => assert_eq!(
-                res.original_response_string.as_str().to_string(),
+                res.response_string.as_str().to_string(),
                 "Hello there, how may I assist you today?".to_string()
             ),
             Err(e) => panic!("Error when calling API: {}", e),

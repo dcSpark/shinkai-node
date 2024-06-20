@@ -1,12 +1,11 @@
 use crate::{
-    llm_provider::{error::LLMProviderError, job::JobStepResult},
+    llm_provider::providers::shared::llm_message::LlmMessage,
     managers::model_capabilities_manager::ModelCapabilitiesManager,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, RetrievedNode};
 use std::fmt;
-use tiktoken_rs::ChatCompletionRequestMessage;
 
 use super::prompts::Prompt;
 
@@ -16,7 +15,8 @@ pub enum SubPromptType {
     System,
     Assistant,
     ExtraContext,
-    Tool,
+    AvailableTool,
+    Function,
 }
 
 impl fmt::Display for SubPromptType {
@@ -26,7 +26,8 @@ impl fmt::Display for SubPromptType {
             SubPromptType::System => "system",
             SubPromptType::Assistant => "assistant",
             SubPromptType::ExtraContext => "user",
-            SubPromptType::Tool => "tool",
+            SubPromptType::AvailableTool => "tool",
+            SubPromptType::Function => "function",
         };
         write!(f, "{}", s)
     }
@@ -55,7 +56,9 @@ pub enum SubPrompt {
         SubPromptAssetDetail,
         u8,
     ),
-    Tool(SubPromptType, JsonValue, u8),
+    ToolAvailable(SubPromptType, JsonValue, u8),
+    FunctionCall(SubPromptType, JsonValue, u8),
+    FunctionCallResponse(SubPromptType, String, u8),
 }
 
 impl SubPrompt {
@@ -64,7 +67,9 @@ impl SubPrompt {
         match self {
             SubPrompt::Content(_, content, _) => content.len(),
             SubPrompt::Asset(_, _, content, _, _) => content.len(),
-            SubPrompt::Tool(_, content, _) => content.to_string().len(),
+            SubPrompt::ToolAvailable(_, content, _) => content.to_string().len(),
+            SubPrompt::FunctionCall(_, content, _) => content.to_string().len(),
+            SubPrompt::FunctionCallResponse(_, content, _) => content.to_string().len(),
         }
     }
 
@@ -80,7 +85,9 @@ impl SubPrompt {
             SubPrompt::Asset(_, asset_type, _asset_content, asset_detail, _) => {
                 format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
             }
-            SubPrompt::Tool(_, content, _) => content.to_string(),
+            SubPrompt::ToolAvailable(_, content, _) => content.to_string(),
+            SubPrompt::FunctionCall(_, content, _) => content.to_string(),
+            SubPrompt::FunctionCallResponse(_, content, _) => content.to_string(),
         }
     }
 
@@ -91,7 +98,11 @@ impl SubPrompt {
             SubPrompt::Asset(prompt_type, _, asset_content, _, _) => {
                 (prompt_type.clone(), asset_content.clone(), "image")
             }
-            SubPrompt::Tool(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
+            SubPrompt::ToolAvailable(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
+            SubPrompt::FunctionCall(prompt_type, _, _) => (prompt_type.clone(), self.generate_output_string(), "text"),
+            SubPrompt::FunctionCallResponse(prompt_type, _, _) => {
+                (prompt_type.clone(), self.generate_output_string(), "text")
+            }
         }
     }
     /// Gets the content of the SubPrompt (aka. updates it to the provided string)
@@ -99,7 +110,9 @@ impl SubPrompt {
         match self {
             SubPrompt::Content(_, content, _) => content.clone(),
             SubPrompt::Asset(_, _, asset_content, _, _) => asset_content.clone(),
-            SubPrompt::Tool(_, content, _) => content.to_string(),
+            SubPrompt::ToolAvailable(_, content, _) => content.to_string(),
+            SubPrompt::FunctionCall(_, content, _) => content.to_string(),
+            SubPrompt::FunctionCallResponse(_, content, _) => content.to_string(),
         }
     }
 
@@ -108,7 +121,9 @@ impl SubPrompt {
         match self {
             SubPrompt::Content(_, content, _) => *content = new_content,
             SubPrompt::Asset(_, _, asset_content, _, _) => *asset_content = new_content,
-            SubPrompt::Tool(_, content, _) => *content = serde_json::Value::String(new_content),
+            SubPrompt::ToolAvailable(_, content, _) => *content = serde_json::Value::String(new_content),
+            SubPrompt::FunctionCall(_, content, _) => *content = serde_json::Value::String(new_content),
+            SubPrompt::FunctionCallResponse(_, content, _) => *content = new_content,
         }
     }
 
@@ -121,13 +136,14 @@ impl SubPrompt {
     }
 
     /// Converts a subprompt into a ChatCompletionRequestMessage
-    pub fn into_chat_completion_request_message(&self) -> ChatCompletionRequestMessage {
+    pub fn into_chat_completion_request_message(&self) -> LlmMessage {
         let (prompt_type, content, type_) = self.extract_generic_subprompt_data();
-        ChatCompletionRequestMessage {
-            role: prompt_type.to_string(),
+        LlmMessage {
+            role: Some(prompt_type.to_string()),
             content: Some(content),
             name: if type_ == "text" { None } else { Some(type_.to_string()) },
             function_call: None,
+            functions: None,
         }
     }
 
@@ -141,10 +157,7 @@ impl SubPrompt {
     /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion message.
     /// In other words, this is the "real" estimated token count (not just naive utf-8 character count).
     /// This accepts a pregenerated completion message made from self.into_chat_completion_request_message() for greater efficiency.
-    pub fn count_tokens_with_pregenerated_completion_message(
-        &self,
-        completion_message: &ChatCompletionRequestMessage,
-    ) -> usize {
+    pub fn count_tokens_with_pregenerated_completion_message(&self, completion_message: &LlmMessage) -> usize {
         // Only count tokens for non-image content
         let (_, _, type_) = self.extract_generic_subprompt_data();
         if type_ == "image" {

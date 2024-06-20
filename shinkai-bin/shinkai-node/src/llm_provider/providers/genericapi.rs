@@ -97,7 +97,7 @@ impl LLMService for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(String::new);
 
-                        return Ok(LLMInferenceResponse::new(response_string, json!({})));
+                        return Ok(LLMInferenceResponse::new(response_string, json!({}), None));
                     }
                     Err(e) => {
                         shinkai_log(

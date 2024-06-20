@@ -212,6 +212,8 @@ impl AsyncFunction for InferenceFunction {
             ret_nodes,
             summary_node_text,
             Some(full_job.step_history.clone()),
+            vec![],
+            None,
         );
 
         // Handle response_res without using the `?` operator
@@ -219,7 +221,7 @@ impl AsyncFunction for InferenceFunction {
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
-        let answer = response.original_response_string;
+        let answer = response.response_string;
 
         shinkai_log(
             ShinkaiLogOption::JobExecution,

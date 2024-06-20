@@ -3,13 +3,11 @@ use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
-use serde::de::Deserializer;
-use serde::ser::{SerializeMap, SerializeStruct, Serializer};
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
-use std::collections::HashMap;
-use tiktoken_rs::ChatCompletionRequestMessage;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -26,82 +24,31 @@ pub struct Choice {
     pub message: OpenAIApiMessage,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCallResponse {
+    pub response: String,
+    pub function_call: FunctionCall,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: JsonValue,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum MessageContent {
+    FunctionCall(FunctionCallResponse),
     Text(String),
     ImageUrl { url: String },
-}
-
-impl Serialize for MessageContent {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            MessageContent::Text(text) => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "text")?;
-                map.serialize_entry("text", text)?;
-                map.end()
-            }
-            MessageContent::ImageUrl { url } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "image_url")?;
-                let url_map: HashMap<String, &String> = [("url".to_string(), url)].iter().cloned().collect();
-                map.serialize_entry("image_url", &url_map)?;
-                map.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for MessageContent {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Note: very ugly patch
-        let s: String = Deserialize::deserialize(deserializer)?;
-        Ok(MessageContent::Text(s))
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAIApiMessage {
     pub role: String,
-    pub content: MessageContent,
-}
-
-impl OpenAIApiMessage {
-    /// Converts ChatCompletionRequestMessages to OpenAIApiMessages
-    pub fn from_chat_completion_messages(
-        chat_completion_messages: Vec<ChatCompletionRequestMessage>,
-    ) -> Result<Vec<OpenAIApiMessage>, LLMProviderError> {
-        let messages: Vec<OpenAIApiMessage> = chat_completion_messages
-            .into_iter()
-            .filter_map(|message| {
-                if let Some(content) = message.content {
-                    let message_content = match &message.name {
-                        Some(name) if name == "image" => MessageContent::ImageUrl { url: content },
-                        _ => MessageContent::Text(content),
-                    };
-
-                    Some(OpenAIApiMessage {
-                        role: message.role,
-                        content: message_content,
-                    })
-                } else {
-                    // eprintln!(
-                    //     "Warning: Message with role '{}' has no content. Ignoring.",
-                    //     message.role
-                    // );
-                    None
-                }
-            })
-            .collect();
-
-        Ok(messages)
-    }
+    pub content: Option<MessageContent>,
+    pub function_call: Option<FunctionCall>,
 }
 
 impl Serialize for OpenAIApiMessage {
@@ -109,9 +56,14 @@ impl Serialize for OpenAIApiMessage {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_struct("OpenAIApiMessage", 2)?;
+        let mut map = serializer.serialize_struct("OpenAIApiMessage", 3)?;
         map.serialize_field("role", &self.role)?;
-        map.serialize_field("content", &[&self.content])?;
+        if let Some(content) = &self.content {
+            map.serialize_field("content", content)?;
+        }
+        if let Some(function_call) = &self.function_call {
+            map.serialize_field("function_call", function_call)?;
+        }
         map.end()
     }
 }
@@ -147,12 +99,106 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     // Calculate the remaining output tokens available
     let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
 
-    // Converts the ChatCompletionMessages to OpenAIApiMessages
-    let messages = OpenAIApiMessage::from_chat_completion_messages(filtered_chat_completion_messages)?;
+    // Separate messages into those with a valid role and those without
+    let (messages_with_role, tools): (Vec<_>, Vec<_>) = filtered_chat_completion_messages
+        .into_iter()
+        .partition(|message| message.role.is_some());
 
-    let messages_json = serde_json::to_value(messages)?;
+    // Convert both sets of messages to serde Value
+    let messages_json = serde_json::to_value(messages_with_role)?;
+    let tools_json = serde_json::to_value(tools)?;
+
+    // Convert messages_json and tools_json to Vec<serde_json::Value>
+    let messages_vec = match messages_json {
+        serde_json::Value::Array(arr) => arr,
+        _ => vec![],
+    };
+
+    // Flatten the tools array to extract functions directly
+    let tools_vec = match tools_json {
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .flat_map(|tool| {
+                if let serde_json::Value::Object(mut map) = tool {
+                    map.remove("functions")
+                        .and_then(|functions| {
+                            if let serde_json::Value::Array(funcs) = functions {
+                                Some(funcs)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                }
+            })
+            .collect(),
+        _ => vec![],
+    };
+
     Ok(PromptResult {
-        value: PromptResultEnum::Value(messages_json),
+        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+        functions: Some(tools_vec),
         remaining_tokens: remaining_output_tokens,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_openai_api_message_with_function_call() {
+        let json_str = r#"
+        {
+            "role": "assistant",
+            "content": null,
+            "function_call": {
+                "name": "concat_strings",
+                "arguments": {
+                    "first_string": "hola",
+                    "second_string": " chao"
+                }
+            }
+        }
+        "#;
+
+        // Deserialize the JSON string to OpenAIApiMessage
+        let message: OpenAIApiMessage = serde_json::from_str(json_str).expect("Failed to deserialize");
+
+        // Check the deserialized values
+        assert_eq!(message.role, "assistant");
+        assert!(message.content.is_none());
+        assert!(message.function_call.is_some());
+
+        if let Some(function_call) = message.function_call.clone() {
+            assert_eq!(function_call.name, "concat_strings");
+            assert_eq!(
+                function_call.arguments,
+                json!({"first_string": "hola", "second_string": " chao"})
+            );
+        }
+
+        // Serialize the OpenAIApiMessage back to JSON
+        let serialized_json = serde_json::to_string(&message).expect("Failed to serialize");
+
+        // Deserialize again to check round-trip consistency
+        let deserialized_message: OpenAIApiMessage =
+            serde_json::from_str(&serialized_json).expect("Failed to deserialize");
+
+        // Check the deserialized values again
+        assert_eq!(deserialized_message.role, "assistant");
+        assert!(deserialized_message.content.is_none());
+        assert!(deserialized_message.function_call.is_some());
+
+        if let Some(function_call) = deserialized_message.function_call {
+            assert_eq!(function_call.name, "concat_strings");
+            assert_eq!(
+                function_call.arguments,
+                json!({"first_string": "hola", "second_string": " chao"})
+            );
+        }
+    }
 }

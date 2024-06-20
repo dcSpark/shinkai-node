@@ -23,7 +23,8 @@ pub fn llama_prepare_messages(
     let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
 
     Ok(PromptResult {
-        value: PromptResultEnum::Text(messages_string.clone()),
+        messages: PromptResultEnum::Text(messages_string.clone()),
+        functions: None,
         remaining_tokens: total_tokens - used_tokens,
     })
 }
@@ -50,7 +51,8 @@ pub fn llava_prepare_messages(
         );
 
         Ok(PromptResult {
-            value: PromptResultEnum::ImageAnalysis(messages_string.clone(), Base64ImageString(asset_content.clone())),
+            messages: PromptResultEnum::ImageAnalysis(messages_string.clone(), Base64ImageString(asset_content.clone())),
+            functions: None,
             remaining_tokens: total_tokens - messages_string.len(),
         })
     } else {
