@@ -28,11 +28,10 @@ pub struct FunctionDetails {
 /// The structure for a function call with detailed parameters.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DetailedFunctionCall {
-    /// The type of the function call.
-    #[serde(rename = "type")]
-    pub type_: String,
-    /// The function details.
-    pub function: FunctionDetails,
+    /// The name of the function.
+    pub name: String,
+    /// The arguments of the function call.
+    pub arguments: String,
 }
 
 /// The message structure for LLM communication.
@@ -67,6 +66,7 @@ pub enum LlmMessageError {
 impl LlmMessage {
     /// Imports an LlmMessage from a JSON value.
     pub fn import_functions_from_value(value: Value) -> Result<Self, LlmMessageError> {
+        eprintln!("Importing functions from value: {:?}", value);
         let role = None;
         let content = None;
         let name = None;
@@ -178,5 +178,28 @@ mod tests {
         assert_eq!(required.len(), 2);
         assert!(required.contains(&"first_string".to_string()));
         assert!(required.contains(&"second_string".to_string()));
+    }
+
+    #[test]
+    fn test_llm_message_from_json_value() {
+        let json_value = json!({
+            "role": "assistant",
+            "content": null,
+            "function_call": {
+                "name": "concat_strings",
+                "arguments": "{\"first_string\":\"hola\",\"second_string\":\"chao\"}"
+            }
+        });
+
+        let message: LlmMessage = serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
+
+        assert_eq!(message.role, Some("assistant".to_string()));
+        assert!(message.content.is_none());
+        assert!(message.name.is_none());
+        assert!(message.functions.is_none());
+
+        let function_call = message.function_call.unwrap();
+        assert_eq!(function_call.name, "concat_strings");
+        assert_eq!(function_call.arguments, "{\"first_string\":\"hola\",\"second_string\":\"chao\"}");
     }
 }

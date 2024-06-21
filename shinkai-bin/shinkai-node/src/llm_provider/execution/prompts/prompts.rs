@@ -3,7 +3,7 @@ use crate::{
         error::LLMProviderError,
         job::JobStepResult,
         providers::shared::{
-            llm_message::{DetailedFunctionCall, LlmMessage},
+            llm_message::{DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage},
             openai::{FunctionCall, FunctionCallResponse},
         },
     },
@@ -120,7 +120,7 @@ impl Prompt {
         let capped_priority_value = std::cmp::min(priority_value, 100);
         let sub_prompt = SubPrompt::FunctionCallResponse(
             SubPromptType::Function,
-            function_call_response.response,
+            serde_json::to_value(function_call_response).unwrap(),
             capped_priority_value as u8,
         );
         self.add_sub_prompt(sub_prompt);
@@ -295,6 +295,49 @@ impl Prompt {
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&tool_message);
                     tiktoken_messages.push(tool_message);
                 }
+                SubPrompt::FunctionCall(_, content, _) => {
+                    eprintln!("FunctionCall content: {:?}", content);
+                    let mut new_message = LlmMessage {
+                        role: Some("assistant".to_string()),
+                        content: None,
+                        name: None,
+                        function_call: None,
+                        functions: None,
+                    };
+
+                    if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
+                        let arguments = content
+                            .get("arguments")
+                            .map_or_else(|| "".to_string(), |args| args.to_string());
+                        new_message.function_call = Some(DetailedFunctionCall {
+                            name: name.to_string(),
+                            arguments,
+                        });
+                    }
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+                    tiktoken_messages.push(new_message);
+                }
+                SubPrompt::FunctionCallResponse(_, content, _) => {
+                    eprintln!("\n\nFunctionCallResponse content: {:?}", content);
+                    let mut new_message = LlmMessage {
+                        role: Some("function".to_string()),
+                        content: None,
+                        name: None,
+                        function_call: None,
+                        functions: None,
+                    };
+
+                    if let Some(function_call) = content.get("function_call") {
+                        if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
+                            new_message.name = Some(name.to_string());
+                        }
+                    }
+                    new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());
+
+                    eprintln!("FunctionCallResponse new_message: {:?}\n\n", new_message);
+                    current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
+                    tiktoken_messages.push(new_message);
+                }
                 _ => {
                     // If we were processing ExtraContext, add it as a single System message
                     if processing_extra_context {
@@ -315,15 +358,7 @@ impl Prompt {
                     }
 
                     // Process the current sub-prompt
-                    let mut new_message = sub_prompt.into_chat_completion_request_message();
-                    if new_message.role.as_deref() == Some("function") {
-                        eprintln!("role: {:?}", new_message.role);
-                        eprintln!("new_message.content: {:?}", new_message.content);
-                        new_message.function_call = new_message.content.take().map(|content| {
-                            // Convert the String content to FunctionCall
-                            serde_json::from_str(&content).unwrap()
-                        });
-                    }
+                    let new_message = sub_prompt.into_chat_completion_request_message();
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
                     tiktoken_messages.push(new_message);
                 }
@@ -562,6 +597,158 @@ mod tests {
                 }]),
             },
         ];
+
+        // Check if the generated messages match the expected messages
+        assert_eq!(messages, expected_messages);
+    }
+
+    #[test]
+    fn test_generate_llm_messages_with_function_call() {
+        let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
+        let tool = RustTool::new(
+            "concat_strings".to_string(),
+            concat_strings_desc.clone(),
+            vec![
+                ToolArgument::new(
+                    "first_string".to_string(),
+                    "string".to_string(),
+                    "The first string to concatenate".to_string(),
+                    true,
+                ),
+                ToolArgument::new(
+                    "second_string".to_string(),
+                    "string".to_string(),
+                    "The second string to concatenate".to_string(),
+                    true,
+                ),
+                ToolArgument::new(
+                    "third_string".to_string(),
+                    "string".to_string(),
+                    "The third string to concatenate (optional)".to_string(),
+                    false,
+                ),
+                ToolArgument::new(
+                    "fourth_string".to_string(),
+                    "string".to_string(),
+                    "The fourth string to concatenate (optional)".to_string(),
+                    false,
+                ),
+            ],
+            Embedding::new("", vec![]),
+        );
+        let shinkai_tool = ShinkaiTool::Rust(tool);
+
+        let sub_prompts = vec![
+            SubPrompt::Content(
+                SubPromptType::System,
+                "You are a very helpful assistant.".to_string(),
+                98,
+            ),
+            SubPrompt::ToolAvailable(
+                SubPromptType::AvailableTool,
+                shinkai_tool.json_function_call_format().expect("mh"),
+                98,
+            ),
+            SubPrompt::Content(
+                SubPromptType::User,
+                "concatenate hola and chao\n Answer the question using the extra context provided.".to_string(),
+                100,
+            ),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({"name": "concat_strings", "arguments": {"first_string": "hola", "second_string": "chao"}}),
+                100,
+            ),
+            SubPrompt::FunctionCallResponse(
+                SubPromptType::Function,
+                serde_json::json!({"function_call": {"name": "concat_strings", "arguments": {"first_string": "hola", "second_string": "chao"}}, "response": "holachao"}),
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        let (messages, _token_length) = prompt.generate_chat_completion_messages();
+
+        // Expected messages
+        let expected_messages = vec![
+            LlmMessage {
+                role: Some("system".to_string()),
+                content: Some("You are a very helpful assistant.".to_string()),
+                name: None,
+                function_call: None,
+                functions: None,
+            },
+            LlmMessage {
+                role: None,
+                content: None,
+                name: None,
+                function_call: None,
+                functions: Some(vec![FunctionDetails {
+                    name: "concat_strings".to_string(),
+                    description: "Concatenates 2 to 4 strings.".to_string(),
+                    parameters: FunctionParameters {
+                        type_: "object".to_string(),
+                        properties: serde_json::json!({
+                            "first_string": {
+                                "type": "string",
+                                "description": "The first string to concatenate"
+                            },
+                            "second_string": {
+                                "type": "string",
+                                "description": "The second string to concatenate"
+                            },
+                            "third_string": {
+                                "type": "string",
+                                "description": "The third string to concatenate (optional)"
+                            },
+                            "fourth_string": {
+                                "type": "string",
+                                "description": "The fourth string to concatenate (optional)"
+                            }
+                        }),
+                        required: vec!["first_string".to_string(), "second_string".to_string()],
+                    },
+                }]),
+            },
+            LlmMessage {
+                role: Some("user".to_string()),
+                content: Some(
+                    "concatenate hola and chao\n Answer the question using the extra context provided.".to_string(),
+                ),
+                name: None,
+                function_call: None,
+                functions: None,
+            },
+            LlmMessage {
+                role: Some("assistant".to_string()),
+                content: None,
+                name: None,
+                function_call: Some(DetailedFunctionCall {
+                    name: "concat_strings".to_string(),
+                    arguments: "{\"first_string\":\"hola\",\"second_string\":\"chao\"}".to_string(),
+                }),
+                functions: None,
+            },
+            LlmMessage {
+                role: Some("function".to_string()),
+                content: Some("holachao".to_string()),
+                name: Some("concat_strings".to_string()),
+                function_call: None,
+                functions: None,
+            },
+        ];
+
+        match serde_json::to_string_pretty(&messages) {
+            Ok(pretty_json) => eprintln!("messages JSON: {}", pretty_json),
+            Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+        };
+
+        match serde_json::to_string_pretty(&expected_messages) {
+            Ok(pretty_json) => eprintln!("expected messages JSON: {}", pretty_json),
+            Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+        };
 
         // Check if the generated messages match the expected messages
         assert_eq!(messages, expected_messages);

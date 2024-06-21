@@ -58,7 +58,7 @@ pub enum SubPrompt {
     ),
     ToolAvailable(SubPromptType, JsonValue, u8),
     FunctionCall(SubPromptType, JsonValue, u8),
-    FunctionCallResponse(SubPromptType, String, u8),
+    FunctionCallResponse(SubPromptType, JsonValue, u8),
 }
 
 impl SubPrompt {
@@ -123,7 +123,7 @@ impl SubPrompt {
             SubPrompt::Asset(_, _, asset_content, _, _) => *asset_content = new_content,
             SubPrompt::ToolAvailable(_, content, _) => *content = serde_json::Value::String(new_content),
             SubPrompt::FunctionCall(_, content, _) => *content = serde_json::Value::String(new_content),
-            SubPrompt::FunctionCallResponse(_, content, _) => *content = new_content,
+            SubPrompt::FunctionCallResponse(_, content, _) => *content = serde_json::Value::String(new_content),
         }
     }
 

@@ -37,7 +37,7 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type", content = "data")]
+#[serde(untagged)]
 pub enum MessageContent {
     FunctionCall(FunctionCallResponse),
     Text(String),
@@ -199,6 +199,56 @@ mod tests {
                 function_call.arguments,
                 json!({"first_string": "hola", "second_string": " chao"})
             );
+        }
+    }
+
+    #[test]
+    fn test_openai_response_after_tool_usage_parsing() {
+        let response_text = r#"
+        {
+            "id": "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN",
+            "object": "chat.completion",
+            "created": 1718945600,
+            "model": "gpt-4-1106-preview",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "The concatenated result of \"hola\" and \"chao\" is \"hola chao\"."
+                    },
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 156,
+                "completion_tokens": 21,
+                "total_tokens": 177
+            },
+            "system_fingerprint": null
+        }
+        "#;
+
+        // Deserialize the JSON string to OpenAIResponse
+        let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
+
+        // Check the deserialized values
+        assert_eq!(response.id, "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN");
+        assert_eq!(response.object, "chat.completion");
+        assert_eq!(response.created, 1718945600);
+        assert_eq!(response.choices.len(), 1);
+        assert_eq!(response.usage.prompt_tokens, 156);
+        assert_eq!(response.usage.completion_tokens, 21);
+        assert_eq!(response.usage.total_tokens, 177);
+
+        let choice = &response.choices[0];
+        assert_eq!(choice.index, 0);
+        assert_eq!(choice.message.role, "assistant");
+        if let Some(MessageContent::Text(content)) = &choice.message.content {
+            assert_eq!(content, "The concatenated result of \"hola\" and \"chao\" is \"hola chao\".");
+        } else {
+            panic!("Expected text content");
         }
     }
 }

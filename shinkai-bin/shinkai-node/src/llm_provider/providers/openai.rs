@@ -60,7 +60,7 @@ impl LLMService for OpenAI {
                 };
 
                 // Extract tools_json from the result
-                let tools_json = result.functions.unwrap_or_else(|| vec![]);
+                let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Print messages_json as a pretty JSON string
                 match serde_json::to_string_pretty(&messages_json) {
@@ -116,8 +116,9 @@ impl LLMService for OpenAI {
                 );
 
                 let response_text = res.text().await?;
-                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
                 eprintln!("Response Text: {:?}", response_text);
+                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
+                eprintln!("Data Resp: {:?}", data_resp);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -144,8 +145,11 @@ impl LLMService for OpenAI {
                             });
                         }
 
+                        eprintln!("(Before Data Parsing) Value: {:?}", value);
                         let data: OpenAIResponse =
                             serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
+                        eprintln!("Data: {:?}", data);
+
                         let response_string: String = data
                             .choices
                             .iter()
