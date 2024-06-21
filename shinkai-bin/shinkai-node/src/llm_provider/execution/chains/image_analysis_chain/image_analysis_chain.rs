@@ -54,8 +54,8 @@ impl JobManager {
 
         new_execution_context.insert(
             "previous_step_response".to_string(),
-            response_json.original_response_string.clone(),
+            response_json.response_string.clone(),
         );
-        Ok((response_json.original_response_string.clone(), new_execution_context))
+        Ok((response_json.response_string.clone(), new_execution_context))
     }
 }

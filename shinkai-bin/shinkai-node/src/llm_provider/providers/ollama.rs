@@ -41,7 +41,7 @@ impl LLMService for Ollama {
             let url = format!("{}{}", base_url, "/api/chat");
 
             let messages_result = ollama_conversation_prepare_messages(&model, prompt)?;
-            let messages_json = match messages_result.value {
+            let messages_json = match messages_result.messages {
                 PromptResultEnum::Value(v) => v,
                 _ => {
                     return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -126,7 +126,7 @@ impl LLMService for Ollama {
             );
 
             // Directly return response_text with an empty JSON object
-            Ok(LLMInferenceResponse::new(response_text, json!({})))
+            Ok(LLMInferenceResponse::new(response_text, json!({}), None))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

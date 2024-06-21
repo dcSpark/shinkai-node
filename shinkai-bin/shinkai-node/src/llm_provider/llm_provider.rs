@@ -1,8 +1,8 @@
-use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::Prompt;
 use super::parsing_helper::ParsingHelper;
 use super::providers::LLMService;
+use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::{
@@ -69,7 +69,7 @@ impl LLMProvider {
         });
 
         match handle.await {
-            Ok(response) => Ok(LLMInferenceResponse::new(content, response)),
+            Ok(response) => Ok(LLMInferenceResponse::new(content, response, None)),
             Err(_e) => Err(LLMProviderError::InferenceFailed),
         }
     }
@@ -183,7 +183,7 @@ impl LLMProvider {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
         }?;
-        Ok(ParsingHelper::clean_markdown_inference_response(response))
+        Ok(response)
     }
 }
 
