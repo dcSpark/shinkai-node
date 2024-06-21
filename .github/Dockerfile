@@ -25,10 +25,6 @@ WORKDIR /app
 
 COPY . .
 
-# Download ocrs models
-
-RUN $(cd shinkai-libs/shinkai-pdf-parser/ocrs && ./download-models.sh)
-
 # Build the dependencies (cached)
 
 RUN cargo clean

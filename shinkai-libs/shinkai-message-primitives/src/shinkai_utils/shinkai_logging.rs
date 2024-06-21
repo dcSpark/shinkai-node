@@ -38,7 +38,6 @@ pub enum ShinkaiLogOption {
     InternalAPI,
     Network,
     Tests,
-    Executor,
 }
 
 #[derive(PartialEq)]
@@ -82,7 +81,6 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::InternalAPI,
             ShinkaiLogOption::Network,
             ShinkaiLogOption::Tests,
-            ShinkaiLogOption::Executor,
         ];
     }
 
@@ -140,9 +138,6 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_CRON_EXECUTION").is_ok() {
         active_options.push(ShinkaiLogOption::CronExecution);
-    }
-    if std::env::var("LOG_EXECUTOR").is_ok() {
-        active_options.push(ShinkaiLogOption::Executor);
     }
     active_options
 }

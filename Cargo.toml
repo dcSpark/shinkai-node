@@ -10,7 +10,6 @@ members = [
   "shinkai-bin/*",
   "shinkai-cli-tools/*"
 ]
-exclude = ["shinkai-bin/shinkai-executor"]
 resolver = "2"
 
 [workspace.package]
