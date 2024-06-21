@@ -296,7 +296,6 @@ impl Prompt {
                     tiktoken_messages.push(tool_message);
                 }
                 SubPrompt::FunctionCall(_, content, _) => {
-                    eprintln!("FunctionCall content: {:?}", content);
                     let mut new_message = LlmMessage {
                         role: Some("assistant".to_string()),
                         content: None,
@@ -318,7 +317,6 @@ impl Prompt {
                     tiktoken_messages.push(new_message);
                 }
                 SubPrompt::FunctionCallResponse(_, content, _) => {
-                    eprintln!("\n\nFunctionCallResponse content: {:?}", content);
                     let mut new_message = LlmMessage {
                         role: Some("function".to_string()),
                         content: None,
@@ -334,7 +332,6 @@ impl Prompt {
                     }
                     new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());
 
-                    eprintln!("FunctionCallResponse new_message: {:?}\n\n", new_message);
                     current_length += sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message);
                     tiktoken_messages.push(new_message);
                 }

@@ -63,15 +63,15 @@ impl LLMService for OpenAI {
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
+                // match serde_json::to_string_pretty(&messages_json) {
+                //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+                // };
 
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
+                // match serde_json::to_string_pretty(&tools_json) {
+                //     Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
+                //     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+                // };
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -93,15 +93,6 @@ impl LLMService for OpenAI {
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
-                // Log the curl command
-                let curl_command = format!(
-                    "curl -X POST {} -H 'Authorization: Bearer {}' -H 'Content-Type: application/json' -d '{}'",
-                    url,
-                    key,
-                    serde_json::to_string(&payload).unwrap_or_default()
-                );
-                eprintln!("Curl Command: {}", curl_command);
-
                 let res = client
                     .post(url)
                     .bearer_auth(key)
@@ -116,9 +107,8 @@ impl LLMService for OpenAI {
                 );
 
                 let response_text = res.text().await?;
-                eprintln!("Response Text: {:?}", response_text);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
-                eprintln!("Data Resp: {:?}", data_resp);
+                // eprintln!("Data Resp: {:?}", data_resp);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -145,10 +135,8 @@ impl LLMService for OpenAI {
                             });
                         }
 
-                        eprintln!("(Before Data Parsing) Value: {:?}", value);
                         let data: OpenAIResponse =
                             serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-                        eprintln!("Data: {:?}", data);
 
                         let response_string: String = data
                             .choices

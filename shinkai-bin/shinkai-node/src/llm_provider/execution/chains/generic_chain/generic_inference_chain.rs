@@ -132,47 +132,47 @@ impl GenericInferenceChain {
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
         // Only for OpenAI right now
         let mut tools = vec![];
-        if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model.clone() {
-            // Perform the specific action for OpenAI models
-            // delete
-            let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
-            let tool = RustTool::new(
-                "concat_strings".to_string(),
-                concat_strings_desc.clone(),
-                vec![
-                    ToolArgument::new(
-                        "first_string".to_string(),
-                        "string".to_string(),
-                        "The first string to concatenate".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "second_string".to_string(),
-                        "string".to_string(),
-                        "The second string to concatenate".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "third_string".to_string(),
-                        "string".to_string(),
-                        "The third string to concatenate (optional)".to_string(),
-                        false,
-                    ),
-                    ToolArgument::new(
-                        "fourth_string".to_string(),
-                        "string".to_string(),
-                        "The fourth string to concatenate (optional)".to_string(),
-                        false,
-                    ),
-                ],
-                generator
-                    .generate_embedding_default(&concat_strings_desc)
-                    .await
-                    .unwrap(),
-            );
-            tools.push(ShinkaiTool::Rust(tool));
-            // end delete
-        }
+        // if let LLMProviderInterface::OpenAI(openai) = &llm_provider.model.clone() {
+        //     // Perform the specific action for OpenAI models
+        //     // delete
+        //     let concat_strings_desc = "Concatenates 2 to 4 strings.".to_string();
+        //     let tool = RustTool::new(
+        //         "concat_strings".to_string(),
+        //         concat_strings_desc.clone(),
+        //         vec![
+        //             ToolArgument::new(
+        //                 "first_string".to_string(),
+        //                 "string".to_string(),
+        //                 "The first string to concatenate".to_string(),
+        //                 true,
+        //             ),
+        //             ToolArgument::new(
+        //                 "second_string".to_string(),
+        //                 "string".to_string(),
+        //                 "The second string to concatenate".to_string(),
+        //                 true,
+        //             ),
+        //             ToolArgument::new(
+        //                 "third_string".to_string(),
+        //                 "string".to_string(),
+        //                 "The third string to concatenate (optional)".to_string(),
+        //                 false,
+        //             ),
+        //             ToolArgument::new(
+        //                 "fourth_string".to_string(),
+        //                 "string".to_string(),
+        //                 "The fourth string to concatenate (optional)".to_string(),
+        //                 false,
+        //             ),
+        //         ],
+        //         generator
+        //             .generate_embedding_default(&concat_strings_desc)
+        //             .await
+        //             .unwrap(),
+        //     );
+        //     tools.push(ShinkaiTool::Rust(tool));
+        //     // end delete
+        // }
 
         // 3) Generate Prompt
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
