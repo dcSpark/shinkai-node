@@ -264,7 +264,7 @@ fn identify_param_type(input: &str) -> &str {
         "number"
     } else if input == "true" || input == "false" {
         "boolean"
-    } else if input.starts_with("$R") && input[2..].chars().all(|c| char::is_ascii_digit(&c)) {
+    } else if input.starts_with('$') && input[1..].chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         "register"
     } else if input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         "identifier"
@@ -301,7 +301,7 @@ pub fn parse_workflow_value(pair: pest::iterators::Pair<Rule>) -> WorkflowValue 
             } else if input == "true" || input == "false" {
                 let boolean = input.parse::<bool>().expect("Failed to parse boolean");
                 WorkflowValue::Boolean(boolean)
-            } else if input.starts_with("$R") {
+            } else if input.starts_with('$') {
                 WorkflowValue::Register(input.to_string())
             } else {
                 WorkflowValue::Identifier(input.to_string())

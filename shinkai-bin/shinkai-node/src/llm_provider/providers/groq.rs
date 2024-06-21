@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Groq};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Groq, LLMProviderInterface};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
 #[async_trait]
@@ -31,7 +31,7 @@ impl LLMService for Groq {
                 let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 // Note(Nico): we can use prepare_messages directly or we could had called ModelCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
-                let messages_json = match result.value {
+                let messages_json = match result.messages {
                     PromptResultEnum::Value(mut v) => {
                         // Assuming `v` is a serde_json::Value representing an array of messages
                         if let JsonValue::Array(ref mut messages) = v {
@@ -120,17 +120,18 @@ impl LLMService for Groq {
                             });
                         }
 
-                        let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
+                        let data: OpenAIResponse =
+                            serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
                         let response_string: String = data
                             .choices
                             .iter()
                             .filter_map(|choice| match &choice.message.content {
-                                MessageContent::Text(text) => Some(text.clone()),
-                                MessageContent::ImageUrl { .. } => None,
+                                Some(MessageContent::Text(text)) => Some(text.clone()),
+                                _ => None,
                             })
                             .collect::<Vec<String>>()
                             .join(" ");
-                        Ok(LLMInferenceResponse::new(response_string, json!({})))
+                        Ok(LLMInferenceResponse::new(response_string, json!({}), None))
                     }
                     Err(e) => {
                         shinkai_log(

@@ -4,7 +4,7 @@ use html2md::parse_html;
 use scraper::{Html, Selector};
 use shinkai_dsl::sm_executor::WorkflowError;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use std::any::Any;
+use std::{any::Any, collections::HashMap};
 
 use crate::llm_provider::{
     execution::{chains::inference_chain_trait::InferenceChainContextTrait, prompts::subprompts::SubPrompt}, job_manager::JobManager,
@@ -13,6 +13,41 @@ use crate::llm_provider::{
 // TODO: we need to generate description for each function (LLM processing?)
 // we need to extend the description with keywords maybe use RAKE as well
 // then we need to generate embeddings for them
+// TODO: We need a file that contains the embeddings for the functions
+// TODO: implement a new tool_router where we can instantiate it with embeddings and have handy fn for search and usage
+
+pub struct RustToolFunctions;
+
+impl RustToolFunctions {
+    fn get_tool_map() -> HashMap<&'static str, RustToolFunction> {
+        let mut tool_map: HashMap<&str, RustToolFunction> = HashMap::new();
+        
+        tool_map.insert("concat_strings", concat_strings);
+        tool_map.insert("search_and_replace", search_and_replace);
+        tool_map.insert("download_webpage", download_webpage);
+        tool_map.insert("html_to_markdown", html_to_markdown);
+        tool_map.insert("array_to_markdown_template", array_to_markdown_template);
+        tool_map.insert("fill_variable_in_md_template", fill_variable_in_md_template);
+        tool_map.insert("print_arg", print_arg);
+        tool_map.insert("return_error_message", return_error_message);
+        tool_map.insert("count_files_from_input", count_files_from_input);
+        tool_map.insert("retrieve_file_from_input", retrieve_file_from_input);
+        tool_map.insert("extract_and_map_csv_column", extract_and_map_csv_column);
+        // tool_map.insert("process_embeddings_in_job_scope", process_embeddings_in_job_scope); // async fn
+
+        tool_map
+    }
+
+    pub fn get_tool_function(name: &str) -> Option<RustToolFunction> {
+        let tool_map = Self::get_tool_map();
+        tool_map.get(name).copied()
+    }
+}
+
+// Type alias for the function signature
+type RustToolFunction = fn(&dyn InferenceChainContextTrait, Vec<Box<dyn Any + Send>>) -> Result<Box<dyn Any + Send>, WorkflowError>;
+
+// TODO: implement a new trait per Rust Tool
 
 pub fn concat_strings(
     _context: &dyn InferenceChainContextTrait,

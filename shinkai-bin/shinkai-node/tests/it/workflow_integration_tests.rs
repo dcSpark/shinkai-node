@@ -203,7 +203,7 @@ fn workflow_integration_test() {
                         $R2 = "Tell me about the Economy of the Roman Empire"
                     }
                     step Inference {
-                        $R1 = call inference($R2)
+                        $RESULT = call inference($R2)
                     }
                 }
                 "#;
@@ -458,10 +458,9 @@ fn workflow_complex_integration_test() {
                 let workflow = r#"
                 workflow MyProcess v0.1 {
                     step Initialize {
-                        $R1 = "Create an outline for a blog post about the topic of the user's message: "
-                        $R2 = "\n separate the sections using a comma e.g. red,green,blue"
-                        $R3 = call concat($R1, $R0)
-                        $R3 = call concat($R3, $R2)
+                        $PROMPT_1 = "Create an outline for a blog post about the topic of the user's message: "
+                        $PROMPT_2 = "\n separate the sections using a comma e.g. red,green,blue"
+                        $R3 = call concat($PROMPT_1, $INPUT, $PROMPT_2)
                     }
                     step InferenceSections {
                         $R4 = call inference($R3)
@@ -476,7 +475,7 @@ fn workflow_complex_integration_test() {
                             $R8 = call inference($R7)
                             $R10 = call fill_variable_in_md_template($R10, section, $R8)
                         }
-                        $R1 = $R10
+                        $RESULT = $R10
                     }
                 }
                 "#;

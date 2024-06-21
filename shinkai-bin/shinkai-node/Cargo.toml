@@ -69,7 +69,6 @@ dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tiktoken-rs = "0.5.8"
 num_cpus = "1.16.0"
 async-lock = "2.4.0"
 governor = "0.6.3"

@@ -50,7 +50,7 @@ impl LLMService for OpenAI {
 
                 // Note(Nico): we can use prepare_messages directly or we could had called ModelCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
-                let messages_json = match result.value {
+                let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
                         return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -58,18 +58,32 @@ impl LLMService for OpenAI {
                         ))
                     }
                 };
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
 
-                let payload = json!({
+                // Extract tools_json from the result
+                let tools_json = result.functions.unwrap_or_else(Vec::new);
+
+                // Print messages_json as a pretty JSON string
+                // match serde_json::to_string_pretty(&messages_json) {
+                //     Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
+                //     Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
+                // };
+
+                // match serde_json::to_string_pretty(&tools_json) {
+                //     Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
+                //     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+                // };
+
+                let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
+
+                // Conditionally add functions to the payload if tools_json is not empty
+                if !tools_json.is_empty() {
+                    payload["functions"] = serde_json::Value::Array(tools_json);
+                }
 
                 let mut payload_log = payload.clone();
                 truncate_image_url_in_payload(&mut payload_log);
@@ -94,6 +108,7 @@ impl LLMService for OpenAI {
 
                 let response_text = res.text().await?;
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
+                // eprintln!("Data Resp: {:?}", data_resp);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -120,37 +135,36 @@ impl LLMService for OpenAI {
                             });
                         }
 
-                        if self.model_type.contains("vision") {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-                            let response_string: String = data
-                                .choices
-                                .iter()
-                                .filter_map(|choice| match &choice.message.content {
-                                    MessageContent::Text(text) => {
-                                        // Unescape the JSON string
-                                        let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
-                                        Some(cleaned_json_str)
-                                    }
-                                    MessageContent::ImageUrl { .. } => None,
-                                })
-                                .collect::<Vec<String>>()
-                                .join(" ");
-                            Ok(LLMInferenceResponse::new(response_string, json!({})))
-                        } else {
-                            let data: OpenAIResponse = serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
-                            let response_string: String = data
-                                .choices
-                                .iter()
-                                .filter_map(|choice| match &choice.message.content {
-                                    MessageContent::Text(text) => Some(text.clone()),
-                                    MessageContent::ImageUrl { .. } => None,
-                                })
-                                .collect::<Vec<String>>()
-                                .join(" ");
-                
-                            // Directly return response_text with an empty JSON object
-                            Ok(LLMInferenceResponse::new(response_string, json!({})))
-                        }
+                        let data: OpenAIResponse =
+                            serde_json::from_value(value).map_err(LLMProviderError::SerdeError)?;
+
+                        let response_string: String = data
+                            .choices
+                            .iter()
+                            .filter_map(|choice| match &choice.message.content {
+                                Some(MessageContent::Text(text)) => {
+                                    // Unescape the JSON string
+                                    let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
+                                    Some(cleaned_json_str)
+                                }
+                                Some(MessageContent::ImageUrl { .. }) => None,
+                                Some(MessageContent::FunctionCall(_)) => None,
+                                None => None,
+                            })
+                            .collect::<Vec<String>>()
+                            .join(" ");
+
+                        let function_call = data.choices.iter().find_map(|choice| {
+                            if let Some(mut fc) = choice.message.function_call.clone() {
+                                if let Some(args_str) = fc.arguments.as_str() {
+                                    fc.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                                }
+                                Some(fc)
+                            } else {
+                                None
+                            }
+                        });
+                        Ok(LLMInferenceResponse::new(response_string, json!({}), function_call))
                     }
                     Err(e) => {
                         shinkai_log(

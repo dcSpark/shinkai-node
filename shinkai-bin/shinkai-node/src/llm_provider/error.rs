@@ -68,6 +68,11 @@ pub enum LLMProviderError {
     ShinkaiMessageBuilderError(String),
     TokenLimit(String),
     WorkflowExecutionError(String),
+    FunctionNotFound(String),
+    FunctionExecutionError(String),
+    InvalidFunctionArguments(String),
+    InvalidFunctionResult(String),
+    MaxIterationsReached(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -142,6 +147,11 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::ShinkaiMessageBuilderError(s) => write!(f, "{}", s),
             LLMProviderError::TokenLimit(s) => write!(f, "{}", s),
             LLMProviderError::WorkflowExecutionError(s) => write!(f, "{}", s),
+            LLMProviderError::FunctionNotFound(s) => write!(f, "{}", s),
+            LLMProviderError::FunctionExecutionError(s) => write!(f, "{}", s),
+            LLMProviderError::InvalidFunctionArguments(s) => write!(f, "{}", s),
+            LLMProviderError::InvalidFunctionResult(s) => write!(f, "{}", s),
+            LLMProviderError::MaxIterationsReached(s) => write!(f, "{}", s),
         }
     }
 }
@@ -206,6 +216,11 @@ impl LLMProviderError {
             LLMProviderError::ShinkaiMessageBuilderError(_) => "ShinkaiMessageBuilderError",
             LLMProviderError::TokenLimit(_) => "TokenLimit",
             LLMProviderError::WorkflowExecutionError(_) => "WorkflowExecutionError",
+            LLMProviderError::FunctionNotFound(_) => "FunctionNotFound",
+            LLMProviderError::FunctionExecutionError(_) => "FunctionExecutionError",
+            LLMProviderError::InvalidFunctionArguments(_) => "InvalidFunctionArguments",
+            LLMProviderError::InvalidFunctionResult(_) => "InvalidFunctionResult",
+            LLMProviderError::MaxIterationsReached(_) => "MaxIterationsReached",
         };
 
         let error_message = format!("{}", self);

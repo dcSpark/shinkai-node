@@ -13,9 +13,8 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 
 impl JobManager {
-    /// Inferences the Agent's LLM with the given markdown prompt. Automatically validates the response is
-    /// a valid markdown, and processes it into a json.
-    pub async fn inference_agent_markdown(
+    /// Inferences the Agent's LLM with the given prompt.
+    pub async fn inference_with_llm_provider(
         llm_provider: SerializedLLMProvider,
         filled_prompt: Prompt,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {

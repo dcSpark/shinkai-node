@@ -1,13 +1,11 @@
 use crate::{
-    llm_provider::{
+    db::ShinkaiDB, llm_provider::{
         error::LLMProviderError,
         execution::prompts::prompts::Prompt,
         providers::shared::{
-            openai::openai_prepare_messages,
-            shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
+            llm_message::LlmMessage, openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}
         },
-    },
-    db::ShinkaiDB,
+    }
 };
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
@@ -17,7 +15,6 @@ use std::{
     fmt,
     sync::{Arc, Weak},
 };
-use tiktoken_rs::ChatCompletionRequestMessage;
 
 #[derive(Debug)]
 pub enum ModelCapabilitiesManagerError {
@@ -44,7 +41,8 @@ impl std::error::Error for ModelCapabilitiesManagerError {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PromptResult {
-    pub value: PromptResultEnum,
+    pub messages: PromptResultEnum,
+    pub functions: Option<Vec<serde_json::Value>>,
     pub remaining_tokens: usize,
 }
 
@@ -333,8 +331,7 @@ impl ModelCapabilitiesManager {
                 {
                     128_000
                 } else {
-                    let normalized_model = Self::normalize_model(&model.clone());
-                    tiktoken_rs::model::get_context_size(normalized_model.as_str())
+                    32_000 
                 }
             }
             LLMProviderInterface::GenericAPI(genericapi) => {
@@ -364,8 +361,7 @@ impl ModelCapabilitiesManager {
                 } else if shinkai_backend.model_type() == "STANDARD_TEXT_INFERENCE" {
                     32_000
                 } else {
-                    let normalized_model = Self::normalize_model(&model.clone());
-                    tiktoken_rs::model::get_context_size(normalized_model.as_str())
+                    32_000
                 }
             }
             LLMProviderInterface::Groq(groq) => {
@@ -511,13 +507,13 @@ impl ModelCapabilitiesManager {
     }
 
     /// Counts the number of tokens from the list of messages
-    pub fn num_tokens_from_messages(messages: &[ChatCompletionRequestMessage]) -> usize {
+    pub fn num_tokens_from_messages(messages: &[LlmMessage]) -> usize {
         let average_token_size = 4; // Average size of a token (in characters)
         let buffer_percentage = 0.15; // Buffer to account for tokenization variance
 
         let mut total_characters = 0;
         for message in messages {
-            total_characters += message.role.chars().count() + 1; // +1 for a space or newline after the role
+            total_characters += message.role.clone().unwrap_or_default().chars().count() + 1; // +1 for a space or newline after the role
             if let Some(ref content) = message.content {
                 total_characters += content.chars().count() + 1; // +1 for spaces or newlines between messages
             }
@@ -581,14 +577,14 @@ impl ModelCapabilitiesManager {
     /// where every three normal letters (a-zA-Z) allow an empty space to not be counted,
     /// and other symbols are counted as 1 token.
     /// This implementation avoids floating point arithmetic by scaling counts.
-    pub fn num_tokens_from_llama3(messages: &[ChatCompletionRequestMessage]) -> usize {
+    pub fn num_tokens_from_llama3(messages: &[LlmMessage]) -> usize {
         let num: usize = messages
             .iter()
             .map(|message| {
-                let role_prefix = match message.role.as_str() {
+                let role_prefix = match message.role.as_deref().unwrap_or("") {
                     "user" => "User: ",
-                    "sys" => "Sys: ",
-                    "assistant" => "A: ",
+                    "sys" => "System: ",
+                    "assistant" => "Assistant: ",
                     _ => "",
                 };
                 let full_message = format!(
@@ -610,16 +606,15 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use tiktoken_rs::ChatCompletionRequestMessage;
 
     // Helper function to convert a vector of ChatCompletionRequestMessage to a single string
-    fn messages_to_string(messages: &[ChatCompletionRequestMessage]) -> String {
+    fn messages_to_string(messages: &[LlmMessage]) -> String {
         messages
             .iter()
             .map(|message| {
                 format!(
                     "{}: {} ({})",
-                    message.role,
+                    message.clone().role.unwrap_or_default(),
                     message.content.as_ref().unwrap_or(&"".to_string()),
                     message.name.as_ref().unwrap_or(&"".to_string())
                 )
@@ -630,7 +625,7 @@ mod tests {
 
     // #[test]
     fn test_num_tokens_from_messages_empty() {
-        let messages: Vec<ChatCompletionRequestMessage> = vec![];
+        let messages: Vec<LlmMessage> = vec![];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
         println!("Converted messages: \"{}\"", messages_to_string(&messages));
@@ -642,11 +637,12 @@ mod tests {
 
     // #[test]
     fn test_num_tokens_from_messages_single_message() {
-        let messages = vec![ChatCompletionRequestMessage {
-            role: "user".to_string(),
+        let messages = vec![LlmMessage {
+            role: Some("user".to_string()),
             content: Some("Hello, how are you?".to_string()),
             name: Some("Alice".to_string()),
             function_call: None,
+            functions: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -660,17 +656,19 @@ mod tests {
     // #[test]
     fn test_num_tokens_from_messages_multiple_messages() {
         let messages = vec![
-            ChatCompletionRequestMessage {
-                role: "user".to_string(),
+            LlmMessage {
+                role: Some("user".to_string()),
                 content: Some("Hello".to_string()),
                 name: Some("Alice".to_string()),
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "bot".to_string(),
+            LlmMessage {
+                role: Some("bot".to_string()),
                 content: Some("Hi there!".to_string()),
                 name: Some("Bob".to_string()),
                 function_call: None,
+                functions: None,
             },
         ];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -684,11 +682,12 @@ mod tests {
 
     // #[test]
     fn test_num_tokens_from_messages_complex_content() {
-        let messages = vec![ChatCompletionRequestMessage {
-            role: "user".to_string(),
+        let messages = vec![LlmMessage {
+            role: Some("user".to_string()),
             content: Some("Hello, how are you doing today? I hope everything is fine.".to_string()),
             name: Some("Alice".to_string()),
             function_call: None,
+            functions: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -702,35 +701,41 @@ mod tests {
     // #[test]
     fn test_num_tokens_from_complex_scenario() {
         let messages = vec![
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible using paragraphs, blocks, and bulletpoint lists. Remember to only use single quotes (never double quotes) inside of strings that you respond with.".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "user".to_string(),
+            LlmMessage {
+                role: Some("user".to_string()),
                 content: Some("tell me about Minecraft".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("Use the content to directly answer the user's question with as much information as is available. If the user talks about `it` or `this`, they are referencing the content. Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and '\\n' separated paragraphs. Do not include further JSON inside of the `answer` field, unless the user requires it based on what they asked. Format answer so that it is easily readable with newlines after each 2 sentences and bullet point lists as needed:".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("Then respond using the following EBNF and absolutely nothing else: '{' 'answer' ':' string '}' ".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
+
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("```json".to_string()),
                 name: None,
                 function_call: None,
+                functions: None
             },
         ];
 
@@ -766,15 +771,16 @@ mod tests {
         // let result = openai_prepare_messages(&model, prompt)?;
 
         let chunk_size = 400;
-        let messages: Vec<ChatCompletionRequestMessage> = content
+        let messages: Vec<LlmMessage> = content
             .chars()
             .collect::<Vec<char>>()
             .chunks(chunk_size)
-            .map(|chunk| ChatCompletionRequestMessage {
-                role: "user".to_string(),
+            .map(|chunk| LlmMessage {
+                role: Some("user".to_string()),
                 content: Some(chunk.iter().collect::<String>()),
                 name: Some("Alice".to_string()),
                 function_call: None,
+                functions: None,
             })
             .collect();
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -791,23 +797,26 @@ mod tests {
     // #[test]
     fn test_num_tokens_from_poker_probability_explanation() {
         let messages = vec![
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("Calculating the probabilities of winning in Texas Hold'em is a complex task that involves combinatorics and an understanding of the game's rules. Here's a simplified version of how you might approach writing code to calculate these probabilities in Python. This example assumes you have a function that can evaluate the strength of a hand and that you are calculating the probability for a specific point in the game (e.g., after the flop).".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("```python\nimport itertools\nimport random\n\n# Assume hand_strength is a function that takes a list of cards and returns a score indicating the strength of the hand.\n\ndef calculate_probabilities(player_hand, community_cards, deck):\n    wins = 0\n    iterations = 10000  # Number of simulations to run\n    for _ in range(iterations):\n        # Shuffle the deck and deal out the rest of the community cards plus opponent's cards\n        random.shuffle(deck)\n        remaining_community = deck[:5-len(community_cards)]\n        opponent_hand = deck[5-len(community_cards):7-len(community_cards)]\n        final_community = community_cards + remaining_community\n\n        # Evaluate the hands\n        player_score = hand_strength(player_hand + final_community)\n        opponent_score = hand_strength(opponent_hand + final_community)\n\n        # Compare the hands to determine a win\n        if player_score > opponent_score:\n            wins += 1\n\n    # Calculate the probability\n    probability = wins / iterations\n    return probability\n\n# Example usage:\n# Assuming the deck is a list of all 52 cards, player_hand is the player's 2 cards, and community_cards are the cards on the board\n# deck = [...]\n# player_hand = [...]\n# community_cards = [...]\n# win_probability = calculate_probabilities(player_hand, community_cards, deck)\n# print('Winning Probability:', win_probability)\n```".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("The function `calculate_probabilities` runs a Monte Carlo simulation to estimate the winning probability for a player's hand against a single opponent. Note that in a real poker game, you would need to evaluate against multiple opponents, deal with incomplete information, and dynamically adjust as the community cards are revealed. For a more accurate probability calculation, consider factors like the number of players, their ranges, and how the hand could develop with future community cards".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
         ];
 

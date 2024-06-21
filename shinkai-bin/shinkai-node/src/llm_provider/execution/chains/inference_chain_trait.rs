@@ -1,4 +1,5 @@
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -89,7 +90,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
     }
 
     fn agent(&self) -> &SerializedLLMProvider {
-        &self.agent
+        &self.llm_provider
     }
 
     fn execution_context(&self) -> &HashMap<String, String> {
@@ -137,7 +138,7 @@ pub struct InferenceChainContext {
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
-    pub agent: SerializedLLMProvider,
+    pub llm_provider: SerializedLLMProvider,
     /// Job's execution context, used to store potentially relevant data across job steps.
     pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
@@ -169,7 +170,7 @@ impl InferenceChainContext {
             vector_fs,
             full_job,
             user_message,
-            agent,
+            llm_provider: agent,
             execution_context,
             generator,
             user_profile,
@@ -233,15 +234,17 @@ impl ScoreResult {
 /// A struct that holds the response from inference an LLM.
 #[derive(Debug, Clone)]
 pub struct LLMInferenceResponse {
-    pub original_response_string: String,
+    pub response_string: String,
+    pub function_call: Option<FunctionCall>,
     pub json: JsonValue,
 }
 
 impl LLMInferenceResponse {
-    pub fn new(original_response_string: String, json: JsonValue) -> Self {
+    pub fn new(original_response_string: String, json: JsonValue, function_call: Option<FunctionCall>) -> Self {
         Self {
-            original_response_string,
+            response_string: original_response_string,
             json,
+            function_call
         }
     }
 }

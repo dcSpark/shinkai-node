@@ -30,13 +30,13 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_agent_markdown(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone()).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error
                 }
             };
-            extracted_answer = Some(response_json.original_response_string);
+            extracted_answer = Some(response_json.response_string);
             break; // Exit the loop if successful
         }
 
@@ -169,20 +169,6 @@ impl ParsingHelper {
         }
 
         Ok(processed_vrkais)
-    }
-
-    /// Cleaning method for the LLM response JSON object, after its been parsed from the markdown string.
-    /// Tries to get rid of weird visual edgecases LLMs tend to leave in the actual content
-    pub fn clean_markdown_inference_response(response: LLMInferenceResponse) -> LLMInferenceResponse {
-        let mut cleaned_json = response.json;
-        if let JsonValue::Object(ref mut obj) = cleaned_json {
-            for (_key, value) in obj.iter_mut() {
-                if let JsonValue::String(ref mut str_value) = value {
-                    *value = JsonValue::String(ParsingHelper::clean_markdown_result_string(str_value));
-                }
-            }
-        }
-        LLMInferenceResponse::new(response.original_response_string, cleaned_json)
     }
 
     /// Cleans the value string from a parsed markdown response from common LLM issues.

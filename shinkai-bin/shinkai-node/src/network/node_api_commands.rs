@@ -7,8 +7,8 @@ use super::{
     Node,
 };
 use crate::{
-    llm_provider::job_manager::JobManager,
     db::db_errors::ShinkaiDBError,
+    llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
@@ -31,8 +31,8 @@ use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
         inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
@@ -1526,8 +1526,11 @@ impl Node {
         let toolkit = toolkit.unwrap();
 
         {
+            // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
+            let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
+
             eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
-            let init_result = db.init_profile_tool_structs(&profile);
+            let init_result = db.init_profile_tool_structs(&profile, embedding_generator.clone()).await;
             if let Err(err) = init_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1572,8 +1575,6 @@ impl Node {
                 return Ok(());
             }
 
-            // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
-            let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
             eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
             let activate_toolkit_result = db
                 .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)

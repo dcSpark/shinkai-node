@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
-use tiktoken_rs::ChatCompletionRequestMessage;
 
 use crate::{
     llm_provider::{error::LLMProviderError, execution::prompts::prompts::Prompt},
     managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResult, PromptResultEnum},
 };
+
+use super::llm_message::LlmMessage;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OllamaAPIResponse {
@@ -64,14 +65,15 @@ pub fn ollama_conversation_prepare_messages(
 
     let messages_json = serde_json::to_value(messages)?;
     Ok(PromptResult {
-        value: PromptResultEnum::Value(messages_json),
+        messages: PromptResultEnum::Value(messages_json),
+        functions: None,
         remaining_tokens: remaining_output_tokens,
     })
 }
 
-/// Converts ChatCompletionRequestMessages to OllamaMessage
+/// Converts LlmMessage to OllamaMessage
 fn from_chat_completion_messages(
-    chat_completion_messages: Vec<ChatCompletionRequestMessage>,
+    chat_completion_messages: Vec<LlmMessage>,
 ) -> Result<Vec<OllamaMessage>, LLMProviderError> {
     let mut messages: Vec<OllamaMessage> = Vec::new();
     let mut iter = chat_completion_messages.into_iter().peekable();
@@ -80,9 +82,9 @@ fn from_chat_completion_messages(
         if let Some(content) = message.content {
             let mut images = None;
 
-            if message.role == "user" {
+            if message.role.clone().unwrap_or_default() == "user" {
                 if let Some(next_message) = iter.peek() {
-                    if next_message.role == "user" && next_message.name.as_deref() == Some("image") {
+                    if next_message.role.clone().unwrap_or_default() == "user" && next_message.name.as_deref() == Some("image") {
                         if let Some(image_content) = &next_message.content {
                             images = Some(vec![image_content.clone()]);
                             iter.next(); // Consume the next message
@@ -92,7 +94,7 @@ fn from_chat_completion_messages(
             }
 
             messages.push(OllamaMessage {
-                role: message.role,
+                role: message.role.unwrap_or_default(),
                 content,
                 images,
             });
@@ -104,35 +106,39 @@ fn from_chat_completion_messages(
 
 #[cfg(test)]
 mod tests {
+    use crate::llm_provider::providers::shared::llm_message::LlmMessage;
     use super::*;
-    use tiktoken_rs::ChatCompletionRequestMessage;
 
     #[test]
-    fn test_from_chat_completion_messages() {
-        let chat_completion_messages = vec![
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+    fn test_from_llm_messages() {
+        let llm_messages = vec![
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("You are a very helpful assistant that's very good at completing a task.".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "user".to_string(),
+            LlmMessage {
+                role: Some("user".to_string()),
                 content: Some("The current main task at hand is: `describe this`".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "user".to_string(),
+            LlmMessage {
+                role: Some("user".to_string()),
                 content: Some("iVBORw0KGgoAAAANSUhEUgAAAlgAAAJYCAYAAAC".to_string()),
                 name: Some("image".to_string()),
                 function_call: None,
+                functions: None,
             },
-            ChatCompletionRequestMessage {
-                role: "system".to_string(),
+            LlmMessage {
+                role: Some("system".to_string()),
                 content: Some("Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and separated paragraphs.".to_string()),
                 name: None,
                 function_call: None,
+                functions: None,
             },
         ];
 
@@ -154,7 +160,7 @@ mod tests {
             },
         ];
 
-        let result = from_chat_completion_messages(chat_completion_messages).unwrap();
+        let result = from_chat_completion_messages(llm_messages).unwrap();
         assert_eq!(result, expected_messages);
     }
 }

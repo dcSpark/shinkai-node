@@ -693,7 +693,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         &self,
         query: Embedding,
         num_of_results: u64,
-        data_tag_names: &Vec<String>,
+        data_tag_names: &[String],
     ) -> Vec<RetrievedNode> {
         self.vector_search_customized(
             query,
@@ -701,7 +701,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             TraversalMethod::Exhaustive,
             &vec![
                 TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
-                TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tag_names.clone())),
+                TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tag_names.to_owned())),
             ],
             None,
         )
