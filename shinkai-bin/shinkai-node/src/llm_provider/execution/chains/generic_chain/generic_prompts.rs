@@ -94,31 +94,3 @@ impl JobPromptGenerator {
         prompt
     }
 }
-
-// Messages JSON: [
-//   {
-//     "content": "You are a very helpful assistant.",
-//     "role": "system"
-//   },
-//   {
-//     "content": "concatenate hola and chao\n Answer the question using the extra context provided.",
-//     "role": "user"
-//   },
-//   {
-//     "content": "{\"arguments\":{\"first_string\":\"hola\",\"second_string\":\"chao\"},\"name\":\"concat_strings\"}",
-//     "role": "function"
-//   },
-//   {
-//     "content": "holachao",
-//     "role": "assistant"
-//   }
-// ]
-
-// How it should
-// "messages": [
-//     {"role": "system", "content": "You are a helpful assistant."},
-//     {"role": "user", "content": "What is the weather like today in New York?"},
-//     {"role": "assistant", "content": null, "function_call": {"name": "getWeather", "arguments": "{\"location\": \"New York\"}"}},
-//     {"role": "function", "name": "getWeather", "content": "{\"temperature\": \"75°F\", \"description\": \"Sunny\"}"}
-//   ]
-

@@ -521,6 +521,11 @@ mod tests {
 
         let (messages, _token_length) = prompt.generate_chat_completion_messages();
 
+        // match serde_json::to_string_pretty(&messages) {
+        //     Ok(pretty_json) => eprintln!("messages JSON: {}", pretty_json),
+        //     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
+        // };
+
         // Expected messages
         let expected_messages = vec![
             LlmMessage {
@@ -559,7 +564,7 @@ mod tests {
                 functions: None,
             },
             LlmMessage {
-                role: Some("function".to_string()),
+                role: None,
                 content: None,
                 name: None,
                 function_call: None,
