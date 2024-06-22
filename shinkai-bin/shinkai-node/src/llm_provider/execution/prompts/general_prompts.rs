@@ -132,7 +132,7 @@ impl JobPromptGenerator {
             100,
         );
         prompt.add_content(
-            format!("The current main task at hand is: `{}`", description),
+            description,
             SubPromptType::User,
             100,
         );
@@ -142,12 +142,6 @@ impl JobPromptGenerator {
             String::from("auto"),
             SubPromptType::User,
             100,
-        );
-
-        prompt.add_content(
-            "Make the answer very readable and easy to understand formatted using markdown bulletpoint lists and \n separated paragraphs.".to_string(),
-            SubPromptType::System,
-            98
         );
 
         prompt

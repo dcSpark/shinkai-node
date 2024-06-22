@@ -661,6 +661,18 @@ impl JobManager {
             }
         };
 
+         // Filter out image files
+         // TODO: Eventually we will add extra embeddings that support images
+         let files: Vec<(String, Vec<u8>)> = files.into_iter()
+         .filter(|(name, _)| {
+             let name_lower = name.to_lowercase();
+             !name_lower.ends_with(".png")
+                 && !name_lower.ends_with(".jpg")
+                 && !name_lower.ends_with(".jpeg")
+                 && !name_lower.ends_with(".gif")
+         })
+         .collect();
+
         // Sort out the vrpacks from the rest
         #[allow(clippy::type_complexity)]
         let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
