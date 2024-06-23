@@ -217,7 +217,7 @@ impl AsyncFunction for InferenceFunction {
         );
 
         // Handle response_res without using the `?` operator
-        let response = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone())
+        let response = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone(), self.context.ws_manager_trait.clone())
             .await
             .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 

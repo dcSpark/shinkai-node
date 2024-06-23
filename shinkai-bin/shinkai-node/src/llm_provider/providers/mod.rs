@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::network::ws_manager::WSUpdateHandler;
+
 use super::{
     error::LLMProviderError,
     execution::{chains::inference_chain_trait::LLMInferenceResponse, prompts::prompts::Prompt},
@@ -7,6 +11,7 @@ use quickxml_to_serde::{xml_string_to_json, Config};
 use reqwest::Client;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
+use tokio::sync::Mutex;
 
 pub mod genericapi;
 pub mod groq;
@@ -27,6 +32,7 @@ pub trait LLMService {
         api_key: Option<&String>,
         prompt: Prompt,
         model: LLMProviderInterface,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 
     /// Given an input string, parses the first XML object that it finds.

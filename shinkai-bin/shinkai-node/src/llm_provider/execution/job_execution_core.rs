@@ -243,6 +243,7 @@ impl JobManager {
             prev_execution_context,
             generator,
             user_profile,
+            ws_manager.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -340,6 +341,7 @@ impl JobManager {
             2,
             max_tokens_in_prompt,
             HashMap::new(),
+            ws_manager.clone(),
         );
 
         // Note: we do this once so we are not re-reading the files multiple times for each operation

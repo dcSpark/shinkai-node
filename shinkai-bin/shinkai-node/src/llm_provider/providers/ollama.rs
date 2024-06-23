@@ -1,6 +1,7 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::providers::shared::ollama::{ollama_conversation_prepare_messages, OllamaAPIStreamingResponse};
 use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::network::ws_manager::WSUpdateHandler;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::LLMService;
@@ -12,7 +13,9 @@ use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use tokio::sync::Mutex;
 use std::error::Error;
+use std::sync::Arc;
 
 fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(images) = payload.get_mut("images") {
@@ -36,6 +39,7 @@ impl LLMService for Ollama {
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
         model: LLMProviderInterface,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");

@@ -1,8 +1,11 @@
+use std::sync::Arc;
+
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
+use crate::network::ws_manager::WSUpdateHandler;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -10,6 +13,7 @@ use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Groq, LLMProviderInterface};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use tokio::sync::Mutex;
 
 #[async_trait]
 impl LLMService for Groq {
@@ -19,7 +23,8 @@ impl LLMService for Groq {
         url: Option<&String>,
         api_key: Option<&String>,
         prompt: Prompt,
-        model: LLMProviderInterface,
+        _model: LLMProviderInterface,
+        _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {

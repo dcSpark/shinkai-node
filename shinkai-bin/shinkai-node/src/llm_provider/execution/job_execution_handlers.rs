@@ -64,6 +64,7 @@ impl JobManager {
             base64_image,
             0,
             3,
+            ws_manager.clone(),
         )
         .await?;
 

@@ -1,3 +1,5 @@
+use crate::network::ws_manager::WSUpdateHandler;
+
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::JobPromptGenerator;
@@ -14,7 +16,9 @@ use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
+use tokio::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ParsingHelper {}
 
@@ -24,13 +28,14 @@ impl ParsingHelper {
         text_groups: &Vec<TextGroup>,
         agent: SerializedLLMProvider,
         max_node_text_size: u64,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, LLMProviderError> {
         let descriptions = ShinkaiFileParser::process_groups_into_descriptions_list(text_groups, 10000, 300);
         let prompt = JobPromptGenerator::simple_doc_description(descriptions);
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), ws_manager_trait.clone()).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error
@@ -85,7 +90,7 @@ impl ParsingHelper {
 
         let mut desc = None;
         if let Some(actual_agent) = agent {
-            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size).await?);
+            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size, None).await?);
         } else {
             let description_text = ShinkaiFileParser::process_groups_into_description(
                 &text_groups,

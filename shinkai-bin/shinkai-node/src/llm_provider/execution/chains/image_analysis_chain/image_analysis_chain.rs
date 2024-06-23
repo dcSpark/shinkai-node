@@ -2,13 +2,14 @@ use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
 };
+use tokio::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     db::ShinkaiDB,
     llm_provider::{
         error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager,
-    },
+    }, network::ws_manager::WSUpdateHandler,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -36,6 +37,7 @@ impl JobManager {
         image: String,
         iteration_count: u64,
         max_iterations: u64,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(String, HashMap<String, String>), LLMProviderError> {
         if iteration_count > max_iterations {
             return Err(LLMProviderError::InferenceRecursionLimitReached(
@@ -49,7 +51,7 @@ impl JobManager {
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
-        let response_json = JobManager::inference_with_llm_provider(agent.clone(), image_prompt).await?;
+        let response_json = JobManager::inference_with_llm_provider(agent.clone(), image_prompt, ws_manager_trait).await?;
         let mut new_execution_context = HashMap::new();
 
         new_execution_context.insert(
