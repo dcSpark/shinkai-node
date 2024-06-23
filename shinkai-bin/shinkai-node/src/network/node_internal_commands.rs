@@ -1,5 +1,5 @@
 use super::node::ProxyConnectionInfo;
-use super::ws_manager::WSUpdateHandler;
+use super::ws_manager::{self, WSUpdateHandler};
 use super::{node_error::NodeError, Node};
 use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
@@ -396,6 +396,7 @@ impl Node {
         identity_secret_key: SigningKey,
         llm_provider: SerializedLLMProvider,
         profile: &ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
@@ -481,7 +482,7 @@ impl Node {
                                 )
                                 .unwrap();
 
-                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
                                     .await?;
                             }
                         }
@@ -620,6 +621,7 @@ impl Node {
         identity_secret_key: SigningKey,
         input_models: Vec<String>,
         shinkai_name: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), String> {
         let requester_profile = match shinkai_name.extract_profile() {
             Ok(profile) => profile,
@@ -681,6 +683,7 @@ impl Node {
                 identity_secret_key.clone(),
                 agent,
                 &profile_name,
+                ws_manager.clone(),
             )
             .await
             .map_err(|e| format!("Failed to add agent: {}", e))?;

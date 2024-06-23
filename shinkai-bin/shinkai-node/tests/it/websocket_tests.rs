@@ -184,14 +184,9 @@ async fn test_websocket() {
     };
 
     // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
+    let ws_manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
-    tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
-
-    // Update ShinkaiDB with manager so it can trigger updates
-    {
-        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
-    }
+    tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
 
     // Give the server a little time to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -285,7 +280,7 @@ async fn test_websocket() {
 
     // Note: Manual way to push an update for testing purposes
     // Send a message to all connections that are subscribed to the topic
-    manager
+    ws_manager
         .lock()
         .await
         .handle_update(
@@ -321,7 +316,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, ws_manager.clone())
             .await;
         // eprintln!("result: {:?}", result);
         // eprintln!("here after adding a message");
@@ -356,7 +351,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, ws_manager.clone())
             .await;
 
         // Wait for the server to process the message
@@ -430,7 +425,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, ws_manager)
             .await;
 
         // Wait for the server to process the message
@@ -486,13 +481,13 @@ async fn test_websocket_smart_inbox() {
     };
 
     // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
+    let ws_manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
-    tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
+    tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
 
     // Update ShinkaiDB with manager so it can trigger updates
     {
-        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+        shinkai_db.set_ws_manager(Arc::clone(&ws_manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
 
     // Give the server a little time to start
@@ -592,7 +587,7 @@ async fn test_websocket_smart_inbox() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None, ws_manager)
             .await;
     }
 
@@ -623,7 +618,7 @@ async fn test_websocket_smart_inbox() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&shinkai_message.clone(), None)
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None, ws_manager)
             .await;
     }
 

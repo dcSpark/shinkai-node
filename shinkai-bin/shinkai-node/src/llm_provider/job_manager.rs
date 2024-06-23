@@ -4,6 +4,7 @@ use crate::llm_provider::llm_provider::LLMProvider;
 use crate::llm_provider::job::JobLike;
 use crate::db::{ShinkaiDB, Topic};
 use crate::managers::IdentityManager;
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
@@ -104,7 +105,8 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
             unstructured_api.clone(),
-            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api| {
+            ws_manager.clone(),
+            |job, db, vector_fs, node_profile_name, identity_sk, generator, unstructured_api, ws_manager| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
@@ -113,6 +115,7 @@ impl JobManager {
                     identity_sk,
                     generator,
                     unstructured_api,
+                    ws_manager,
                 ))
             },
         )
@@ -130,6 +133,7 @@ impl JobManager {
             vector_fs,
             embedding_generator,
             unstructured_api,
+            ws_manager,
         }
     }
 
@@ -143,6 +147,7 @@ impl JobManager {
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<ShinkaiDB>,
@@ -151,6 +156,7 @@ impl JobManager {
                 SigningKey,
                 RemoteEmbeddingGenerator,
                 UnstructuredAPI,
+                Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
@@ -220,6 +226,7 @@ impl JobManager {
                     let cloned_generator = generator.clone();
                     let cloned_unstructured_api = unstructured_api.clone();
                     let node_profile_name = node_profile_name.clone();
+                    let ws_manager = ws_manager.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -243,6 +250,7 @@ impl JobManager {
                                         identity_sk_clone,
                                         cloned_generator,
                                         cloned_unstructured_api,
+                                        ws_manager,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -431,7 +439,7 @@ impl JobManager {
         }
 
         db_arc
-            .add_message_to_job_inbox(&job_message.job_id.clone(), &message, job_message.parent.clone())
+            .add_message_to_job_inbox(&job_message.job_id.clone(), &message, job_message.parent.clone(), self.ws_manager.clone())
             .await?;
         std::mem::drop(db_arc);
 

@@ -704,6 +704,7 @@ impl Node {
                 vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
+                Some(self.ws_manager.clone()),
             )
             .await,
         )));
@@ -722,6 +723,7 @@ impl Node {
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_name.clone(),
                     Arc::clone(job_manager),
+                    Some(self.ws_manager.clone()),
                 )
                 .await,
             ))),
@@ -1033,6 +1035,7 @@ impl Node {
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let db_clone = self.db.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager = self.ws_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_llm_provider(
                                                     db_clone,
@@ -1041,6 +1044,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     agent,
                                                     &profile,
+                                                    Some(ws_manager),
                                                     res,
                                                 ).await;
                                             });
@@ -1069,6 +1073,7 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager = self.ws_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_ollama_models(
                                                     db_clone,
@@ -1077,6 +1082,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     models,
                                                     target_profile,
+                                                    Some(ws_manager),
                                                     res,
                                                 ).await;
                                             });
@@ -1110,6 +1116,7 @@ impl Node {
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let initial_llm_providers_clone = self.initial_llm_providers.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
+                                            let ws_manager = self.ws_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
                                                     db_clone,
@@ -1125,6 +1132,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     initial_llm_providers_clone,
                                                     msg,
+                                                    Some(ws_manager),
                                                     res,
                                                 ).await;
                                             });
@@ -1229,6 +1237,7 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager = self.ws_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_agent(
                                                     db_clone,
@@ -1238,6 +1247,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    Some(ws_manager),
                                                     res,
                                                 ).await;
                                             });
@@ -1508,6 +1518,7 @@ impl Node {
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager = self.ws_manager.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_ollama_models(
                                                     db_clone,
@@ -1517,6 +1528,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    Some(ws_manager),
                                                     res,
                                                 ).await;
                                             });
