@@ -1,10 +1,5 @@
 use super::{
-    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
-    node_api::{APIError, SendResponseBodyData},
-    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
-    node_error::NodeError,
-    node_shareable_logic::validate_message_main_logic,
-    Node,
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS}, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, ws_manager::WSUpdateHandler, Node
 };
 use crate::{
     db::db_errors::ShinkaiDBError,
@@ -2877,6 +2872,7 @@ impl Node {
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -2941,7 +2937,7 @@ impl Node {
                                 Err(_) => None,
                             };
 
-                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
+                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id, ws_manager.clone())
                                 .await
                                 .map_err(|e| {
                                     shinkai_log(
@@ -3033,6 +3029,7 @@ impl Node {
             proxy_connection_info,
             db.clone(),
             identity_manager.clone(),
+            ws_manager.clone(),
             true,
             None,
         );

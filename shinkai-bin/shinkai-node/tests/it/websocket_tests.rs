@@ -30,6 +30,7 @@ use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
 use shinkai_node::schemas::identity::StandardIdentityType;
 use shinkai_node::schemas::inbox_permission::InboxPermission;
+use shinkai_vector_resources::utils::hash_string;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -123,7 +124,7 @@ fn generate_message_with_text(
     origin_destination_identity_name: String,
     timestamp: String,
 ) -> ShinkaiMessage {
-    let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::WSMessage)
@@ -140,8 +141,7 @@ fn generate_message_with_text(
             timestamp,
         )
         .build()
-        .unwrap();
-    message
+        .unwrap()
 }
 
 fn setup() {
@@ -154,6 +154,7 @@ async fn test_websocket() {
     init_default_tracing();
     // Setup
     setup();
+    
     let job_id1 = "test_job".to_string();
     let job_id2 = "test_job2".to_string();
     let agent_id = "agent3".to_string();

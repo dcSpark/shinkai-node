@@ -284,7 +284,7 @@ async fn test_insert_messages_with_simple_tree_structure() {
             "message hash: {} message content: {} message parent hash: {}",
             message.calculate_message_hash_for_pagination(),
             message.get_message_content().unwrap(),
-            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+            parent_hash.as_deref().unwrap_or("None")
         );
     }
 

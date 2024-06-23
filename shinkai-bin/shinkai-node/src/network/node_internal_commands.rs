@@ -1,4 +1,5 @@
 use super::node::ProxyConnectionInfo;
+use super::ws_manager::WSUpdateHandler;
 use super::{node_error::NodeError, Node};
 use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
@@ -530,6 +531,7 @@ impl Node {
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         info!("{} > Pinging all peers {} ", listen_address, peers.len());
 
@@ -556,6 +558,7 @@ impl Node {
                 Arc::clone(&db),
                 identity_manager.clone(),
                 proxy_connection_info.clone(),
+                ws_manager.clone(),
             )
             .await;
         }

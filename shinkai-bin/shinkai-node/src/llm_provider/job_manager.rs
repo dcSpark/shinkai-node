@@ -43,6 +43,8 @@ pub struct JobManager {
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Unstructured server connection
     pub unstructured_api: UnstructuredAPI,
+    // Websocket manager for sending updates to the frontend
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl JobManager {
@@ -54,6 +56,7 @@ impl JobManager {
         vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {

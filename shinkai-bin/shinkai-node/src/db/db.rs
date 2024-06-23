@@ -1,5 +1,4 @@
 use super::db_errors::ShinkaiDBError;
-use crate::network::ws_manager::WSUpdateHandler;
 use chrono::{DateTime, Utc};
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, LogLevel, Options, DB};
 use shinkai_message_primitives::{
@@ -7,9 +6,8 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::fmt;
+use std::path::Path;
 use std::time::Instant;
-use std::{path::Path, sync::Arc};
-use tokio::sync::Mutex;
 
 pub enum Topic {
     Inbox,
@@ -52,7 +50,6 @@ impl fmt::Debug for ShinkaiDB {
 pub struct ShinkaiDB {
     pub db: DB,
     pub path: String,
-    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl ShinkaiDB {
@@ -109,7 +106,6 @@ impl ShinkaiDB {
         let shinkai_db = ShinkaiDB {
             db,
             path: db_path.to_string(),
-            ws_manager: None,
         };
 
         Ok(shinkai_db)
@@ -119,7 +115,7 @@ impl ShinkaiDB {
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
         cf_opts.create_missing_column_families(true);
-        
+
         // More info: https://github.com/facebook/rocksdb/wiki/BlobDB
         cf_opts.set_enable_blob_files(true);
         cf_opts.set_min_blob_size(1024 * 100); // 100kb
@@ -179,11 +175,6 @@ impl ShinkaiDB {
     pub fn set_needs_reset(&self) -> Result<(), Error> {
         let cf = self.get_cf_handle(Topic::NodeAndUsers).unwrap();
         self.db.put_cf(cf, b"needs_reset", b"true")
-    }
-
-    pub fn set_ws_manager(&self, _ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
-        // TODO: off for now
-        // self.ws_manager = Some(ws_manager);
     }
 
     /// Extracts the profile name with ShinkaiDBError wrapping

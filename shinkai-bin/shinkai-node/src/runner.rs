@@ -66,7 +66,6 @@ pub async fn initialize_node() -> Result<
         Sender<NodeCommand>,
         JoinHandle<()>,
         JoinHandle<()>,
-        JoinHandle<()>,
         Weak<Mutex<Node>>,
     ),
     Box<dyn std::error::Error + Send + Sync>,
@@ -188,24 +187,13 @@ pub async fn initialize_node() -> Result<
         vector_fs_db_path.clone(),
         Some(embedding_generator),
         Some(unstructured_api),
+        node_env.ws_address.clone(),
     )
     .await;
 
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
     let node_copy = Arc::downgrade(&start_node.clone());
-
-    // Run the API server and node in separate tasks
-    // Get identity_manager before starting the node
-    let identity_manager = {
-        let node = start_node.lock().await;
-        node.identity_manager.clone()
-    };
-
-    let shinkai_db = {
-        let node = start_node.lock().await;
-        node.db.clone()
-    };
 
     // Node task
     let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
@@ -264,26 +252,19 @@ pub async fn initialize_node() -> Result<
         }
     });
 
-    let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
-    let ws_server = tokio::spawn(async move {
-        init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
-    });
-
     // Return the node_commands_sender_copy and the tasks
-    Ok((node_commands_sender_copy, api_server, node_task, ws_server, node_copy))
+    Ok((node_commands_sender_copy, api_server, node_task, node_copy))
 }
 
 pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
-    ws_server: JoinHandle<()>,
     _: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_server_abort = api_server.abort_handle();
     let node_task_abort = node_task.abort_handle();
-    let ws_server_abort = ws_server.abort_handle();
 
-    match tokio::try_join!(api_server, node_task, ws_server) {
+    match tokio::try_join!(api_server, node_task) {
         Ok(_) => {
             shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "All tasks completed");
             Ok(())
@@ -291,7 +272,6 @@ pub async fn run_node_tasks(
         Err(e) => {
             api_server_abort.abort();
             node_task_abort.abort();
-            ws_server_abort.abort();
 
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
@@ -386,29 +366,6 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
     // TODO: Replace this hard-coded model to having the default being saved/read from the DB
     let model = NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone();
     RemoteEmbeddingGenerator::new(model, &api_url, api_key)
-}
-
-async fn init_ws_server(
-    node_env: &NodeEnvironment,
-    identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
-    shinkai_db: Weak<ShinkaiDB>,
-) {
-    let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
-        let identity_manager_inner = identity_manager.lock().await;
-        let boxed_identity_manager = identity_manager_inner.clone_box();
-        Arc::new(Mutex::new(boxed_identity_manager))
-    };
-
-    let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
-    // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), shinkai_name, new_identity_manager).await;
-
-    // Update ShinkaiDB with manager so it can trigger updates
-    {
-        let db = shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
-    }
-    run_ws_api(node_env.ws_address, Arc::clone(&manager)).await;
 }
 
 /// Prints Useful Node information at startup
