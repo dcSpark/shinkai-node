@@ -24,7 +24,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
-use shinkai_node::network::ws_manager::WSUpdateHandler;
+use shinkai_node::network::ws_manager::WSMessagePayload;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
@@ -154,7 +154,7 @@ async fn test_websocket() {
     init_default_tracing();
     // Setup
     setup();
-    
+
     let job_id1 = "test_job".to_string();
     let job_id2 = "test_job2".to_string();
     let agent_id = "agent3".to_string();
@@ -287,6 +287,7 @@ async fn test_websocket() {
             WSTopic::Inbox,
             "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
+            false,
         )
         .await;
 
@@ -299,7 +300,11 @@ async fn test_websocket() {
     let encrypted_message = msg.to_text().unwrap();
     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
 
-    assert_eq!(decrypted_message, "Hello, world!");
+    let ws_message_payload: WSMessagePayload =
+        serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+    eprintln!("ws_message_payload: {:?}", ws_message_payload);
+
+    assert_eq!(ws_message_payload.message.unwrap(), "Hello, world!");
 
     // Note: We add a message and we expect to trigger an update
     {
@@ -316,7 +321,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, Some(ws_manager.clone()))
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager.clone()))
             .await;
         // eprintln!("result: {:?}", result);
         // eprintln!("here after adding a message");
@@ -333,7 +338,9 @@ async fn test_websocket() {
         let encrypted_msg_text = msg.to_text().unwrap();
         let decrypted_message =
             decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
-        let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
+        let ws_message_payload: WSMessagePayload =
+            serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+        let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
         let recovered_content = recovered_shinkai.get_message_content().unwrap();
         assert_eq!(recovered_content, "Hello, world!");
     }
@@ -351,7 +358,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, Some(ws_manager.clone()))
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager.clone()))
             .await;
 
         // Wait for the server to process the message
@@ -368,7 +375,9 @@ async fn test_websocket() {
         // eprintln!("encrypted_msg_text: {}", encrypted_msg_text);
         let decrypted_message =
             decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
-        let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
+        let ws_message_payload: WSMessagePayload =
+            serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+        let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
         let recovered_content = recovered_shinkai.get_message_content().unwrap();
         assert_eq!(recovered_content, "Hello, world 2!");
     }
@@ -425,7 +434,7 @@ async fn test_websocket() {
         );
 
         let _ = shinkai_db
-            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None, Some(ws_manager))
+            .unsafe_insert_inbox_message(&shinkai_message.clone(), None, Some(ws_manager))
             .await;
 
         // Wait for the server to process the message
@@ -595,7 +604,9 @@ async fn test_websocket_smart_inbox() {
 
     let encrypted_message = msg.to_text().unwrap();
     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
-    let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
+    let ws_message_payload: WSMessagePayload =
+            serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+    let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
     let recovered_content = recovered_shinkai.get_message_content().unwrap();
     assert_eq!(recovered_content, "Hello, world!");
 

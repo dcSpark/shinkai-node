@@ -16,6 +16,7 @@ use crate::tools::rust_tools::RustTool;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
@@ -217,9 +218,18 @@ impl GenericInferenceChain {
             }
 
             // 4) Call LLM
-            let response_res =
-                JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone(), ws_manager_trait.clone())
-                    .await;
+            let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone())
+            {
+                Ok(name) => Some(name),
+                Err(_) => None,
+            };
+            let response_res = JobManager::inference_with_llm_provider(
+                llm_provider.clone(),
+                filled_prompt.clone(),
+                inbox_name,
+                ws_manager_trait.clone(),
+            )
+            .await;
 
             // Error Codes
             if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {

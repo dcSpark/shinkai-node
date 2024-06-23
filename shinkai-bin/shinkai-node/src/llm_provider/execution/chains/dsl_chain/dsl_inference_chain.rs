@@ -7,7 +7,10 @@ use shinkai_dsl::{
     dsl_schemas::Workflow,
     sm_executor::{AsyncFunction, FunctionMap, WorkflowEngine, WorkflowError},
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::{
+    schemas::inbox_name::{self, InboxName},
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+};
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 use crate::llm_provider::{
@@ -217,9 +220,19 @@ impl AsyncFunction for InferenceFunction {
         );
 
         // Handle response_res without using the `?` operator
-        let response = JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone(), self.context.ws_manager_trait.clone())
-            .await
-            .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
+        // Handle response_res without using the `?` operator
+        let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone()) {
+            Ok(name) => Some(name),
+            Err(_) => None,
+        };
+        let response = JobManager::inference_with_llm_provider(
+            llm_provider.clone(),
+            filled_prompt.clone(),
+            inbox_name,
+            self.context.ws_manager_trait.clone(),
+        )
+        .await
+        .map_err(|e| WorkflowError::ExecutionError(e.to_string()))?;
 
         let answer = response.response_string;
 

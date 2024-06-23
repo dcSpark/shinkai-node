@@ -12,6 +12,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, ShinkaiBackend,
 };
@@ -50,6 +51,7 @@ impl LLMService for ShinkaiBackend {
         api_key: Option<&String>,
         prompt: Prompt,
         model: LLMProviderInterface,
+        inbox_name: Option<InboxName>,
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {

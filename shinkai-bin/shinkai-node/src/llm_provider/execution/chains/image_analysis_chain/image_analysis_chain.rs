@@ -1,15 +1,16 @@
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+    inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName
 };
-use tokio::sync::Mutex;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 use crate::{
     db::ShinkaiDB,
     llm_provider::{
         error::LLMProviderError, execution::prompts::prompts::JobPromptGenerator, job::Job, job_manager::JobManager,
-    }, network::ws_manager::WSUpdateHandler,
+    },
+    network::ws_manager::WSUpdateHandler,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -29,7 +30,7 @@ impl JobManager {
     #[async_recursion]
     pub async fn image_analysis_chain(
         _db: Arc<ShinkaiDB>,
-        _full_job: Job,
+        full_job: Job,
         agent_found: Option<SerializedLLMProvider>,
         _execution_context: HashMap<String, String>,
         _user_profile: Option<ShinkaiName>,
@@ -51,7 +52,12 @@ impl JobManager {
         };
 
         let image_prompt = JobPromptGenerator::image_to_text_analysis(task, image);
-        let response_json = JobManager::inference_with_llm_provider(agent.clone(), image_prompt, ws_manager_trait).await?;
+        let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone()) {
+            Ok(name) => Some(name),
+            Err(_) => None,
+        };
+        let response_json =
+            JobManager::inference_with_llm_provider(agent.clone(), image_prompt, inbox_name, ws_manager_trait).await?;
         let mut new_execution_context = HashMap::new();
 
         new_execution_context.insert(

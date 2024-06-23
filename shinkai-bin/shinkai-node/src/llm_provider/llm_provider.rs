@@ -9,12 +9,12 @@ use super::providers::LLMService;
 use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
 use tokio::sync::Mutex;
-use warp::filters::ws;
 
 #[derive(Debug, Clone)]
 pub struct LLMProvider {
@@ -83,6 +83,7 @@ impl LLMProvider {
     pub async fn inference(
         &self,
         prompt: Prompt,
+        inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
@@ -94,6 +95,7 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
                         ws_manager_trait,
                     )
                     .await
@@ -106,6 +108,7 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
                         ws_manager_trait,
                     )
                     .await
@@ -118,6 +121,7 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
                         ws_manager_trait,
                     )
                     .await
@@ -130,6 +134,7 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
                         ws_manager_trait,
                     )
                     .await
@@ -141,6 +146,7 @@ impl LLMProvider {
                     self.api_key.as_ref(),
                     prompt.clone(),
                     self.model.clone(),
+                    inbox_name,
                     ws_manager_trait,
                 )
                 .await

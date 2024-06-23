@@ -282,6 +282,7 @@ mod tests {
             .inference(
                 JobPromptGenerator::basic_instant_response_prompt("Hello!".to_string(), None),
                 None,
+                None,
             )
             .await;
         match response {
