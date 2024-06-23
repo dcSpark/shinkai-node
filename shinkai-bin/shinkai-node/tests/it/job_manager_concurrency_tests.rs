@@ -144,7 +144,7 @@ async fn test_process_job_queue_concurrency() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None).await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
 
             Ok("Success".to_string())
         })
@@ -168,7 +168,8 @@ async fn test_process_job_queue_concurrency() {
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api| {
+        None,
+        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -267,7 +268,7 @@ async fn test_sequential_process_for_same_job_id() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None).await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
 
             Ok("Success".to_string())
         })
@@ -291,7 +292,8 @@ async fn test_sequential_process_for_same_job_id() {
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
         UnstructuredAPI::new_default(),
-        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api| {
+        None,
+        move |job, _db, _vector_fs, node_name, identity_sk, generator, unstructured_api, _ws_manager | {
             mock_processing_fn(
                 job,
                 db_weak.clone(),

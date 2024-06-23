@@ -145,6 +145,7 @@ impl CronManager {
             .unwrap_or(60)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -263,6 +264,7 @@ impl CronManager {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Weak<ShinkaiDB>,
@@ -398,6 +400,7 @@ impl CronManager {
     }
 
     // TODO: rename this or refactor it to a manager
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_cron_task(
         &self,
         profile: ShinkaiName,

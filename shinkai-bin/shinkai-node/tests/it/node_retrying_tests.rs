@@ -99,6 +99,7 @@ fn node_retrying_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 
@@ -117,6 +118,7 @@ fn node_retrying_test() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
             None,
             None,
         )

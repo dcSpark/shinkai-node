@@ -102,6 +102,7 @@ fn subscription_manager_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 
@@ -120,6 +121,7 @@ fn subscription_manager_test() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
             None,
             None,
         )

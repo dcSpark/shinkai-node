@@ -2,7 +2,9 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, SerializedLLMProvider,
+};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone)]
@@ -10,7 +12,7 @@ pub struct NodeEnvironment {
     pub global_identity_name: String,
     pub listen_address: SocketAddr,
     pub api_listen_address: SocketAddr,
-    pub ws_address: SocketAddr,
+    pub ws_address: Option<SocketAddr>,
     pub ping_interval: u64,
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
@@ -114,10 +116,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse port number");
 
-    let ws_port: u16 = env::var("NODE_WS_PORT")
-        .unwrap_or_else(|_| "9551".to_string())
-        .parse()
-        .expect("Failed to parse ws port number");
+    let ws_port: Option<u16> = env::var("NODE_WS_PORT").ok().and_then(|p| p.parse().ok());
 
     // TODO: remove this and just assume one device per profile
     let starting_num_qr_profiles: u32 = env::var("STARTING_NUM_QR_PROFILES")
@@ -167,6 +166,9 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     // Fetch the PROXY_IDENTITY environment variable
     let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
+    // WebSocket address
+    let ws_address = ws_port.map(|port| SocketAddr::new(ip, port));
+
     // Check if NODE_API_IP:NODE_API_PORT is the same as NODE_IP:NODE_PORT
     if ip == api_ip && port == api_port {
         panic!("NODE_API_IP:NODE_API_PORT cannot be the same as NODE_IP:NODE_PORT");
@@ -176,7 +178,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         global_identity_name,
         listen_address,
         api_listen_address,
-        ws_address: SocketAddr::new(ip, ws_port),
+        ws_address,
         ping_interval,
         starting_num_qr_profiles,
         starting_num_qr_devices,

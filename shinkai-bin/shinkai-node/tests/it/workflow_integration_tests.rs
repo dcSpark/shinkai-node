@@ -134,6 +134,7 @@ fn workflow_integration_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
@@ -391,6 +392,7 @@ fn workflow_complex_integration_test() {
             vec![agent],
             None,
             node1_fs_db_path,
+            None,
             None,
             None,
         );

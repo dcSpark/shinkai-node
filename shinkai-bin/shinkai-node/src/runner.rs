@@ -1,8 +1,4 @@
-use super::db::ShinkaiDB;
-use super::managers::identity_manager::IdentityManagerTrait;
 use super::network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
-use super::network::ws_manager::{WSUpdateHandler, WebSocketManager};
-use super::network::ws_routes::run_ws_api;
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
@@ -15,7 +11,6 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -187,7 +182,7 @@ pub async fn initialize_node() -> Result<
         vector_fs_db_path.clone(),
         Some(embedding_generator),
         Some(unstructured_api),
-        node_env.ws_address.clone(),
+        node_env.ws_address,
     )
     .await;
 
@@ -379,7 +374,7 @@ pub fn print_node_info(
     println!("---------------------------------------------------------------");
     println!("Node API address: {}", node_env.api_listen_address);
     println!("Node TCP address: {}", node_env.listen_address);
-    println!("Node WS address: {}", node_env.ws_address);
+    println!("Node WS address: {:?}", node_env.ws_address);
     println!("Node Shinkai identity: {}", node_env.global_identity_name);
     println!("Node Main Profile: main (assumption)"); // Assuming "main" as the main profile
     println!("Node encryption pk: {}", encryption_pk);

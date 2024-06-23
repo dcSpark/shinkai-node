@@ -57,6 +57,7 @@ mod tests {
                 node1_vector_fs_path,
                 None,
                 None,
+                None,
             );
 
             let node1_handler = tokio::spawn(async move {

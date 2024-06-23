@@ -102,6 +102,7 @@ fn subidentity_registration() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 
@@ -120,6 +121,7 @@ fn subidentity_registration() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
             None,
             None,
         )
