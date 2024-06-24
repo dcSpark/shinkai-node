@@ -198,35 +198,11 @@ pub struct JobMessage {
     pub workflow: Option<String>,
 }
 
-// impl JobMessage {
-//     pub fn from_json_str(s: &str) -> Result<Self> {
-//         let deserialized: Self = serde_json::from_str(s)?;
-//         Ok(deserialized)
-//     }
-
-//     pub fn to_json_str(&self) -> Result<String> {
-//         let json_str = serde_json::to_string(self)?;
-//         Ok(json_str)
-//     }
-// }
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobToolCall {
     pub tool_id: String,
     pub inputs: std::collections::HashMap<String, String>,
 }
-
-// impl JobToolCall {
-//     pub fn from_json_str(s: &str) -> Result<Self> {
-//         let deserialized: Self = serde_json::from_str(s)?;
-//         Ok(deserialized)
-//     }
-
-//     pub fn to_json_str(&self) -> Result<String> {
-//         let json_str = serde_json::to_string(self)?;
-//         Ok(json_str)
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum JobRecipient {
@@ -241,43 +217,6 @@ pub struct JobPreMessage {
     pub content: String,
     pub recipient: JobRecipient,
 }
-
-// impl JobPreMessage {
-//     pub fn from_json_str(s: &str) -> Result<Self> {
-//         let deserialized: Self = serde_json::from_str(s)?;
-//         Ok(deserialized)
-//     }
-
-//     pub fn to_json_str(&self) -> Result<String> {
-//         let json_str = serde_json::to_string(self)?;
-//         Ok(json_str)
-//     }
-// }
-
-// impl JobRecipient {
-//     pub fn validate_external(&self) -> std::result::Result<(), &'static str> {
-//         match self {
-//             Self::ExternalIdentity(identity) => {
-//                 if ShinkaiName::new(identity.to_string()).is_ok() {
-//                     Ok(())
-//                 } else {
-//                     Err("Invalid identity")
-//                 }
-//             }
-//             _ => Ok(()), // For other variants we do not perform validation, so return Ok
-//         }
-//     }
-
-//     pub fn from_json_str(s: &str) -> Result<Self> {
-//         let deserialized: Self = serde_json::from_str(s)?;
-//         Ok(deserialized)
-//     }
-
-//     pub fn to_json_str(&self) -> Result<String> {
-//         let json_str = serde_json::to_string(self)?;
-//         Ok(json_str)
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FileDestinationSourceType {

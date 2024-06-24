@@ -79,6 +79,8 @@ pub trait WSUpdateHandler {
     async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool);
 }
 
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>;
+
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
@@ -87,7 +89,7 @@ pub struct WebSocketManager {
     shinkai_db: Weak<ShinkaiDB>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
-    message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>,
+    message_queue: MessageQueue,
 }
 
 impl Clone for WebSocketManager {
@@ -131,7 +133,7 @@ impl WebSocketManager {
 
     pub async fn start_message_sender(
         manager: Arc<Mutex<Self>>,
-        message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>,
+        message_queue: MessageQueue
     ) {
         loop {
             // Sleep for a while
