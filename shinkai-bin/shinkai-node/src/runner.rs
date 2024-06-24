@@ -1,8 +1,4 @@
-use super::db::ShinkaiDB;
-use super::managers::identity_manager::IdentityManagerTrait;
 use super::network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
-use super::network::ws_manager::{WSUpdateHandler, WebSocketManager};
-use super::network::ws_routes::run_ws_api;
 use super::network::Node;
 use super::utils::environment::{fetch_static_server_env, NodeEnvironment};
 use super::utils::static_server::start_static_server;
@@ -15,7 +11,6 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -62,13 +57,7 @@ impl From<Box<dyn StdError + Send + Sync>> for NodeRunnerError {
 }
 
 pub async fn initialize_node() -> Result<
-    (
-        Sender<NodeCommand>,
-        JoinHandle<()>,
-        JoinHandle<()>,
-        JoinHandle<()>,
-        Weak<Mutex<Node>>,
-    ),
+    (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, Weak<Mutex<Node>>),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     // Check if TELEMETRY_ENDPOINT is defined
@@ -189,24 +178,13 @@ pub async fn initialize_node() -> Result<
         vector_fs_db_path.clone(),
         Some(embedding_generator),
         Some(unstructured_api),
+        node_env.ws_address,
     )
     .await;
 
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
     let node_copy = Arc::downgrade(&start_node.clone());
-
-    // Run the API server and node in separate tasks
-    // Get identity_manager before starting the node
-    let identity_manager = {
-        let node = start_node.lock().await;
-        node.identity_manager.clone()
-    };
-
-    let shinkai_db = {
-        let node = start_node.lock().await;
-        node.db.clone()
-    };
 
     // Node task
     let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
@@ -265,11 +243,6 @@ pub async fn initialize_node() -> Result<
         }
     });
 
-    let shinkai_db_copy = Arc::downgrade(&shinkai_db.clone());
-    let ws_server = tokio::spawn(async move {
-        init_ws_server(&node_env, identity_manager, shinkai_db_copy).await;
-    });
-
     #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     tokio::spawn(async {
         use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
@@ -285,20 +258,18 @@ pub async fn initialize_node() -> Result<
     });
 
     // Return the node_commands_sender_copy and the tasks
-    Ok((node_commands_sender_copy, api_server, node_task, ws_server, node_copy))
+    Ok((node_commands_sender_copy, api_server, node_task, node_copy))
 }
 
 pub async fn run_node_tasks(
     api_server: JoinHandle<()>,
     node_task: JoinHandle<()>,
-    ws_server: JoinHandle<()>,
     _: Weak<Mutex<Node>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_server_abort = api_server.abort_handle();
     let node_task_abort = node_task.abort_handle();
-    let ws_server_abort = ws_server.abort_handle();
 
-    match tokio::try_join!(api_server, node_task, ws_server) {
+    match tokio::try_join!(api_server, node_task) {
         Ok(_) => {
             shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "All tasks completed");
             Ok(())
@@ -306,7 +277,6 @@ pub async fn run_node_tasks(
         Err(e) => {
             api_server_abort.abort();
             node_task_abort.abort();
-            ws_server_abort.abort();
 
             Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
         }
@@ -403,29 +373,6 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
     RemoteEmbeddingGenerator::new(model, &api_url, api_key)
 }
 
-async fn init_ws_server(
-    node_env: &NodeEnvironment,
-    identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
-    shinkai_db: Weak<ShinkaiDB>,
-) {
-    let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
-        let identity_manager_inner = identity_manager.lock().await;
-        let boxed_identity_manager = identity_manager_inner.clone_box();
-        Arc::new(Mutex::new(boxed_identity_manager))
-    };
-
-    let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
-    // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), shinkai_name, new_identity_manager).await;
-
-    // Update ShinkaiDB with manager so it can trigger updates
-    {
-        let db = shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
-    }
-    run_ws_api(node_env.ws_address, Arc::clone(&manager)).await;
-}
-
 /// Prints Useful Node information at startup
 pub fn print_node_info(
     node_env: &NodeEnvironment,
@@ -437,7 +384,7 @@ pub fn print_node_info(
     println!("---------------------------------------------------------------");
     println!("Node API address: {}", node_env.api_listen_address);
     println!("Node TCP address: {}", node_env.listen_address);
-    println!("Node WS address: {}", node_env.ws_address);
+    println!("Node WS address: {:?}", node_env.ws_address);
     println!("Node Shinkai identity: {}", node_env.global_identity_name);
     println!("Node Main Profile: main (assumption)"); // Assuming "main" as the main profile
     println!("Node encryption pk: {}", encryption_pk);

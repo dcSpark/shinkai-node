@@ -212,6 +212,7 @@ fn mirror_sync_tests() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 

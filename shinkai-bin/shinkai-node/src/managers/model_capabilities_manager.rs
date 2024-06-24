@@ -1,11 +1,14 @@
 use crate::{
-    db::ShinkaiDB, llm_provider::{
+    db::ShinkaiDB,
+    llm_provider::{
         error::LLMProviderError,
         execution::prompts::prompts::Prompt,
         providers::shared::{
-            llm_message::LlmMessage, openai::openai_prepare_messages, shared_model_logic::{llama_prepare_messages, llava_prepare_messages}
+            llm_message::LlmMessage,
+            openai::openai_prepare_messages,
+            shared_model_logic::{llama_prepare_messages, llava_prepare_messages},
         },
-    }
+    },
 };
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
@@ -100,7 +103,11 @@ impl ModelCapabilitiesManager {
     pub async fn new(db: Weak<ShinkaiDB>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
         let llm_providers = Self::get_llm_providers(&db_arc, profile.clone()).await;
-        Self { db, profile, llm_providers }
+        Self {
+            db,
+            profile,
+            llm_providers,
+        }
     }
 
     // Function to get all llm providers from the database for a profile
@@ -154,6 +161,9 @@ impl ModelCapabilitiesManager {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 }
                 model_type if model_type.starts_with("bakllava") => {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+                model_type if model_type.starts_with("moondream") => {
                     vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 }
                 model_type if model_type.contains("minicpm_llama3") => {
@@ -218,7 +228,10 @@ impl ModelCapabilitiesManager {
     // Function to check capabilities
     pub async fn check_capabilities(&self) -> Vec<(Vec<ModelCapability>, ModelCost, ModelPrivacy)> {
         let llm_providers = self.llm_providers.clone();
-        llm_providers.into_iter().map(|llm_provider| Self::get_capability(&llm_provider)).collect()
+        llm_providers
+            .into_iter()
+            .map(|llm_provider| Self::get_capability(&llm_provider))
+            .collect()
     }
 
     // Function to check if a specific capability is available
@@ -269,9 +282,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::LocalLLM(_) => {
                 Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
-            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
-                shinkai_backend.model_type().clone(),
-            )),
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => Err(
+                ModelCapabilitiesManagerError::NotImplemented(shinkai_backend.model_type().clone()),
+            ),
             LLMProviderInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("mistral")
                     || ollama.model_type.starts_with("llama2")
@@ -304,6 +317,7 @@ impl ModelCapabilitiesManager {
                 } else if ollama.model_type.starts_with("llava")
                     || ollama.model_type.starts_with("bakllava")
                     || ollama.model_type.starts_with("llava-phi3")
+                    || ollama.model_type.starts_with("moondream")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
@@ -331,7 +345,7 @@ impl ModelCapabilitiesManager {
                 {
                     128_000
                 } else {
-                    32_000 
+                    32_000
                 }
             }
             LLMProviderInterface::GenericAPI(genericapi) => {
@@ -501,7 +515,6 @@ impl ModelCapabilitiesManager {
         let buffer_percentage = 0.1;
         let char_count = text.chars().count();
         let estimated_tokens = (char_count as f64 / average_token_size as f64).ceil() as usize;
-        
 
         (estimated_tokens as f64 * (1.0 - buffer_percentage)).floor() as usize
     }

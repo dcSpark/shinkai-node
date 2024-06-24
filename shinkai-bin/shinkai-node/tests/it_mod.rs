@@ -33,7 +33,7 @@ mod it {
     mod vector_fs_api_tests;
     mod vector_fs_tests;
     mod subscription_http_upload_tests;
-    // mod websocket_tests;
+    mod websocket_tests;
     
     mod z_shinkai_mirror_tests;
     mod tcp_proxy_tests;

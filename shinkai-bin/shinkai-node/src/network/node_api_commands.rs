@@ -1,23 +1,12 @@
 use super::{
-    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
-    node_api::{APIError, SendResponseBodyData},
-    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
-    node_error::NodeError,
-    node_shareable_logic::validate_message_main_logic,
-    Node,
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS}, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, ws_manager::WSUpdateHandler, Node
 };
 use crate::{
-    db::db_errors::ShinkaiDBError,
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    schemas::{
+    db::db_errors::ShinkaiDBError, llm_provider::job_manager::JobManager, managers::IdentityManager, network::ws_manager, schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
-    },
-    tools::js_toolkit_executor::JSToolkitExecutor,
-    utils::update_global_identity::update_global_identity_name,
-    vector_fs::vector_fs::VectorFS,
+    }, tools::js_toolkit_executor::JSToolkitExecutor, utils::update_global_identity::update_global_identity_name, vector_fs::vector_fs::VectorFS
 };
 use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
@@ -630,6 +619,7 @@ impl Node {
         identity_secret_key: SigningKey,
         initial_llm_providers: Vec<SerializedLLMProvider>,
         msg: ShinkaiMessage,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("api_handle_registration_code_usage");
@@ -950,6 +940,7 @@ impl Node {
                                             identity_secret_key.clone(),
                                             llm_provider.clone(),
                                             &profile,
+                                            ws_manager.clone(),
                                         )
                                         .await?;
                                     }
@@ -2019,6 +2010,7 @@ impl Node {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<(), APIError>>,
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) = match Self::validate_and_extract_payload::<APIAddOllamaModels>(
@@ -2085,6 +2077,7 @@ impl Node {
             identity_secret_key,
             input_payload.models,
             requester_name,
+            ws_manager,
         )
         .await
         {
@@ -2114,6 +2107,7 @@ impl Node {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = Self::validate_message(
@@ -2188,6 +2182,7 @@ impl Node {
             identity_secret_key.clone(),
             serialized_llm_provider.agent,
             &profile,
+            ws_manager,
         )
         .await
         {
@@ -2877,6 +2872,7 @@ impl Node {
         identity_secret_key: SigningKey,
         potentially_encrypted_msg: ShinkaiMessage,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -2941,7 +2937,7 @@ impl Node {
                                 Err(_) => None,
                             };
 
-                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id)
+                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id, ws_manager.clone())
                                 .await
                                 .map_err(|e| {
                                     shinkai_log(
@@ -3033,6 +3029,7 @@ impl Node {
             proxy_connection_info,
             db.clone(),
             identity_manager.clone(),
+            ws_manager.clone(),
             true,
             None,
         );

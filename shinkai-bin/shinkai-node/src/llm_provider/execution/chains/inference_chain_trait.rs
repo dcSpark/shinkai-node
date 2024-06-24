@@ -2,12 +2,15 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::providers::shared::openai::FunctionCall;
 use crate::llm_provider::{error::LLMProviderError, job::Job};
 use crate::db::ShinkaiDB;
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use tokio::sync::Mutex;
+use std::fmt;
 use std::{collections::HashMap, sync::Arc};
 
 /// Trait that abstracts top level functionality between the inference chains. This allows
@@ -132,7 +135,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
 /// Struct that represents the generalized context available to all chains as input. Note not all chains require
 /// using all fields in this struct, but they are available nonetheless.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct InferenceChainContext {
     pub db: Arc<ShinkaiDB>,
     pub vector_fs: Arc<VectorFS>,
@@ -148,6 +151,7 @@ pub struct InferenceChainContext {
     pub max_tokens_in_prompt: usize,
     pub score_results: HashMap<String, ScoreResult>,
     pub raw_files: RawFiles,
+    pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl InferenceChainContext {
@@ -164,6 +168,7 @@ impl InferenceChainContext {
         max_iterations: u64,
         max_tokens_in_prompt: usize,
         score_results: HashMap<String, ScoreResult>,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         Self {
             db,
@@ -179,6 +184,7 @@ impl InferenceChainContext {
             max_tokens_in_prompt,
             score_results,
             raw_files: None,
+            ws_manager_trait,
         }
     }
 
@@ -190,6 +196,27 @@ impl InferenceChainContext {
     /// Updates the raw files for this context
     pub fn update_raw_files(&mut self, new_raw_files: RawFiles) {
         self.raw_files = new_raw_files;
+    }
+}
+
+impl fmt::Debug for InferenceChainContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InferenceChainContext")
+            .field("db", &self.db)
+            .field("vector_fs", &self.vector_fs)
+            .field("full_job", &self.full_job)
+            .field("user_message", &self.user_message)
+            .field("llm_provider", &self.llm_provider)
+            .field("execution_context", &self.execution_context)
+            .field("generator", &self.generator)
+            .field("user_profile", &self.user_profile)
+            .field("max_iterations", &self.max_iterations)
+            .field("iteration_count", &self.iteration_count)
+            .field("max_tokens_in_prompt", &self.max_tokens_in_prompt)
+            .field("score_results", &self.score_results)
+            .field("raw_files", &self.raw_files)
+            .field("ws_manager_trait", &self.ws_manager_trait.is_some())
+            .finish()
     }
 }
 

@@ -1,12 +1,13 @@
 use crate::db::{ShinkaiDB, Topic};
+use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use crate::network::subscription_manager::fs_entry_tree::FSEntryTree;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use crate::network::ws_manager::{self, WSUpdateHandler};
 use crate::vector_fs::vector_fs::VectorFS;
-use crate::llm_provider::queue::job_queue_manager::JobQueueManager;
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
@@ -96,6 +97,7 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -135,6 +137,7 @@ impl NetworkJobManager {
             external_subscription_manager,
             network_job_queue_manager.clone(),
             proxy_connection_info,
+            ws_manager.clone(),
             |job,
              db,
              vector_fs,
@@ -144,7 +147,8 @@ impl NetworkJobManager {
              identity_manager,
              my_subscription_manager,
              external_subscription_manager,
-             proxy_connection_info | {
+             proxy_connection_info,
+             ws_manager| {
                 Box::pin(NetworkJobManager::process_network_request_queued(
                     job,
                     db,
@@ -156,6 +160,7 @@ impl NetworkJobManager {
                     my_subscription_manager,
                     external_subscription_manager,
                     proxy_connection_info,
+                    ws_manager,
                 ))
             },
         )
@@ -180,17 +185,19 @@ impl NetworkJobManager {
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         job_queue_manager: Arc<Mutex<JobQueueManager<NetworkJobQueue>>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
-                NetworkJobQueue,                       // job to process
-                Weak<ShinkaiDB>,                       // db
-                Weak<VectorFS>,                        // vector_fs
-                ShinkaiName,                           // my_profile_name
-                EncryptionStaticKey,                   // my_encryption_secret_key
-                SigningKey,                            // my_signature_secret_key
-                Arc<Mutex<IdentityManager>>,           // identity_manager
-                Arc<Mutex<MySubscriptionsManager>>,    // my_subscription_manager
-                Arc<Mutex<ExternalSubscriberManager>>, // external_subscription_manager
-                Weak<Mutex<Option<ProxyConnectionInfo>>>,           // proxy_connection_info
+                NetworkJobQueue,                          // job to process
+                Weak<ShinkaiDB>,                          // db
+                Weak<VectorFS>,                           // vector_fs
+                ShinkaiName,                              // my_profile_name
+                EncryptionStaticKey,                      // my_encryption_secret_key
+                SigningKey,                               // my_signature_secret_key
+                Arc<Mutex<IdentityManager>>,              // identity_manager
+                Arc<Mutex<MySubscriptionsManager>>,       // my_subscription_manager
+                Arc<Mutex<ExternalSubscriberManager>>,    // external_subscription_manager
+                Weak<Mutex<Option<ProxyConnectionInfo>>>, // proxy_connection_info
+                Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>, // ws_manager
             ) -> Pin<Box<dyn Future<Output = Result<String, NetworkJobQueueError>> + Send>>
             + Send
             + Sync
@@ -268,6 +275,7 @@ impl NetworkJobManager {
                     let my_subscription_manager_clone_2 = my_subscription_manager_clone.clone();
                     let external_subscription_manager_clone_2 = external_subscription_manager_clone.clone();
                     let proxy_connection_info = proxy_connection_info.clone();
+                    let ws_manager = ws_manager.clone();
 
                     let job_processing_fn = Arc::clone(&job_processing_fn);
 
@@ -277,7 +285,7 @@ impl NetworkJobManager {
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
                             let job_queue_manager = job_queue_manager.lock().await;
-                            
+
                             job_queue_manager.peek(&job_id).await
                         };
 
@@ -296,6 +304,7 @@ impl NetworkJobManager {
                                         my_subscription_manager_clone_2,
                                         external_subscription_manager_clone_2,
                                         proxy_connection_info,
+                                        ws_manager,
                                     )
                                     .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
@@ -367,6 +376,7 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, NetworkJobQueueError> {
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -385,8 +395,8 @@ impl NetworkJobManager {
             }
             NetworkMessageType::ShinkaiMessage => {
                 let proxy_connection_info = proxy_connection_info
-                .upgrade()
-                .ok_or(NetworkJobQueueError::ProxyConnectionInfoUpgradeFailed)?;
+                    .upgrade()
+                    .ok_or(NetworkJobQueueError::ProxyConnectionInfoUpgradeFailed)?;
 
                 let _ = Self::handle_message_internode(
                     job.receiver_address,
@@ -400,6 +410,7 @@ impl NetworkJobManager {
                     my_subscription_manager.clone(),
                     external_subscription_manager.clone(),
                     proxy_connection_info,
+                    ws_manager,
                 )
                 .await;
             }
@@ -578,7 +589,10 @@ impl NetworkJobManager {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Debug,
-                    &format!("handle_receiving_vr_pack_from_subscription diff: {:?}", vr_pack_plus_changes.diff),
+                    &format!(
+                        "handle_receiving_vr_pack_from_subscription diff: {:?}",
+                        vr_pack_plus_changes.diff
+                    ),
                 );
                 let mut deletions = FSEntryTreeGenerator::find_deletions(&vr_pack_plus_changes.diff);
                 shinkai_log(
@@ -689,6 +703,7 @@ impl NetworkJobManager {
         my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
         external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NetworkJobQueueError> {
         let maybe_db = shinkai_db
             .upgrade()
@@ -777,6 +792,7 @@ impl NetworkJobManager {
             my_subscription_manager,
             external_subscription_manager,
             proxy_connection_info,
+            ws_manager,
         )
         .await
     }

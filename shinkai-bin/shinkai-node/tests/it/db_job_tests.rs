@@ -222,7 +222,7 @@ mod tests {
         );
 
         // Insert the ShinkaiMessage into the database
-        shinkai_db.unsafe_insert_inbox_message(&message, None).await.unwrap();
+        shinkai_db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
 
         // Update step history
         shinkai_db
@@ -362,7 +362,7 @@ mod tests {
 
         // Add a message to the job
         let _ = shinkai_db
-            .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+            .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, None)
             .await;
 
         // Check if the job inbox is not empty after adding a message
@@ -413,7 +413,7 @@ mod tests {
 
             // Add a message to the job
             let _ = shinkai_db
-                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone())
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
             // Update the parent message according to the tree structure
@@ -516,7 +516,7 @@ mod tests {
 
             // Add a message to the job
             let _ = shinkai_db
-                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone())
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
             // Add a step history
@@ -685,7 +685,7 @@ mod tests {
 
             // Insert the ShinkaiMessage into the database
             shinkai_db
-                .unsafe_insert_inbox_message(&message, parent_hash.clone())
+                .unsafe_insert_inbox_message(&message, parent_hash.clone(), None)
                 .await
                 .unwrap();
 
@@ -829,7 +829,7 @@ mod tests {
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
             let _result = shinkai_db
-                .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None)
+                .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None, None)
                 .await;
         }
 

@@ -5,6 +5,8 @@ use aes_gcm::KeyInit;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
+use serde::Deserialize;
+use serde::Serialize;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -28,6 +30,20 @@ use crate::schemas::identity::Identity;
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageType {
+    ShinkaiMessage,
+    Stream,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSMessagePayload {
+    pub message_type: MessageType,
+    pub inbox: String,
+    pub message: Option<String>,
+    pub error_message: Option<String>,
+}
 
 #[derive(Debug)]
 pub enum WebSocketManagerError {
@@ -60,8 +76,10 @@ impl fmt::Debug for WebSocketManager {
 
 #[async_trait]
 pub trait WSUpdateHandler {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String);
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool);
 }
+
+pub type MessageQueue = Arc<Mutex<VecDeque<(WSTopic, String, String, bool)>>>;
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
@@ -71,7 +89,7 @@ pub struct WebSocketManager {
     shinkai_db: Weak<ShinkaiDB>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
-    message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
+    message_queue: MessageQueue,
 }
 
 impl Clone for WebSocketManager {
@@ -115,7 +133,7 @@ impl WebSocketManager {
 
     pub async fn start_message_sender(
         manager: Arc<Mutex<Self>>,
-        message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
+        message_queue: MessageQueue
     ) {
         loop {
             // Sleep for a while
@@ -127,13 +145,13 @@ impl WebSocketManager {
                 queue.pop_front()
             };
 
-            if let Some((topic, subtopic, update)) = message {
+            if let Some((topic, subtopic, update, bool)) = message {
                 shinkai_log(
                     ShinkaiLogOption::WsAPI,
                     ShinkaiLogLevel::Debug,
                     format!("Sending update to topic: {}", topic).as_str(),
                 );
-                manager.lock().await.handle_update(topic, subtopic, update).await;
+                manager.lock().await.handle_update(topic, subtopic, update, bool).await;
             }
         }
     }
@@ -348,17 +366,24 @@ impl WebSocketManager {
         );
     }
 
-    // pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {
-    //      self.connections.values().cloned().collect()
-    // }
-
-    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String) {
+    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Debug,
             format!("Sending update to topic: {}", topic_subtopic).as_str(),
         );
+
+        // Create the WSMessagePayload
+        let payload = WSMessagePayload {
+            message_type: if is_stream { MessageType::Stream } else { MessageType::ShinkaiMessage },
+            inbox: subtopic.clone(),
+            message: Some(update.clone()),
+            error_message: None,
+        };
+
+        // Serialize the payload to JSON
+        let payload_json = serde_json::to_string(&payload).expect("Failed to serialize WSMessagePayload");
 
         // Send the update to all active connections that are subscribed to the topic
         for (id, connection) in self.connections.iter() {
@@ -376,14 +401,17 @@ impl WebSocketManager {
                     match ShinkaiName::new(id.clone()) {
                         Ok(shinkai_name) => {
                             let shinkai_name_clone = shinkai_name.clone();
-                            if !self.has_access(shinkai_name_clone, topic.clone(), Some(subtopic.clone())).await {
+                            if !self
+                                .has_access(shinkai_name_clone, topic.clone(), Some(subtopic.clone()))
+                                .await
+                            {
                                 continue;
                             }
                             eprintln!(
                                 "Access granted for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
                                 shinkai_name, topic, subtopic
                             );
-                        },
+                        }
                         Err(e) => {
                             shinkai_log(
                                 ShinkaiLogOption::WsAPI,
@@ -402,7 +430,7 @@ impl WebSocketManager {
                 let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
                 let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let encrypted_update = cipher.encrypt(nonce, update.as_ref()).expect("encryption failure!");
+                let encrypted_update = cipher.encrypt(nonce, payload_json.as_ref()).expect("encryption failure!");
                 let encrypted_update_hex = hex::encode(&encrypted_update);
 
                 match connection.send(Message::text(encrypted_update_hex.clone())).await {
@@ -448,8 +476,8 @@ impl WebSocketManager {
 
 #[async_trait]
 impl WSUpdateHandler for WebSocketManager {
-    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String) {
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String, is_stream: bool) {
         let mut queue = self.message_queue.lock().await;
-        queue.push_back((topic, subtopic, update));
+        queue.push_back((topic, subtopic, update, is_stream));
     }
 }

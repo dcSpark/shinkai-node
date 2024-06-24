@@ -8,6 +8,7 @@ use crate::{
             fs_entry_tree::FSEntryTree,
             my_subscription_manager::MySubscriptionsManager,
         },
+        ws_manager::WSUpdateHandler,
         Node,
     },
 };
@@ -61,6 +62,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
@@ -103,6 +105,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_subscription_manager,
                 external_subscription_manager,
                 proxy_connection_info,
+                ws_manager,
             )
             .await
         }
@@ -127,6 +130,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_subscription_manager,
                 external_subscription_manager,
                 proxy_connection_info,
+                ws_manager,
             )
             .await
         }
@@ -143,6 +147,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 maybe_db,
                 maybe_identity_manager,
                 proxy_connection_info,
+                ws_manager,
             )
             .await
         }
@@ -182,6 +187,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_subscription_manager,
                 external_subscription_manager,
                 proxy_connection_info,
+                ws_manager,
             )
             .await
         }
@@ -246,6 +252,7 @@ pub async fn handle_ping(
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     ping_pong(
@@ -259,6 +266,7 @@ pub async fn handle_ping(
         maybe_db,
         maybe_identity_manager,
         proxy_connection_info,
+        ws_manager,
     )
     .await
 }
@@ -279,6 +287,7 @@ pub async fn handle_default_encryption(
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
@@ -307,6 +316,7 @@ pub async fn handle_default_encryption(
                             my_subscription_manager,
                             external_subscription_manager,
                             proxy_connection_info,
+                            ws_manager.clone(),
                         )
                         .await?;
                     }
@@ -320,6 +330,7 @@ pub async fn handle_default_encryption(
                         clone_static_secret_key(my_encryption_secret_key),
                         maybe_db.clone(),
                         maybe_identity_manager.clone(),
+                        ws_manager.clone(),
                     )
                     .await?;
 
@@ -335,6 +346,7 @@ pub async fn handle_default_encryption(
                         my_subscription_manager,
                         external_subscription_manager,
                         proxy_connection_info,
+                        ws_manager,
                     )
                     .await;
                 }
@@ -367,6 +379,7 @@ pub async fn handle_network_message_cases(
     my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
     external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
@@ -416,6 +429,7 @@ pub async fn handle_network_message_cases(
             clone_static_secret_key(my_encryption_secret_key),
             maybe_db.clone(),
             maybe_identity_manager.clone(),
+            ws_manager.clone(),
         )
         .await?;
     }
@@ -486,6 +500,7 @@ pub async fn handle_network_message_cases(
                         proxy_connection_info,
                         maybe_db,
                         maybe_identity_manager,
+                        ws_manager,
                         false,
                         None,
                     );
@@ -612,6 +627,7 @@ pub async fn handle_network_message_cases(
                                         proxy_connection_info,
                                         maybe_db,
                                         maybe_identity_manager,
+                                        ws_manager,
                                         false,
                                         None,
                                     );
@@ -979,6 +995,7 @@ pub async fn handle_network_message_cases(
                                         proxy_connection_info.clone(),
                                         maybe_db.clone(),
                                         maybe_identity_manager.clone(),
+                                        ws_manager.clone(),
                                         false,
                                         None,
                                     );
@@ -1036,6 +1053,7 @@ pub async fn handle_network_message_cases(
         my_subscription_manager,
         external_subscription_manager,
         proxy_connection_info,
+        ws_manager,
     )
     .await
 }
@@ -1050,9 +1068,10 @@ pub async fn send_ack(
     receiver: ShinkaiNameString,
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    _: Arc<Mutex<MySubscriptionsManager>>,
-    _: Arc<Mutex<ExternalSubscriberManager>>,
+    _my_subscription_manager: Arc<Mutex<MySubscriptionsManager>>,
+    _external_subscription_manager: Arc<Mutex<ExternalSubscriberManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -1070,6 +1089,7 @@ pub async fn send_ack(
         proxy_connection_info,
         maybe_db,
         maybe_identity_manager,
+        ws_manager,
         false,
         None,
     );
@@ -1096,6 +1116,7 @@ pub async fn ping_pong(
     maybe_db: Arc<ShinkaiDB>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 ) -> Result<(), NetworkJobQueueError> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
@@ -1118,6 +1139,7 @@ pub async fn ping_pong(
         proxy_connection_info,
         maybe_db,
         maybe_identity_manager,
+        ws_manager,
         false,
         None,
     );

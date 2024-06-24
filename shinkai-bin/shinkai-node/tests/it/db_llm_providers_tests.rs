@@ -17,7 +17,7 @@ mod tests {
         },
         shinkai_utils::shinkai_logging::init_default_tracing,
     };
-    use shinkai_node::llm_provider::{llm_provider::LLMProvider, execution::prompts::prompts::JobPromptGenerator};
+    use shinkai_node::llm_provider::{execution::prompts::prompts::JobPromptGenerator, llm_provider::LLMProvider};
     use shinkai_vector_resources::utils::hash_string;
 
     use super::*;
@@ -51,7 +51,9 @@ mod tests {
         // Add a new agent
         db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
-        let retrieved_agent = db.get_llm_provider(&test_agent.id, &profile).expect("Failed to get llm provider");
+        let retrieved_agent = db
+            .get_llm_provider(&test_agent.id, &profile)
+            .expect("Failed to get llm provider");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
         // Call get_all_llm_providers and check that it returns the right agent
@@ -216,13 +218,17 @@ mod tests {
         // Remove a profile from agent access
         let result = db.remove_profile_from_llm_provider_access(&test_agent.id, "sender1", &profile);
         assert!(result.is_ok(), "Failed to remove profile from agent access");
-        let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile).unwrap();
+        let profiles = db
+            .get_llm_provider_profiles_with_access(&test_agent.id, &profile)
+            .unwrap();
         assert_eq!(vec!["profilename", "sender2"], profiles);
 
         // Remove a toolkit from agent access
         let result = db.remove_toolkit_from_llm_provider_access(&test_agent.id, "toolkit1", &profile);
         assert!(result.is_ok(), "Failed to remove toolkit from agent access");
-        let toolkits = db.get_llm_provider_toolkits_accessible(&test_agent.id, &profile).unwrap();
+        let toolkits = db
+            .get_llm_provider_toolkits_accessible(&test_agent.id, &profile)
+            .unwrap();
         assert_eq!(vec!["toolkit2"], toolkits);
     }
 
@@ -273,10 +279,11 @@ mod tests {
         );
 
         let response = agent
-            .inference_markdown(JobPromptGenerator::basic_instant_response_prompt(
-                "Hello!".to_string(),
+            .inference(
+                JobPromptGenerator::basic_instant_response_prompt("Hello!".to_string(), None),
                 None,
-            ))
+                None,
+            )
             .await;
         match response {
             Ok(res) => assert_eq!(

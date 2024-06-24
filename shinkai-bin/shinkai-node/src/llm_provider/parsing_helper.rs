@@ -1,3 +1,5 @@
+use crate::network::ws_manager::WSUpdateHandler;
+
 use super::error::LLMProviderError;
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::JobPromptGenerator;
@@ -14,7 +16,9 @@ use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
+use tokio::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ParsingHelper {}
 
@@ -30,7 +34,7 @@ impl ParsingHelper {
 
         let mut extracted_answer: Option<String> = None;
         for _ in 0..5 {
-            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone()).await {
+            let response_json = match JobManager::inference_with_llm_provider(agent.clone(), prompt.clone(), None, None).await {
                 Ok(json) => json,
                 Err(_e) => {
                     continue; // Continue to the next iteration on error

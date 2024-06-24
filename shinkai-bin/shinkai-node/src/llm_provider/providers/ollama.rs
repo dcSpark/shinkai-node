@@ -1,6 +1,9 @@
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
-use crate::llm_provider::providers::shared::ollama::{ollama_conversation_prepare_messages, OllamaAPIStreamingResponse};
+use crate::llm_provider::providers::shared::ollama::{
+    ollama_conversation_prepare_messages, OllamaAPIStreamingResponse,
+};
 use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::network::ws_manager::WSUpdateHandler;
 
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::LLMService;
@@ -10,9 +13,13 @@ use reqwest::Client;
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use std::error::Error;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 fn truncate_image_content_in_payload(payload: &mut JsonValue) {
     if let Some(images) = payload.get_mut("images") {
@@ -36,6 +43,8 @@ impl LLMService for Ollama {
         _api_key: Option<&String>, // Note: not required
         prompt: Prompt,
         model: LLMProviderInterface,
+        inbox_name: Option<InboxName>,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}{}", base_url, "/api/chat");
@@ -101,6 +110,22 @@ impl LLMService for Ollama {
                             Ok(data) => {
                                 previous_json_chunk = "".to_string();
                                 response_text.push_str(&data.message.content);
+
+                                // Note: this is the code for enabling WS
+                                if let Some(ref manager) = ws_manager_trait {
+                                    if let Some(ref inbox_name) = inbox_name {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                data.message.content,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
                             }
                             Err(_e) => {
                                 previous_json_chunk += chunk_str.as_str();

@@ -1,9 +1,8 @@
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
-use crate::schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Result;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -172,11 +171,9 @@ impl MessageSchemaType {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Empty => true,
-            _ => false,
-        }
+        matches!(self, Self::Empty)
     }
 }
 
@@ -201,34 +198,10 @@ pub struct JobMessage {
     pub workflow: Option<String>,
 }
 
-impl JobMessage {
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobToolCall {
     pub tool_id: String,
     pub inputs: std::collections::HashMap<String, String>,
-}
-
-impl JobToolCall {
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -243,43 +216,6 @@ pub struct JobPreMessage {
     pub tool_calls: Vec<JobToolCall>,
     pub content: String,
     pub recipient: JobRecipient,
-}
-
-impl JobPreMessage {
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
-    }
-}
-
-impl JobRecipient {
-    pub fn validate_external(&self) -> std::result::Result<(), &'static str> {
-        match self {
-            Self::ExternalIdentity(identity) => {
-                if ShinkaiName::new(identity.to_string()).is_ok() {
-                    Ok(())
-                } else {
-                    Err("Invalid identity")
-                }
-            }
-            _ => Ok(()), // For other variants we do not perform validation, so return Ok
-        }
-    }
-
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -298,6 +234,7 @@ pub struct FileDestinationCredentials {
 }
 
 impl FileDestinationCredentials {
+    #[allow(dead_code)]
     pub fn new(
         source: String,
         access_key_id: String,

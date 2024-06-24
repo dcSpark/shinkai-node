@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::network::ws_manager::WSUpdateHandler;
+
 use super::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use super::execution::prompts::prompts::Prompt;
 use super::parsing_helper::ParsingHelper;
@@ -5,10 +9,12 @@ use super::providers::LLMService;
 use super::{error::LLMProviderError, execution::prompts::subprompts::SubPromptType};
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::{
     llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
     shinkai_name::ShinkaiName,
 };
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub struct LLMProvider {
@@ -74,55 +80,11 @@ impl LLMProvider {
         }
     }
 
-    /// Inferences the LLM model tied to the llm provider to get a response back.
-    /// We automatically  parse the JSON object out of the response into a JsonValue, perform retries,
-    /// and error if no object is found after everything.
-    pub async fn inference_markdown(&self, prompt: Prompt) -> Result<LLMInferenceResponse, LLMProviderError> {
-        let mut response = self.internal_inference_matching_model(prompt.clone()).await;
-        let mut attempts = 0;
-
-        let mut new_prompt = prompt.clone();
-        while let Err(err) = &response {
-            if attempts > 5 {
-                break;
-            }
-            attempts += 1;
-            let priority = attempts;
-
-            // If serde failed parsing the json string, then use advanced retrying
-            if let LLMProviderError::FailedSerdeParsingJSONString(response_markdown, serde_error) = err {
-                new_prompt.add_content(
-                    "Here is your markdown answer:".to_string(),
-                    SubPromptType::Assistant,
-                    priority,
-                );
-                new_prompt.add_content(
-                    format!("```{}```", response_markdown),
-                    SubPromptType::Assistant,
-                    priority,
-                );
-
-                new_prompt.add_content(
-                    "No, that is not valid markdown. You are an advanced assistant who can fix any invalid markdown without needing to see its proper template. Respond by fixing the markdown. Remember to always escape quotes properly inside of strings:\n\n".to_string(),
-                    SubPromptType::User,
-                    priority,
-                );
-                response = self.internal_inference_matching_model(new_prompt.clone()).await;
-            }
-            // Otherwise if another error happened, best to retry whole inference to start from scratch/get new response
-            else {
-                response = self.internal_inference_matching_model(prompt.clone()).await;
-            }
-        }
-
-        let final_response = response?;
-        // println!("!!!!!!!!!!LLM Response: {:?}", final_response.original_response_string);
-        Ok(final_response)
-    }
-
-    async fn internal_inference_matching_model(
+    pub async fn inference(
         &self,
         prompt: Prompt,
+        inbox_name: Option<InboxName>,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let response = match &self.model {
             LLMProviderInterface::OpenAI(openai) => {
@@ -133,6 +95,8 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
                     )
                     .await
             }
@@ -144,6 +108,8 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
                     )
                     .await
             }
@@ -155,6 +121,8 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
                     )
                     .await
             }
@@ -166,6 +134,8 @@ impl LLMProvider {
                         self.api_key.as_ref(),
                         prompt.clone(),
                         self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
                     )
                     .await
             }
@@ -176,6 +146,8 @@ impl LLMProvider {
                     self.api_key.as_ref(),
                     prompt.clone(),
                     self.model.clone(),
+                    inbox_name,
+                    ws_manager_trait,
                 )
                 .await
             }
