@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 use crate::{embeddings::Embedding, file_parser::file_parser::ShinkaiFileParser};
 
 /// An intermediary type for processing content into Node's held in VectorResources
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextGroup {
     pub text: String,
     pub metadata: HashMap<String, String>,

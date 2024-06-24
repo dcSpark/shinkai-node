@@ -11,6 +11,8 @@ default = []
 stream = ["reqwest/stream"]
 telemetry = ["opentelemetry", "opentelemetry_sdk", "opentelemetry-stdout", "opentelemetry-otlp", "opentelemetry-semantic-conventions", "tracing-opentelemetry", "tonic"]
 console = ["console-subscriber"]
+dynamic-pdf-parser = ["shinkai_vector_resources/dynamic-pdf-parser"]
+static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
 doctest = false
@@ -46,7 +48,7 @@ reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocki
 # llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 keyphrases = "0.3.3"
 shinkai_message_primitives = { workspace = true }
-shinkai_vector_resources = { workspace = true}
+shinkai_vector_resources = { workspace = true }
 shinkai_crypto_identities = { workspace = true}
 shinkai_tcp_relayer = { workspace = true}
 shinkai_dsl = { workspace = true}

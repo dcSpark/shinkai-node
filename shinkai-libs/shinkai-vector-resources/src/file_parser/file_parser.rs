@@ -16,6 +16,13 @@ use async_recursion::async_recursion;
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
+    #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
+    pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
+        use shinkai_ocr::image_parser::ImageParser;
+
+        ImageParser::check_and_download_dependencies().await
+    }
+
     #[cfg(feature = "desktop-only")]
     /// Processes the input file into a BaseVectorResource.
     pub async fn process_file_into_resource(
@@ -96,21 +103,20 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         unstructured_api: UnstructuredAPI,
     ) -> Result<Vec<TextGroup>, VRError> {
-        let mut text_groups = vec![];
-
         // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
+        let text_groups = if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
             file_buffer.clone(),
             file_name.clone(),
             max_node_text_size,
             source.clone(),
         ) {
-            text_groups = groups;
+            groups
         } else {
-            text_groups = unstructured_api
+            unstructured_api
                 .process_file_into_grouped_text(file_buffer, file_name.clone(), max_node_text_size)
-                .await?;
-        }
+                .await?
+        };
+
         Ok(text_groups)
     }
 
@@ -123,24 +129,23 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         unstructured_api: UnstructuredAPI,
     ) -> Result<Vec<TextGroup>, VRError> {
-        let mut text_groups = vec![];
-
         // If local processing is available, use it. Otherwise, use the unstructured API.
-        if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
+        let text_groups = if let Ok(groups) = LocalFileParser::process_file_into_grouped_text(
             file_buffer.clone(),
             file_name.clone(),
             max_node_text_size,
             source.clone(),
         ) {
-            text_groups = groups;
+            groups
         } else {
             // Assuming `process_file_into_grouped_text_blocking` is a synchronous version of `process_file_into_grouped_text`
-            text_groups = unstructured_api.process_file_into_grouped_text_blocking(
+            unstructured_api.process_file_into_grouped_text_blocking(
                 file_buffer,
                 file_name.clone(),
                 max_node_text_size,
-            )?;
-        }
+            )?
+        };
+
         Ok(text_groups)
     }
 
@@ -206,7 +211,7 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         let new_text_groups = ShinkaiFileParser::generate_text_group_embeddings(
@@ -243,7 +248,7 @@ impl ShinkaiFileParser {
         source: VRSourceReference,
         parsing_tags: &Vec<DataTag>,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
         distribution_info: DistributionInfo,
     ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
@@ -387,16 +392,16 @@ impl ShinkaiFileParser {
                     parsing_tags,
                     grouped_text.embedding.clone(),
                 )?;
-                doc.append_vector_resource_node_auto(new_doc, metadata);
+                let _ = doc.append_vector_resource_node_auto(new_doc, metadata);
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
+                    let _ = doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
                 } else {
                     let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
+                    let _ = doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
                 }
             }
         }

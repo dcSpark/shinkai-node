@@ -13,25 +13,32 @@ impl ShinkaiFileParser {
     /// Recursive function to collect all texts from the text groups and their subgroups
     pub fn collect_texts_and_indices(
         text_groups: &[TextGroup],
-        texts: &mut Vec<String>,
-        indices: &mut Vec<(Vec<usize>, usize)>,
         max_node_text_size: u64,
         path: Vec<usize>,
-    ) {
+    ) -> (Vec<String>, Vec<(Vec<usize>, usize)>) {
+        let mut texts = Vec::new();
+        let mut indices = Vec::new();
+
         for (i, text_group) in text_groups.iter().enumerate() {
             texts.push(text_group.format_text_for_embedding(max_node_text_size));
             let mut current_path = path.clone();
             current_path.push(i);
             indices.push((current_path.clone(), texts.len() - 1));
+
             for (j, sub_group) in text_group.sub_groups.iter().enumerate() {
                 texts.push(sub_group.format_text_for_embedding(max_node_text_size));
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
                 indices.push((sub_path.clone(), texts.len() - 1));
 
-                Self::collect_texts_and_indices(&sub_group.sub_groups, texts, indices, max_node_text_size, sub_path);
+                let (sub_texts, sub_indices) =
+                    Self::collect_texts_and_indices(&sub_group.sub_groups, max_node_text_size, sub_path);
+                texts.extend(sub_texts);
+                indices.extend(sub_indices);
             }
         }
+
+        (texts, indices)
     }
 
     /// Recursive function to assign the generated embeddings back to the text groups and their subgroups
@@ -60,15 +67,13 @@ impl ShinkaiFileParser {
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
     ) -> Result<Vec<TextGroup>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
         // Collect all texts from the text groups and their subgroups
-        let mut texts = Vec::new();
-        let mut indices = Vec::new();
-        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_node_text_size, vec![]);
+        let (texts, indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
@@ -133,15 +138,13 @@ impl ShinkaiFileParser {
         generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_node_text_size: u64,
-        collect_texts_and_indices: fn(&[TextGroup], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+        collect_texts_and_indices: fn(&[TextGroup], u64, Vec<usize>) -> (Vec<String>, Vec<(Vec<usize>, usize)>),
     ) -> Result<Vec<TextGroup>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
         // Collect all texts from the text groups and their subgroups
-        let mut texts = Vec::new();
-        let mut indices = Vec::new();
-        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_node_text_size, vec![]);
+        let (texts, indices) = collect_texts_and_indices(&text_groups, max_node_text_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];

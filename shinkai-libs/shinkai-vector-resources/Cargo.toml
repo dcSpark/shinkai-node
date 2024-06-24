@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [[test]]
+name = "pdf_parsing_tests"
+path = "tests/pdf_parsing_tests.rs"
+required-features = ["static-pdf-parser"]
+
+[[test]]
 name = "vector_resource_tests"
 path = "tests/vector_resource_tests.rs"
 
@@ -31,6 +36,7 @@ base64 = "0.13.0"
 futures = "0.3.30"
 urlencoding = "1.1.1"
 docx-rust = "0.1.7"
+shinkai_ocr = { path = "../shinkai-ocr", optional = true }
 
 [build-dependencies]
 reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
@@ -38,6 +44,8 @@ reqwest = { version = "0.11.26", features = ["json", "tokio-native-tls", "blocki
 [features]
 default = ["desktop-only"]
 desktop-only = ["reqwest/blocking", "comrak"]
+dynamic-pdf-parser = ["shinkai_ocr"]
+static-pdf-parser = ["shinkai_ocr/static"]
 
 wasm-http = []
 

@@ -6,8 +6,6 @@ use std::sync::{Arc, Mutex, Once};
 #[cfg(not(target_arch = "wasm32"))]
 use tracing::{debug, error, info, span, Level};
 
-
-
 static INIT: Once = Once::new();
 static TELEMETRY: Mutex<Option<Arc<dyn ShinkaiTelemetry + Send + Sync>>> = Mutex::new(None);
 

@@ -1,5 +1,5 @@
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use async_trait::async_trait;
 
@@ -70,7 +70,7 @@ pub trait EmbeddingGenerator: Sync + Send {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg(feature = "desktop-only")]
 pub struct RemoteEmbeddingGenerator {
     pub model_type: EmbeddingModelType,

@@ -4,6 +4,7 @@ members = [
   "shinkai-libs/shinkai-dsl",
   "shinkai-libs/shinkai-fs-mirror",
   "shinkai-libs/shinkai-message-primitives",
+  "shinkai-libs/shinkai-ocr",
   "shinkai-libs/shinkai-tcp-relayer",
   "shinkai-libs/shinkai-vector-resources",
   "shinkai-bin/*",
@@ -21,3 +22,4 @@ shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" 
 shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
 shinkai_fs_mirror = { path = "./shinkai-libs/shinkai-fs-mirror" }
 shinkai_dsl = { path = "./shinkai-libs/shinkai-dsl" }
+shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
