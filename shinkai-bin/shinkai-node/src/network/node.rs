@@ -6,12 +6,16 @@ use super::node_api_handlers::APIUseRegistrationCodeSuccessResponse;
 use super::node_error::NodeError;
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
 use super::subscription_manager::my_subscription_manager::MySubscriptionsManager;
+use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::llm_provider::job_manager::JobManager;
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
+use crate::network::ws_manager::WSUpdateHandler;
+use crate::network::ws_routes::run_ws_api;
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -478,6 +482,14 @@ pub struct Node {
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     // Handle for the listen_and_reconnect task
     pub listen_handle: Option<tokio::task::JoinHandle<()>>,
+    // Websocket Manager
+    pub ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
+    // Websocket Manager Trait
+    pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    // Websocket Address
+    pub ws_address: Option<SocketAddr>,
+    // Websocket Server
+    pub ws_server: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Node {
@@ -500,6 +512,7 @@ impl Node {
         vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         unstructured_api: Option<UnstructuredAPI>,
+        ws_address: Option<SocketAddr>,
     ) -> Arc<Mutex<Node>> {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_name.to_string().clone()) {
@@ -526,7 +539,7 @@ impl Node {
 
         // Setup Identity Manager
         let db_weak = Arc::downgrade(&db_arc);
-        let subidentity_manager = IdentityManager::new(db_weak, node_name.clone()).await.unwrap();
+        let subidentity_manager = IdentityManager::new(db_weak.clone(), node_name.clone()).await.unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
@@ -594,6 +607,24 @@ impl Node {
         })));
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
+        let identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
+            let identity_manager_inner = identity_manager.lock().await;
+            let boxed_identity_manager =
+                Box::new(identity_manager_inner.clone()) as Box<dyn IdentityManagerTrait + Send + 'static>;
+            Arc::new(Mutex::new(boxed_identity_manager))
+        };
+
+        let ws_manager = if ws_address.is_some() {
+            let manager = WebSocketManager::new(db_weak, node_name.clone(), identity_manager_trait).await;
+            Some(manager)
+        } else {
+            None
+        };
+
+        let ws_manager_trait = ws_manager
+            .clone()
+            .map(|manager| manager as Arc<Mutex<dyn WSUpdateHandler + Send>>);
+
         let ext_subscriber_manager = Arc::new(Mutex::new(
             ExternalSubscriberManager::new(
                 Arc::downgrade(&db_arc),
@@ -603,6 +634,7 @@ impl Node {
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
                 proxy_connection_info_weak.clone(),
+                ws_manager_trait.clone(),
             )
             .await,
         ));
@@ -616,6 +648,7 @@ impl Node {
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
                 proxy_connection_info_weak.clone(),
+                ws_manager_trait.clone(),
             )
             .await,
         ));
@@ -631,6 +664,7 @@ impl Node {
             my_subscription_manager.clone(),
             ext_subscriber_manager.clone(),
             proxy_connection_info_weak.clone(),
+            ws_manager_trait.clone(),
         )
         .await;
 
@@ -661,6 +695,10 @@ impl Node {
             network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
             listen_handle: None,
+            ws_manager,
+            ws_address,
+            ws_manager_trait,
+            ws_server: None,
         }))
     }
 
@@ -677,6 +715,7 @@ impl Node {
                 vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
                 self.unstructured_api.clone(),
+                self.ws_manager_trait.clone(),
             )
             .await,
         )));
@@ -695,11 +734,23 @@ impl Node {
                     clone_signature_secret_key(&self.identity_secret_key),
                     self.node_name.clone(),
                     Arc::clone(job_manager),
+                    self.ws_manager_trait.clone(),
                 )
                 .await,
             ))),
             None => None,
         };
+
+        {
+            // Starting the WebSocket server
+            if let (Some(ws_manager), Some(ws_address)) = (&self.ws_manager, self.ws_address) {
+                let ws_manager = Arc::clone(ws_manager);
+                let ws_server = tokio::spawn(async move {
+                    run_ws_api(ws_address, ws_manager).await;
+                });
+                self.ws_server = Some(ws_server);
+            }
+        }
 
         let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
         pin_mut!(listen_future);
@@ -742,6 +793,7 @@ impl Node {
                         let encryption_secret_key_clone = self.encryption_secret_key.clone();
                         let identity_manager_clone = self.identity_manager.clone();
                         let proxy_connection_info = self.proxy_connection_info.clone();
+                        let ws_manager_trait = self.ws_manager_trait.clone();
 
                         // Spawn a new task to call `retry_messages` asynchronously
                         tokio::spawn(async move {
@@ -750,6 +802,7 @@ impl Node {
                                 encryption_secret_key_clone,
                                 identity_manager_clone,
                                 proxy_connection_info,
+                                ws_manager_trait,
                             ).await;
                         });
                     },
@@ -764,6 +817,7 @@ impl Node {
                         let identity_manager_clone = Arc::clone(&self.identity_manager);
                         let listen_address_clone = self.listen_address;
                         let proxy_connection_info = self.proxy_connection_info.clone();
+                        let ws_manager_trait = self.ws_manager_trait.clone();
 
                         // Spawn a new task to call `ping_all` asynchronously
                         tokio::spawn(async move {
@@ -776,6 +830,7 @@ impl Node {
                                 identity_manager_clone,
                                 listen_address_clone,
                                 proxy_connection_info,
+                                ws_manager_trait,
                             ).await;
                         });
                     },
@@ -798,6 +853,7 @@ impl Node {
                                             let db_clone = Arc::clone(&self.db);
                                             let listen_address_clone = self.listen_address;
                                             let proxy_connection_info = self.proxy_connection_info.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Self::ping_all(
                                                     node_name_clone,
@@ -808,6 +864,7 @@ impl Node {
                                                     identity_manager_clone,
                                                     listen_address_clone,
                                                     proxy_connection_info,
+                                                    ws_manager_trait,
                                                 ).await;
                                             });
                                         },
@@ -839,6 +896,7 @@ impl Node {
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let proxy_connection_info = self.proxy_connection_info.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_send_onionized_message(
                                                     db_clone,
@@ -848,6 +906,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     msg,
                                                     proxy_connection_info,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -988,6 +1047,7 @@ impl Node {
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let db_clone = self.db.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_llm_provider(
                                                     db_clone,
@@ -996,6 +1056,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     agent,
                                                     &profile,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -1024,6 +1085,7 @@ impl Node {
                                             let identity_manager_clone = self.identity_manager.clone();
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::local_add_ollama_models(
                                                     db_clone,
@@ -1032,6 +1094,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     models,
                                                     target_profile,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -1065,6 +1128,7 @@ impl Node {
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
                                             let initial_llm_providers_clone = self.initial_llm_providers.clone();
                                             let job_manager = self.job_manager.clone().unwrap();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_handle_registration_code_usage(
                                                     db_clone,
@@ -1080,6 +1144,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     initial_llm_providers_clone,
                                                     msg,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -1184,6 +1249,7 @@ impl Node {
                                             let node_name_clone = self.node_name.clone();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_agent(
                                                     db_clone,
@@ -1193,6 +1259,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -1463,6 +1530,7 @@ impl Node {
                                             let job_manager_clone = self.job_manager.clone().unwrap();
                                             let encryption_secret_key_clone = self.encryption_secret_key.clone();
                                             let identity_secret_key_clone = self.identity_secret_key.clone();
+                                            let ws_manager_trait = self.ws_manager_trait.clone();
                                             tokio::spawn(async move {
                                                 let _ = Node::api_add_ollama_models(
                                                     db_clone,
@@ -1472,6 +1540,7 @@ impl Node {
                                                     identity_secret_key_clone,
                                                     encryption_secret_key_clone,
                                                     msg,
+                                                    ws_manager_trait,
                                                     res,
                                                 ).await;
                                             });
@@ -2262,7 +2331,7 @@ impl Node {
         listen_address: SocketAddr,
         network_job_manager: Arc<Mutex<NetworkJobManager>>,
         conn_limiter: Arc<ConnectionLimiter>,
-        node_name: ShinkaiName,
+        _node_name: ShinkaiName,
     ) -> io::Result<()> {
         let listener = TcpListener::bind(&listen_address).await?;
 
@@ -2426,6 +2495,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         let messages_to_retry = db.get_messages_to_retry_before(None)?;
 
@@ -2451,6 +2521,7 @@ impl Node {
                 proxy_connection_info.clone(),
                 db.clone(),
                 identity_manager.clone(),
+                ws_manager.clone(),
                 save_to_db_flag,
                 retry,
             );
@@ -2484,6 +2555,7 @@ impl Node {
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
     ) {
@@ -2528,6 +2600,7 @@ impl Node {
                         Arc::clone(&my_encryption_sk).as_ref().clone(),
                         db.clone(),
                         maybe_identity_manager.clone(),
+                        ws_manager,
                     )
                     .await;
                 }
@@ -2660,6 +2733,7 @@ impl Node {
         my_encryption_sk: EncryptionStaticKey,
         db: Arc<ShinkaiDB>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
         // We are just going to check for the body encryption
@@ -2739,7 +2813,7 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
+        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None, ws_manager).await;
         match db_result {
             Ok(_) => (),
             Err(e) => {
@@ -2868,6 +2942,14 @@ impl Node {
                 }
             }
             Err(e) => eprintln!("Failed to read validation data: {}", e),
+        }
+    }
+}
+
+impl Drop for Node {
+    fn drop(&mut self) {
+        if let Some(handle) = self.ws_server.take() {
+            handle.abort();
         }
     }
 }

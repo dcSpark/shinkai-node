@@ -1,4 +1,5 @@
 use super::subscription_manager::external_subscriber_manager::ExternalSubscriberManager;
+use super::ws_manager::{self, WSUpdateHandler};
 use super::Node;
 use crate::llm_provider::job_manager::JobManager;
 use crate::db::ShinkaiDB;
@@ -305,10 +306,11 @@ impl Node {
         identity_secret_key: SigningKey,
         agent: SerializedLLMProvider,
         profile: &ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<String>,
     ) {
         let result =
-            Self::internal_add_llm_provider(db, identity_manager, job_manager, identity_secret_key, agent, profile).await;
+            Self::internal_add_llm_provider(db, identity_manager, job_manager, identity_secret_key, agent, profile, ws_manager).await;
         let result_str = match result {
             Ok(_) => "true".to_string(),
             Err(e) => format!("Error: {:?}", e),
@@ -349,6 +351,7 @@ impl Node {
         identity_secret_key: SigningKey,
         input_models: Vec<String>,
         requester: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         res: Sender<Result<(), String>>,
     ) {
         let result = Self::internal_add_ollama_models(
@@ -358,6 +361,7 @@ impl Node {
             identity_secret_key,
             input_models,
             requester,
+            ws_manager,
         )
         .await;
         let _ = res.send(result).await;

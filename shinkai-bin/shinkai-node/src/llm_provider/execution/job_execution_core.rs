@@ -6,6 +6,7 @@ use crate::llm_provider::parsing_helper::ParsingHelper;
 use crate::llm_provider::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
+use crate::network::ws_manager::{self, WSUpdateHandler};
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
@@ -24,6 +25,8 @@ use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::DistributionInfo;
 use shinkai_vector_resources::vector_resource::{VRPack, VRPath};
+use tokio::sync::Mutex;
+use warp::filters::ws;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -37,7 +40,7 @@ use super::user_message_parser::ParsedUserMessage;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db))]
+    #[instrument(skip(identity_secret_key, generator, unstructured_api, vector_fs, db, ws_manager))]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Weak<ShinkaiDB>,
@@ -46,6 +49,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         unstructured_api: UnstructuredAPI,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, LLMProviderError> {
         let db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let vector_fs = vector_fs.upgrade().ok_or("Failed to upgrade vector_db").unwrap();
@@ -59,14 +63,14 @@ impl JobManager {
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
         let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
-            Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e).await,
+            Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,
         };
 
         // Ensure the user profile exists before proceeding with inference chain
         let user_profile = match user_profile {
             Some(profile) => profile,
             None => {
-                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound)
+                return Self::handle_error(&db, None, &job_id, &identity_secret_key, LLMProviderError::NoUserProfileFound, ws_manager)
                     .await
             }
         };
@@ -91,7 +95,7 @@ impl JobManager {
         )
         .await;
         if let Err(e) = process_files_result {
-            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
+            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
         }
 
         // 2.- *If* a workflow is found, processing job message is taken over by this alternate logic
@@ -104,12 +108,13 @@ impl JobManager {
             clone_signature_secret_key(&identity_secret_key),
             generator.clone(),
             user_profile.clone(),
+            ws_manager.clone(),
         )
         .await;
 
         let workflow_found = match workflow_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await,
+            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
         };
         if workflow_found {
             return Ok(job_id);
@@ -125,11 +130,12 @@ impl JobManager {
             job_message.profile.clone(),
             clone_signature_secret_key(&identity_secret_key),
             unstructured_api.clone(),
+            ws_manager.clone(),
         )
         .await;
         let jobkai_found = match jobkai_found_result {
             Ok(found) => found,
-            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await,
+            Err(e) => return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await,
         };
         if jobkai_found {
             return Ok(job_id);
@@ -145,11 +151,12 @@ impl JobManager {
             llm_provider_found.clone(),
             user_profile.clone(),
             generator,
+            ws_manager.clone(),
         )
         .await;
 
         if let Err(e) = inference_chain_result {
-            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e).await;
+            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
         }
 
         Ok(job_id)
@@ -162,6 +169,7 @@ impl JobManager {
         job_id: &str,
         identity_secret_key: &SigningKey,
         error: LLMProviderError,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -186,7 +194,7 @@ impl JobManager {
         )
         .expect("Failed to build error message");
 
-        db.add_message_to_job_inbox(job_id, &shinkai_message, None)
+        db.add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
             .await
             .expect("Failed to add error message to job inbox");
 
@@ -195,7 +203,7 @@ impl JobManager {
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
-    #[instrument(skip(identity_secret_key, db, vector_fs, generator))]
+    #[instrument(skip(identity_secret_key, db, vector_fs, generator, ws_manager))]
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
         db: Arc<ShinkaiDB>,
@@ -206,6 +214,7 @@ impl JobManager {
         llm_provider_found: Option<SerializedLLMProvider>,
         user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         let profile_name = user_profile.get_profile_name_string().unwrap_or_default();
         let job_id = full_job.job_id().to_string();
@@ -234,6 +243,7 @@ impl JobManager {
             prev_execution_context,
             generator,
             user_profile,
+            ws_manager.clone(),
         )
         .await?;
         let inference_response_content = inference_response.response;
@@ -271,7 +281,7 @@ impl JobManager {
             inference_response_content.to_string(),
             None,
         )?;
-        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
@@ -289,6 +299,7 @@ impl JobManager {
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<bool, LLMProviderError> {
         if job_message.workflow.is_none() {
             return Ok(false);
@@ -330,6 +341,7 @@ impl JobManager {
             2,
             max_tokens_in_prompt,
             HashMap::new(),
+            ws_manager.clone(),
         );
 
         // Note: we do this once so we are not re-reading the files multiple times for each operation
@@ -400,7 +412,7 @@ impl JobManager {
             response.to_string(),
             None,
         )?;
-        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
         db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
@@ -418,6 +430,7 @@ impl JobManager {
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
         _unstructured_api: UnstructuredAPI,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<bool, LLMProviderError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -488,6 +501,7 @@ impl JobManager {
                         profile.clone(),
                         clone_signature_secret_key(&identity_secret_key),
                         file_extension.to_string(),
+                        ws_manager.clone(),
                     )
                     .await?;
                     return Ok(true);

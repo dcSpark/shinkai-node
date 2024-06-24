@@ -5,6 +5,7 @@ use crate::managers::IdentityManager;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -65,6 +66,8 @@ pub struct MySubscriptionsManager {
     pub my_encryption_secret_key: EncryptionStaticKey,
     // The address of the proxy server (if any)
     pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    // Websocket manager
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl MySubscriptionsManager {
@@ -76,6 +79,7 @@ impl MySubscriptionsManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let db_prefix = "my_subscriptions_prefix_"; // needs to be 24 characters
         let subscriptions_queue = JobQueueManager::<ShinkaiSubscription>::new(
@@ -124,6 +128,7 @@ impl MySubscriptionsManager {
             my_encryption_secret_key,
             http_download_manager,
             proxy_connection_info,
+            ws_manager,
         }
     }
 
@@ -239,6 +244,7 @@ impl MySubscriptionsManager {
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
                         self.proxy_connection_info.clone(),
+                        self.ws_manager.clone(),
                     )
                     .await?;
 
@@ -261,6 +267,7 @@ impl MySubscriptionsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.ws_manager.clone(),
             )
             .await?;
 
@@ -365,6 +372,7 @@ impl MySubscriptionsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.ws_manager.clone(),
             )
             .await?;
 
@@ -496,6 +504,7 @@ impl MySubscriptionsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.ws_manager.clone(),
             )
             .await?;
 
@@ -734,6 +743,7 @@ impl MySubscriptionsManager {
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
                         self.proxy_connection_info.clone(),
+                        self.ws_manager.clone(),
                     )
                     .await?;
                 }
@@ -766,6 +776,7 @@ impl MySubscriptionsManager {
         my_encryption_secret_key: EncryptionStaticKey,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::MySubscriptions,
@@ -811,6 +822,7 @@ impl MySubscriptionsManager {
             proxy_connection_info,
             db,
             maybe_identity_manager,
+            ws_manager,
             false,
             None,
         );

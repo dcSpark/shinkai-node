@@ -46,10 +46,12 @@ use shinkai_message_primitives::{
 use tokio::sync::Mutex;
 
 use crate::{
-    llm_provider::{error::LLMProviderError, job_manager::JobManager},
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
+    llm_provider::{error::LLMProviderError, job_manager::JobManager},
+    network::ws_manager::WSUpdateHandler,
     planner::kai_files::{KaiJobFile, KaiSchemaType},
-    schemas::inbox_permission::InboxPermission, vector_fs::vector_fs::VectorFS,
+    schemas::inbox_permission::InboxPermission,
+    vector_fs::vector_fs::VectorFS,
 };
 
 pub struct CronManager {
@@ -58,6 +60,7 @@ pub struct CronManager {
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
     pub cron_processing_task: Option<tokio::task::JoinHandle<()>>,
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 #[derive(Debug)]
@@ -101,6 +104,7 @@ impl CronManager {
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let cron_processing_task = CronManager::process_job_queue(
             db.clone(),
@@ -109,7 +113,8 @@ impl CronManager {
             clone_signature_secret_key(&identity_secret_key),
             Self::cron_interval_time(),
             job_manager.clone(),
-            |job, db, vector_fs, identity_sk, job_manager, node_name, profile| {
+            ws_manager.clone(),
+            |job, db, vector_fs, identity_sk, job_manager, node_name, profile, ws_manager| {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db,
@@ -118,6 +123,7 @@ impl CronManager {
                     job_manager,
                     node_name,
                     profile,
+                    ws_manager.clone(),
                 ))
             },
         );
@@ -128,6 +134,7 @@ impl CronManager {
             node_profile_name: node_name,
             job_manager,
             cron_processing_task: Some(cron_processing_task),
+            ws_manager,
         }
     }
 
@@ -138,6 +145,7 @@ impl CronManager {
             .unwrap_or(60)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
         db: Weak<ShinkaiDB>,
         vector_fs: Weak<VectorFS>,
@@ -145,6 +153,7 @@ impl CronManager {
         identity_sk: SigningKey,
         cron_time_interval: u64,
         job_manager: Arc<Mutex<JobManager>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 CronTask,
                 Weak<ShinkaiDB>,
@@ -153,6 +162,7 @@ impl CronManager {
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
                 String,
+                Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
             ) -> Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
             + Send
             + Sync
@@ -213,6 +223,7 @@ impl CronManager {
                         let node_profile_name_clone = node_profile_name.clone();
                         let job_processing_fn_clone = Arc::clone(&job_processing_fn);
                         let profile_clone = profile.clone();
+                        let ws_manager = ws_manager.clone();
 
                         let handle = tokio::spawn(async move {
                             let result = job_processing_fn_clone(
@@ -223,6 +234,7 @@ impl CronManager {
                                 job_manager_clone,
                                 node_profile_name_clone,
                                 profile_clone,
+                                ws_manager,
                             )
                             .await;
                             match result {
@@ -252,6 +264,7 @@ impl CronManager {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Weak<ShinkaiDB>,
@@ -260,6 +273,7 @@ impl CronManager {
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
         profile: String,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<bool, CronManagerError> {
         shinkai_log(
             ShinkaiLogOption::CronExecution,
@@ -289,8 +303,13 @@ impl CronManager {
         // Note(Nico): should we close the job after the processing?
         let db_arc = db.upgrade().unwrap();
         let vector_fs = vector_fs.upgrade().unwrap();
-        let inbox_name_result =
-            JobManager::insert_kai_job_file_into_inbox(db_arc.clone(), vector_fs.clone(), "cron_job".to_string(), kai_file).await;
+        let inbox_name_result = JobManager::insert_kai_job_file_into_inbox(
+            db_arc.clone(),
+            vector_fs.clone(),
+            "cron_job".to_string(),
+            kai_file,
+        )
+        .await;
 
         if let Err(e) = inbox_name_result {
             shinkai_log(
@@ -330,7 +349,7 @@ impl CronManager {
             )
             .unwrap();
             db_arc
-                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
                 .await?;
             db_arc.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
@@ -381,6 +400,7 @@ impl CronManager {
     }
 
     // TODO: rename this or refactor it to a manager
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_cron_task(
         &self,
         profile: ShinkaiName,
@@ -397,7 +417,16 @@ impl CronManager {
         tokio::spawn(async move {
             let db_arc = db.upgrade().unwrap();
             db_arc
-                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, llm_provider_id)
+                .add_cron_task(
+                    profile,
+                    task_id,
+                    cron,
+                    prompt,
+                    subprompt,
+                    url,
+                    crawl_links,
+                    llm_provider_id,
+                )
                 .map_err(|e| CronManagerError::SomeError(e.to_string()))
         })
     }

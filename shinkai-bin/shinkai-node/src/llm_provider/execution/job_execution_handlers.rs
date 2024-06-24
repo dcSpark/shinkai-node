@@ -14,13 +14,12 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::utils::random_string;
+use tokio::sync::Mutex;
 
 use crate::{
     db::{db_errors::ShinkaiDBError, ShinkaiDB},
-    llm_provider::{
-        error::LLMProviderError, job::Job,
-        job_manager::JobManager,
-    },
+    llm_provider::{error::LLMProviderError, job::Job, job_manager::JobManager},
+    network::ws_manager::WSUpdateHandler,
     planner::kai_files::KaiJobFile,
     vector_fs::vector_fs::VectorFS,
 };
@@ -37,6 +36,7 @@ impl JobManager {
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
         file_extension: String,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
         let prev_execution_context = full_job.execution_context.clone();
 
@@ -64,6 +64,7 @@ impl JobManager {
             base64_image,
             0,
             3,
+            ws_manager.clone(),
         )
         .await?;
 
@@ -90,7 +91,7 @@ impl JobManager {
             inference_response_content.to_string(),
             None,
         )?;
-        db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message, None)
+        db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
         db.set_job_execution_context(full_job.job_id.clone(), prev_execution_context, None)?;
 

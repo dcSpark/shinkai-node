@@ -14,10 +14,11 @@ mod tests {
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
+    use shinkai_node::network::ws_manager::WSUpdateHandler;
     use shinkai_node::{
-        llm_provider::job_manager::JobManager,
         cron_tasks::cron_manager::{CronManager, CronManagerError},
         db::{db_cron_task::CronTask, ShinkaiDB},
+        llm_provider::job_manager::JobManager,
         managers::IdentityManager,
         vector_fs::vector_fs::VectorFS,
     };
@@ -111,6 +112,7 @@ mod tests {
                 vector_fs_weak.clone(),
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
+                None,
             )
             .await,
         ));
@@ -140,7 +142,8 @@ mod tests {
                   identity_sk: SigningKey,
                   job_manager: Arc<Mutex<JobManager>>,
                   node_profile_name: ShinkaiName,
-                  profile: String| {
+                  profile: String,
+                  _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>| {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db_weak_clone.clone(),
@@ -149,6 +152,7 @@ mod tests {
                     job_manager.clone(),
                     node_profile_name.clone(),
                     profile,
+                    None,
                 )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
             };
 
@@ -159,6 +163,7 @@ mod tests {
             clone_signature_secret_key(&identity_secret_key),
             CRON_INTERVAL_TIME,
             job_manager.clone(),
+            None,
             process_job_message_queued_wrapper,
         );
 

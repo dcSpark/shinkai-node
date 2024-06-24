@@ -6,6 +6,7 @@ use crate::network::network_manager::network_job_manager::VRPackPlusChanges;
 use crate::network::node::ProxyConnectionInfo;
 use crate::network::subscription_manager::fs_entry_tree_generator::FSEntryTreeGenerator;
 use crate::network::subscription_manager::subscriber_manager_error::SubscriberManagerError;
+use crate::network::ws_manager::{self, WSUpdateHandler};
 use crate::network::Node;
 use crate::schemas::identity::StandardIdentity;
 use crate::vector_fs::vector_fs::VectorFS;
@@ -91,6 +92,7 @@ pub struct ExternalSubscriberManager {
     pub process_state_updates_queue_handler: Option<tokio::task::JoinHandle<()>>,
     pub http_subscription_upload_manager: HttpSubscriptionUploadManager,
     pub proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl ExternalSubscriberManager {
@@ -102,6 +104,7 @@ impl ExternalSubscriberManager {
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Self {
         let db_prefix = "subscriptions_abcprefix_"; // dont change it
         let subscriptions_queue = JobQueueManager::<SubscriptionWithTree>::new(
@@ -136,6 +139,7 @@ impl ExternalSubscriberManager {
                 shared_folders_to_ephemeral_versioning.clone(),
                 thread_number,
                 proxy_connection_info.clone(),
+                ws_manager.clone(),
             )
             .await;
 
@@ -204,6 +208,7 @@ impl ExternalSubscriberManager {
             my_encryption_secret_key,
             http_subscription_upload_manager,
             proxy_connection_info,
+            ws_manager,
         };
 
         let result = manager.update_shared_folders().await;
@@ -256,6 +261,7 @@ impl ExternalSubscriberManager {
         subscription_ids_are_sync: Arc<DashMap<String, (String, usize)>>,
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) {
         let subscriptions_ids_to_process: Vec<SubscriptionId> = {
             let db = match db.upgrade() {
@@ -317,6 +323,7 @@ impl ExternalSubscriberManager {
                 node_name.clone(),
                 identity_manager.clone(),
                 proxy_connection_info.clone(),
+                ws_manager.clone(),
             )
             .await;
         }
@@ -336,6 +343,7 @@ impl ExternalSubscriberManager {
         shared_folders_to_ephemeral_versioning: Arc<DashMap<String, usize>>,
         _: usize, // tread_number
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> tokio::task::JoinHandle<()> {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let interval_minutes = env::var("SUBSCRIPTION_PROCESS_INTERVAL_MINUTES")
@@ -373,6 +381,7 @@ impl ExternalSubscriberManager {
                     subscription_ids_are_sync.clone(),
                     shared_folders_to_ephemeral_versioning.clone(),
                     proxy_connection_info.clone(),
+                    ws_manager.clone(),
                 )
                 .await;
 
@@ -1522,6 +1531,7 @@ impl ExternalSubscriberManager {
         node_name: ShinkaiName,
         maybe_identity_manager: Weak<Mutex<IdentityManager>>,
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), SubscriberManagerError> {
         shinkai_log(
             ShinkaiLogOption::ExtSubscriptions,
@@ -1578,6 +1588,7 @@ impl ExternalSubscriberManager {
                 my_encryption_secret_key.clone(),
                 maybe_identity_manager.clone(),
                 proxy_connection_info,
+                ws_manager,
             )
             .await?;
         } else {
@@ -1713,6 +1724,7 @@ impl ExternalSubscriberManager {
             self.subscription_ids_are_sync.clone(),
             self.shared_folders_to_ephemeral_versioning.clone(),
             self.proxy_connection_info.clone(),
+            self.ws_manager.clone(),
         )
         .await;
     }

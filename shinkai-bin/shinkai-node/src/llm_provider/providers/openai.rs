@@ -1,15 +1,20 @@
+use std::sync::Arc;
+
 use super::super::{error::LLMProviderError, execution::prompts::prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::network::ws_manager::WSUpdateHandler;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use tokio::sync::Mutex;
 
 fn truncate_image_url_in_payload(payload: &mut JsonValue) {
     if let Some(messages) = payload.get_mut("messages") {
@@ -43,6 +48,8 @@ impl LLMService for OpenAI {
         api_key: Option<&String>,
         prompt: Prompt,
         model: LLMProviderInterface,
+        inbox_name: Option<InboxName>,
+        _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {

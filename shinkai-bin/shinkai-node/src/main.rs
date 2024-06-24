@@ -28,5 +28,5 @@ pub async fn main() {
     }
 
     let result = initialize_node().await.unwrap();
-    let _ = run_node_tasks(result.1, result.2, result.3, result.4).await;
+    let _ = run_node_tasks(result.1, result.2, result.3).await;
 }

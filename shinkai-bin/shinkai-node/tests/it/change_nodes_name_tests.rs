@@ -65,6 +65,7 @@ fn change_nodes_name_test() {
             node1_fs_db_path,
             None,
             None,
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
@@ -155,6 +156,7 @@ fn change_nodes_name_test() {
             vec![],
             None,
             node1_fs_db_path,
+            None,
             None,
             None,
         );

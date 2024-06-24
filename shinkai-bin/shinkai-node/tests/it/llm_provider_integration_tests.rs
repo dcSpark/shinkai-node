@@ -149,6 +149,7 @@ fn node_llm_provider_registration() {
             node1_fs_db_path,
             None,
             None,
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {

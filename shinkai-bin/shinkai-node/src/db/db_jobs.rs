@@ -1,16 +1,19 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::llm_provider::execution::prompts::prompts::Prompt;
 use crate::llm_provider::execution::prompts::subprompts::SubPromptType;
 use crate::llm_provider::job::{Job, JobLike, JobStepResult};
+use crate::network::ws_manager::WSUpdateHandler;
 
 use rocksdb::{IteratorMode, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use tokio::sync::Mutex;
 
 impl ShinkaiDB {
     pub fn create_new_job(
@@ -656,8 +659,9 @@ impl ShinkaiDB {
         _: &str,
         message: &ShinkaiMessage,
         parent_message_key: Option<String>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), ShinkaiDBError> {
-        self.unsafe_insert_inbox_message(message, parent_message_key).await?;
+        self.unsafe_insert_inbox_message(message, parent_message_key, ws_manager).await?;
         Ok(())
     }
 }

@@ -9,12 +9,14 @@ use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job::{Job, JobLike};
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::providers::shared::openai::{FunctionCall, FunctionCallResponse};
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::tools::argument::ToolArgument;
 use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
 use crate::vector_fs::vector_fs::VectorFS;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
@@ -24,18 +26,30 @@ use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::any::Any;
+use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::instrument;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GenericInferenceChain {
     pub context: InferenceChainContext,
+    pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     // maybe add a new variable to hold a enum that allow for workflows and tools?
     // maybe another one for custom prompting? (so we can run customizedagents)
     // maybe something for general state of the prompt (useful if we are using tooling / workflows)
     // maybe something for websockets so we can send tokens as we get them
     // extend to allow for image(s) as well as inputs and outputs. New Enum?
+}
+
+impl fmt::Debug for GenericInferenceChain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GenericInferenceChain")
+            .field("context", &self.context)
+            .field("ws_manager_trait", &self.ws_manager_trait.is_some())
+            .finish()
+    }
 }
 
 #[async_trait]
@@ -60,6 +74,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.user_profile.clone(),
             self.context.max_iterations,
             self.context.max_tokens_in_prompt,
+            self.ws_manager_trait.clone(),
         )
         .await?;
         let job_execution_context = self.context.execution_context.clone();
@@ -68,12 +83,18 @@ impl InferenceChain for GenericInferenceChain {
 }
 
 impl GenericInferenceChain {
-    pub fn new(context: InferenceChainContext) -> Self {
-        Self { context }
+    pub fn new(
+        context: InferenceChainContext,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ) -> Self {
+        Self {
+            context,
+            ws_manager_trait,
+        }
     }
 
     #[async_recursion]
-    #[instrument(skip(generator, vector_fs, db))]
+    #[instrument(skip(generator, vector_fs, db, ws_manager_trait))]
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<ShinkaiDB>,
@@ -86,6 +107,7 @@ impl GenericInferenceChain {
         user_profile: ShinkaiName,
         max_iterations: u64,
         max_tokens_in_prompt: usize,
+        ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -196,8 +218,18 @@ impl GenericInferenceChain {
             }
 
             // 4) Call LLM
-            let response_res =
-                JobManager::inference_with_llm_provider(llm_provider.clone(), filled_prompt.clone()).await;
+            let inbox_name: Option<InboxName> = match InboxName::get_job_inbox_name_from_params(full_job.job_id.clone())
+            {
+                Ok(name) => Some(name),
+                Err(_) => None,
+            };
+            let response_res = JobManager::inference_with_llm_provider(
+                llm_provider.clone(),
+                filled_prompt.clone(),
+                inbox_name,
+                ws_manager_trait.clone(),
+            )
+            .await;
 
             // Error Codes
             if let Err(LLMProviderError::LLMServiceInferenceLimitReached(e)) = &response_res {
@@ -223,6 +255,7 @@ impl GenericInferenceChain {
                     max_iterations,
                     max_tokens_in_prompt,
                     HashMap::new(),
+                    ws_manager_trait.clone(),
                 );
 
                 // 6) Call workflow or tooling
@@ -258,7 +291,7 @@ impl GenericInferenceChain {
         // Extract function name and arguments from the function_call
         let function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
-        
+
         eprintln!("function_name: {:?}", function_name);
         eprintln!("function_args: {:?}", function_args);
 

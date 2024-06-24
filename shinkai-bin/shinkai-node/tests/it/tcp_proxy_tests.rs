@@ -117,6 +117,7 @@ fn tcp_proxy_test_identity() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 
@@ -135,6 +136,7 @@ fn tcp_proxy_test_identity() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
             None,
             None,
         )
@@ -518,6 +520,7 @@ fn tcp_proxy_test_localhost() {
             node1_fs_db_path,
             None,
             None,
+            None,
         )
         .await;
 
@@ -536,6 +539,7 @@ fn tcp_proxy_test_localhost() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
             None,
             None,
         )

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::DateTime;
 use chrono::Utc;
 use rocksdb::{Error, WriteBatch};
@@ -9,7 +11,9 @@ use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use tokio::sync::Mutex;
 
+use crate::network::ws_manager::WSUpdateHandler;
 use crate::schemas::smart_inbox::LLMProviderSubset;
 use crate::schemas::{identity::StandardIdentity, inbox_permission::InboxPermission, smart_inbox::SmartInbox};
 
@@ -55,6 +59,7 @@ impl ShinkaiDB {
         &self,
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), ShinkaiDBError> {
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
@@ -176,11 +181,11 @@ impl ShinkaiDB {
 
         {
             // Note: this is the code for enabling WS
-            if let Some(manager) = &self.ws_manager {
+            if let Some(manager) = ws_manager {
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
                 if let Ok(msg_string) = message.to_string() {
-                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string).await;
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string, false).await;
                 }
             }
         }
