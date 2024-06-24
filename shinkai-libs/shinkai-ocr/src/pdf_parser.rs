@@ -1,11 +1,10 @@
-use image::GenericImageView;
-use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
 use pdfium_render::prelude::*;
-use rten::Model;
 use std::io::Write;
 
+use crate::image_parser::ImageParser;
+
 pub struct PDFParser {
-    ocr_engine: OcrEngine,
+    image_parser: ImageParser,
     pdfium: Pdfium,
 }
 
@@ -21,23 +20,7 @@ pub struct PDFText {
 
 impl PDFParser {
     pub fn new() -> anyhow::Result<Self> {
-        let ocrs_path = match std::env::var("NODE_STORAGE_PATH").ok() {
-            Some(path) => std::path::PathBuf::from(path).join("ocrs"),
-            None => std::path::PathBuf::from("ocrs"),
-        };
-
-        // Use the `download-models.sh` script to download the models.
-        let detection_model_path = ocrs_path.join("text-detection.rten");
-        let rec_model_path = ocrs_path.join("text-recognition.rten");
-
-        let detection_model = Model::load_file(detection_model_path)?;
-        let recognition_model = Model::load_file(rec_model_path)?;
-
-        let ocr_engine = OcrEngine::new(OcrEngineParams {
-            detection_model: Some(detection_model),
-            recognition_model: Some(recognition_model),
-            ..Default::default()
-        })?;
+        let image_parser = ImageParser::new()?;
 
         #[cfg(not(feature = "static"))]
         let pdfium = {
@@ -69,7 +52,7 @@ impl PDFParser {
         #[cfg(feature = "static")]
         let pdfium = Pdfium::new(Pdfium::bind_to_statically_linked_library().unwrap());
 
-        Ok(PDFParser { ocr_engine, pdfium })
+        Ok(PDFParser { image_parser, pdfium })
     }
 
     pub fn process_pdf_file(&self, file_buffer: Vec<u8>) -> anyhow::Result<Vec<PDFPage>> {
@@ -200,13 +183,15 @@ impl PDFParser {
 
                         let image_object = object.as_image_object().unwrap();
 
-                        if let Ok(text) = Self::process_image_object(self, image_object) {
-                            if !text.is_empty() {
-                                let pdf_text = PDFText {
-                                    text,
-                                    likely_heading: false,
-                                };
-                                pdf_texts.push(pdf_text);
+                        if let Ok(image) = image_object.get_raw_image() {
+                            if let Ok(text) = self.image_parser.process_image(image) {
+                                if !text.is_empty() {
+                                    let pdf_text = PDFText {
+                                        text,
+                                        likely_heading: false,
+                                    };
+                                    pdf_texts.push(pdf_text);
+                                }
                             }
                         }
                     }
@@ -247,77 +232,5 @@ impl PDFParser {
         }
 
         Ok(pdf_pages)
-    }
-
-    fn process_image_object(&self, image_object: &PdfPageImageObject) -> anyhow::Result<String> {
-        let img = image_object.get_raw_image()?;
-        let img_source = ImageSource::from_bytes(img.as_bytes(), img.dimensions())?;
-
-        let ocr_input = self.ocr_engine.prepare_input(img_source)?;
-
-        // Get oriented bounding boxes of text words in input image.
-        let word_rects = self.ocr_engine.detect_words(&ocr_input)?;
-
-        // Group words into lines. Each line is represented by a list of word bounding boxes.
-        let line_rects = self.ocr_engine.find_text_lines(&ocr_input, &word_rects);
-
-        // Recognize the characters in each line.
-        let line_texts = self.ocr_engine.recognize_text(&ocr_input, &line_rects)?;
-
-        let text = line_texts
-            .iter()
-            .flatten()
-            .filter_map(|l| {
-                let line = l.to_string();
-                if line.len() > 1 {
-                    Some(line)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        Ok(text)
-    }
-
-    pub async fn check_and_download_dependencies() -> Result<(), Box<dyn std::error::Error>> {
-        let ocrs_path = match std::env::var("NODE_STORAGE_PATH").ok() {
-            Some(path) => std::path::PathBuf::from(path).join("ocrs"),
-            None => std::path::PathBuf::from("ocrs"),
-        };
-        let _ = std::fs::create_dir(&ocrs_path);
-
-        let ocrs_models_url = "https://ocrs-models.s3-accelerate.amazonaws.com/";
-        let detection_model = "text-detection.rten";
-        let recognition_model = "text-recognition.rten";
-
-        if !ocrs_path.join(detection_model).exists() {
-            let client = reqwest::Client::new();
-            let file_data = client
-                .get(format!("{}{}", ocrs_models_url, detection_model))
-                .send()
-                .await?
-                .bytes()
-                .await?;
-
-            let mut file = std::fs::File::create(ocrs_path.join(detection_model))?;
-            file.write_all(&file_data)?;
-        }
-
-        if !ocrs_path.join(recognition_model).exists() {
-            let client = reqwest::Client::new();
-            let file_data = client
-                .get(format!("{}{}", ocrs_models_url, recognition_model))
-                .send()
-                .await?
-                .bytes()
-                .await?;
-
-            let mut file = std::fs::File::create(ocrs_path.join(recognition_model))?;
-            file.write_all(&file_data)?;
-        }
-
-        Ok(())
     }
 }

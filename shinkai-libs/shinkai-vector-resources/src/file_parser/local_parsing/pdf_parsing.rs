@@ -9,7 +9,7 @@ use super::LocalFileParser;
 impl LocalFileParser {
     #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     pub fn process_pdf_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        use shinkai_pdf_parser::pdf_parser::PDFParser;
+        use shinkai_ocr::pdf_parser::PDFParser;
 
         let pdf_parser = PDFParser::new().map_err(|_| VRError::FailedPDFParsing)?;
         let parsed_pages = pdf_parser

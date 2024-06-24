@@ -1,9 +1,7 @@
-use shinkai_pdf_parser::pdf_parser::PDFParser;
+use shinkai_ocr::pdf_parser::PDFParser;
 
 #[tokio::test]
 async fn pdf_parsing() -> Result<(), Box<dyn std::error::Error>> {
-    PDFParser::check_and_download_dependencies().await?;
-
     let file = std::fs::read("../../files/shinkai_intro.pdf")?;
     let pdf_parser = PDFParser::new()?;
     let parsed_pages = pdf_parser.process_pdf_file(file)?;

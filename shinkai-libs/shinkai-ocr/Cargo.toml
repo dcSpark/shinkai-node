@@ -1,5 +1,5 @@
 [package]
-name = "shinkai_pdf_parser"
+name = "shinkai_ocr"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,6 +17,10 @@ tokio = { version = "1", features = ["full"] }
 [features]
 default = []
 static = ["pdfium-render/static", "pdfium-render/libc++"]
+
+[[test]]
+name = "image_parser_tests"
+path = "tests/image_parser_tests.rs"
 
 [[test]]
 name = "pdf_parser_tests"

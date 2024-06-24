@@ -18,9 +18,9 @@ pub struct ShinkaiFileParser;
 impl ShinkaiFileParser {
     #[cfg(any(feature = "dynamic-pdf-parser", feature = "static-pdf-parser"))]
     pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
-        use shinkai_pdf_parser::pdf_parser::PDFParser;
+        use shinkai_ocr::image_parser::ImageParser;
 
-        PDFParser::check_and_download_dependencies().await
+        ImageParser::check_and_download_dependencies().await
     }
 
     #[cfg(feature = "desktop-only")]

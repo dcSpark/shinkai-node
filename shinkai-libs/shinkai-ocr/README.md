@@ -1,4 +1,4 @@
-# Shinkai PDF Parser
+# Shinkai OCR
 
 ## Building the Project
 
