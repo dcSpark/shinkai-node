@@ -171,9 +171,10 @@ impl MessageSchemaType {
         }
     }
 
-    // pub fn is_empty(&self) -> bool {
-    //     matches!(self, Self::Empty)
-    // }
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
