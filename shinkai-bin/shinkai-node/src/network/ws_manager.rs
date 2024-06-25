@@ -284,7 +284,18 @@ impl WebSocketManager {
         let ws_message = serde_json::from_str::<WSMessage>(&content_str).map_err(|e| {
             WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e))
         })?;
+
         eprintln!("ws_message: {:?}", ws_message);
+
+        // Validate shared_key if it exists
+        if let Some(shared_key) = &ws_message.shared_key {
+            if !is_valid_hex_key(shared_key) {
+                return Err(WebSocketManagerError::InvalidSharedKey(
+                    "Provided shared_key is not a valid hexadecimal string".to_string(),
+                ));
+            }
+        }
+
 
         // Decrypt Message
 
