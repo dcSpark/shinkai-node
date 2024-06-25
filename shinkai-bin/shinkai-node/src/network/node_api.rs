@@ -100,7 +100,7 @@ pub struct APIError {
 }
 
 impl APIError {
-    fn new(code: StatusCode, error: &str, message: &str) -> Self {
+    pub fn new(code: StatusCode, error: &str, message: &str) -> Self {
         Self {
             code: code.as_u16(),
             error: error.to_string(),

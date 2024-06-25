@@ -14,6 +14,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::TopicSubscription;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::aes_encryption_key_to_string;
@@ -184,7 +185,13 @@ async fn test_websocket() {
     };
 
     // Start the WebSocket server
-    let ws_manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
+    let ws_manager = WebSocketManager::new(
+        shinkai_db_weak.clone(),
+        node_name,
+        identity_manager_trait.clone(),
+        clone_static_secret_key(&node1_encryption_sk),
+    )
+    .await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
 
@@ -202,6 +209,7 @@ async fn test_websocket() {
     // Create a shared encryption key Aes256Gcm
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
     let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
+    eprintln!("shared_enc_string: {}", shared_enc_string);
 
     // Send a message to the server to establish the connection and subscribe to a topic
     let ws_message = WSMessage {
@@ -490,7 +498,13 @@ async fn test_websocket_smart_inbox() {
     };
 
     // Start the WebSocket server
-    let ws_manager = WebSocketManager::new(shinkai_db_weak.clone(), node_name, identity_manager_trait.clone()).await;
+    let ws_manager = WebSocketManager::new(
+        shinkai_db_weak.clone(),
+        node_name,
+        identity_manager_trait.clone(),
+        clone_static_secret_key(&node1_encryption_sk),
+    )
+    .await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
 
@@ -605,7 +619,7 @@ async fn test_websocket_smart_inbox() {
     let encrypted_message = msg.to_text().unwrap();
     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
     let ws_message_payload: WSMessagePayload =
-            serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
+        serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
     let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
     let recovered_content = recovered_shinkai.get_message_content().unwrap();
     assert_eq!(recovered_content, "Hello, world!");

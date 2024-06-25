@@ -22,8 +22,6 @@ pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;
 pub fn ws_route(
     manager: SharedWebSocketManager,
 ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    
-
     {
         let manager = Arc::clone(&manager);
         warp::path!("ws")
@@ -100,7 +98,11 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
     }
 
     // Optionally, you can perform any cleanup here if necessary
-    shinkai_log(ShinkaiLogOption::WsAPI, ShinkaiLogLevel::Info, "WebSocket connection closed");
+    shinkai_log(
+        ShinkaiLogOption::WsAPI,
+        ShinkaiLogLevel::Info,
+        "WebSocket connection closed",
+    );
 }
 
 async fn process_shinkai_message(
@@ -108,19 +110,14 @@ async fn process_shinkai_message(
     manager: &Arc<Mutex<WebSocketManager>>,
     ws_tx: &Arc<Mutex<SplitSink<WebSocket, warp::ws::Message>>>,
 ) -> Result<(), WebSocketManagerError> {
-    let content_str = shinkai_message
-        .get_message_content()
-        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get message content: {}", e)))?;
+    eprintln!("process_shinkai_message with shinkai message: {:?}", shinkai_message);
 
-    let ws_message = serde_json::from_str::<WSMessage>(&content_str)
-        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e)))?;
-
-    let shinkai_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(shinkai_message)
+    let shinkai_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(shinkai_message)
         .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e)))?;
 
     let mut manager_guard = manager.lock().await;
     manager_guard
-        .manage_connections(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx), ws_message)
+        .manage_connections(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx))
         .await
         .map_err(|e| {
             match e {

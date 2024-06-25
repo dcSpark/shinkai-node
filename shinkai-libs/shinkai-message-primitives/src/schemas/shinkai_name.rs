@@ -250,6 +250,7 @@ impl ShinkaiName {
         Self::new(full_identity_name)
     }
 
+    #[allow(dead_code)]
     pub fn from_shinkai_message_using_sender_and_intra_sender(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         let name = format!(
             "{}/{}",
@@ -259,14 +260,17 @@ impl ShinkaiName {
         Self::new(name)
     }
 
+    #[allow(dead_code)]
     pub fn from_shinkai_message_only_using_sender_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         Self::new(message.external_metadata.sender.clone())
     }
 
+    #[allow(dead_code)]
     pub fn from_shinkai_message_only_using_recipient_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         Self::new(message.external_metadata.recipient.clone())
     }
 
+    #[allow(dead_code)]
     pub fn from_shinkai_message_using_sender_subidentity(message: &ShinkaiMessage) -> Result<Self, ShinkaiNameError> {
         // Check if outer encrypted and return error if so
         let body = match &message.body {
