@@ -1,6 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
+use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
 use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
@@ -921,7 +921,7 @@ async fn local_txt_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -952,7 +952,7 @@ async fn local_csv_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -984,7 +984,7 @@ async fn local_malformed_csv_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1032,7 +1032,7 @@ async fn local_txt_metadata_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1092,7 +1092,7 @@ async fn local_csv_metadata_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1138,7 +1138,7 @@ async fn local_md_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1230,7 +1230,7 @@ async fn local_html_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1284,7 +1284,7 @@ async fn local_docx_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        UnstructuredAPI::new_default(),
+        FileParser::Local,
     )
     .await
     .unwrap();
@@ -1294,7 +1294,7 @@ async fn local_docx_parsing_test() {
         .print_all_nodes_exhaustive(None, false, false);
 
     // Perform vector search
-    let query_string = "How can a spike be used?".to_string();
+    let query_string = "What does this document track?".to_string();
     let query_embedding = generator.generate_embedding_default(&query_string).await.unwrap();
     let results = resource.as_trait_object().vector_search(query_embedding, 3);
 
@@ -1303,5 +1303,5 @@ async fn local_docx_parsing_test() {
         .node
         .get_text_content()
         .unwrap()
-        .contains("to familiarize the team"));
+        .contains("open and finalized decisions"));
 }

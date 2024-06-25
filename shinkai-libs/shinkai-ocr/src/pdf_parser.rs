@@ -1,5 +1,4 @@
 use pdfium_render::prelude::*;
-use std::io::Write;
 
 use crate::image_parser::ImageParser;
 
