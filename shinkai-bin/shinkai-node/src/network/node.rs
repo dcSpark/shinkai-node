@@ -403,6 +403,14 @@ pub enum NodeCommand {
     LocalExtManagerProcessSubscriptionUpdates {
         res: Sender<Result<(), String>>,
     },
+    APIGetLocalProcessingPreference {
+        msg: ShinkaiMessage,
+        res: Sender<Result<bool, APIError>>,
+    },
+    APIUpdateLocalProcessingPreference {
+        preference: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -2106,6 +2114,39 @@ impl Node {
                                             tokio::spawn(async move {
                                                 let _ = Node::local_ext_manager_process_subscription_updates(
                                                     ext_subscription_manager_clone,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        // Add these inside the match command block:
+                                        NodeCommand::APIGetLocalProcessingPreference { msg, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_get_local_processing_preference(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    msg,
+                                                    res,
+                                                ).await;
+                                            });
+                                        },
+                                        NodeCommand::APIUpdateLocalProcessingPreference { preference, res } => {
+                                            let db_clone = Arc::clone(&self.db);
+                                            let node_name_clone = self.node_name.clone();
+                                            let identity_manager_clone = self.identity_manager.clone();
+                                            let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                                            tokio::spawn(async move {
+                                                let _ = Node::api_update_local_processing_preference(
+                                                    db_clone,
+                                                    node_name_clone,
+                                                    identity_manager_clone,
+                                                    encryption_secret_key_clone,
+                                                    preference,
                                                     res,
                                                 ).await;
                                             });

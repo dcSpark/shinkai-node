@@ -1,12 +1,25 @@
 use super::{
-    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS}, node_api::{APIError, SendResponseBodyData}, node_api_handlers::APIUseRegistrationCodeSuccessResponse, node_error::NodeError, node_shareable_logic::validate_message_main_logic, ws_manager::WSUpdateHandler, Node
+    node::{ProxyConnectionInfo, NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS},
+    node_api::{APIError, SendResponseBodyData},
+    node_api_handlers::APIUseRegistrationCodeSuccessResponse,
+    node_error::NodeError,
+    node_shareable_logic::validate_message_main_logic,
+    ws_manager::WSUpdateHandler,
+    Node,
 };
 use crate::{
-    db::db_errors::ShinkaiDBError, llm_provider::job_manager::JobManager, managers::IdentityManager, network::ws_manager, schemas::{
+    db::db_errors::ShinkaiDBError,
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::ws_manager,
+    schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
-    }, tools::js_toolkit_executor::JSToolkitExecutor, utils::update_global_identity::update_global_identity_name, vector_fs::vector_fs::VectorFS
+    },
+    tools::js_toolkit_executor::JSToolkitExecutor,
+    utils::update_global_identity::update_global_identity_name,
+    vector_fs::vector_fs::VectorFS,
 };
 use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
@@ -1521,7 +1534,9 @@ impl Node {
             let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
 
             eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
-            let init_result = db.init_profile_tool_structs(&profile, embedding_generator.clone()).await;
+            let init_result = db
+                .init_profile_tool_structs(&profile, embedding_generator.clone())
+                .await;
             if let Err(err) = init_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -2757,6 +2772,137 @@ impl Node {
     pub async fn api_is_pristine(db: Arc<ShinkaiDB>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
         let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
+        Ok(())
+    }
+
+    pub async fn api_get_local_processing_preference(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate Message
+        let validation_result = Self::validate_message(
+            encryption_secret_key,
+            identity_manager,
+            &node_name,
+            potentially_encrypted_msg,
+            Some(MessageSchemaType::GetProcessingPreference),
+        )
+        .await;
+
+        let (_msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Check if the sender has admin permissions
+        if !sender_subidentity.has_admin_permissions() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::FORBIDDEN.as_u16(),
+                    error: "Forbidden".to_string(),
+                    message: "You don't have permission to access this setting".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Get the local processing preference
+        match db.get_local_processing_preference() {
+            Ok(preference) => {
+                let _ = res.send(Ok(preference)).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get local processing preference: {}", err),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn api_update_local_processing_preference(
+        db: Arc<ShinkaiDB>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let (new_preference, requester_name) = match Self::validate_and_extract_payload::<bool>(
+            node_name.clone(),
+            identity_manager.clone(),
+            encryption_secret_key,
+            potentially_encrypted_msg,
+            MessageSchemaType::UpdateLocalProcessingPreference,
+        )
+        .await
+        {
+            Ok(data) => data,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let sender_identity = identity_manager
+            .lock()
+            .await
+            .search_identity(requester_name.full_name.as_str())
+            .await;
+
+        // Check if sender_identity is None
+        if sender_identity.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Sender identity not found".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Check if the sender has admin permissions
+        if !sender_identity.unwrap().has_admin_permissions() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::FORBIDDEN.as_u16(),
+                    error: "Forbidden".to_string(),
+                    message: "You don't have permission to update this setting".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Update the local processing preference
+        match db.update_local_processing_preference(new_preference) {
+            Ok(_) => {
+                let _ = res.send(Ok("Preference updated successfully".to_string())).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update local processing preference: {}", err),
+                    }))
+                    .await;
+            }
+        }
+
         Ok(())
     }
 

@@ -59,6 +59,8 @@ pub enum MessageSchemaType {
     MySubscriptions,
     SubscriptionRequiresTreeUpdate,
     SubscriptionRequiresTreeUpdateResponse,
+    UpdateLocalProcessingPreference,
+    GetProcessingPreference,
 }
 
 impl MessageSchemaType {
@@ -113,6 +115,8 @@ impl MessageSchemaType {
             "MySubscriptions" => Some(Self::MySubscriptions),
             "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
             "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
+            "UpdateLocalProcessingPreference" => Some(Self::UpdateLocalProcessingPreference),
+            "GetProcessingPreference" => Some(Self::GetProcessingPreference),
             _ => None,
         }
     }
@@ -167,6 +171,8 @@ impl MessageSchemaType {
             Self::MySubscriptions => "MySubscriptions",
             Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
             Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
+            Self::UpdateLocalProcessingPreference => "UpdateLocalProcessingPreference",
+            Self::GetProcessingPreference => "GetProcessingPreference",
             Self::Empty => "",
         }
     }
