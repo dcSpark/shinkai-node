@@ -13,6 +13,7 @@ use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorR
 #[cfg(feature = "desktop-only")]
 use async_recursion::async_recursion;
 
+#[cfg(feature = "desktop-only")]
 #[derive(Clone)]
 pub enum FileParser {
     Local,
