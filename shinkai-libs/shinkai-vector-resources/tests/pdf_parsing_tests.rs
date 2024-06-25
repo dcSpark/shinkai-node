@@ -9,6 +9,8 @@ use shinkai_vector_resources::{
 
 #[tokio::test]
 async fn local_pdf_parsing_test() {
+    ShinkaiFileParser::initialize_local_file_parser().await.unwrap();
+
     let generator = RemoteEmbeddingGenerator::new_default();
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("../../files/{}", source_file_name)).unwrap();
@@ -20,7 +22,7 @@ async fn local_pdf_parsing_test() {
         &vec![],
         generator.model_type().max_input_token_count() as u64,
         DistributionInfo::new_empty(),
-        FileParserType::Local,
+        FileParser::Local,
     )
     .await
     .unwrap();
