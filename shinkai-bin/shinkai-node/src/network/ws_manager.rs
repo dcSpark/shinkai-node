@@ -271,7 +271,7 @@ impl WebSocketManager {
                 )));
             }
         };
-        
+
         let sender_shinkai_name =
             ShinkaiName::from_shinkai_message_using_sender_subidentity(&validated_message.clone()).map_err(|e| {
                 WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e))
@@ -456,8 +456,29 @@ impl WebSocketManager {
                 let mut connection = connection.lock().await;
 
                 // Encrypt the update using the shared key
-                let shared_key = self.shared_keys.get(id).unwrap();
-                let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
+                let shared_key = match self.shared_keys.get(id) {
+                    Some(key) => key,
+                    None => {
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Error,
+                            format!("No shared key found for connection {}", id).as_str(),
+                        );
+                        continue;
+                    }
+                };
+
+                let shared_key_bytes = match hex::decode(shared_key) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Error,
+                            format!("Failed to decode shared key for connection {}: {}", id, e).as_str(),
+                        );
+                        continue;
+                    }
+                };
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
                 let nonce = GenericArray::from_slice(&[0u8; 12]);
                 let encrypted_update = cipher
