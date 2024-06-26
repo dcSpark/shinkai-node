@@ -55,6 +55,7 @@ pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
     MissingSharedKey(String),
+    InvalidSharedKey(String),
 }
 
 impl fmt::Display for WebSocketManagerError {
@@ -63,6 +64,7 @@ impl fmt::Display for WebSocketManagerError {
             WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
             WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
             WebSocketManagerError::MissingSharedKey(msg) => write!(f, "Missing shared key: {}", msg),
+            WebSocketManagerError::InvalidSharedKey(msg) => write!(f, "Invalid shared key: {}", msg),
         }
     }
 }
@@ -289,7 +291,7 @@ impl WebSocketManager {
 
         // Validate shared_key if it exists
         if let Some(shared_key) = &ws_message.shared_key {
-            if !is_valid_hex_key(shared_key) {
+            if !Self::is_valid_hex_key(shared_key) {
                 return Err(WebSocketManagerError::InvalidSharedKey(
                     "Provided shared_key is not a valid hexadecimal string".to_string(),
                 ));
@@ -339,12 +341,14 @@ impl WebSocketManager {
 
         if let Some(key) = shared_key {
             self.shared_keys.insert(shinkai_profile_name.clone(), key);
-        } else if !self.shared_keys.contains_key(&shinkai_profile_name) {
-            return Err(WebSocketManagerError::MissingSharedKey(format!(
-                "Missing shared key for shinkai_name: {}",
-                shinkai_profile_name
-            )));
         }
+        // Note: uncomment this enforce having a shared encryption key
+        // else if !self.shared_keys.contains_key(&shinkai_profile_name) {
+        //     return Err(WebSocketManagerError::MissingSharedKey(format!(
+        //         "Missing shared key for shinkai_name: {}",
+        //         shinkai_profile_name
+        //     )));
+        // }
 
         // Handle adding and removing subscriptions
         let subscriptions_to_add: Vec<(WSTopic, Option<String>)> = ws_message
@@ -371,6 +375,19 @@ impl WebSocketManager {
         );
 
         Ok(())
+    }
+
+    fn is_valid_hex_key(key: &str) -> bool {
+        // Check if the key is a valid hexadecimal string
+        if key.len() != 64 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    
+        // Attempt to decode the key
+        match hex::decode(key) {
+            Ok(decoded) => decoded.len() == 32, // 32 bytes for AES-256
+            Err(_) => false,
+        }
     }
 
     // Method to update subscriptions
@@ -466,38 +483,31 @@ impl WebSocketManager {
 
                 let mut connection = connection.lock().await;
 
-                // Encrypt the update using the shared key
-                let shared_key = match self.shared_keys.get(id) {
-                    Some(key) => key,
-                    None => {
-                        shinkai_log(
-                            ShinkaiLogOption::WsAPI,
-                            ShinkaiLogLevel::Error,
-                            format!("No shared key found for connection {}", id).as_str(),
-                        );
-                        continue;
-                    }
+                let message_to_send = if let Some(shared_key) = self.shared_keys.get(id) {
+                    // Encrypt the update using the shared key
+                    let shared_key_bytes = match hex::decode(shared_key) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to decode shared key for connection {}: {}", id, e).as_str(),
+                            );
+                            continue;
+                        }
+                    };
+                    let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
+                    let nonce = GenericArray::from_slice(&[0u8; 12]);
+                    let encrypted_update = cipher
+                        .encrypt(nonce, payload_json.as_ref())
+                        .expect("encryption failure!");
+                    hex::encode(&encrypted_update)
+                } else {
+                    // If no shared key, send the message without encryption
+                    payload_json.clone()
                 };
 
-                let shared_key_bytes = match hex::decode(shared_key) {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::WsAPI,
-                            ShinkaiLogLevel::Error,
-                            format!("Failed to decode shared key for connection {}: {}", id, e).as_str(),
-                        );
-                        continue;
-                    }
-                };
-                let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
-                let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let encrypted_update = cipher
-                    .encrypt(nonce, payload_json.as_ref())
-                    .expect("encryption failure!");
-                let encrypted_update_hex = hex::encode(&encrypted_update);
-
-                match connection.send(Message::text(encrypted_update_hex.clone())).await {
+                match connection.send(Message::text(message_to_send.clone())).await {
                     Ok(_) => shinkai_log(
                         ShinkaiLogOption::WsAPI,
                         ShinkaiLogLevel::Info,
