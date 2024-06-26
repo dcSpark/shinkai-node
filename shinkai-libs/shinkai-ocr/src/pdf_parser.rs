@@ -109,9 +109,12 @@ impl PDFParser {
                         let likely_paragraph = if let (Some(previous_text_position), Some(previous_text_font)) =
                             (previous_text_position.as_ref(), previous_text_font.as_ref())
                         {
-                            current_text_position.y < previous_text_position.y
+                            (current_text_position.y < previous_text_position.y
                                 && (previous_text_position.y - current_text_position.y)
-                                    > previous_text_font.font_size * 1.5
+                                    > previous_text_font.font_size * 1.5)
+                                || (previous_text_position.y < current_text_position.y
+                                    && (current_text_position.y - previous_text_position.y)
+                                        > previous_text_font.font_size * 1.5)
                         } else {
                             false
                         };

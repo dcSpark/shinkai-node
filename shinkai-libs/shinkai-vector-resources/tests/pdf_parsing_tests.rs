@@ -1,9 +1,6 @@
 use shinkai_vector_resources::{
     embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
-    file_parser::{
-        file_parser::{FileParser, ShinkaiFileParser},
-        unstructured_api::UnstructuredAPI,
-    },
+    file_parser::file_parser::{FileParser, ShinkaiFileParser},
     source::DistributionInfo,
 };
 

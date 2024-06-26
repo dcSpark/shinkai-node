@@ -3,15 +3,6 @@ name = "shinkai_vector_resources"
 version = "0.1.0"
 edition = "2021"
 
-[[test]]
-name = "pdf_parsing_tests"
-path = "tests/pdf_parsing_tests.rs"
-required-features = ["static-pdf-parser"]
-
-[[test]]
-name = "vector_resource_tests"
-path = "tests/vector_resource_tests.rs"
-
 [dependencies]
 lazy_static = "1.4.0"
 env_logger = "0.9"
@@ -65,3 +56,12 @@ features = ["derive"]
 
 [dev-dependencies]
 tokio = { version = "1.36", features = ["full"] }
+
+[[test]]
+name = "pdf_parsing_tests"
+path = "tests/pdf_parsing_tests.rs"
+required-features = ["static-pdf-parser"]
+
+[[test]]
+name = "vector_resource_tests"
+path = "tests/vector_resource_tests.rs"

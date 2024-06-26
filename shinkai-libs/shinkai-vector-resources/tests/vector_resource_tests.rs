@@ -1,7 +1,6 @@
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::{FileParser, ShinkaiFileParser};
-use shinkai_vector_resources::file_parser::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::source::{DistributionInfo, VRSourceReference};
 use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
@@ -35,11 +34,14 @@ pub fn default_vector_resource_doc() -> DocumentVectorResource {
     let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+    let _ = doc
+        .append_text_node(fact1, None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+    let _ = doc
+        .append_text_node(fact2, None, fact2_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+    let _ = doc
+        .append_text_node(fact3, None, fact3_embedding.clone(), &vec![])
         .unwrap();
     return doc;
 }
@@ -52,7 +54,7 @@ fn default_vr_kai() -> VRKai {
 fn default_vr_pack() -> VRPack {
     let vrkai = default_vr_kai();
     let mut vrpack = VRPack::new_empty("");
-    vrpack.insert_vrkai(&vrkai, VRPath::root(), true);
+    let _ = vrpack.insert_vrkai(&vrkai, VRPath::root(), true);
     vrpack
 }
 
@@ -162,11 +164,11 @@ fn test_manual_resource_vector_search() {
     // Create a first resource
     //
     let fact1 = "Dogs are creatures with 4 legs that bark.";
-    let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let _fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
     let fact2 = "Camels are slow animals with large humps.";
-    let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
+    let _fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
-    let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
+    let _fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
 
     let doc = default_vector_resource_doc();
 
@@ -179,17 +181,17 @@ fn test_manual_resource_vector_search() {
     let query_string = "What animal barks?";
     let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding1.clone(), 1);
-    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact1, res[0].node.get_text_content().unwrap().to_string());
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding_default_blocking(query_string2).unwrap();
     let res2 = doc.vector_search(query_embedding2.clone(), 3);
-    assert_eq!(fact2.clone(), res2[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact2, res2[0].node.get_text_content().unwrap().to_string());
 
     let query_string3 = "What animal swims in the ocean?";
     let query_embedding3 = generator.generate_embedding_default_blocking(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
-    assert_eq!(fact3.clone(), res3[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact3, res3[0].node.get_text_content().unwrap().to_string());
 
     //
     // Create a 2nd resource, a MapVectorResource
@@ -209,7 +211,7 @@ fn test_manual_resource_vector_search() {
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
     let fact4_embedding = generator.generate_embedding_default_blocking(fact4).unwrap();
-    map_resource.insert_text_node(
+    let _ = map_resource.insert_text_node(
         "some_key".to_string(),
         fact4.to_string(),
         None,
@@ -220,7 +222,7 @@ fn test_manual_resource_vector_search() {
     // Insert the document resource into the map resource
     // To allow for this composability we need to convert the doc into a BaseVectorResource
     let doc_resource = BaseVectorResource::from(doc);
-    map_resource.insert_vector_resource_node_auto("doc_key", doc_resource, None);
+    let _ = map_resource.insert_vector_resource_node_auto("doc_key", doc_resource, None);
 
     //
     // Create a third resource, a DocumentVectorResource about fruits
@@ -238,13 +240,13 @@ fn test_manual_resource_vector_search() {
     let fact5_embedding = generator.generate_embedding_default_blocking(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embedding = generator.generate_embedding_default_blocking(fact6).unwrap();
-    fruit_doc.append_text_node(fact5.clone(), None, fact5_embedding.clone(), &vec![]);
-    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact5, None, fact5_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact6, None, fact6_embedding.clone(), &vec![]);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
     let mut new_map_resource = map_resource.as_map_resource_cloned().unwrap();
-    fruit_doc.append_vector_resource_node_auto(map_resource, None);
+    let _ = fruit_doc.append_vector_resource_node_auto(map_resource, None);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -253,7 +255,7 @@ fn test_manual_resource_vector_search() {
     // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
-    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact1, res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -262,7 +264,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
-    assert_eq!(fact4.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact4, res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/some_key", res[0].format_path_to_string());
     assert_eq!(1, res[0].retrieval_path.depth());
@@ -272,7 +274,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding.clone(), 10);
-    assert_eq!(fact6.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact6, res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/2", res[0].format_path_to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
@@ -288,7 +290,7 @@ fn test_manual_resource_vector_search() {
         &vec![TraversalOption::UntilDepth(0)],
         None,
     );
-    assert_ne!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_ne!(fact1, res[0].node.get_text_content().unwrap().to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
     let res = fruit_doc.vector_search_customized(
@@ -389,9 +391,7 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(res.len(), 3);
 
-    //
-    /// Metadata Filter Tests
-    //
+    // Metadata Filter Tests
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -492,8 +492,8 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(res.len(), 3);
 
-    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
-    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact6, None, fact6_embedding.clone(), &vec![]);
+    let _ = fruit_doc.append_text_node(fact6, None, fact6_embedding.clone(), &vec![]);
 
     println!("\n\nFruit doc:");
     fruit_doc.print_all_nodes_exhaustive(None, true, false);
@@ -546,9 +546,7 @@ fn test_manual_resource_vector_search() {
     println!("Metdata index: {:?}", fruit_doc.metadata_index());
     assert_eq!(fruit_doc.metadata_index().get_all_metadata_keys().len(), 3);
 
-    //
-    /// At path method tests
-    //
+    // At path method tests
 
     // Insert/retrieve tests
     let path = VRPath::from_string("/doc_key/").unwrap();
@@ -599,7 +597,7 @@ fn test_manual_resource_vector_search() {
 
     // Check that no node is retrieved after removing it by path
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
-    new_map_resource.remove_node_at_path(test_path.clone(), true);
+    let _ = new_map_resource.remove_node_at_path(test_path.clone(), true);
     let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None);
     assert!(!res.is_ok());
 
@@ -821,16 +819,16 @@ fn test_checking_embedding_similarity() {
     let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+    doc.append_text_node(fact1, None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+    doc.append_text_node(fact2, None, fact2_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+    doc.append_text_node(fact3, None, fact3_embedding.clone(), &vec![])
         .unwrap();
 
     // Testing small alternations to the input text still retain a high similarity score
     let res = doc.vector_search(fact1_embedding.clone(), 1);
-    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert_eq!(fact1, res[0].node.get_text_content().unwrap().to_string());
     assert!(res[0].score > 0.98);
 
     let fact1_embedding_2 = generator.generate_embedding_default_blocking(fact1).unwrap();
@@ -893,15 +891,15 @@ async fn test_embeddings_coherence() {
     let fact2_embedding = generator.generate_embedding_default(fact2).await.unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embedding = generator.generate_embedding_default(fact3).await.unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+    doc.append_text_node(fact1, None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+    doc.append_text_node(fact2, None, fact2_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+    doc.append_text_node(fact3, None, fact3_embedding.clone(), &vec![])
         .unwrap();
 
     let cloned_doc = BaseVectorResource::Document(doc.clone());
-    doc.append_vector_resource_node_auto(cloned_doc, None);
+    let _ = doc.append_vector_resource_node_auto(cloned_doc, None);
 
     assert!(doc.verify_internal_embeddings_coherence(&generator, 0.5).await.is_ok());
     assert!(doc.verify_internal_embeddings_coherence(&generator, 0.0).await.is_ok());
